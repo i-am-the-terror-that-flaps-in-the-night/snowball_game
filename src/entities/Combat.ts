@@ -159,6 +159,7 @@ export class Combat implements CombatAPI {
     const k = 4 + Math.max(0, closingSpeed) * 0.9;
     const knock = new THREE.Vector3((dx / n) * k, 0, (dz / n) * k);
 
+    const hp0 = enemy.hp;
     const killed = ctx.enemies.damage(enemy, dmg, {
       source: 'ram',
       knockback: knock,
@@ -166,6 +167,8 @@ export class Combat implements CombatAPI {
       fromZ: plow.position.z,
       ballRadius: r,
     });
+    // Show what actually landed (after armor / Brawl's hit cap), not the raw number.
+    const dealt = Math.max(0, hp0 - Math.max(0, enemy.hp));
 
     // Ball sheds snow on impact.
     if (r > 0) plow.stealSnow(0.1);
@@ -183,7 +186,7 @@ export class Combat implements CombatAPI {
     fx.shake(Math.min(0.4, 0.1 + closingSpeed * 0.015));
     ctx.audio.play('ram', { volume: Math.min(1, 0.45 + closingSpeed * 0.04) });
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1, enemy.position.z);
-    fx.floatText(_q, `${Math.round(dmg)}`, killed ? '#fff3a0' : '#ffffff', 0.8 + Math.min(0.5, dmg * 0.01));
+    if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : '#ffffff', 0.8 + Math.min(0.5, dealt * 0.01));
     return dmg;
   }
 
@@ -206,6 +209,7 @@ export class Combat implements CombatAPI {
     const n = Math.hypot(dx, dz) || 1;
     const knock = new THREE.Vector3((dx / n) * DASH_KNOCK, 0, (dz / n) * DASH_KNOCK);
 
+    const hp0 = enemy.hp;
     const killed = ctx.enemies.damage(enemy, dmg, {
       source: 'ram',
       knockback: knock,
@@ -213,6 +217,7 @@ export class Combat implements CombatAPI {
       fromZ: plow.position.z,
       ballRadius: r,
     });
+    const dealt = Math.max(0, hp0 - Math.max(0, enemy.hp));
     if (r > 0) plow.stealSnow(0.1);
 
     // Hit-stop (plow + camera) and keep the dash going through the target.
@@ -234,7 +239,7 @@ export class Combat implements CombatAPI {
     fx.shake(0.5);
     ctx.audio.play('dashStrike');
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1.4, enemy.position.z);
-    fx.floatText(_q, `DASH! ${Math.round(dmg)}`, killed ? '#fff3a0' : '#ff9a2a', 1.35);
+    fx.floatText(_q, dealt > 0 ? `DASH! ${Math.round(dealt)}` : 'DASH!', killed ? '#fff3a0' : '#ff9a2a', 1.35);
     return dmg;
   }
 
@@ -267,6 +272,7 @@ export class Combat implements CombatAPI {
         dx /= d;
         dz /= d;
       }
+      const hp0 = e.hp;
       const killed = ctx.enemies.damage(e, dmg, {
         source: 'slam',
         knockback: new THREE.Vector3(dx * knockMag, 0, dz * knockMag),
@@ -276,8 +282,9 @@ export class Combat implements CombatAPI {
         ballRadius: r,
       });
       count++;
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       _q.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
-      fx.floatText(_q, `${Math.round(dmg)}`, freeze ? '#9fe6ff' : killed ? '#fff3a0' : '#ffffff', 1 + Math.min(1, r * 0.4));
+      if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, freeze ? '#9fe6ff' : killed ? '#fff3a0' : '#ffffff', 1 + Math.min(1, r * 0.4));
       _q.set(e.position.x, 1, e.position.z);
       fx.burst(_q, { color: freeze ? 0xbfeaff : 0xffffff, count: 8, speed: 5, size: 0.2, gravity: 16, life: 0.6 });
     }
@@ -340,6 +347,7 @@ export class Combat implements CombatAPI {
         kx = -dx * pull + dz * 3.5;
         kz = -dz * pull - dx * 3.5;
       }
+      const hp0 = e.hp;
       const killed = ctx.enemies.damage(e, dmg, {
         source: 'whirl',
         knockback: new THREE.Vector3(kx, 0, kz),
@@ -352,7 +360,8 @@ export class Combat implements CombatAPI {
       fx.burst(_q, { color: final ? 0xbfeaff : 0xffc04a, count: final ? 16 : 9, speed: final ? 11 : 7, size: 0.08, gravity: 22, life: 0.35 });
       fx.burst(_q, { color: 0xffffff, count: 6, speed: 4, size: 0.2, gravity: 12, life: 0.5 });
       _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
-      fx.floatText(_q, `${Math.round(dmg)}`, killed ? '#fff3a0' : final ? '#9fe6ff' : '#d8f2ff', final ? 1.05 : 0.85);
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : final ? '#9fe6ff' : '#d8f2ff', final ? 1.05 : 0.85);
     }
     this.targets.length = 0;
 

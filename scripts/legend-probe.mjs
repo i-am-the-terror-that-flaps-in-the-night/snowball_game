@@ -1,11 +1,11 @@
-// Legend balance probe: node scripts/legend-probe.mjs [difficulty=legend] [maxed=1]
-// A fully-upgraded player driven by a simple aggressive autopilot plays a full simulated brawl.
+// Legend balance probe: node scripts/legend-probe.mjs [difficulty=legend] [level=5]
+// A player with every endless upgrade at `level` (+ specials when level > 0) driven by a simple aggressive autopilot plays a full simulated brawl.
 // Reports player K/D, bot streaks, and how much of the lobby hunts the player.
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
 const diff = process.argv[2] || 'legend';
-const maxed = (process.argv[3] ?? '1') === '1';
+const level = Number(process.argv[3] ?? '5');
 const port = 6100 + Math.floor(Math.random() * 90);
 const server = await createServer({ root: '/Users/sachingupta/Developer/3js_game', server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
@@ -16,9 +16,9 @@ page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
 await page.waitForTimeout(1000);
 
-const setup = await page.evaluate(([diff, maxed]) => {
+const setup = await page.evaluate(([diff, level]) => {
   const g = window.__game, c = g.ctx, pr = c.progression;
-  if (maxed) for (const u of pr.constructor.upgrades) pr.data.upgrades[u.id] = u.maxLevel;
+  for (const u of pr.constructor.upgrades) pr.data.upgrades[u.id] = u.maxLevel === Infinity ? level : level > 0 ? 1 : 0;
   g.startBrawl(diff);
   for (let i = 0; i < 300; i++) g.tick(1 / 60);
   const P = (window.__P = { streakEvents: [], hunterSamples: [], dmgTaken: 0 });
@@ -58,10 +58,10 @@ const setup = await page.evaluate(([diff, maxed]) => {
   const s = c.stats, r0 = c.brawl.rivals;
   return {
     player: { hp: s.maxHp, dmgMult: s.damageMult, ram: s.ramDamage, speed: +s.maxSpeed.toFixed(1), ball: +s.maxBallRadius.toFixed(2) },
-    rivals: r0.map((r) => ({ name: r.f.entry.name, hp: r.maxHp, dmg: +r.s.dmgMult.toFixed(2), spd: +r.s.maxSpeed.toFixed(1), ball: +r.s.maxBall.toFixed(2), elite: r.s.elite })),
+    rivals: r0.map((r) => ({ name: r.f.entry.name, hp: Math.round(r.maxHp), dmg: +r.s.dmgMult.toFixed(2), spd: +r.s.maxSpeed.toFixed(1), ball: +r.s.maxBall.toFixed(2), elite: r.s.elite })),
     state: g.state,
   };
-}, [diff, maxed]);
+}, [diff, level]);
 console.log('PLAYER', JSON.stringify(setup.player));
 for (const r of setup.rivals) console.log('RIVAL ', JSON.stringify(r));
 

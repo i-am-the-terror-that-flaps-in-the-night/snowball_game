@@ -8,6 +8,14 @@ export const BRAWL_KILL_TARGET = 20;
 export const BRAWL_RESPAWN = 3;
 /** Seconds of spawn protection after (re)spawning. */
 export const BRAWL_SPAWN_PROTECT = 2;
+/** Brawl hit cap: one hit can take at most this fraction of the target's max hp (smooth taper — small hits
+ *  are barely affected). Stops full-ball slams from one-shotting anyone, player or bot. */
+export const BRAWL_HIT_CAP = 0.6;
+export function brawlHit(raw: number, targetMaxHp: number): number {
+  const cap = BRAWL_HIT_CAP * targetMaxHp;
+  return cap * (1 - Math.exp(-raw / cap));
+}
+
 /** Coins for each kill before the streak multiplier and difficulty multiplier. */
 export const BRAWL_KILL_COINS = 20;
 /** Shutdown bounty: coins per streak count of the fighter you stopped (streak >= 3). */
@@ -42,8 +50,11 @@ export interface BrawlDifficultyDef {
   skill: number;
   /** Multiplier on all coins earned in the match. */
   coinMult: number;
-  /** How much of the player's garage upgrades the rivals match (0 = base stats, 1 = same power as you). */
-  gearMatch: number;
+  /** Each rival rolls its own garage: per upgrade, level = round(yourLevel * U(lo, hi)), at least `floor`.
+   *  Stats then come from the same FX curves as yours (src/config/upgrades.ts), so bots scale like players. */
+  botLevels: { regular: [number, number]; elite: [number, number]; floor: number; eliteFloor: number };
+  /** Chance a rival also owns each one-time perk the PLAYER owns (Ice Shield, Avalanche Core). */
+  perkChance: { regular: number; elite: number };
   /** Number of ELITE rivals (clan-tagged tryhards: tougher, smarter, farm weaker bots into big streaks). */
   elites: number;
   /** Target-score bonus for hunting the player (bigger = the lobby focuses you more). */
@@ -57,9 +68,9 @@ export interface BrawlDifficultyDef {
 }
 
 export const BRAWL_DIFFICULTIES: BrawlDifficultyDef[] = [
-  { id: 'rookie', name: 'Rookie Lobby', blurb: 'Bots that just got their licence. Sloppy aim, slow reactions.', hpMult: 0.8, dmgMult: 0.7, reaction: 0.6, skill: 0.3, coinMult: 1, gearMatch: 0.35, elites: 1, playerFocus: 0.2, maxHunters: 1, killHeal: 0.25, streakBuff: 0.05 },
-  { id: 'pro', name: 'Pro Lobby', blurb: 'Seasoned plowers matched to your garage. They dash, flank and steal kills.', hpMult: 1, dmgMult: 1, reaction: 0.35, skill: 0.65, coinMult: 1.6, gearMatch: 0.8, elites: 2, playerFocus: 0.65, maxHunters: 2, killHeal: 0.35, streakBuff: 0.07 },
-  { id: 'legend', name: 'Legend Lobby', blurb: 'Sweaty tryhards out-geared to match you. They hunt the leader. No mercy.', hpMult: 1.15, dmgMult: 1.15, reaction: 0.16, skill: 0.95, coinMult: 2.5, gearMatch: 1.0, elites: 3, playerFocus: 1.15, maxHunters: 3, killHeal: 0.5, streakBuff: 0.09 },
+  { id: 'rookie', name: 'Rookie Lobby', blurb: 'Bots that just got their licence. Sloppy aim, slow reactions, budget garages.', hpMult: 0.8, dmgMult: 0.7, reaction: 0.6, skill: 0.3, coinMult: 1, botLevels: { regular: [0.1, 0.45], elite: [0.5, 0.75], floor: 0, eliteFloor: 0 }, perkChance: { regular: 0, elite: 0.3 }, elites: 1, playerFocus: 0.2, maxHunters: 1, killHeal: 0.2, streakBuff: 0.05 },
+  { id: 'pro', name: 'Pro Lobby', blurb: 'Seasoned plowers with garages a bit behind yours. They dash, flank and steal kills.', hpMult: 1, dmgMult: 1, reaction: 0.35, skill: 0.65, coinMult: 1.6, botLevels: { regular: [0.4, 0.75], elite: [0.75, 0.95], floor: 0, eliteFloor: 1 }, perkChance: { regular: 0.25, elite: 0.65 }, elites: 2, playerFocus: 0.55, maxHunters: 2, killHeal: 0.3, streakBuff: 0.06 },
+  { id: 'legend', name: 'Legend Lobby', blurb: 'Sweaty tryhards with garages as good as yours. They hunt the leader.', hpMult: 1.2, dmgMult: 1.35, reaction: 0.16, skill: 0.95, coinMult: 2.5, botLevels: { regular: [0.6, 0.9], elite: [0.9, 1.05], floor: 1, eliteFloor: 2 }, perkChance: { regular: 0.6, elite: 1 }, elites: 3, playerFocus: 1.2, maxHunters: 3, killHeal: 0.4, streakBuff: 0.08 },
 ];
 
 /** Gamer-tag style rival names (pick BRAWL_BOTS at random per match). */

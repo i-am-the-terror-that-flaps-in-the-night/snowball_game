@@ -32,10 +32,12 @@ import {
   BRAWL_TAUNTS,
   BRAWL_TIME,
   PLAYER_BRAWL_COLOR,
+  brawlHit,
   STREAK_TIERS,
   streakMult,
   type BrawlDifficultyDef,
 } from '../config/brawl';
+import { FX, UPGRADES, type UpgradeId } from '../config/upgrades';
 import { BLADE_W, BLADE_Z, RIVAL_KINDS, createCocoa, createRivalRig, getDarkMaterial, getDebrisGeometry, type RivalRig } from './models';
 import { NameTag, SpeechBubble } from './tags';
 
@@ -92,7 +94,7 @@ interface Fighter {
 
 let nextId = 5000;
 
-/** Per-rival kit, scaled from the base kit by difficulty, the player's garage (gear match) and elite status. */
+/** Per-rival kit: the rival's own rolled garage levels (see rivalStats) through the player's FX curves. */
 interface RivalStats {
   elite: boolean;
   maxSpeed: number;
@@ -108,8 +110,18 @@ interface RivalStats {
   whirlDmg: number;
   whirlCd: number;
   dmgMult: number;
+  /** Multiplier on damage taken (Reinforced Frame levels). */
+  damageTaken: number;
+  /** HP regenerated per second (Repair Kit levels). */
+  hpRegen: number;
   skill: number;
   reaction: number;
+  /** The rival's rolled garage levels (debug / tuning). */
+  levels: Partial<Record<UpgradeId, number>>;
+  /** Fraction of frontal damage the held ball blocks (0.4, or 0.75 with Ice Shield). */
+  shieldBlock: number;
+  /** Avalanche Core: wider, harder-knocking slams. */
+  avalanche: boolean;
 }
 
 class Rival implements EnemyHandle {
@@ -221,8 +233,8 @@ export class BrawlManager implements BrawlAPI {
   private fighters: Fighter[] = [];
   private player!: Fighter;
   private diff: BrawlDifficultyDef = BRAWL_DIFFICULTIES[1];
-  /** Player power relative to base stats, captured at match start (for gear matching). */
-  private gear = { speed: 1, accel: 1, turn: 1, collect: 1, blade: 1, ball: 1, ram: 1, dmg: 1, hp: 1, tank: 1, dash: 1, dashCd: 1, whirlR: 1, whirlDmg: 1, whirlCd: 1 };
+  /** The player's endless-upgrade levels at match start; each rival rolls its own garage around them. */
+  private playerLevels: Partial<Record<UpgradeId, number>> = {};
   private started = false;
   private active = false;
   private _over = false;
@@ -477,57 +489,57 @@ export class BrawlManager implements BrawlAPI {
 
   /* ================================================================== setup */
 
-  /** Snapshot of how far the player's garage pushes each stat above base (1 = base). */
+  /** Snapshot of the player's garage (endless upgrades only; specials are player perks). */
   private captureGear(): void {
-    const st = this.ctx.stats;
-    const g = this.gear;
-    g.speed = st.maxSpeed / 10;
-    g.accel = st.accel / 14;
-    g.turn = st.turnRate / 2.6;
-    g.collect = st.collectRate / 0.12;
-    g.blade = st.bladeWidth / 2.6;
-    g.ball = st.maxBallRadius / 1.2;
-    g.ram = st.ramDamage / 14;
-    g.dmg = st.damageMult;
-    g.hp = st.maxHp / 120;
-    g.tank = 1 / Math.max(0.5, st.damageTaken);
-    g.dash = st.dashPower / 16;
-    g.dashCd = 2.4 / Math.max(0.5, st.dashCooldown);
-    g.whirlR = st.whirlRadius / 4;
-    g.whirlDmg = st.whirlDamage / 10;
-    g.whirlCd = 6 / Math.max(1, st.whirlCooldown);
+    this.playerLevels = {};
+    for (const u of UPGRADES) if (u.maxLevel === Infinity) this.playerLevels[u.id] = this.ctx.progression.level(u.id);
   }
 
+  /** A rival's own garage: every upgrade rolled around the player's level for this lobby, then turned into
+   *  stats with the SAME FX curves the player uses — so bots scale like real players instead of copying
+   *  (and compounding) the player's multipliers. */
   private rivalStats(elite: boolean): { stats: RivalStats; hp: number } {
     const d = this.diff;
-    const g = this.gear;
-    // Blend each stat toward the player's power by the lobby's gear match (Legend slightly exceeds it).
-    const m = (ratio: number) => Math.max(0.5, 1 + (ratio - 1) * d.gearMatch);
-    const e = elite ? 1 : 0;
-    // Base kit mirrors the player's base kit, so a matched rival is never faster / bigger-balled than you
-    // (elites get a small edge).
-    const maxBall = 1.25 * m(g.ball) * (1 + 0.06 * e);
+    const b = d.botLevels;
+    const [lo, hi] = elite ? b.elite : b.regular;
+    const floor = elite ? b.eliteFloor : b.floor;
+    const levels: Partial<Record<UpgradeId, number>> = {};
+    for (const id of Object.keys(this.playerLevels) as UpgradeId[]) {
+      const mine = this.playerLevels[id] ?? 0;
+      levels[id] = Math.max(floor, Math.round(mine * (lo + Math.random() * (hi - lo))));
+    }
+    const L = (id: UpgradeId) => levels[id] ?? 0;
+    const maxBall = FX.maxBallRadius(L('hopper'));
+    // Perks: a rival may own the same one-time specials the player owns.
+    const prog = this.ctx.progression;
+    const perkP = elite ? d.perkChance.elite : d.perkChance.regular;
+    const iceShield = prog.level('iceShield') > 0 && Math.random() < perkP;
+    const avalanche = prog.level('avalancheCore') > 0 && Math.random() < perkP;
     const stats: RivalStats = {
       elite,
-      maxSpeed: 10 * m(g.speed) * (1 + 0.03 * e),
-      accel: 14 * m(g.accel),
-      turn: 2.6 * m(g.turn),
-      // Rival blades don't widen visually, so a wider player blade is matched through collection rate.
-      collect: 0.13 * m(g.collect) * m(g.blade) * (1 + 0.15 * e),
+      maxSpeed: FX.maxSpeed(L('engine')) * (elite ? 1.02 : 1),
+      accel: FX.accel(L('engine')),
+      turn: FX.turnRate(L('engine')),
+      // Rival blades don't widen visually, so blade levels show up as faster snow collection.
+      collect: 0.13 * (FX.collectRate(L('compactor')) / 0.12) * (FX.bladeWidth(L('blade')) / 2.6),
       maxBall,
       maxBallVol: ballVolume(maxBall),
-      ramBase: 14 * m(g.ram),
-      dashPower: 16 * m(g.dash),
-      dashCd: 2.6 / m(g.dashCd) * (1 - 0.15 * e),
-      whirlR: 4 * m(g.whirlR) + BLADE_W / 2,
-      whirlDmg: 10 * m(g.whirlDmg),
-      whirlCd: 6 / m(g.whirlCd) * (1 - 0.15 * e),
-      dmgMult: d.dmgMult * m(g.dmg) * (elite ? 1.15 : 0.95),
-      skill: clamp(d.skill + (elite ? 0.15 : -0.08), 0.1, 1),
-      reaction: d.reaction * (elite ? 0.75 : 1.1),
+      ramBase: FX.ramDamage(L('ramSpikes')),
+      dashPower: FX.dashPower(L('nitro')),
+      dashCd: FX.dashCooldown(L('nitro')) + 0.2,
+      whirlR: FX.whirlRadius(L('whirl')) + BLADE_W / 2,
+      whirlDmg: FX.whirlDamage(L('whirl')),
+      whirlCd: FX.whirlCooldown(L('whirl')),
+      dmgMult: d.dmgMult * FX.damageMult(L('packedIce')) * (elite ? 1.05 : 1),
+      damageTaken: FX.damageTaken(L('plating')),
+      hpRegen: FX.hpRegen(L('repairKit')),
+      skill: clamp(d.skill + (elite ? 0.12 : -0.08), 0.1, 1),
+      reaction: d.reaction * (elite ? 0.8 : 1.1),
+      levels,
+      shieldBlock: iceShield ? 0.75 : 0.4,
+      avalanche,
     };
-    // Elites clearly out-class ordinary bots so they farm them into real streaks.
-    const hp = 140 * d.hpMult * m(g.hp) * Math.sqrt(m(g.tank)) * (elite ? 1.3 : 0.92);
+    const hp = FX.maxHp(L('armor')) * (140 / 120) * d.hpMult * (elite ? 1.15 : 1);
     return { stats, hp };
   }
 
@@ -1013,7 +1025,7 @@ export class BrawlManager implements BrawlAPI {
     const fz = Math.cos(r.heading);
     const cx = r.position.x + fx * (BLADE_Z + br + 0.5);
     const cz = r.position.z + fz * (BLADE_Z + br + 0.5);
-    const zone = br * 1.3 + 1.0;
+    const zone = (br * 1.3 + 1.0) * (r.s.avalanche ? 1.5 : 1);
     const dmg = SLAM_DAMAGE_K * br * br * this.dmgMult(r);
     for (const f of this.fighters) {
       if (f.rival === r || !this.isTargetable(f)) continue;
@@ -1024,7 +1036,7 @@ export class BrawlManager implements BrawlAPI {
       if (d > zone + tR) continue;
       const nx = (tx - r.position.x) / (Math.hypot(tx - r.position.x, tz - r.position.z) || 1);
       const nz = (tz - r.position.z) / (Math.hypot(tx - r.position.x, tz - r.position.z) || 1);
-      const kb = 10 + 6 * br;
+      const kb = (10 + 6 * br) * (r.s.avalanche ? 1.6 : 1);
       this.hitFighter(f, r.f, dmg, 'slam', nx * kb, nz * kb, kb, false, r.position.x, r.position.z);
     }
     // Ball shatters.
@@ -1079,7 +1091,7 @@ export class BrawlManager implements BrawlAPI {
       this.hurtRival(victim.rival, dmg, attacker, method, kx, kz, unblockable, fromX, fromZ);
       return;
     }
-    const final = this.ctx.combat.hitPlow(dmg, fromX, fromZ, { knockback: kb, unblockable });
+    const final = this.ctx.combat.hitPlow(brawlHit(dmg, this.ctx.plow.maxHp), fromX, fromZ, { knockback: kb, unblockable });
     if (final > 0) {
       victim.lastHitBy = attacker;
       victim.lastHitAt = this.time;
@@ -1090,7 +1102,8 @@ export class BrawlManager implements BrawlAPI {
   /** Damage a rival. Applies spawn protection, ball shield, dash/whirl reductions. Returns true on kill. */
   private hurtRival(r: Rival, amount: number, attacker: Fighter | null, method: Method, kx: number, kz: number, unblockable: boolean, fromX: number, fromZ: number): boolean {
     if (!r.targetable || this._over || amount <= 0) return false;
-    let dmg = amount;
+    // Brawl hit cap: nothing one-shots from full hp.
+    let dmg = brawlHit(amount, r.maxHp) * r.s.damageTaken;
     // Ball shield on frontal hits.
     const br = r.ballR;
     if (!unblockable && br >= 0.2) {
@@ -1098,7 +1111,7 @@ export class BrawlManager implements BrawlAPI {
       const dz = fromZ - r.position.z;
       const d = Math.hypot(dx, dz) || 1;
       if ((dx / d) * Math.sin(r.heading) + (dz / d) * Math.cos(r.heading) >= SHIELD_COS) {
-        const blocked = dmg * 0.4;
+        const blocked = dmg * r.s.shieldBlock;
         dmg -= blocked;
         r.ballVol = Math.max(0, r.ballVol - blocked * 0.04);
       }
@@ -1107,8 +1120,8 @@ export class BrawlManager implements BrawlAPI {
     if (r.whirling) dmg *= 0.7;
     // "On fire": every streak tier also hardens the rival a little.
     dmg *= 1 - 0.1 * this.tierOf(r.f.entry.streak);
-    // Elites out-gear ordinary bots: their hits barely dent them (the player hits elites at full strength).
-    if (r.s.elite && attacker?.rival && !attacker.rival.s.elite) dmg *= 0.5;
+    // Elites out-class ordinary bots: their hits dent them less (the player hits elites at full strength).
+    if (r.s.elite && attacker?.rival && !attacker.rival.s.elite) dmg *= 0.7;
     r.hp -= dmg;
     r.flashT = 0.12;
     r.kvx += kx / r.mass;
@@ -1283,6 +1296,7 @@ export class BrawlManager implements BrawlAPI {
 
   private tickTimers(r: Rival, dt: number): void {
     r.protectT = Math.max(0, r.protectT - dt);
+    if (r.s.hpRegen > 0 && r.hp < r.maxHp) r.hp = Math.min(r.maxHp, r.hp + r.s.hpRegen * dt);
     r.frozenT = Math.max(0, r.frozenT - dt);
     r.flashT = Math.max(0, r.flashT - dt);
     r.ramCd = Math.max(0, r.ramCd - dt);
