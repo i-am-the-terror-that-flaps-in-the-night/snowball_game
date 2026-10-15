@@ -111,6 +111,8 @@ interface CardRefs {
   def: UpgradeDef;
   root: HTMLElement;
   pips: HTMLElement[];
+  /** "LV n" badge for endless upgrades past their pips. */
+  lvl: HTMLElement;
   cur: HTMLElement;
   next: HTMLElement;
   arrow: HTMLElement;
@@ -580,7 +582,9 @@ export class UI implements UIAPI {
     el('div', 'ss-card-desc', def.description, info);
     const pipsEl = el('div', 'ss-pips', undefined, info);
     const pips: HTMLElement[] = [];
-    for (let i = 0; i < def.maxLevel; i++) pips.push(el('span', 'ss-pip', undefined, pipsEl));
+    for (let i = 0; i < def.pips; i++) pips.push(el('span', 'ss-pip', undefined, pipsEl));
+    // Endless upgrades: a "LV n" badge past the pips.
+    const lvl = el('span', 'ss-lvl', '', pipsEl);
     const val = el('div', 'ss-card-val', undefined, info);
     const cur = el('span', 'ss-val-cur', '', val);
     const arrow = el('span', 'ss-val-arrow', '→', val);
@@ -588,7 +592,7 @@ export class UI implements UIAPI {
     const buy = el('button', 'ss-btn ss-buy', '', root);
     buy.type = 'button';
     buy.addEventListener('click', () => this.onBuy(def, root));
-    return { def, root, pips, cur, next, arrow, buy };
+    return { def, root, pips, lvl, cur, next, arrow, buy };
   }
 
   private onBuy(def: UpgradeDef, card: HTMLElement): void {
@@ -611,6 +615,9 @@ export class UI implements UIAPI {
       const maxed = p.isMaxed(c.def.id);
       const afford = p.canBuy(c.def.id);
       c.pips.forEach((pip, i) => pip.classList.toggle('on', i < lvl));
+      const endless = c.def.maxLevel === Infinity;
+      c.lvl.textContent = endless && lvl > c.def.pips ? `LV ${lvl}` : endless && lvl === c.def.pips ? '∞' : '';
+      c.lvl.classList.toggle('beyond', endless && lvl > c.def.pips);
       c.cur.textContent = c.def.valueLabel(lvl);
       c.next.textContent = maxed ? '' : c.def.valueLabel(lvl + 1);
       c.arrow.style.display = maxed ? 'none' : '';
@@ -626,7 +633,7 @@ export class UI implements UIAPI {
     this.garageBack = back;
     this.shopContinue = null;
     this.shopTitle.textContent = 'GARAGE';
-    this.shopSub.textContent = 'Spend your coins on permanent upgrades.';
+    this.shopSub.textContent = 'Spend your coins on permanent upgrades. They never max out — keep stacking past the pips.';
     this.shopPreview.classList.add('hidden');
     this.shopBack.classList.remove('hidden');
     this.shopStart.classList.add('hidden');

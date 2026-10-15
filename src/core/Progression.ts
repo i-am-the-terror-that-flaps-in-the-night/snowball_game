@@ -1,4 +1,4 @@
-import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
+import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
 import { ZONES } from '../config/zones';
 import type { PlayerStats } from './types';
 
@@ -151,30 +151,31 @@ export class Progression {
   computeStats(): PlayerStats {
     const L = (id: UpgradeId) => this.level(id);
     return {
-      maxSpeed: 10 + 1.4 * L('engine'),
-      accel: 14 + 3 * L('engine'),
-      turnRate: 2.6 + 0.15 * L('engine'),
-      bladeWidth: 2.6 + 0.4 * L('blade'),
-      collectRate: 0.12 + 0.035 * L('compactor'),
-      maxBallRadius: 1.2 + 0.3 * L('hopper'),
-      damageMult: 1 + 0.25 * L('packedIce'),
-      ramDamage: 14 + 5 * L('ramSpikes'),
-      maxHp: 120 + 35 * L('armor'),
-      damageTaken: 1 - 0.05 * L('plating'),
-      repairFraction: 0.35 + 0.2 * L('repairKit'),
-      hpRegen: 0.8 * L('repairKit'),
-      dashCooldown: 2.4 - 0.4 * L('nitro'),
-      dashPower: 16 + 3 * L('nitro'),
-      whirlRadius: 4 + 0.7 * L('whirl'),
-      whirlDamage: 10 + 4 * L('whirl'),
-      whirlCooldown: 6 - L('whirl'),
-      snowRegen: 0.006 * (1 + L('snowMachine')),
-      magnetRadius: 4 + 3 * L('magnet'),
+      maxSpeed: FX.maxSpeed(L('engine')),
+      accel: FX.accel(L('engine')),
+      turnRate: FX.turnRate(L('engine')),
+      bladeWidth: FX.bladeWidth(L('blade')),
+      collectRate: FX.collectRate(L('compactor')),
+      maxBallRadius: FX.maxBallRadius(L('hopper')),
+      damageMult: FX.damageMult(L('packedIce')),
+      ramDamage: FX.ramDamage(L('ramSpikes')),
+      maxHp: FX.maxHp(L('armor')),
+      damageTaken: FX.damageTaken(L('plating')),
+      repairFraction: FX.repairFraction(L('repairKit')),
+      hpRegen: FX.hpRegen(L('repairKit')),
+      dashCooldown: FX.dashCooldown(L('nitro')),
+      dashPower: FX.dashPower(L('nitro')),
+      whirlRadius: FX.whirlRadius(L('whirl')),
+      whirlDamage: FX.whirlDamage(L('whirl')),
+      whirlCooldown: FX.whirlCooldown(L('whirl')),
+      snowRegen: FX.snowRegen(L('snowMachine')),
+      magnetRadius: FX.magnetRadius(L('magnet')),
       shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,
       frostCore: L('frostCore') > 0,
       avalancheCore: L('avalancheCore') > 0,
     };
   }
+
 
   /** Debug helper (?debug in URL): lots of coins and every arena unlocked. */
   debugGrant(): void {
