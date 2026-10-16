@@ -23,6 +23,11 @@ const BURN_VULN = 1.2;
 const FLAME_IGNITE_EVERY = 0.12;
 const BURN_SECONDS = 4;
 const BURN_TICK = 0.5;
+/** Thunderclap storm: duration, extra sky strikes (each = share of clap damage), field dps share. */
+const STORM_SECONDS = 2.5;
+const STORM_STRIKES = 7;
+const STORM_STRIKE_FRAC = 0.4;
+const STORM_FIELD_FRAC = 0.25;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
 const RAM_REPEAT = 0.25;
 /** cos(60°): attacker must be within ±60° of the plow's front for the ball to shield. */
@@ -78,6 +83,12 @@ export class Combat implements CombatAPI {
   private chainHit = new Set<number>();
   private shield = 0;
   private shieldDelay = 0;
+  private stormT = 0;
+  private stormX = 0;
+  private stormZ = 0;
+  private stormStrikes = 0;
+  private stormStrikeT = 0;
+  private stormTickT = 0;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -101,7 +112,7 @@ export class Combat implements CombatAPI {
     this.chainHit.clear();
     this.chainHit.add(from.id);
     let src = from;
-    const dmg = Math.max(4, dealt * st.chainFrac);
+    const dmg = Math.max(6 * st.damageMult, dealt * st.chainFrac);
     for (let hop = 0; hop < st.chainCount; hop++) {
       const near = ctx.enemies.query(src.position.x, src.position.z, 9, this.chainBuf);
       let best: EnemyHandle | null = null;
@@ -161,7 +172,7 @@ export class Combat implements CombatAPI {
       _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.14, width: 0.18 });
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.fieldDps * TICK * this.burnMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+      const killed = ctx.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.burnMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
       this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false);
     }
     if (any) ctx.audio.play('zap', { volume: 0.35, pitch: 1.4 });
@@ -190,6 +201,7 @@ export class Combat implements CombatAPI {
     _q.set(px, 0.1, pz);
     ctx.fx.ring(_q, R, 0x7fdcff);
     ctx.fx.ring(_q, R * 0.6, 0xffffff);
+    ctx.fx.ring(_q, R * 1.15, 0x2fb8ff);
     ctx.fx.burst(_q, { color: 0x9fe8ff, count: 40, speed: 14, size: 0.1, gravity: 8, life: 0.5 });
     ctx.fx.burst(_q, { color: 0xffffff, count: 24, speed: 8, size: 0.3, gravity: 10, life: 0.6 });
     for (let i = 0; i < 10; i++) {
@@ -198,7 +210,7 @@ export class Combat implements CombatAPI {
       _q.set(px + Math.sin(a) * R, 0.2, pz + Math.cos(a) * R);
       this.lightning.bolt(_p, _q, { life: 0.25, width: 0.22, jag: 1.1 });
     }
-    ctx.fx.shake(0.55);
+    ctx.fx.shake(0.8);
     ctx.audio.play('thunder');
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
@@ -213,7 +225,7 @@ export class Combat implements CombatAPI {
       _q.set(e.position.x, e.position.y + e.radius, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.35 });
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.clapDamage * this.burnMult(e), {
+      const killed = ctx.enemies.damage(e, st.clapDamage * st.damageMult * this.burnMult(e), {
         source: 'other',
         knockback: new THREE.Vector3(dx * 14, 0, dz * 14),
         freezeSeconds: st.clapStun,
@@ -225,6 +237,83 @@ export class Combat implements CombatAPI {
       if (dealt > 0) ctx.fx.floatText(_q, `⚡${Math.round(dealt)}`, '#bff0ff', 1.15);
     }
     this.targets.length = 0;
+    // The storm: a volley of extra sky strikes across the area, then an electrified field.
+    this.stormX = px;
+    this.stormZ = pz;
+    this.stormT = STORM_SECONDS;
+    this.stormStrikes = STORM_STRIKES;
+    this.stormStrikeT = 0.12;
+    this.stormTickT = 0.25;
+  }
+
+  /** After a Thunderclap: sky strikes rain down over the radius, and the ground stays electrified. */
+  private updateStorm(dt: number): void {
+    if (this.stormT <= 0) return;
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    this.stormT -= dt;
+    const R = st.clapRadius;
+    const dmgBase = st.clapDamage * st.damageMult;
+    // Sky strikes: each one hammers a 3.5m circle. Prefer landing on bots inside the storm.
+    this.stormStrikeT -= dt;
+    if (this.stormStrikes > 0 && this.stormStrikeT <= 0) {
+      this.stormStrikes--;
+      this.stormStrikeT = 0.14;
+      const near = ctx.enemies.query(this.stormX, this.stormZ, R, this.chainBuf);
+      let sx: number;
+      let sz: number;
+      if (near.length && Math.random() < 0.75) {
+        const t = near[Math.floor(Math.random() * near.length)];
+        sx = t.position.x + (Math.random() - 0.5) * 1.5;
+        sz = t.position.z + (Math.random() - 0.5) * 1.5;
+      } else {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * R;
+        sx = this.stormX + Math.sin(a) * r;
+        sz = this.stormZ + Math.cos(a) * r;
+      }
+      _p.set(sx + (Math.random() - 0.5) * 4, 24, sz + (Math.random() - 0.5) * 4);
+      _q.set(sx, 0.2, sz);
+      this.lightning.bolt(_p, _q, { life: 0.3, width: 0.55, jag: 1.8, color: 0x9fe8ff });
+      ctx.fx.ring(_q, 3.5, 0x7fdcff);
+      ctx.fx.burst(_q, { color: 0xbff0ff, count: 18, speed: 9, size: 0.1, gravity: 10, life: 0.4 });
+      ctx.audio.play('zap', { pitch: 0.7 + Math.random() * 0.3 });
+      const hits = ctx.enemies.query(sx, sz, 3.5, this.chainBuf);
+      for (let i = 0; i < hits.length; i++) {
+        const e = hits[i];
+        if (!e.alive) continue;
+        const hp0 = e.hp;
+        const killed = ctx.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.burnMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz });
+        const d = Math.max(0, hp0 - Math.max(0, e.hp));
+        this.onPlayerHit(d, killed, e, false);
+        _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
+        if (d > 0) ctx.fx.floatText(_q, `⚡${Math.round(d)}`, '#bff0ff', 0.95);
+      }
+    }
+    // Electrified ground: arcs crawl across it and zap everything inside.
+    if (Math.random() < dt * 20) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * R;
+      _p.set(this.stormX + Math.sin(a) * r, 0.15, this.stormZ + Math.cos(a) * r);
+      const b = a + (Math.random() - 0.5) * 1.5;
+      _q.set(_p.x + Math.sin(b) * 3, 0.15, _p.z + Math.cos(b) * 3);
+      this.lightning.bolt(_p, _q, { life: 0.12, width: 0.14, jag: 0.6, color: 0x3fa8ff });
+    }
+    this.stormTickT -= dt;
+    if (this.stormTickT <= 0) {
+      this.stormTickT = 0.5;
+      const hits = ctx.enemies.query(this.stormX, this.stormZ, R, this.chainBuf);
+      for (let i = 0; i < hits.length; i++) {
+        const e = hits[i];
+        if (!e.alive) continue;
+        const hp0 = e.hp;
+        const killed = ctx.enemies.damage(e, dmgBase * STORM_FIELD_FRAC * 0.5 * this.burnMult(e), { source: 'other', freezeSeconds: 0.6, fromX: e.position.x, fromZ: e.position.z });
+        this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false);
+        _p.set(this.stormX, 0.3, this.stormZ);
+        _q.set(e.position.x, e.position.y + e.radius * 0.6, e.position.z);
+        this.lightning.bolt(_p, _q, { life: 0.12, width: 0.16, jag: 0.8, color: 0x3fa8ff });
+      }
+    }
   }
 
   /** Battery Shield recharge (3s after the last hit, 25% of capacity per second). */
@@ -753,6 +842,8 @@ export class Combat implements CombatAPI {
     this.flameCone.hide();
     this.lightning.clear();
     this.clapCharge = 1;
+    this.stormT = 0;
+    this.stormStrikes = 0;
     this.shield = this.ctx.stats.shieldMax;
     this.shieldDelay = 0;
     this.flameT = 0;
@@ -771,6 +862,7 @@ export class Combat implements CombatAPI {
     this.updateFlame(dt);
     this.updateBurns(dt);
     this.updateClap(dt);
+    this.updateStorm(dt);
     this.updateField(dt);
     this.updateShield(dt);
     this.lightning.update(dt);

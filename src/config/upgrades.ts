@@ -54,7 +54,10 @@ export interface UpgradeDef {
 }
 
 /** Cost multiplier per level beyond an upgrade's pips. */
-export const ENDLESS_COST_GROWTH = 1.22;
+export const ENDLESS_COST_GROWTH = 1.1;
+/** Every upgrade's listed costGrowth is softened by this much (1.7 -> ~1.39 per level), so repeat levels stay
+ *  affordable for every upgrade and plow line. */
+export const COST_GROWTH_SOFTEN = 0.55;
 
 /* ------------------------------------------------------------------ endless scaling curves */
 
@@ -110,11 +113,11 @@ export const FX = {
   /** Tesla Field: passive shock aura radius and damage per second. */
   fieldRadius: (L: number) => (L <= 0 ? 0 : 4.5 + 0.5 * soft(L, 5)),
   fieldDps: (L: number) => (L <= 0 ? 0 : 10 + 6 * grow(L - 1, 4)),
-  /** Thunderclap (F on VOLT-9): shock blast radius, damage, shock (slow) seconds, recharge. */
-  clapRadius: (L: number) => 7 + 0.6 * soft(L, 5),
-  clapDamage: (L: number) => (L <= 0 ? 0 : 45 + 22 * grow(L - 1, 4)),
-  clapStun: (L: number) => 1.5 + 0.2 * soft(L, 5),
-  clapCooldown: (L: number) => (L <= 0 ? Infinity : 4 + 4 * Math.exp(-(L - 1) / 4)),
+  /** Thunderclap (F on VOLT-9, free at level 0): storm radius, damage (x your damage mult), shock seconds, recharge. */
+  clapRadius: (L: number) => 10 + 0.8 * soft(L, 5),
+  clapDamage: (L: number) => 70 + 30 * grow(L, 5),
+  clapStun: (L: number) => 1.8 + 0.2 * soft(L, 5),
+  clapCooldown: (L: number) => 3 + 3 * Math.exp(-L / 4),
   /** Battery Shield: absorbs this much damage, recharging after 3s out of combat. */
   shieldMax: (L: number) => (L <= 0 ? 0 : 35 + 25 * grow(L - 1, 4)),
 };
@@ -146,7 +149,7 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'overclock', name: 'Overclock', icon: '⏱️', category: 'pilot', playerOnly: true, description: 'Cuts EVERY ability cooldown (slam, dash, whirl, fire) by 10% per level. Level 10: no cooldowns at all.', pips: 10, maxLevel: 10, baseCost: 150, costGrowth: 1.6, valueLabel: (l) => (l >= 10 ? 'NO COOLDOWNS' : `-${l * 10}% cooldowns`) },
   { id: 'voltChain', name: 'Chain Lightning', icon: '⚡', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'Your slams, rams, dashes, whirls and claps arc lightning to nearby bots.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `${FX.chainCount(l)} arcs × ${Math.round(FX.chainFrac(l) * 100)}%` : 'Locked') },
   { id: 'voltField', name: 'Tesla Field', icon: '🌩️', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'A crackling shock aura that constantly zaps every bot near you.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.fieldDps(l))} dps, ${f1(FX.fieldRadius(l))} m` : 'Locked') },
-  { id: 'voltClap', name: 'Thunderclap', icon: '🌀', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'Press F: a lightning blast around you that shocks bots (big damage + slowed) and knocks them back.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.clapDamage(l))} dmg, ${f1(FX.clapRadius(l))} m, ${f1(FX.clapCooldown(l))}s` : 'Locked') },
+  { id: 'voltClap', name: 'Thunderclap', icon: '🌀', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'F (free on VOLT-9): a lightning storm around you — huge blast, extra sky strikes and an electrified field. Upgrades make it bigger and harder-hitting.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.clapDamage(l))} dmg, ${f1(FX.clapRadius(l))} m, ${f1(FX.clapCooldown(l))}s` },
   { id: 'voltCell', name: 'Battery Shield', icon: '🔋', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'An energy shield soaks up damage before your HP, recharging after 3s without taking hits.', pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.75, valueLabel: (l) => (l ? `${Math.round(FX.shieldMax(l))} shield` : 'Locked') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
@@ -158,5 +161,6 @@ export const UPGRADE_BY_ID: Record<UpgradeId, UpgradeDef> = Object.fromEntries(U
 export function upgradeCost(def: UpgradeDef, currentLevel: number): number {
   const full = Math.min(currentLevel, def.pips);
   const extra = Math.max(0, currentLevel - def.pips);
-  return Math.round(def.baseCost * Math.pow(def.costGrowth, full) * Math.pow(ENDLESS_COST_GROWTH, extra));
+  const growth = 1 + (def.costGrowth - 1) * COST_GROWTH_SOFTEN;
+  return Math.round(def.baseCost * Math.pow(growth, full) * Math.pow(ENDLESS_COST_GROWTH, extra));
 }

@@ -177,7 +177,7 @@ export class Progression {
       fieldRadius: FX.fieldRadius(L('voltField')),
       fieldDps: FX.fieldDps(L('voltField')),
       clapRadius: FX.clapRadius(L('voltClap')),
-      clapDamage: FX.clapDamage(L('voltClap')),
+      clapDamage: plow.id === 'volt' ? FX.clapDamage(L('voltClap')) : 0,
       clapStun: FX.clapStun(L('voltClap')),
       clapCooldown: FX.clapCooldown(L('voltClap')) * cd,
       shieldMax: FX.shieldMax(L('voltCell')),
