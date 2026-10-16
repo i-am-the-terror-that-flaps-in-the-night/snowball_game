@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FlameCone } from '../fx/FlameCone';
 import {
   SLAM_DAMAGE_K,
   ballVolume,
@@ -11,10 +12,15 @@ import {
 const IFRAME_SECONDS = 0.15;
 const SECOND_WIND_GUARD = 1.5;
 /** Inferno (F): flame duration, cone half-angle (cos), seconds between ignite checks, burn length + tick. */
-const FLAME_SECONDS = 1.0;
-const FLAME_COS = Math.cos(0.6);
+const FLAME_SECONDS = 1.4;
+const FLAME_HALF = 0.7;
+const FLAME_COS = Math.cos(FLAME_HALF);
+/** Direct damage while standing in the cone, as a fraction of burn dps (on top of the burn). */
+const FLAME_CONTACT = 0.8;
+/** Burning bots take this much extra damage from every source the player deals. */
+const BURN_VULN = 1.2;
 const FLAME_IGNITE_EVERY = 0.12;
-const BURN_SECONDS = 3;
+const BURN_SECONDS = 4;
 const BURN_TICK = 0.5;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
 const RAM_REPEAT = 0.25;
@@ -29,7 +35,9 @@ const DASH_STRIKE_REPEAT = 0.75;
 const DASH_KNOCK = 22;
 const DASH_HITSTOP = 0.06;
 const WHIRL_PULL = 6;
-const WHIRL_BLAST = 18;
+const WHIRL_BLAST = 22;
+/** The player's whirl hits harder than the base kit (Brawl rivals keep the base numbers). */
+const WHIRL_PLAYER_BONUS = 1.35;
 
 const _p = new THREE.Vector3();
 const _q = new THREE.Vector3();
@@ -57,8 +65,16 @@ export class Combat implements CombatAPI {
   private lastBlockSound = -10;
   private pruneT = 0;
 
+  private flameCone: FlameCone;
+
   constructor(ctx: GameContext) {
     this.ctx = ctx;
+    this.flameCone = new FlameCone(ctx.scene);
+  }
+
+  /** Burning bots take BURN_VULN x damage from the player's hits. */
+  private burnMult(e: EnemyHandle): number {
+    return this.burns.has(e) ? BURN_VULN : 1;
   }
 
   /* ------------------------------------------------------------------ bots -> plow */
@@ -187,7 +203,7 @@ export class Combat implements CombatAPI {
     const knock = new THREE.Vector3((dx / n) * k, 0, (dz / n) * k);
 
     const hp0 = enemy.hp;
-    const killed = ctx.enemies.damage(enemy, dmg, {
+    const killed = ctx.enemies.damage(enemy, dmg * this.burnMult(enemy), {
       source: 'ram',
       knockback: knock,
       fromX: plow.position.x,
@@ -238,7 +254,7 @@ export class Combat implements CombatAPI {
     const knock = new THREE.Vector3((dx / n) * DASH_KNOCK, 0, (dz / n) * DASH_KNOCK);
 
     const hp0 = enemy.hp;
-    const killed = ctx.enemies.damage(enemy, dmg, {
+    const killed = ctx.enemies.damage(enemy, dmg * this.burnMult(enemy), {
       source: 'ram',
       knockback: knock,
       fromX: plow.position.x,
@@ -302,7 +318,7 @@ export class Combat implements CombatAPI {
         dz /= d;
       }
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg, {
+      const killed = ctx.enemies.damage(e, dmg * this.burnMult(e), {
         source: 'slam',
         knockback: new THREE.Vector3(dx * knockMag, 0, dz * knockMag),
         freezeSeconds: freeze,
@@ -354,7 +370,7 @@ export class Combat implements CombatAPI {
     const ctx = this.ctx;
     const stats = ctx.stats;
     const fx = ctx.fx;
-    const dmg = stats.whirlDamage + (ballR >= 0.2 ? 3 * ballR * ballR * stats.damageMult : 0);
+    const dmg = (stats.whirlDamage + (ballR >= 0.2 ? 3 * ballR * ballR * stats.damageMult : 0)) * WHIRL_PLAYER_BONUS;
     const hits = this.collect(x, z, radius);
     let count = 0;
     for (let i = 0; i < hits.length; i++) {
@@ -378,7 +394,7 @@ export class Combat implements CombatAPI {
         kz = -dz * pull - dx * 3.5;
       }
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg, {
+      const killed = ctx.enemies.damage(e, dmg * this.burnMult(e), {
         source: 'whirl',
         knockback: new THREE.Vector3(kx, 0, kz),
         fromX: x,
@@ -454,27 +470,32 @@ export class Combat implements CombatAPI {
         ctx.audio.play('burst', { pitch: 0.6 });
       } else if (this.flameT <= 0) ctx.audio.play('error');
     }
+    const range = st.flameRange;
+    plow.getForward(_fwd);
+    plow.getBladeTip(_tip);
+    const flaming = this.flameT > 0 && !plow.dead;
+    this.flameCone.update(dt, flaming, _tip, plow.heading, range, FLAME_HALF);
     if (this.flameT <= 0) return;
     this.flameT -= dt;
     if (plow.dead) {
       this.flameT = 0;
       return;
     }
-    const range = st.flameRange;
-    plow.getForward(_fwd);
-    plow.getBladeTip(_tip);
     const fx = ctx.fx;
-    // Flames: rising orange/yellow bursts spread along the cone, plus melted snow underneath.
-    for (let i = 0; i < 3; i++) {
-      const k = 0.2 + Math.random() * 0.8;
-      const side = (Math.random() - 0.5) * 2 * k * range * 0.6;
-      _p.set(_tip.x + _fwd.x * k * range + _fwd.z * side, 0.8 + Math.random() * 0.6, _tip.z + _fwd.z * k * range - _fwd.x * side);
-      fx.burst(_p, { color: Math.random() < 0.5 ? 0xff6a1a : 0xffc23a, count: 3, speed: 2.5, size: 0.28 + k * 0.25, gravity: -6, life: 0.35 });
+    // Embers, sparks and smoke on top of the shader cone, plus melted snow underneath.
+    for (let i = 0; i < 4; i++) {
+      const k = 0.25 + Math.random() * 0.85;
+      const side = (Math.random() - 0.5) * 2 * k * range * Math.tan(FLAME_HALF) * 0.8;
+      _p.set(_tip.x + _fwd.x * k * range + _fwd.z * side, 0.7 + Math.random() * 1.1, _tip.z + _fwd.z * k * range - _fwd.x * side);
+      fx.burst(_p, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 3, speed: 3, size: 0.3 + k * 0.3, gravity: -7, life: 0.4 });
     }
-    if (Math.random() < 0.3) {
-      _p.set(_tip.x + _fwd.x * range * 0.5, 1.2, _tip.z + _fwd.z * range * 0.5);
-      fx.burst(_p, { color: 0x3a3236, count: 2, speed: 1.5, size: 0.5, gravity: -3, life: 0.9 });
+    _p.set(_tip.x + _fwd.x * range * 0.3, 1, _tip.z + _fwd.z * range * 0.3);
+    fx.burst(_p, { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 });
+    if (Math.random() < 0.45) {
+      _p.set(_tip.x + _fwd.x * range * 0.9, 2.2, _tip.z + _fwd.z * range * 0.9);
+      fx.burst(_p, { color: 0x2c2628, count: 2, speed: 1.5, size: 0.7, gravity: -3, life: 1.1 });
     }
+    if (Math.random() < dt * 10) fx.shake(0.06);
     if (ctx.snow) {
       ctx.snow.melt(_tip.x + _fwd.x * range * 0.35, _tip.z + _fwd.z * range * 0.35, range * 0.3, 0.8 * dt);
       ctx.snow.melt(_tip.x + _fwd.x * range * 0.75, _tip.z + _fwd.z * range * 0.75, range * 0.4, 0.8 * dt);
@@ -493,6 +514,16 @@ export class Combat implements CombatAPI {
       const b = this.burns.get(e);
       if (b) b.t = BURN_SECONDS;
       else this.burns.set(e, { t: BURN_SECONDS, tickT: 0.1 });
+      // Scorch: direct damage + a shove away from the blade while caught in the cone.
+      const nd = d || 1;
+      const hp0 = e.hp;
+      const killed = ctx.enemies.damage(e, st.flameDps * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN, {
+        source: 'other',
+        knockback: new THREE.Vector3((dx / nd) * 3, 0, (dz / nd) * 3),
+        fromX: e.position.x,
+        fromZ: e.position.z,
+      });
+      this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed);
     }
     this.targets.length = 0;
   }
@@ -509,19 +540,24 @@ export class Combat implements CombatAPI {
       }
       b.t -= dt;
       b.tickT -= dt;
-      if (Math.random() < dt * 14) {
-        _p.set(e.position.x + (Math.random() - 0.5) * e.radius, e.position.y + 0.8 + Math.random() * e.radius, e.position.z + (Math.random() - 0.5) * e.radius);
-        ctx.fx.burst(_p, { color: Math.random() < 0.5 ? 0xff6a1a : 0xffc23a, count: 2, speed: 1.5, size: 0.22, gravity: -5, life: 0.4 });
+      // Burning bots are wrapped in flames + trailing smoke.
+      if (Math.random() < dt * 30) {
+        _p.set(e.position.x + (Math.random() - 0.5) * e.radius * 1.4, e.position.y + 0.6 + Math.random() * e.radius * 1.2, e.position.z + (Math.random() - 0.5) * e.radius * 1.4);
+        ctx.fx.burst(_p, { color: Math.random() < 0.55 ? 0xff5a10 : 0xffd040, count: 3, speed: 2, size: 0.32, gravity: -7, life: 0.45 });
+      }
+      if (Math.random() < dt * 6) {
+        _p.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
+        ctx.fx.burst(_p, { color: 0x2c2628, count: 1, speed: 1, size: 0.6, gravity: -2.5, life: 1 });
       }
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dps * BURN_TICK, { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+        const killed = ctx.enemies.damage(e, dps * BURN_TICK * BURN_VULN, { source: 'other', fromX: e.position.x, fromZ: e.position.z });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(dealt, killed);
         if (dealt > 0) {
           _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
-          ctx.fx.floatText(_q, `${Math.round(dealt)}`, '#ff8a3a', 0.7);
+          ctx.fx.floatText(_q, `🔥${Math.round(dealt)}`, '#ff8a3a', 0.8);
         }
       }
       if (b.t <= 0 || !e.alive) this.burns.delete(e);
@@ -529,6 +565,7 @@ export class Combat implements CombatAPI {
   }
 
   clear(): void {
+    this.flameCone.hide();
     this.flameT = 0;
     this.flameCharge = 1;
     this.burns.clear();

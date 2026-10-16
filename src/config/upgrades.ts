@@ -89,8 +89,8 @@ export const FX = {
   /** Fraction of the dash + whirl recharge refunded when you wreck something. */
   killRecharge: (L: number) => Math.min(1, 0.2 * soft(L, 4, 2)),
   /** Inferno (F): flame cone reach (m), burn damage per second, recharge (s). Level 0 = not owned. */
-  flameRange: (L: number) => 6 + 0.5 * soft(L, 5),
-  flameDps: (L: number) => (L <= 0 ? 0 : 18 + 9 * grow(L - 1, 4)),
+  flameRange: (L: number) => 7.5 + 0.6 * soft(L, 5),
+  flameDps: (L: number) => (L <= 0 ? 0 : 32 + 14 * grow(L - 1, 4)),
   flameCooldown: (L: number) => (L <= 0 ? Infinity : 4 + 4 * Math.exp(-(L - 1) / 4)),
   /** Vitality: flat bonus HP on top of Armor Plating (rivals never get it). */
   bonusHp: (L: number) => 40 * grow(L, 5),
@@ -120,7 +120,7 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'secondWind', name: 'Second Wind', icon: '💨', category: 'pilot', playerOnly: true, description: 'A lethal hit leaves you at 1 HP with 1.5s of invulnerability instead. Recharges.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => (l ? `every ${Math.round(FX.secondWindCd(l))}s` : 'Locked') },
   { id: 'wreckingBall', name: 'Wrecking Ball', icon: '🏗️', category: 'pilot', playerOnly: true, description: 'Your hits punch through the Brawl hit cap (bots stay capped at 60%).', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round((0.6 + FX.hitCapBonus(l)) * 100)}% max hit` },
   { id: 'adrenaline', name: 'Adrenaline', icon: '⚡', category: 'pilot', playerOnly: true, description: 'Wrecking a bot instantly refunds part of your dash and whirl recharge.', pips: 4, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.killRecharge(l) * 100)}% refund on kill` },
-  { id: 'inferno', name: 'Inferno Exhaust', icon: '🔥', category: 'pilot', playerOnly: true, description: 'Press F to blast a cone of fire in front of you: sets bots ablaze (burn damage over 3s) and melts snow.', pips: 5, maxLevel: ENDLESS, baseCost: 160, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.flameDps(l))} burn/s, ${f1(FX.flameRange(l))} m, ${f1(FX.flameCooldown(l))}s` : 'Locked') },
+  { id: 'inferno', name: 'Inferno Exhaust', icon: '🔥', category: 'pilot', playerOnly: true, description: 'Press F to roar a cone of fire from your blade: scorches everything in it, sets bots ablaze for 4s (burning bots take +20% damage from everything) and melts snow.', pips: 5, maxLevel: ENDLESS, baseCost: 160, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.flameDps(l))} burn/s, ${f1(FX.flameRange(l))} m, ${f1(FX.flameCooldown(l))}s` : 'Locked') },
   { id: 'vitality', name: 'Vitality Core', icon: '❤️', category: 'pilot', playerOnly: true, description: 'Bonus hit points on top of Armor Plating.', pips: 5, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.75, valueLabel: (l) => `+${Math.round(FX.bonusHp(l))} HP` },
   { id: 'overclock', name: 'Overclock', icon: '⏱️', category: 'pilot', playerOnly: true, description: 'Cuts EVERY ability cooldown (slam, dash, whirl, fire) by 10% per level. Level 10: no cooldowns at all.', pips: 10, maxLevel: 10, baseCost: 150, costGrowth: 1.6, valueLabel: (l) => (l >= 10 ? 'NO COOLDOWNS' : `-${l * 10}% cooldowns`) },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
