@@ -1,0 +1,56 @@
+/* ------------------------------------------------------------ settings overlay */
+.ss-settings { z-index: 45; }
+.ss-set-panel {
+  width: min(760px, 100%);
+  overflow-y: auto;
+  padding-bottom: 22px;
+}
+.ss-set-sec {
+  margin: 0 0 16px;
+  padding: 14px 18px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: inset 0 0 0 1.5px rgba(150, 200, 240, 0.45);
+}
+.ss-set-sec .ss-h3 { font-size: 17px; margin-bottom: 8px; }
+.ss-set-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 54px;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0;
+}
+.ss-set-label { font-weight: 800; color: var(--ink); }
+.ss-set-val { font-weight: 800; color: var(--ink-soft); text-align: right; font-variant-numeric: tabular-nums; }
+.ss-set-range { width: 100%; accent-color: var(--orange); height: 22px; cursor: pointer; }
+.ss-set-range:focus-visible { outline: 3px solid rgba(255, 200, 60, 0.95); outline-offset: 3px; border-radius: 6px; }
+.ss-set-seg { display: flex; gap: 10px; grid-column: 2 / 4; }
+.ss-set-on { background: linear-gradient(180deg, #ffb04a 0%, var(--orange) 45%, var(--orange-2) 100%) !important; color: #fff; }
+.ss-set-note { font-size: 13px; color: var(--ink-soft); font-weight: 600; margin: 4px 0 8px; }
+.ss-set-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px 18px; }
+.ss-set-keyrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ss-set-key { min-width: 130px; font-size: 13px; padding: 8px 12px; }
+.ss-set-key.ss-set-custom { color: var(--orange-dark); }
+.ss-set-key.ss-set-listen { animation: ss-set-blink 0.8s ease-in-out infinite; color: var(--orange-2); }
+@keyframes ss-set-blink { 50% { filter: brightness(0.85); } }
+.ss-set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 10px 0 6px; }
+.ss-set-msg { font-size: 13px; font-weight: 700; color: var(--ink-soft); min-height: 1em; }
+.ss-set-pad { font-weight: 800; color: var(--ink-soft); margin-top: 10px; }
+.ss-set-pad.on { color: #1f8a49; }
+.ss-set-code {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid #b9d9f0;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+  word-break: break-all;
+}
+.ss-set-code:focus { outline: 3px solid rgba(255, 200, 60, 0.95); outline-offset: 2px; }
+@media (max-width: 560px) {
+  .ss-set-row { grid-template-columns: 1fr 2fr 44px; }
+}

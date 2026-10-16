@@ -15,6 +15,8 @@ export class NameTag {
   private key = '';
   private name: string;
   private color: string;
+  /** Small icon drawn before the name (e.g. '⚡' for VOLT-9 rivals). */
+  private badge = '';
 
   constructor(name: string, color: string) {
     this.name = name;
@@ -31,6 +33,12 @@ export class NameTag {
     this.sprite = new THREE.Sprite(mat);
     this.sprite.center.set(0.5, 0);
     this.sprite.renderOrder = 20;
+  }
+
+  setBadge(badge: string): void {
+    if (badge === this.badge) return;
+    this.badge = badge;
+    this.key = '';
   }
 
   /** Redraws if anything visible changed. hpFrac 0..1. */
@@ -60,17 +68,27 @@ export class NameTag {
     let size = 34;
     g.font = `900 ${size}px "Trebuchet MS", system-ui, sans-serif`;
     const prefix = flame ? `🔥${streak} ` : '';
-    let w = g.measureText(prefix + this.name).width;
+    const badge = this.badge ? `${this.badge} ` : '';
+    let w = g.measureText(badge + prefix + this.name).width;
     while (w > TAG_W - 12 && size > 18) {
       size -= 2;
       g.font = `900 ${size}px "Trebuchet MS", system-ui, sans-serif`;
-      w = g.measureText(prefix + this.name).width;
+      w = g.measureText(badge + prefix + this.name).width;
     }
     const y = 64;
     g.textAlign = 'left';
     g.textBaseline = 'alphabetic';
     let x = (TAG_W - w) / 2;
     g.lineJoin = 'round';
+    if (badge) {
+      g.save();
+      g.shadowColor = '#2fb8ff';
+      g.shadowBlur = 12;
+      g.fillStyle = '#7fdcff';
+      g.fillText(badge, x, y);
+      g.restore();
+      x += g.measureText(badge).width;
+    }
     if (prefix) {
       g.lineWidth = 6;
       g.strokeStyle = 'rgba(0,0,0,0.85)';

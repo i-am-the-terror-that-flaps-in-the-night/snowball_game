@@ -7,6 +7,7 @@ import {
   type CombatAPI,
   type EnemyHandle,
   type GameContext,
+  type PlowAPI,
 } from '../core/types';
 
 /** Seconds of damage i-frames after the plow is hit (overlapping hits only add their excess). */
@@ -28,6 +29,17 @@ const STORM_SECONDS = 2.5;
 const STORM_STRIKES = 7;
 const STORM_STRIKE_FRAC = 0.4;
 const STORM_FIELD_FRAC = 0.25;
+/** Thunderclap backlash: a flat shock to the pilot, squared by Overload heat. Each clap adds 1 heat, which bleeds
+ *  off at 1 per CLAP_HEAT_DECAY seconds, so a clap every ~3s costs CLAP_BACKLASH but chain-spamming (Overclock at
+ *  0 cooldown) escalates fast: 6 → 15 → 29 → 47 → 69 → 96 at one clap per second. */
+const CLAP_BACKLASH = 6;
+const CLAP_HEAT_DECAY = 2.5;
+/** Ground Pound (F on BRUTUS): hop length (s) and peak height (m); damage falls off to this share at the rim. */
+const POUND_HOP_SECONDS = 0.36;
+const POUND_HOP_HEIGHT = 1.5;
+const POUND_RIM_FRAC = 0.6;
+/** Momentum (BRUTUS) only counts closing speed up to this many m/s. */
+const MOMENTUM_SPEED_CAP = 20;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
 const RAM_REPEAT = 0.25;
 /** cos(60°): attacker must be within ±60° of the plow's front for the ball to shield. */
@@ -76,6 +88,8 @@ export class Combat implements CombatAPI {
   readonly lightning: Lightning;
   // VOLT-9 state.
   private clapCharge = 1;
+  private clapHeat = 0;
+  private lastClapAt = -999;
   private fieldT = 0;
   private idleArcT = 0;
   private chainReadyAt = 0;
@@ -89,6 +103,9 @@ export class Combat implements CombatAPI {
   private stormStrikes = 0;
   private stormStrikeT = 0;
   private stormTickT = 0;
+  /** BRUTUS Ground Pound: recharge 0..1 and the hop timer (-1 = grounded). */
+  private poundCharge = 1;
+  private poundT = -1;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -103,8 +120,9 @@ export class Combat implements CombatAPI {
 
   /* ------------------------------------------------------------------ VOLT-9 */
 
-  /** Chain Lightning: a hit on `from` arcs to the nearest other bots (hop by hop). */
-  private chainLightning(from: EnemyHandle, dealt: number): void {
+  /** Chain Lightning: a hit on `from` arcs to the nearest other bots (hop by hop). `heal` is inherited from the
+   *  triggering hit (arcs off a Thunderclap don't feed Salvage Rig either). */
+  private chainLightning(from: EnemyHandle, dealt: number, heal = true): void {
     const ctx = this.ctx;
     const st = ctx.stats;
     if (ctx.time < this.chainReadyAt) return;
@@ -133,7 +151,7 @@ export class Combat implements CombatAPI {
       const hp0 = best.hp;
       const killed = ctx.enemies.damage(best, dmg * this.burnMult(best), { source: 'other', freezeSeconds: 0.4, fromX: best.position.x, fromZ: best.position.z });
       const d2 = Math.max(0, hp0 - Math.max(0, best.hp));
-      this.onPlayerHit(d2, killed, best, false);
+      this.onPlayerHit(d2, killed, best, false, heal);
       if (d2 > 0) ctx.fx.floatText(_q, `⚡${Math.round(d2)}`, '#7fdcff', 0.8);
       ctx.fx.burst(_q, { color: 0x9fe8ff, count: 8, speed: 6, size: 0.08, gravity: 10, life: 0.3 });
       src = best;
@@ -173,7 +191,7 @@ export class Combat implements CombatAPI {
       this.lightning.bolt(_p, _q, { life: 0.14, width: 0.18 });
       const hp0 = e.hp;
       const killed = ctx.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.burnMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
-      this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false);
+      this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
     }
     if (any) ctx.audio.play('zap', { volume: 0.35, pitch: 1.4 });
   }
@@ -191,6 +209,7 @@ export class Combat implements CombatAPI {
       return;
     }
     this.clapCharge = 0;
+    this.clapBacklash(plow);
     const R = st.clapRadius;
     const px = plow.position.x;
     const pz = plow.position.z;
@@ -233,7 +252,7 @@ export class Combat implements CombatAPI {
         fromZ: pz,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-      this.onPlayerHit(dealt, killed, e);
+      this.onPlayerHit(dealt, killed, e, true, false);
       if (dealt > 0) ctx.fx.floatText(_q, `⚡${Math.round(dealt)}`, '#bff0ff', 1.15);
     }
     this.targets.length = 0;
@@ -244,6 +263,127 @@ export class Combat implements CombatAPI {
     this.stormStrikes = STORM_STRIKES;
     this.stormStrikeT = 0.12;
     this.stormTickT = 0.25;
+  }
+
+  /** Ground Pound (F on BRUTUS): the plow hops, then slams down — a snow shockwave that damages, stuns and hurls
+   *  every bot in the ring outward. */
+  private updatePound(dt: number): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    const plow = ctx.plow;
+    // Plow keeps its body pose private; the hop height goes through a narrow duck-typed view.
+    const hopper = plow as unknown as { hop: number } | undefined;
+    if (st.poundDamage <= 0 || !plow || plow.dead) {
+      if (this.poundT >= 0 && hopper) hopper.hop = 0;
+      this.poundT = -1;
+      return;
+    }
+    if (this.poundT >= 0) {
+      this.poundT += dt;
+      // Quick rise, then an accelerating drop into the ground.
+      const u = Math.min(1, this.poundT / POUND_HOP_SECONDS);
+      hopper!.hop = POUND_HOP_HEIGHT * (u < 0.55 ? Math.sin((u / 0.55) * Math.PI * 0.5) : Math.cos(((u - 0.55) / 0.45) * Math.PI * 0.5));
+      if (u >= 1) {
+        hopper!.hop = 0;
+        this.poundT = -1;
+        this.poundImpact(plow);
+      }
+      return;
+    }
+    if (this.poundCharge < 1) this.poundCharge = Math.min(1, this.poundCharge + (st.poundCooldown > 0 ? dt / st.poundCooldown : 1));
+    if (!ctx.input.wasPressed('KeyF')) return;
+    if (this.poundCharge < 1) {
+      ctx.audio.play('error');
+      return;
+    }
+    this.poundCharge = 0;
+    this.poundT = 0;
+    _q.set(plow.position.x, 0.1, plow.position.z);
+    ctx.fx.burst(_q, { color: 0xffffff, count: 14, speed: 4, size: 0.2, gravity: 10, life: 0.4 });
+    ctx.audio.play('dash', { volume: 0.5, pitch: 0.6 });
+  }
+
+  private poundImpact(plow: PlowAPI): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    const R = st.poundRadius;
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    // Snow shockwave: stacked rings, a central blast and snow sprays thrown out along the rim.
+    _q.set(px, 0.1, pz);
+    ctx.fx.ring(_q, R * 0.45, 0xffffff);
+    ctx.fx.ring(_q, R, 0xdff2ff);
+    ctx.fx.ring(_q, R * 1.12, 0xffc21a);
+    ctx.fx.burst(_q, { color: 0xffffff, count: 46, speed: 15, size: 0.26, gravity: 18, life: 0.7 });
+    ctx.fx.burst(_q, { color: 0xbfe6ff, count: 24, speed: 9, size: 0.14, gravity: 12, life: 0.55 });
+    ctx.fx.burst(_q, { color: 0x6b7280, count: 12, speed: 6, size: 0.18, gravity: 22, life: 0.5 });
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + Math.random() * 0.3;
+      const rr = R * (0.55 + Math.random() * 0.4);
+      _q.set(px + Math.sin(a) * rr, 0.3, pz + Math.cos(a) * rr);
+      ctx.fx.burst(_q, { color: 0xffffff, count: 6, speed: 6, size: 0.24, gravity: 16, life: 0.55 });
+    }
+    ctx.fx.shake(0.9);
+    ctx.audio.play('thud');
+    const hits = this.collect(px, pz, R);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      let dx = e.position.x - px;
+      let dz = e.position.z - pz;
+      const d = Math.hypot(dx, dz);
+      if (d < 1e-3) {
+        plow.getForward(_fwd);
+        dx = _fwd.x;
+        dz = _fwd.z;
+      } else {
+        dx /= d;
+        dz /= d;
+      }
+      const fall = 1 - (1 - POUND_RIM_FRAC) * Math.min(1, d / R);
+      const hp0 = e.hp;
+      const killed = ctx.enemies.damage(e, st.poundDamage * st.damageMult * fall * this.burnMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3(dx * st.poundKnock * fall, 0, dz * st.poundKnock * fall),
+        stunSeconds: st.poundStun,
+        fromX: px,
+        fromZ: pz,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e);
+      _q.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
+      if (dealt > 0) ctx.fx.floatText(_q, `💥${Math.round(dealt)}`, killed ? '#fff3a0' : '#ffd23a', 1.15);
+    }
+    this.targets.length = 0;
+  }
+
+  /** The clap shocks its own pilot: flat damage squared by Overload heat, bypassing the Battery Shield, i-frames
+   *  and Second Wind. Can't kill on its own (stops at 1 HP) but leaves spammers fragile. */
+  private clapBacklash(plow: PlowAPI): void {
+    const ctx = this.ctx;
+    this.clapHeat = this.heatNow();
+    this.lastClapAt = ctx.time;
+    const dmg = Math.min(plow.hp - 1, CLAP_BACKLASH * (1 + this.clapHeat) ** 2);
+    this.clapHeat += 1;
+    if (dmg <= 0) return;
+    plow.damage(dmg);
+    _q.set(plow.position.x, 3.2, plow.position.z);
+    ctx.fx.floatText(_q, `-${Math.round(dmg)} ⚡OVERLOAD`, this.clapHeat > 1.5 ? '#ff7a5a' : '#ffd27a', 0.95);
+  }
+
+  /** Overload heat right now: the stored heat minus what has bled off since the last clap. */
+  private heatNow(): number {
+    return Math.max(0, this.clapHeat - (this.ctx.time - this.lastClapAt) / CLAP_HEAT_DECAY);
+  }
+
+  get overloadHeat(): number {
+    return this.ctx.stats.plowKind === 'volt' && this.ctx.stats.clapDamage > 0 ? this.heatNow() : -1;
+  }
+
+  get overloadCost(): number {
+    if (this.overloadHeat < 0) return 0;
+    const plow = this.ctx.plow;
+    return Math.max(0, Math.min(plow.hp - 1, CLAP_BACKLASH * (1 + this.heatNow()) ** 2));
   }
 
   /** After a Thunderclap: sky strikes rain down over the radius, and the ground stays electrified. */
@@ -285,7 +425,7 @@ export class Combat implements CombatAPI {
         const hp0 = e.hp;
         const killed = ctx.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.burnMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz });
         const d = Math.max(0, hp0 - Math.max(0, e.hp));
-        this.onPlayerHit(d, killed, e, false);
+        this.onPlayerHit(d, killed, e, false, false);
         _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
         if (d > 0) ctx.fx.floatText(_q, `⚡${Math.round(d)}`, '#bff0ff', 0.95);
       }
@@ -308,7 +448,7 @@ export class Combat implements CombatAPI {
         if (!e.alive) continue;
         const hp0 = e.hp;
         const killed = ctx.enemies.damage(e, dmgBase * STORM_FIELD_FRAC * 0.5 * this.burnMult(e), { source: 'other', freezeSeconds: 0.6, fromX: e.position.x, fromZ: e.position.z });
-        this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false);
+        this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
         _p.set(this.stormX, 0.3, this.stormZ);
         _q.set(e.position.x, e.position.y + e.radius * 0.6, e.position.z);
         this.lightning.bolt(_p, _q, { life: 0.12, width: 0.16, jag: 0.8, color: 0x3fa8ff });
@@ -456,7 +596,9 @@ export class Combat implements CombatAPI {
     this.ramCd.set(enemy.id, ctx.time + RAM_REPEAT);
 
     const r = plow.heldBallRadius;
-    const dmg = stats.ramDamage * THREE.MathUtils.clamp(closingSpeed / 10, 0.3, 1.8) + (r > 0 ? 6 * r * r * stats.damageMult : 0);
+    const dmg =
+      (stats.ramDamage * THREE.MathUtils.clamp(closingSpeed / 10, 0.3, 1.8) + (r > 0 ? 6 * r * r * stats.damageMult : 0)) *
+      (1 + stats.momentum * THREE.MathUtils.clamp(closingSpeed, 0, MOMENTUM_SPEED_CAP));
 
     // Knockback along the ram: blend of plow forward and plow->enemy.
     plow.getForward(_fwd);
@@ -509,7 +651,9 @@ export class Combat implements CombatAPI {
     // Long cooldown: one strike per bot per dash.
     this.ramCd.set(enemy.id, ctx.time + DASH_STRIKE_REPEAT);
     const r = plow.heldBallRadius;
-    const dmg = 25 + stats.ramDamage * 1.8 + (r > 0 ? 6 * r * r * stats.damageMult : 0);
+    const dmg =
+      (25 + stats.ramDamage * 1.8 + (r > 0 ? 6 * r * r * stats.damageMult : 0)) *
+      (1 + stats.momentum * Math.min(Math.abs(plow.speed), MOMENTUM_SPEED_CAP));
 
     plow.getForward(_fwd);
     let dx = enemy.position.x - plow.position.x;
@@ -703,13 +847,15 @@ export class Combat implements CombatAPI {
     return out;
   }
 
-  /** Pilot perks that trigger on the player's own hits: Salvage Rig lifesteal and Adrenaline refunds. */
-  private onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true): void {
+  /** Pilot perks that trigger on the player's own hits: Salvage Rig lifesteal and Adrenaline refunds.
+   *  `heal` = false for VOLT-9 area damage (Thunderclap blast + storm, Tesla field ticks) so the storm can't
+   *  out-heal its own Overload backlash. */
+  private onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true, heal = true): void {
     const plow = this.ctx.plow;
     const st = this.ctx.stats;
     if (plow.dead) return;
-    if (canChain && target && dealt > 0 && st.chainCount > 0) this.chainLightning(target, dealt);
-    if (st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
+    if (canChain && target && dealt > 0 && st.chainCount > 0) this.chainLightning(target, dealt, heal);
+    if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
     if (killed && st.killRecharge > 0) {
       // Plow keeps its cooldown charges private; refund them through a narrow duck-typed view.
       const p = plow as unknown as { dashCharge: number; whirlCharge: number };
@@ -721,6 +867,7 @@ export class Combat implements CombatAPI {
   get flameReady(): number {
     const st = this.ctx.stats;
     if (st.plowKind === 'volt') return st.clapDamage > 0 ? this.clapCharge : -1;
+    if (st.plowKind === 'brute') return st.poundDamage > 0 ? (this.poundT >= 0 ? 0 : this.poundCharge) : -1;
     return st.flameDps > 0 ? this.flameCharge : -1;
   }
 
@@ -729,8 +876,8 @@ export class Combat implements CombatAPI {
     const ctx = this.ctx;
     const st = ctx.stats;
     const plow = ctx.plow;
-    if (st.plowKind === 'volt' || st.flameDps <= 0 || !plow) {
-      if (this.flameT > 0 || st.plowKind === 'volt') this.flameCone.hide();
+    if (st.plowKind !== 'classic' || st.flameDps <= 0 || !plow) {
+      if (this.flameT > 0 || st.plowKind !== 'classic') this.flameCone.hide();
       this.flameT = 0;
       return;
     }
@@ -842,8 +989,13 @@ export class Combat implements CombatAPI {
     this.flameCone.hide();
     this.lightning.clear();
     this.clapCharge = 1;
+    this.clapHeat = 0;
+    this.lastClapAt = -999;
     this.stormT = 0;
     this.stormStrikes = 0;
+    this.poundCharge = 1;
+    if (this.poundT >= 0 && this.ctx.plow) (this.ctx.plow as unknown as { hop: number }).hop = 0;
+    this.poundT = -1;
     this.shield = this.ctx.stats.shieldMax;
     this.shieldDelay = 0;
     this.flameT = 0;
@@ -862,6 +1014,7 @@ export class Combat implements CombatAPI {
     this.updateFlame(dt);
     this.updateBurns(dt);
     this.updateClap(dt);
+    this.updatePound(dt);
     this.updateStorm(dt);
     this.updateField(dt);
     this.updateShield(dt);

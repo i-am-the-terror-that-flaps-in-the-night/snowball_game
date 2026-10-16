@@ -185,6 +185,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     dmg *= vm;
 
     if (opts?.freezeSeconds && opts.freezeSeconds > 0) e.freeze = Math.max(e.freeze, opts.freezeSeconds);
+    // Applied after the damage multiplier so the stunning hit itself gets no stun bonus; bosses shrug off half.
+    if (opts?.stunSeconds && opts.stunSeconds > 0) {
+      if (e.stun <= 0) e.stunMult = 1;
+      e.stun = Math.max(e.stun, opts.stunSeconds * (e.isBoss ? 0.5 : 1));
+    }
     const k = opts?.knockback;
     if (k) {
       let kx = k.x / e.mass;
@@ -409,7 +414,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (!this.plowAlive) return 0;
     const combat = this.ctx.combat;
     if (!combat) return 0;
-    return combat.hitPlow(dmg, opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, {
+    return combat.hitPlow(dmg * (this.ctx.zone.enemyDmgMult ?? 1), opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, {
       knockback: opts?.knockback,
       unblockable: opts?.unblockable,
     });

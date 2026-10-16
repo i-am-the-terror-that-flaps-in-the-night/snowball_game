@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ARENA } from '../core/types';
 import type { CameraRigAPI, GameContext } from '../core/types';
+import { settings } from '../core/settings';
 
 /* Close-quarters follow: high and a bit back so the bots around the plow stay in view. */
 const BACK = 12;
@@ -86,7 +87,8 @@ export class CameraRig implements CameraRigAPI {
   }
 
   addShake(intensity: number): void {
-    this.trauma = Math.min(MAX_TRAUMA, this.trauma + intensity);
+    // Scaled by the settings-menu "Screen shake" slider (0 = off).
+    this.trauma = Math.min(MAX_TRAUMA, this.trauma + intensity * settings.shake);
   }
 
   /** Freeze the follow (not the shake) for `seconds` — impact hit-stop. */

@@ -1,4 +1,4 @@
-import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
+import { FX, UPGRADES, UPGRADE_BY_ID, cooldown, upgradeCost, type UpgradeId } from '../config/upgrades';
 import { ZONES } from '../config/zones';
 import type { PlayerStats } from './types';
 import { PLOWS, type PlowKind } from '../config/plows';
@@ -27,10 +27,49 @@ export interface SaveData {
   brawlBestKills: number;
   /** Selected starter plow. */
   plow: PlowKind;
+  /** Survival mode: highest wave reached (optional — older saves lack it). */
+  survivalBestWave?: number;
 }
 
 function freshSave(): SaveData {
   return { version: 1, coins: 0, upgrades: {}, unlockedZones: 1, zones: {}, totalKills: 0, totalCoinsEarned: 0, muted: false, brawlMatches: 0, brawlWins: 0, brawlBestStreak: 0, brawlBestKills: 0, plow: 'classic' };
+}
+
+const EXPORT_PREFIX = 'SPS1:';
+
+/** Validate an imported save: every field type-checked and clamped; unknown keys dropped. Null if unusable. */
+function sanitizeSave(raw: unknown): SaveData | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (p.version !== 1) return null;
+  const num = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER) =>
+    typeof v === 'number' && isFinite(v) ? Math.min(max, Math.max(min, Math.floor(v))) : min;
+  if (typeof p.coins !== 'number' || !isFinite(p.coins) || p.coins < 0) return null;
+  const out = freshSave();
+  out.coins = num(p.coins);
+  if (p.upgrades && typeof p.upgrades === 'object') {
+    for (const [id, lv] of Object.entries(p.upgrades as Record<string, unknown>)) {
+      const def = UPGRADE_BY_ID[id as UpgradeId];
+      if (def && typeof lv === 'number') out.upgrades[id as UpgradeId] = num(lv, 0, def.maxLevel);
+    }
+  }
+  out.unlockedZones = num(p.unlockedZones, 1, ZONES.length);
+  if (p.zones && typeof p.zones === 'object') {
+    for (const z of ZONES) {
+      const r = (p.zones as Record<string, unknown>)[z.id] as Partial<ZoneRecord> | undefined;
+      if (r && typeof r === 'object') out.zones[z.id] = { cleared: r.cleared === true, bestRound: num(r.bestRound, 0, 999) };
+    }
+  }
+  out.totalKills = num(p.totalKills);
+  out.totalCoinsEarned = num(p.totalCoinsEarned);
+  out.muted = p.muted === true;
+  out.brawlMatches = num(p.brawlMatches);
+  out.brawlWins = Math.min(out.brawlMatches, num(p.brawlWins));
+  out.brawlBestStreak = num(p.brawlBestStreak);
+  out.brawlBestKills = num(p.brawlBestKills);
+  out.plow = typeof p.plow === 'string' && PLOWS[p.plow as PlowKind] ? (p.plow as PlowKind) : 'classic';
+  if (p.survivalBestWave !== undefined) out.survivalBestWave = num(p.survivalBestWave, 0, 9999);
+  return out;
 }
 
 /** Persistent meta-progression: coins, upgrade levels, unlocked zones. Saved to localStorage. */
@@ -161,6 +200,36 @@ export class Progression {
     this.changed();
   }
 
+  /** Portable save code: "SPS1:" + base64(JSON). */
+  exportSave(): string {
+    const bytes = new TextEncoder().encode(JSON.stringify(this.data));
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return EXPORT_PREFIX + btoa(bin);
+  }
+
+  /** Load a save code (or raw JSON). Validates and sanitizes; on failure the current save is untouched. */
+  importSave(text: string): { ok: true } | { ok: false; error: string } {
+    let parsed: unknown;
+    try {
+      let s = text.trim();
+      if (!s) return { ok: false, error: 'Paste a save code first.' };
+      if (!s.startsWith('{')) {
+        if (s.startsWith(EXPORT_PREFIX)) s = s.slice(EXPORT_PREFIX.length);
+        const bin = atob(s.replace(/\s+/g, ''));
+        s = new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+      }
+      parsed = JSON.parse(s);
+    } catch {
+      return { ok: false, error: "That doesn't look like a Snowplow Showdown save code." };
+    }
+    const data = sanitizeSave(parsed);
+    if (!data) return { ok: false, error: 'Save code is damaged or from an unknown version.' };
+    this.data = data;
+    this.changed();
+    return { ok: true };
+  }
+
   computeStats(): PlayerStats {
     const plow = PLOWS[this.plow];
     // Plow-exclusive upgrades only count while driving that plow.
@@ -179,8 +248,14 @@ export class Progression {
       clapRadius: FX.clapRadius(L('voltClap')),
       clapDamage: plow.id === 'volt' ? FX.clapDamage(L('voltClap')) : 0,
       clapStun: FX.clapStun(L('voltClap')),
-      clapCooldown: FX.clapCooldown(L('voltClap')) * cd,
+      clapCooldown: cooldown(FX.clapCooldown(L('voltClap')), cd),
       shieldMax: FX.shieldMax(L('voltCell')),
+      poundRadius: FX.poundRadius(L('brutePound')),
+      poundDamage: plow.id === 'brute' ? FX.poundDamage(L('brutePound')) : 0,
+      poundStun: FX.poundStun(L('brutePound')),
+      poundKnock: FX.poundKnock(L('brutePound')),
+      poundCooldown: cooldown(FX.poundCooldown(L('brutePound')), cd),
+      momentum: FX.momentum(L('bruteMomentum')),
       maxSpeed: FX.maxSpeed(L('engine')) * plow.speedMult,
       accel: FX.accel(L('engine')) * plow.accelMult,
       turnRate: FX.turnRate(L('engine')),
@@ -190,14 +265,14 @@ export class Progression {
       damageMult: FX.damageMult(L('packedIce')) * plow.slamMult,
       ramDamage: FX.ramDamage(L('ramSpikes')),
       maxHp: (FX.maxHp(L('armor')) + FX.bonusHp(L('vitality'))) * plow.hpMult,
-      damageTaken: FX.damageTaken(L('plating')),
+      damageTaken: FX.damageTaken(L('plating')) * FX.ironHide(L('bruteHide')),
       repairFraction: FX.repairFraction(L('repairKit')),
       hpRegen: FX.hpRegen(L('repairKit')),
-      dashCooldown: FX.dashCooldown(L('nitro')) * cd,
+      dashCooldown: cooldown(FX.dashCooldown(L('nitro')), cd),
       dashPower: FX.dashPower(L('nitro')) * plow.dashPowerMult,
       whirlRadius: FX.whirlRadius(L('whirl')),
       whirlDamage: FX.whirlDamage(L('whirl')),
-      whirlCooldown: FX.whirlCooldown(L('whirl')) * cd,
+      whirlCooldown: cooldown(FX.whirlCooldown(L('whirl')), cd),
       snowRegen: FX.snowRegen(L('snowMachine')),
       magnetRadius: FX.magnetRadius(L('magnet')),
       shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,
@@ -207,7 +282,8 @@ export class Progression {
       killRecharge: FX.killRecharge(L('adrenaline')),
       flameRange: FX.flameRange(L('inferno')),
       flameDps: fire ? FX.flameDps(L('inferno')) : 0,
-      flameCooldown: FX.flameCooldown(L('inferno')) * cd,
+      // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.
+      flameCooldown: cooldown(FX.flameCooldown(L('inferno')), cd),
       cooldownMult: cd,
       frostCore: L('frostCore') > 0,
       avalancheCore: L('avalancheCore') > 0,

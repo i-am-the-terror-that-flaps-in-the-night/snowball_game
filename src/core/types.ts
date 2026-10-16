@@ -107,12 +107,12 @@ export interface PlayerStats {
   hitCapBonus: number;
   /** Fraction of dash/whirl recharge refunded per kill. */
   killRecharge: number;
-  /** Inferno flame attack (F): reach m, burn dps (0 = not owned), recharge s. */
+  /** Inferno flame attack (F, free on the Classic Plow): reach m, burn dps (0 = not the Classic Plow), recharge s. */
   flameRange: number;
   flameDps: number;
   flameCooldown: number;
   /** Which starter plow is being driven (config/plows.ts). */
-  plowKind: 'classic' | 'volt';
+  plowKind: 'classic' | 'volt' | 'brute';
   /** VOLT-9 line (all 0 unless driving VOLT-9 with the upgrade): chain lightning arcs + share of the hit. */
   chainCount: number;
   chainFrac: number;
@@ -126,8 +126,18 @@ export interface PlayerStats {
   clapCooldown: number;
   /** Battery Shield capacity. */
   shieldMax: number;
-  /** Overclock (pilot perk): multiplier on all ability cooldowns, 1 -> 0. Already folded into
-   *  dashCooldown / whirlCooldown / flameCooldown; Plow applies it to the slam cooldown. */
+  /** Ground Pound (F on BRUTUS; poundDamage 0 on other plows): ring radius, damage, stun s, outward
+   *  knockback m/s, recharge s. */
+  poundRadius: number;
+  poundDamage: number;
+  poundStun: number;
+  poundKnock: number;
+  poundCooldown: number;
+  /** Momentum (BRUTUS): extra ram damage fraction per m/s of closing speed (0 = not owned). */
+  momentum: number;
+  /** Overclock (pilot perk): multiplier on all ability cooldowns, 1 -> 0.4. Already folded into
+   *  dashCooldown / whirlCooldown / flameCooldown / clapCooldown; Plow applies it to the slam cooldown. Every
+   *  cooldown is floored at MIN_COOLDOWN (config/upgrades.ts) after the multiplier. */
   cooldownMult: number;
   frostCore: boolean;
   avalancheCore: boolean;
@@ -229,10 +239,15 @@ export interface CombatAPI {
    *  {source: 'ram'}). Returns the raw damage. Contact handlers must NOT kill the plow's speed while it is
    *  dashing (the dash plows through). */
   playerRam(enemy: EnemyHandle, closingSpeed: number): number;
-  /** F-ability recharge 0..1 (Inferno on Classic, Thunderclap on VOLT-9), or -1 when not owned. */
+  /** F-ability recharge 0..1 (Inferno on Classic, Thunderclap on VOLT-9, Ground Pound on BRUTUS), or -1 when
+   *  not owned. */
   readonly flameReady: number;
   /** Battery Shield fraction 0..1, or -1 when not owned. */
   readonly shieldFrac: number;
+  /** Thunderclap Overload heat right now (+1 per clap, bleeds off over time; 0 = cool), or -1 when not on VOLT-9. */
+  readonly overloadHeat: number;
+  /** Self-damage the NEXT Thunderclap would deal at the current heat (capped so it leaves 1 HP); 0 off VOLT-9. */
+  readonly overloadCost: number;
   clear(): void;
   update(dt: number): void;
 }
@@ -255,6 +270,8 @@ export interface DamageOpts {
   /** Knockback velocity (m/s, horizontal); the manager divides by the enemy's mass. */
   knockback?: THREE.Vector3;
   freezeSeconds?: number;
+  /** Hard stun (bot stops and can't attack), e.g. BRUTUS Ground Pound. Bosses take half. */
+  stunSeconds?: number;
   source?: 'slam' | 'ram' | 'whirl' | 'other';
   /** Attacker position — used for directional armor (Brute front plate, Frostbyte ball block). */
   fromX?: number;
@@ -334,7 +351,9 @@ export type SoundName =
   // Brawl mode
   | 'streak' | 'shutdown' | 'respawn' | 'heal' | 'dashStrike' | 'whirlTick'
   // VOLT-9
-  | 'zap' | 'thunder';
+  | 'zap' | 'thunder'
+  // BRUTUS
+  | 'thud';
 
 export interface AudioAPI {
   /** Resume/create the AudioContext; call from a user gesture. Safe to call repeatedly. */
@@ -346,6 +365,8 @@ export interface AudioAPI {
   setPlowing(intensity: number): void;
   /** Gentle procedural background music / wind. */
   setMusic(on: boolean): void;
+  /** Settings-menu volume sliders, each 0..1. */
+  setVolumes(master: number, music: number, sfx: number): void;
   muted: boolean;
 }
 
@@ -376,9 +397,12 @@ export interface HudState {
   /** 0..1 F-ability recharge (Inferno or Thunderclap), or -1 when not owned. */
   flameReady: number;
   /** What F does right now (icon). */
-  fAbility: 'fire' | 'zap';
+  fAbility: 'fire' | 'zap' | 'pound';
   /** Battery Shield 0..1, or -1 when not owned. */
   shield: number;
+  /** Thunderclap Overload heat (CombatAPI.overloadHeat; -1 = hidden) and the next clap's predicted self-damage. */
+  overload?: number;
+  overloadCost?: number;
   snowFraction: number;
   bosses: HudBoss[];
   /** Consecutive hits without a 2.5s gap (0/1 = no combo). */
@@ -387,6 +411,8 @@ export interface HudState {
   countdown: number;
   /** Brawl mode HUD data, or null in the campaign. */
   brawl: BrawlHud | null;
+  /** Survival mode wave line (current wave + best), or null/absent outside Survival. */
+  survival?: { wave: number; best: number } | null;
 }
 
 /* ------------------------------------------------------------------ Brawl (free-for-all) mode */
@@ -471,11 +497,17 @@ export interface RunSummary {
   firstClear: boolean;
   clearReward: number;
   unlockedZoneName: string | null;
+  /** Survival run result (wave reached, best, new record); absent for campaign runs. */
+  survival?: { wave: number; best: number; newBest: boolean };
 }
 
 export interface UIHandlers {
   onStartZone(zoneIndex: number): void;
   onStartBrawl(difficulty: BrawlDifficulty): void;
+  /** Endless Survival mode (unlocked after arena 1). */
+  onStartSurvival?(): void;
+  /** Guided tutorial in arena 1 (auto-runs on a fresh save; replayable from the menu). */
+  onStartTutorial?(): void;
   onResume(): void;
   onQuitToMenu(): void;
   onRetry(): void;

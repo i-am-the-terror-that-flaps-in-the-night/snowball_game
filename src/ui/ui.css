@@ -297,6 +297,7 @@
   text-align: center;
 }
 .ss-ctrl-label { font-weight: 700; font-size: 14px; }
+.ss-ctrl-pad { grid-column: 1 / -1; font-size: 12px; font-weight: 700; opacity: 0.7; margin-top: 2px; }
 
 /* ------------------------------------------------------------ how to play */
 .ss-howto { width: min(940px, 100%); overflow: auto; }
@@ -1058,7 +1059,7 @@
 }
 
 /* ---- Starter plow picker (Garage) */
-.ss-plow-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0 10px; }
+.ss-plow-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 4px 0 10px; }
 .ss-plow-pick.hidden { display: none; }
 .ss-plow-card { position: relative; display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 12px 14px; border-radius: 16px; cursor: pointer; font: inherit; color: #1b2b40;
   background: linear-gradient(160deg, rgba(255,255,255,0.85), rgba(225,238,252,0.75)); border: 2px solid rgba(255,255,255,0.9); box-shadow: 0 3px 0 rgba(40,80,120,0.25); transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s; }
@@ -1068,6 +1069,7 @@
 .ss-plow-volt { --acc: #2fb8ff; background: linear-gradient(160deg, rgba(225,244,255,0.92), rgba(170,214,255,0.8)); }
 .ss-plow-volt.on { animation: ss-volt-glow 1.6s ease-in-out infinite; }
 @keyframes ss-volt-glow { 50% { box-shadow: 0 0 0 3px rgba(47,184,255,0.6), 0 0 22px rgba(47,184,255,0.7), 0 3px 0 rgba(40,80,120,0.25); } }
+.ss-plow-brute { --acc: #e0a800; background: repeating-linear-gradient(135deg, rgba(255,194,26,0.22) 0 10px, rgba(40,44,52,0.1) 10px 20px), linear-gradient(160deg, rgba(236,238,242,0.94), rgba(196,202,212,0.85)); }
 .ss-plow-icon { font-size: 34px; line-height: 1; }
 .ss-plow-name { font-weight: 900; font-size: 17px; letter-spacing: 0.04em; }
 .ss-plow-tag { font-size: 12px; opacity: 0.8; margin: 2px 0 4px; }
@@ -1076,6 +1078,8 @@
 .ss-plow-card.on .ss-plow-sel { opacity: 1; }
 .ss-card.inactive { opacity: 0.5; filter: saturate(0.5); }
 .ss-cat-volt .ss-cat-title { color: #1a8cff; }
+.ss-cat-brute .ss-cat-title { color: #c08a00; }
+.ss-ab-pound { --ac: #ffc21a; }
 /* ---- HUD: VOLT-9 Thunderclap icon + Battery Shield bar */
 .ss-ab-zap { --ac: #4fd0ff; }
 .ss-batt { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
@@ -1084,3 +1088,12 @@
 .ss-batt-bar { position: relative; flex: 1; height: 10px; border-radius: 5px; background: rgba(0, 15, 35, 0.6); border: 1.5px solid rgba(160, 225, 255, 0.85); overflow: hidden; }
 .ss-batt-fill { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, #2fb8ff, #bff0ff); box-shadow: 0 0 8px #2fb8ff; transition: transform 0.15s; }
 .ss-batt.empty .ss-batt-bar { border-color: rgba(255, 120, 120, 0.8); }
+/* Thunderclap Overload meter: perched above the F icon; heat bar + the next clap's self-damage. */
+.ss-heat { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; }
+.ss-heat.hidden { display: none; }
+.ss-heat-bar { position: relative; width: 54px; height: 6px; border-radius: 3px; background: rgba(0, 15, 35, 0.6); border: 1px solid rgba(160, 225, 255, 0.75); overflow: hidden; }
+.ss-heat-fill { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, #ffd27a, #ff7a5a); transition: transform 0.15s; }
+.ss-heat-txt { font-family: var(--display); font-weight: 900; font-size: 9.5px; letter-spacing: 0.05em; color: #ffd27a; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; }
+.ss-heat[data-t='1'] .ss-heat-txt { color: #ffa25a; }
+.ss-heat[data-t='2'] .ss-heat-txt { color: #ff5a4a; }
+.ss-heat[data-t='2'] .ss-heat-fill { box-shadow: 0 0 8px #ff5a4a; }

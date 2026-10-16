@@ -25,6 +25,8 @@ export interface ZoneDef {
   bossName: string;
   rounds: RoundDef[];
   enemyHpMult: number;
+  /** Multiplier on bot hits against the plow (Survival scales it per wave; default 1). */
+  enemyDmgMult?: number;
   coinMult: number;
   /** Initial snow depth (m) on the field. */
   snowDepth: number;

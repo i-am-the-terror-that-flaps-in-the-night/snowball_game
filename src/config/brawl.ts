@@ -13,6 +13,7 @@ export const BRAWL_SPAWN_PROTECT = 2;
 export const BRAWL_HIT_CAP = 0.6;
 export function brawlHit(raw: number, targetMaxHp: number, capFrac = BRAWL_HIT_CAP): number {
   const cap = capFrac * targetMaxHp;
+  if (!(cap > 0) || !(raw > 0)) return 0;
   return cap * (1 - Math.exp(-raw / cap));
 }
 

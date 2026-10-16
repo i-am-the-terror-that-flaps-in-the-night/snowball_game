@@ -41,6 +41,20 @@ import {
 import { FX, UPGRADES, type UpgradeId } from '../config/upgrades';
 import { BLADE_W, BLADE_Z, RIVAL_KINDS, createCocoa, createRivalRig, getDarkMaterial, getDebrisGeometry, type RivalRig } from './models';
 import { NameTag, SpeechBubble } from './tags';
+import { PLOWS } from '../config/plows';
+import { Lightning } from '../fx/Lightning';
+import {
+  VOLT_CLAP_CD,
+  VOLT_CLAP_DMG,
+  VOLT_CLAP_KB,
+  VOLT_CLAP_R,
+  VOLT_CLAP_STUN,
+  VOLT_CLAP_WIND,
+  VOLT_ELITE_BONUS,
+  VOLT_RIVAL_CHANCE,
+  attachVoltRig,
+  type VoltRig,
+} from './voltRival';
 
 /* Snowdome Brawl: the player + BRAWL_BOTS rival AI plows in a huge arena, everyone hunting everyone.
  * Rivals carry the player's kit (plow a ball, slam, ram, dash strike, whirlwind). Implements
@@ -123,6 +137,8 @@ interface RivalStats {
   shieldBlock: number;
   /** Avalanche Core: wider, harder-knocking slams. */
   avalanche: boolean;
+  /** Drives VOLT-9: plow stat multipliers applied, electric skin, bot Thunderclap. */
+  volt: boolean;
 }
 
 class Rival implements EnemyHandle {
@@ -177,6 +193,10 @@ class Rival implements EnemyHandle {
   stuckX = 0;
   stuckZ = 0;
   tauntCd = 0;
+  /** VOLT-9 Thunderclap: telegraph timer (-1 = idle) and cooldown. */
+  clapT = -1;
+  clapCd = 2 + Math.random() * 3;
+  volt: VoltRig | null = null;
 
   // AI
   mode: Mode = 'gather';
@@ -253,11 +273,14 @@ export class BrawlManager implements BrawlAPI {
   private queryOut: EnemyHandle[] = [];
   private hudObj: BrawlHud;
   private board: BrawlEntry[] = [];
+  /** Bolts for VOLT-9 rivals (coil arcs, clap crackle + blast). */
+  private lightning: Lightning;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
     this.group.name = 'brawl';
     ctx.scene.add(this.group);
+    this.lightning = new Lightning(ctx.scene);
     this.hudObj = {
       timeLeft: BRAWL_TIME,
       killTarget: BRAWL_KILL_TARGET,
@@ -435,6 +458,7 @@ export class BrawlManager implements BrawlAPI {
       (d.mesh.material as THREE.Material).dispose();
     }
     this.debris.length = 0;
+    this.lightning.clear();
     this.started = false;
     this.active = false;
     this._over = false;
@@ -486,6 +510,7 @@ export class BrawlManager implements BrawlAPI {
     this.updateCocoa(dt, fighting);
     this.updateDebris(dt);
     for (const r of this.rivals) this.animate(r, dt);
+    this.lightning.update(dt);
   }
 
   /* ================================================================== setup */
@@ -517,22 +542,26 @@ export class BrawlManager implements BrawlAPI {
     const perkP = elite ? d.perkChance.elite : d.perkChance.regular;
     const iceShield = prog.level('iceShield') > 0 && Math.random() < perkP;
     const avalanche = prog.level('avalancheCore') > 0 && Math.random() < perkP;
+    // Some rivals roll the VOLT-9 plow (more often in harder lobbies and among elites): its stat multipliers
+    // only — the Volt upgrade line is player-only; they get a fixed bot Thunderclap instead.
+    const volt = Math.random() < VOLT_RIVAL_CHANCE[d.id] + (elite ? VOLT_ELITE_BONUS : 0);
+    const pd = PLOWS[volt ? 'volt' : 'classic'];
     const stats: RivalStats = {
       elite,
-      maxSpeed: FX.maxSpeed(L('engine')) * (elite ? 1.02 : 1),
-      accel: FX.accel(L('engine')),
+      maxSpeed: FX.maxSpeed(L('engine')) * (elite ? 1.02 : 1) * pd.speedMult,
+      accel: FX.accel(L('engine')) * pd.accelMult,
       turn: FX.turnRate(L('engine')),
       // Rival blades don't widen visually, so blade levels show up as faster snow collection.
       collect: 0.13 * (FX.collectRate(L('compactor')) / 0.12) * (FX.bladeWidth(L('blade')) / 2.6),
       maxBall,
       maxBallVol: ballVolume(maxBall),
       ramBase: FX.ramDamage(L('ramSpikes')),
-      dashPower: FX.dashPower(L('nitro')),
+      dashPower: FX.dashPower(L('nitro')) * pd.dashPowerMult,
       dashCd: FX.dashCooldown(L('nitro')) + 0.2,
       whirlR: FX.whirlRadius(L('whirl')) + BLADE_W / 2,
       whirlDmg: FX.whirlDamage(L('whirl')),
       whirlCd: FX.whirlCooldown(L('whirl')),
-      dmgMult: d.dmgMult * FX.damageMult(L('packedIce')) * (elite ? 1.05 : 1),
+      dmgMult: d.dmgMult * FX.damageMult(L('packedIce')) * (elite ? 1.05 : 1) * pd.slamMult,
       damageTaken: FX.damageTaken(L('plating')),
       hpRegen: FX.hpRegen(L('repairKit')),
       skill: clamp(d.skill + (elite ? 0.12 : -0.08), 0.1, 1),
@@ -540,8 +569,9 @@ export class BrawlManager implements BrawlAPI {
       levels,
       shieldBlock: iceShield ? 0.75 : 0.4,
       avalanche,
+      volt,
     };
-    const hp = FX.maxHp(L('armor')) * (140 / 120) * d.hpMult * (elite ? 1.15 : 1);
+    const hp = FX.maxHp(L('armor')) * (140 / 120) * d.hpMult * (elite ? 1.15 : 1) * pd.hpMult;
     return { stats, hp };
   }
 
@@ -567,6 +597,10 @@ export class BrawlManager implements BrawlAPI {
     const hp = Math.round(rs.hp * hpMult);
     const r = new Rival(kind, name, color, pers, hp);
     r.s = rs.stats;
+    if (r.s.volt) {
+      r.volt = attachVoltRig(r.rig, RIVAL_KINDS[kind % RIVAL_KINDS.length]);
+      r.tag.setBadge('⚡');
+    }
     r.f = {
       entry: { name, color, kills: 0, deaths: 0, streak: 0, bestStreak: 0, isPlayer: false, alive: true },
       rival: r,
@@ -596,6 +630,7 @@ export class BrawlManager implements BrawlAPI {
     r.dashT = 0;
     r.whirlT = -1;
     r.slamT = -1;
+    r.clapT = -1;
     r.frozenT = 0;
     r.protectT = BRAWL_SPAWN_PROTECT;
     r.mode = 'gather';
@@ -613,6 +648,7 @@ export class BrawlManager implements BrawlAPI {
     this.group.remove(r.tag.sprite);
     this.group.remove(r.bubble.sprite);
     r.rig.dispose();
+    r.volt?.dispose();
     r.tag.dispose();
     r.bubble.dispose();
   }
@@ -715,6 +751,19 @@ export class BrawlManager implements BrawlAPI {
     const skill = r.s.skill;
     const pers = r.pers;
     const hp = r.hp / r.maxHp;
+
+    // Get clear of a crackling VOLT-9 about to Thunderclap.
+    if (r.dodgeT <= 0 && skill > 0.5 && Math.random() < skill) {
+      for (const o of this.rivals) {
+        if (o === r || !o.alive || o.clapT < 0) continue;
+        const dx = r.position.x - o.position.x;
+        const dz = r.position.z - o.position.z;
+        if (Math.hypot(dx, dz) > VOLT_CLAP_R + RIVAL_R + 1) continue;
+        r.dodgeT = VOLT_CLAP_WIND;
+        r.dodgeH = Math.atan2(dx, dz);
+        return;
+      }
+    }
 
     // Dodge incoming dash-strikes / slams aimed at us.
     if (r.dodgeT <= 0 && Math.random() < skill * 0.9) {
@@ -824,6 +873,11 @@ export class BrawlManager implements BrawlAPI {
       r.desSpeed = r.slamT < SLAM_WIND ? 2 : this.topSpeed(r);
       return;
     }
+    if (r.clapT >= 0) {
+      // Charging a Thunderclap: brake and crackle.
+      r.desSpeed = 1.5;
+      return;
+    }
     if (r.stuckT > 0) {
       r.stuckT -= dt;
       r.desSpeed = -6;
@@ -901,6 +955,11 @@ export class BrawlManager implements BrawlAPI {
         const ang = Math.abs(wrap(Math.atan2(gx - r.position.x, gz - r.position.z) - r.heading));
         const br = r.ballR;
         const tR = t.rival ? RIVAL_R : ctx.plow.radius;
+        // THUNDERCLAP (VOLT-9) when anyone is well inside the blast radius.
+        if (r.s.volt && r.clapCd <= 0 && r.slamT < 0 && r.whirlT < 0 && !r.dashing && this.countEnemiesNear(r, VOLT_CLAP_R * 0.75) >= 1) {
+          this.startClap(r);
+          break;
+        }
         // SLAM when close and lined up with a decent ball.
         if (br >= SLAM_MIN_R && r.slamCd <= 0 && r.whirlT < 0 && d < BLADE_Z + br * 2 + tR + 1.2 && ang < 0.5) {
           this.startSlam(r);
@@ -1017,6 +1076,59 @@ export class BrawlManager implements BrawlAPI {
   private startSlam(r: Rival): void {
     r.slamT = 0;
     r.slamCd = SLAM_CD;
+  }
+
+  private startClap(r: Rival): void {
+    r.clapT = 0;
+    r.clapCd = VOLT_CLAP_CD * (0.9 + Math.random() * 0.2);
+    if (r.volt) r.volt.crackleT = 0;
+    this.sfx('zap', r.position.x, r.position.z, 0.8, 0.7);
+  }
+
+  /** Bot Thunderclap: lightning blast around a VOLT-9 rival — damage (brawl-capped), shock-slow and knockback to
+   *  every other fighter in range; the player is hit through combat.hitPlow so Battery Shield / i-frames apply. */
+  private voltClap(r: Rival): void {
+    const ctx = this.ctx;
+    const px = r.position.x;
+    const pz = r.position.z;
+    const R = VOLT_CLAP_R;
+    const dmg = VOLT_CLAP_DMG * this.dmgMult(r);
+    const seen = this.near(px, pz, 90);
+    if (seen) {
+      _v.set(px, 24, pz);
+      _v2.set(px, 1.2, pz);
+      this.lightning.bolt(_v, _v2, { life: 0.35, width: 0.6, jag: 2, color: 0x9fe8ff });
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
+        _v.set(px, 1.6, pz);
+        _v2.set(px + Math.sin(a) * R, 0.2, pz + Math.cos(a) * R);
+        this.lightning.bolt(_v, _v2, { life: 0.25, width: 0.2, jag: 1 });
+      }
+      _v.set(px, 0.1, pz);
+      ctx.fx.ring(_v, R, 0x7fdcff);
+      ctx.fx.ring(_v, R * 0.6, 0xffffff);
+      ctx.fx.burst(_v, { color: 0x9fe8ff, count: 30, speed: 12, size: 0.1, gravity: 8, life: 0.5 });
+      const k = this.hear(px, pz);
+      if (k > 0.1) ctx.fx.shake(0.15 + 0.45 * k);
+    }
+    this.sfx('thunder', px, pz, 1);
+    for (const f of this.fighters) {
+      if (f.rival === r || !this.isTargetable(f)) continue;
+      const tx = this.fx(f);
+      const tz = this.fz(f);
+      const tR = f.rival ? RIVAL_R : ctx.plow.radius;
+      const d = Math.hypot(tx - px, tz - pz);
+      if (d > R + tR * 0.5) continue;
+      const nx = (tx - px) / (d || 1);
+      const nz = (tz - pz) / (d || 1);
+      if (seen) {
+        _v.set(px, 2, pz);
+        _v2.set(tx, 1.2, tz);
+        this.lightning.bolt(_v, _v2, { life: 0.3, width: 0.32 });
+      }
+      if (f.rival) f.rival.frozenT = Math.max(f.rival.frozenT, VOLT_CLAP_STUN);
+      this.hitFighter(f, r.f, dmg, 'other', nx * VOLT_CLAP_KB, nz * VOLT_CLAP_KB, VOLT_CLAP_KB, true, px, pz);
+    }
   }
 
   private slamImpact(r: Rival): void {
@@ -1328,6 +1440,16 @@ export class BrawlManager implements BrawlAPI {
         r.whirlTick++;
       }
       if (r.whirlT >= WHIRL_T) r.whirlT = -1;
+    }
+    // VOLT-9 Thunderclap: telegraph -> blast (only once the match is live).
+    if (r.s.volt) {
+      if (r.clapT >= 0) {
+        r.clapT += dt;
+        if (r.clapT >= VOLT_CLAP_WIND) {
+          r.clapT = -1;
+          if (this.active && !this._over) this.voltClap(r);
+        }
+      } else r.clapCd = Math.max(0, r.clapCd - dt);
     }
     // Stuck detection.
     r.stuckCheckT -= dt;
@@ -1642,11 +1764,47 @@ export class BrawlManager implements BrawlAPI {
     }
     rig.root.visible = r.protectT <= 0 || Math.sin(this.time * 30) > -0.3;
     rig.beacon.emissiveIntensity = 1.5 + Math.sin(this.time * 8 + r.id) * 1;
+    if (r.volt) this.animateVolt(r, dt);
     // Tag + bubble.
     const top = rig.height + 0.9;
     r.tag.set(r.hp / r.maxHp, r.f.entry.streak, r.protectT > 0);
     r.tag.place(r.position.x, r.position.y + top, r.position.z, _cam);
     if (r.bubble.t > 0) r.bubble.place(r.position.x, r.position.y + top + 2.4, r.position.z, _cam);
+  }
+
+  /** VOLT-9 rival: pulsing coils, idle arcs between them, and the Thunderclap telegraph (growing ground ring +
+   *  crackle bolts from the coils to the ground). */
+  private animateVolt(r: Rival, dt: number): void {
+    const v = r.volt!;
+    const charging = r.clapT >= 0;
+    const k = charging ? r.clapT / VOLT_CLAP_WIND : 0;
+    v.coilMat.emissiveIntensity = charging ? 2 + 3 * k : 1.2 + 0.8 * Math.sin(this.time * 14 + r.id) * Math.sin(this.time * 5.3);
+    v.telegraph.visible = charging;
+    if (charging) {
+      v.telegraph.scale.setScalar(VOLT_CLAP_R * (0.35 + 0.65 * k));
+      v.telegraphMat.opacity = (0.35 + 0.45 * k) * (0.75 + 0.25 * Math.sin(this.time * 40));
+    }
+    if (!this.near(r.position.x, r.position.z, 70) || !r.rig.root.visible) return;
+    v.arcT -= dt;
+    v.crackleT -= dt;
+    const arc = v.arcT <= 0;
+    const crackle = charging && v.crackleT <= 0;
+    if (!arc && !crackle) return;
+    r.rig.root.updateMatrixWorld();
+    const a = v.coilTops[0].getWorldPosition(_v);
+    const b = v.coilTops[1].getWorldPosition(_v2);
+    if (arc) {
+      v.arcT = charging ? 0.05 : 0.25 + Math.random() * 0.6;
+      this.lightning.bolt(a, b, { life: 0.1, width: 0.1, jag: 0.35, color: 0x3fa8ff });
+    }
+    if (crackle) {
+      v.crackleT = 0.06;
+      const from = Math.random() < 0.5 ? a : b;
+      const ang = Math.random() * Math.PI * 2;
+      const rad = VOLT_CLAP_R * (0.3 + 0.6 * k) * (0.5 + 0.5 * Math.random());
+      _fwd.set(r.position.x + Math.sin(ang) * rad, 0.15, r.position.z + Math.cos(ang) * rad);
+      this.lightning.bolt(from, _fwd, { life: 0.12, width: 0.14, jag: 0.7, color: 0x9fe8ff });
+    }
   }
 
   /* ================================================================== match end */

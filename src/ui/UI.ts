@@ -11,6 +11,9 @@ import {
   BRAWL_SHUTDOWN_PER_STREAK, BRAWL_TIME, STREAK_TIERS,
 } from '../config/brawl';
 import { BrawlHudView, fmtMult } from './BrawlHud';
+import { SettingsMenu } from './Settings';
+import { ACTIONS, keyLabel, type Action } from '../core/input';
+import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
 
@@ -39,6 +42,7 @@ const CATEGORIES: { id: UpgradeCategory; label: string; icon: string }[] = [
   { id: 'defense', label: 'Defense', icon: '🛡️' },
   { id: 'pilot', label: "Pilot Perks — bots can't copy these", icon: '🧑‍✈️' },
   { id: 'volt', label: 'VOLT-9 Upgrades — only while driving VOLT-9', icon: '⚡' },
+  { id: 'brute', label: 'BRUTUS Upgrades — only while driving BRUTUS', icon: '🦏' },
   { id: 'special', label: 'Specials', icon: '✨' },
 ];
 
@@ -51,17 +55,20 @@ const ENEMY_TIP: Partial<Record<EnemyType, string>> = {
   scrapper: 'FAST', brute: 'FRONT ARMOR', spinner: 'OVERHEATS', thief: 'STEALS SNOW',
 };
 
+/** Controls cheat-sheet. Action rows show the player's current (rebindable) keys; other rows are literal labels. */
 const CONTROLS: [string[], string][] = [
-  [['W', '↑'], 'Accelerate'],
-  [['S', '↓'], 'Brake / reverse'],
-  [['A', 'D'], 'Steer'],
-  [['SPACE'], 'SLAM snowball'],
-  [['SHIFT'], 'DASH STRIKE (long burst)'],
-  [['E'], 'Whirlwind tornado'],
-  [['F'], 'Inferno fire (Classic) / Thunderclap (VOLT-9)'],
-  [['ESC', 'P'], 'Pause'],
+  [['forward'], 'Accelerate'],
+  [['back'], 'Brake / reverse'],
+  [['left', 'right'], 'Steer'],
+  [['slam'], 'SLAM snowball'],
+  [['dash'], 'DASH STRIKE (long burst)'],
+  [['whirl'], 'Whirlwind tornado'],
+  [['ability'], 'Inferno (Classic) / Thunderclap (VOLT-9) / Ground Pound (BRUTUS)'],
+  [['pause'], 'Pause'],
   [['M'], 'Mute sound'],
 ];
+const ACTION_IDS = new Set<string>(ACTIONS.map((a) => a.id));
+const PAD_LINE = '🎮 Gamepad: left stick drive · A slam · B/RB dash · X whirl · Y F-ability · START pause';
 
 function tierName(r: number): string {
   if (r < 0.6) return 'Snowball';
@@ -158,8 +165,9 @@ export class UI implements UIAPI {
   private menuCoins!: HTMLElement;
   private menuStats!: HTMLElement;
   private muteBtns: HTMLButtonElement[] = [];
-  private resetBtn!: HTMLButtonElement;
-  private resetArmed = 0;
+  private settings!: SettingsMenu;
+  private controlLists: HTMLElement[] = [];
+  private survivalBtn!: HTMLButtonElement;
 
   // zones
   private zoneGrid!: HTMLElement;
@@ -202,6 +210,7 @@ export class UI implements UIAPI {
     gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
     slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
     dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement;
+    heat: HTMLElement; heatFill: HTMLElement; heatTxt: HTMLElement;
     snowFill: HTMLElement; snowTxt: HTMLElement;
     count: HTMLElement; hint: HTMLElement;
   };
@@ -209,7 +218,7 @@ export class UI implements UIAPI {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, fKind: '', batt: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1,
+    dash: -1, whirl: -2, flame: -2, fKind: '', batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1,
   };
   private hintTimer = 0;
 
@@ -238,6 +247,12 @@ export class UI implements UIAPI {
     this.buildResult();
     this.buildLobby();
     this.buildBrawlResult();
+    this.settings = new SettingsMenu(ctx, this.rootEl, {
+      onResetSave: () => this.handlers.onResetSave(),
+      onSaveChanged: () => this.refreshMute(),
+      onClose: () => this.refreshKeys(),
+    });
+    this.refreshKeys();
     this.toastBox = el('div', 'ss-toasts', undefined, this.rootEl);
     this.bigBox = el('div', 'ss-bigtoasts', undefined, this.rootEl);
 
@@ -294,16 +309,47 @@ export class UI implements UIAPI {
 
   private controlsList(parent: HTMLElement): HTMLElement {
     const list = el('div', 'ss-controls', undefined, parent);
+    this.controlLists.push(list);
+    this.fillControls(list);
+    return list;
+  }
+
+  /** Labels for a controls row: an action's bound keys (primary + fixed alternates), or the literal labels. */
+  private rowKeys(keys: string[]): string[] {
+    if (!keys.every((k) => ACTION_IDS.has(k))) return keys;
+    if (keys.length > 1) return keys.map((a) => keyLabel(this.ctx.input.keysFor(a as Action)[0] ?? '?'));
+    return this.ctx.input.keysFor(keys[0] as Action).map(keyLabel);
+  }
+
+  private fillControls(list: HTMLElement): void {
+    list.replaceChildren();
     for (const [keys, label] of CONTROLS) {
       const row = el('div', 'ss-ctrl-row', undefined, list);
       const k = el('div', 'ss-keys', undefined, row);
-      keys.forEach((key, i) => {
+      this.rowKeys(keys).forEach((key, i) => {
         if (i) el('span', 'ss-key-sep', '/', k);
         el('kbd', 'ss-kbd', key, k);
       });
       el('span', 'ss-ctrl-label', label, row);
     }
-    return list;
+    el('div', 'ss-ctrl-pad', PAD_LINE, list);
+  }
+
+  /** Re-read key bindings into every on-screen key prompt (controls lists, HUD ability keys, first-run hint). */
+  refreshKeys(): void {
+    for (const list of this.controlLists) this.fillControls(list);
+    if (!this.h.hint) return;
+    const k = (a: Action) => keyLabel(this.ctx.input.keysFor(a)[0] ?? '?');
+    const setKey = (ab: HTMLElement, a: Action) => {
+      const kbd = ab.querySelector('.ss-ab-key');
+      if (kbd) kbd.textContent = k(a);
+    };
+    setKey(this.h.dash, 'dash');
+    setKey(this.h.whirl, 'whirl');
+    setKey(this.h.flame, 'ability');
+    this.h.hint.textContent =
+      `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ${k('slam')} slam  ·  ` +
+      `${k('dash')} dash strike  ·  ${k('whirl')} whirlwind  ·  ${k('ability')} F-ability  ·  ESC pause`;
   }
 
   private coinPill(parent: HTMLElement, cls = ''): HTMLElement {
@@ -331,6 +377,10 @@ export class UI implements UIAPI {
     this.menuStats.textContent =
       `🏆 Arenas cleared ${cleared}/${ZONES.length}  ·  🤖 ${fmt(p.data.totalKills)} bots scrapped` +
       (bm > 0 ? `  ·  🥇 Brawl wins ${fmt(bw)}/${fmt(bm)}` : '');
+    const sb = survivalBest(p);
+    this.survivalBtn.innerHTML = survivalUnlocked(p)
+      ? `♾ SURVIVAL${sb > 0 ? ` <small>best wave ${sb}</small>` : ''}`
+      : '🔒 SURVIVAL <small>beat arena 1</small>';
     this.refreshCards();
     if (this.current === 'zones') this.renderZones();
   }
@@ -397,41 +447,25 @@ export class UI implements UIAPI {
     const btns = el('div', 'ss-menu-btns', undefined, panel);
     this.btn('⚔ FIGHT', 'ss-primary ss-big', () => this.showZoneSelect(), btns).dataset.primary = '1';
     this.btn('🔥 BRAWL <span class="ss-new">NEW</span>', 'ss-hot ss-big', () => this.showBrawlLobby(), btns);
+    this.survivalBtn = this.btn('', 'ss-ice', () => {
+      if (survivalUnlocked(this.ctx.progression)) this.handlers.onStartSurvival?.();
+      else this.toast(`Beat ${ZONES[0].name} to unlock Survival`, 'bad');
+    }, btns);
     this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('menu'), btns);
     this.btn('❓ HOW TO PLAY', 'ss-ice', () => this.show('howto'), btns);
+    this.btn('⚙ SETTINGS', 'ss-ice', () => this.settings.open(), btns, null);
+    this.btn('🎓 TUTORIAL', 'ss-ice', () => this.handlers.onStartTutorial?.(), btns);
     const row = el('div', 'ss-menu-row', undefined, btns);
     const mute = this.btn('', 'ss-ice ss-small', () => {
       this.handlers.onToggleMute();
       this.refreshMute();
     }, row);
     this.muteBtns.push(mute);
-    this.resetBtn = this.btn('🗑 RESET SAVE', 'ss-ice ss-small ss-danger', () => this.onResetClick(), row);
+    // Save reset / export / import live in ⚙ SETTINGS → Save data.
 
     this.menuStats = el('div', 'ss-menu-stats', '', panel);
     el('div', 'ss-credits', 'PvE arena brawler · Three.js · procedural everything', panel);
     this.refreshMute();
-  }
-
-  private onResetClick(): void {
-    const now = performance.now();
-    if (now - this.resetArmed < 3000) {
-      this.resetArmed = 0;
-      this.resetBtn.innerHTML = '🗑 RESET SAVE';
-      this.resetBtn.classList.remove('armed');
-      this.handlers.onResetSave();
-      this.refreshProgress();
-      this.toast('Save data reset. Fresh snow!', 'info');
-      return;
-    }
-    this.resetArmed = now;
-    this.resetBtn.innerHTML = '⚠ CLICK AGAIN TO CONFIRM';
-    this.resetBtn.classList.add('armed');
-    setTimeout(() => {
-      if (performance.now() - this.resetArmed >= 2900) {
-        this.resetBtn.innerHTML = '🗑 RESET SAVE';
-        this.resetBtn.classList.remove('armed');
-      }
-    }, 3050);
   }
 
   /* ================================================================== how to play */
@@ -572,7 +606,7 @@ export class UI implements UIAPI {
         this.ctx.progression.setPlow(def.id);
         this.ctx.stats = this.ctx.progression.computeStats();
         this.ctx.plow.applyStats(this.ctx.stats);
-        this.sfx(def.id === 'volt' ? 'buy' : 'click');
+        this.sfx(def.id === 'classic' ? 'click' : 'buy');
       });
       this.plowCards.set(def.id, card);
     }
@@ -731,6 +765,7 @@ export class UI implements UIAPI {
       this.refreshMute();
     }, btns);
     this.muteBtns.push(mute);
+    this.btn('⚙ SETTINGS', 'ss-ice', () => this.settings.open(), btns, null);
     this.btn('⏏ QUIT TO MENU', 'ss-ice ss-danger', () => this.handlers.onQuitToMenu(), btns);
     this.controlsList(panel).classList.add('compact');
     this.refreshMute();
@@ -755,7 +790,9 @@ export class UI implements UIAPI {
       'ss-sub',
       win
         ? `${sum.zoneName} cleared! The arena is yours.`
-        : `Your plow got scrapped in ${sum.zoneName}. Coins are kept, so upgrade and get back in there!`,
+        : sum.survival
+          ? `Scrapped on wave ${sum.survival.wave}. ${sum.survival.newBest ? '🌟 NEW BEST!' : `Best: wave ${sum.survival.best}.`} Coins are kept, so upgrade and go again!`
+          : `Your plow got scrapped in ${sum.zoneName}. Coins are kept, so upgrade and get back in there!`,
       p,
     );
 
@@ -767,7 +804,8 @@ export class UI implements UIAPI {
       el('div', 'ss-stat-val', value, s);
       el('div', 'ss-stat-label', label, s);
     };
-    stat('🏁', win ? 'Rounds cleared' : 'Rounds survived', `${sum.roundsCleared}/${sum.totalRounds}`, 100);
+    if (sum.survival) stat('🌊', 'Waves cleared', `${sum.roundsCleared}`, 100);
+    else stat('🏁', win ? 'Rounds cleared' : 'Rounds survived', `${sum.roundsCleared}/${sum.totalRounds}`, 100);
     stat('🤖', 'Bots scrapped', fmt(sum.kills), 180);
     stat('🔥', 'Best combo', sum.bestCombo >= 2 ? `x${sum.bestCombo}` : '—', 260);
     stat('⚪', 'Biggest ball', `${sum.biggestBall.toFixed(2)} m`, 340);
@@ -1101,7 +1139,12 @@ export class UI implements UIAPI {
     H.whirl = this.buildAbility(row, '🌀', 'WHIRL', 'E', 'whirl');
     H.flame = this.buildAbility(row, '🔥', 'FIRE', 'F', 'flame');
     H.flame.style.display = 'none';
-    H.slam = el('div', 'ss-slam-hint', undefined, bc);
+    // Thunderclap Overload meter (VOLT-9 only): heat bar + the next clap's self-damage, perched on the F icon.
+    H.heat = el('div', 'ss-heat hidden', undefined, H.flame);
+    const heatBar = el('div', 'ss-heat-bar', undefined, H.heat);
+    H.heatFill = el('div', 'ss-heat-fill', undefined, heatBar);
+    H.heatTxt = el('div', 'ss-heat-txt', '', H.heat);
+    H.slam =el('div', 'ss-slam-hint', undefined, bc);
     H.slam.innerHTML = '<kbd class="ss-kbd">SPACE</kbd> SLAM!';
 
     // bottom-right: snow remaining
@@ -1381,6 +1424,7 @@ export class UI implements UIAPI {
       clearTimeout(this.hintTimer);
       this.h.hint.classList.add('hidden');
     } else {
+      this.refreshKeys();
       const d = this.ctx.progression.data;
       const firstRun = d.totalKills < 15 && !Object.values(d.zones).some((z) => z.bestRound > 0);
       this.h.hint.classList.toggle('hidden', !firstRun);
@@ -1420,7 +1464,18 @@ export class UI implements UIAPI {
       L.zone = s.zoneName;
       H.zone.textContent = s.zoneName;
     }
-    if (s.round !== L.round || s.totalRounds !== L.total || s.bossRound !== L.bossRound) {
+    const sv = s.survival;
+    if (sv) {
+      // Survival: "Wave N · Best M" instead of round pips (encoded into L.round / L.total).
+      if (sv.wave !== L.round || -sv.best !== L.total || s.bossRound !== L.bossRound) {
+        L.round = sv.wave;
+        L.total = -sv.best;
+        L.bossRound = s.bossRound;
+        H.round.textContent = `${s.bossRound ? '☠ BOSS ' : ''}Wave ${sv.wave} · Best ${sv.best}`;
+        H.round.classList.toggle('boss', s.bossRound);
+        this.renderPips(0, 0);
+      }
+    } else if (s.round !== L.round || s.totalRounds !== L.total || s.bossRound !== L.bossRound) {
       L.round = s.round;
       L.total = s.totalRounds;
       L.bossRound = s.bossRound;
@@ -1518,13 +1573,15 @@ export class UI implements UIAPI {
       this.setAbility(H.whirl, w, L.whirl);
       L.whirl = w;
     }
-    // F icon follows the plow: Inferno fire (Classic) or Thunderclap (VOLT-9).
+    // F icon follows the plow: Inferno fire (Classic), Thunderclap (VOLT-9) or Ground Pound (BRUTUS).
     if (s.fAbility !== L.fKind) {
       L.fKind = s.fAbility;
       const zap = s.fAbility === 'zap';
-      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : '🔥';
-      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : 'FIRE';
+      const pound = s.fAbility === 'pound';
+      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : '🔥';
+      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : 'FIRE';
       H.flame.classList.toggle('ss-ab-zap', zap);
+      H.flame.classList.toggle('ss-ab-pound', pound);
     }
     // Battery Shield (VOLT-9).
     const bt = s.shield < 0 ? -1 : Math.round(clamp01(s.shield) * 100) / 100;
@@ -1534,12 +1591,25 @@ export class UI implements UIAPI {
       H.batt.classList.toggle('empty', bt === 0);
       L.batt = bt;
     }
-    // Inferno (pilot perk) only shows once owned.
+    // F ability: hidden while it does nothing (e.g. Thunderclap before it is bought); Inferno and Pound are free.
     const f = s.flameReady < 0 ? -1 : Math.round(clamp01(s.flameReady) * 50) / 50;
     if (f !== L.flame) {
       H.flame.style.display = f < 0 ? 'none' : '';
       if (f >= 0) this.setAbility(H.flame, f, L.flame);
       L.flame = f;
+    }
+    // Thunderclap Overload: heat meter (full at 3 heat ~ a clap per second) + predicted self-damage.
+    const ht = s.overload === undefined || s.overload < 0 ? -1 : Math.round(Math.min(1, s.overload / 3) * 50) / 50;
+    const hc = ht < 0 ? -1 : Math.round(s.overloadCost ?? 0);
+    if (ht !== L.heat || hc !== L.heatCost) {
+      H.heat.classList.toggle('hidden', ht < 0);
+      if (ht >= 0) {
+        H.heatFill.style.transform = `scaleX(${ht})`;
+        H.heatTxt.textContent = `-${hc} HP`;
+        H.heat.dataset.t = ht >= 0.6 ? '2' : ht >= 0.25 ? '1' : '0';
+      }
+      L.heat = ht;
+      L.heatCost = hc;
     }
 
     // combo

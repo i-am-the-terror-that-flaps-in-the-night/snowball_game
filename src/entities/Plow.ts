@@ -12,12 +12,40 @@ import {
 } from '../core/types';
 import type { Combat } from './Combat';
 import { getSnowballGeometry, getSnowballMaterial } from './snowballMesh';
+import { cooldown } from '../config/upgrades';
+import type { PlowKind } from '../config/plows';
 
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
 const BLADE_Z = 2.35;
 const TIP_Z = BLADE_Z + 0.15;
 const REAR_Z = 2.15;
 const WHEEL_R = 0.48;
+/** BRUTUS's taller, deeper blade (visual scale on Y / Z; width still follows bladeWidth). */
+const BRUTE_BLADE_Y = 1.28;
+const BRUTE_BLADE_Z = 1.15;
+
+/** Yellow/black diagonal hazard stripes, drawn once on a canvas (no asset files). */
+function hazardTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#ffc21a';
+  g.fillRect(0, 0, 64, 64);
+  g.fillStyle = '#16181c';
+  for (let i = -64; i < 128; i += 32) {
+    g.beginPath();
+    g.moveTo(i, 0);
+    g.lineTo(i + 16, 0);
+    g.lineTo(i + 16 + 64, 64);
+    g.lineTo(i + 64, 64);
+    g.closePath();
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 
 const SLAM_WINDUP = 0.12;
 const SLAM_LUNGE = 0.2;
@@ -201,10 +229,19 @@ export class Plow implements PlowAPI {
   private charColor = new THREE.Color(0x2a211c);
   private beaconMat: THREE.MeshStandardMaterial;
   private beaconLight: THREE.PointLight;
-  private beacon: THREE.Mesh;
+  private beacon!: THREE.Mesh;
   private beaconSpinner = new THREE.Group();
-  // Starter-plow skin (Classic orange vs VOLT-9 electric blue).
-  private kind: 'classic' | 'volt' = 'classic';
+  // Starter-plow models: Classic dump truck, VOLT-9 low electric wedge, BRUTUS tracked bulldozer.
+  private kind: PlowKind = 'classic';
+  private classicParts = new THREE.Group();
+  private bruteParts = new THREE.Group();
+  private cleats: { mesh: THREE.Mesh; top: boolean; i: number }[] = [];
+  private cleatSpan = 3;
+  private trackPhase = 0;
+  private underglowMat!: THREE.MeshBasicMaterial;
+  private bruteBlade = new THREE.Group();
+  /** Ground Pound hop height (m), driven by Combat while BRUTUS is airborne. */
+  hop = 0;
   private steelMat!: THREE.MeshStandardMaterial;
   private hubMat!: THREE.MeshStandardMaterial;
   private voltParts = new THREE.Group();
@@ -279,86 +316,181 @@ export class Plow implements PlowAPI {
       return m;
     };
 
-    // Chassis + bumpers.
+    // Shared chassis + front bumper. Everything above it is per-plow (classicParts / voltParts / bruteParts), so
+    // the three starter plows have different silhouettes, not just different paint.
     add(new THREE.BoxGeometry(1.7, 0.35, 4.0), darkMat, 0, 0.62, 0.05);
-    add(new THREE.BoxGeometry(2.05, 0.22, 0.25), darkMat, 0, 0.62, -2.0);
-    // Rear dump bed (yellow-orange) with rim.
-    add(new THREE.BoxGeometry(2.1, 0.95, 2.1), this.bedMat, 0, 1.3, -0.95);
-    add(new THREE.BoxGeometry(2.2, 0.12, 2.2), darkMat, 0, 1.82, -0.95);
-    add(new THREE.BoxGeometry(2.12, 0.14, 0.9), stripeMat, 0, 1.1, -0.95).scale.set(1, 1, 2.3);
-    // Tail lights.
-    add(new THREE.BoxGeometry(0.28, 0.18, 0.06), redMat, -0.78, 1.05, -2.02, this.body, false);
-    add(new THREE.BoxGeometry(0.28, 0.18, 0.06), redMat, 0.78, 1.05, -2.02, this.body, false);
-    // Cab.
-    add(new THREE.BoxGeometry(2.0, 1.25, 1.35), this.paintMat, 0, 1.55, 0.72);
-    add(new THREE.BoxGeometry(2.08, 0.12, 1.45), this.paintMat, 0, 2.22, 0.72);
-    // Windows: windshield + side windows + rear.
-    const ws = add(new THREE.BoxGeometry(1.7, 0.6, 0.06), glassMat, 0, 1.85, 1.41, this.body, false);
-    ws.rotation.x = -0.12;
-    add(new THREE.BoxGeometry(0.06, 0.55, 0.95), glassMat, -1.01, 1.85, 0.75, this.body, false);
-    add(new THREE.BoxGeometry(0.06, 0.55, 0.95), glassMat, 1.01, 1.85, 0.75, this.body, false);
-    add(new THREE.BoxGeometry(1.5, 0.45, 0.06), glassMat, 0, 1.88, 0.04, this.body, false);
-    // Hood + grille.
-    add(new THREE.BoxGeometry(1.85, 0.7, 0.85), this.paintMat, 0, 1.18, 1.78);
-    add(new THREE.BoxGeometry(1.3, 0.42, 0.06), chromeMat, 0, 1.15, 2.22);
-    // Headlights.
-    add(new THREE.BoxGeometry(0.3, 0.2, 0.08), this.headMat, -0.72, 1.3, 2.22, this.body, false);
-    add(new THREE.BoxGeometry(0.3, 0.2, 0.08), this.headMat, 0.72, 1.3, 2.22, this.body, false);
-    // White stripe along the cab doors.
-    add(new THREE.BoxGeometry(2.04, 0.1, 1.38), stripeMat, 0, 1.25, 0.72, this.body, false);
-    // Mirrors.
-    const mirrorL = add(new THREE.BoxGeometry(0.08, 0.3, 0.18), darkMat, -1.18, 1.85, 1.2, this.body, false);
-    const mirrorR = add(new THREE.BoxGeometry(0.08, 0.3, 0.18), darkMat, 1.18, 1.85, 1.2, this.body, false);
-    // Exhaust stack.
-    const stack = add(new THREE.CylinderGeometry(0.09, 0.09, 1.4, 10), chromeMat, -0.72, 1.85, 0.05);
-    add(new THREE.CylinderGeometry(0.12, 0.12, 0.12, 10), darkMat, 0, 0.65, 0, stack);
+    const cp = this.classicParts;
+    const vp = this.voltParts;
+    const bp = this.bruteParts;
 
-    // Dash / wreck flame out of the stack.
+    /* ---- Classic: the orange municipal dump truck (tall cab, dump bed, exhaust stack, beacon). ---- */
+    add(new THREE.BoxGeometry(2.05, 0.22, 0.25), darkMat, 0, 0.62, -2.0, cp);
+    add(new THREE.BoxGeometry(2.1, 0.95, 2.1), this.bedMat, 0, 1.3, -0.95, cp);
+    add(new THREE.BoxGeometry(2.2, 0.12, 2.2), darkMat, 0, 1.82, -0.95, cp);
+    add(new THREE.BoxGeometry(2.12, 0.14, 0.9), stripeMat, 0, 1.1, -0.95, cp).scale.set(1, 1, 2.3);
+    add(new THREE.BoxGeometry(0.28, 0.18, 0.06), redMat, -0.78, 1.05, -2.02, cp, false);
+    add(new THREE.BoxGeometry(0.28, 0.18, 0.06), redMat, 0.78, 1.05, -2.02, cp, false);
+    add(new THREE.BoxGeometry(2.0, 1.25, 1.35), this.paintMat, 0, 1.55, 0.72, cp);
+    add(new THREE.BoxGeometry(2.08, 0.12, 1.45), this.paintMat, 0, 2.22, 0.72, cp);
+    const ws = add(new THREE.BoxGeometry(1.7, 0.6, 0.06), glassMat, 0, 1.85, 1.41, cp, false);
+    ws.rotation.x = -0.12;
+    add(new THREE.BoxGeometry(0.06, 0.55, 0.95), glassMat, -1.01, 1.85, 0.75, cp, false);
+    add(new THREE.BoxGeometry(0.06, 0.55, 0.95), glassMat, 1.01, 1.85, 0.75, cp, false);
+    add(new THREE.BoxGeometry(1.5, 0.45, 0.06), glassMat, 0, 1.88, 0.04, cp, false);
+    add(new THREE.BoxGeometry(1.85, 0.7, 0.85), this.paintMat, 0, 1.18, 1.78, cp);
+    add(new THREE.BoxGeometry(1.3, 0.42, 0.06), chromeMat, 0, 1.15, 2.22, cp);
+    add(new THREE.BoxGeometry(0.3, 0.2, 0.08), this.headMat, -0.72, 1.3, 2.22, cp, false);
+    add(new THREE.BoxGeometry(0.3, 0.2, 0.08), this.headMat, 0.72, 1.3, 2.22, cp, false);
+    add(new THREE.BoxGeometry(2.04, 0.1, 1.38), stripeMat, 0, 1.25, 0.72, cp, false);
+    const mirrorL = add(new THREE.BoxGeometry(0.08, 0.3, 0.18), darkMat, -1.18, 1.85, 1.2, cp, false);
+    const mirrorR = add(new THREE.BoxGeometry(0.08, 0.3, 0.18), darkMat, 1.18, 1.85, 1.2, cp, false);
+    const stack = add(new THREE.CylinderGeometry(0.09, 0.09, 1.4, 10), chromeMat, -0.72, 1.85, 0.05, cp);
+    add(new THREE.CylinderGeometry(0.12, 0.12, 0.12, 10), darkMat, 0, 0.65, 0, stack);
+    for (const [x, z] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const) {
+      add(new THREE.BoxGeometry(0.5, 0.1, 1.1), darkMat, x, WHEEL_R * 2 + 0.08, z, cp);
+    }
+    add(new THREE.BoxGeometry(0.9, 0.08, 0.3), darkMat, 0, 2.32, 0.8, cp);
+    this.beacon = add(new THREE.CylinderGeometry(0.16, 0.18, 0.24, 12), this.beaconMat, 0, 2.48, 0.8, cp, false);
+    this.beacon.add(this.beaconSpinner);
+    const reflector = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.04), new THREE.MeshBasicMaterial({ color: 0xffe08a }));
+    this.beaconSpinner.add(reflector);
+    this.body.add(cp);
+
+    // Dash / wreck flame (out of the stack on the Classic; moved per plow in setKind).
     this.flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
     const flameGeo = new THREE.ConeGeometry(0.13, 0.7, 8);
     flameGeo.translate(0, 0.35, 0);
     this.flame = add(flameGeo, this.flameMat, -0.72, 2.55, 0.05, this.body, false);
     this.flame.visible = false;
 
-    // VOLT-9 parts (hidden on the Classic): twin Tesla coils on the bed + glowing battery strips.
+    /* ---- VOLT-9: a low, sleek electric wedge — bubble canopy, glowing light bars, rear wing, Tesla coils. ---- */
+    const voltGlass = new THREE.MeshStandardMaterial({ color: 0x0d3a5c, roughness: 0.05, metalness: 0.8, emissive: 0x0a5c9a, emissiveIntensity: 0.6, transparent: true, opacity: 0.88 });
+    const carbonMat = new THREE.MeshStandardMaterial({ color: 0x14171f, roughness: 0.35, metalness: 0.6 });
+    // Low hull + sloped nose wedge.
+    add(new THREE.BoxGeometry(1.95, 0.5, 3.0), this.paintMat, 0, 1.02, -0.45, vp);
+    const nose = add(new THREE.BoxGeometry(1.9, 0.32, 1.5), this.paintMat, 0, 1.0, 1.5, vp);
+    nose.rotation.x = 0.2;
+    add(new THREE.BoxGeometry(1.7, 0.06, 0.08), this.coilMat, 0, 1.0, 2.24, vp, false); // headlight bar
+    add(new THREE.BoxGeometry(1.95, 0.08, 0.06), this.coilMat, 0, 1.12, -1.97, vp, false); // tail light bar
+    add(new THREE.BoxGeometry(2.0, 0.16, 0.25), carbonMat, 0, 0.7, -1.95, vp); // diffuser
+    // Bubble canopy.
+    const canopyGeo = new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    const canopy = add(canopyGeo, voltGlass, 0, 1.26, 0.25, vp, false);
+    canopy.scale.set(0.78, 0.55, 1.25);
+    // Side glow strips + wheel-arch spats.
+    for (const x of [-0.99, 0.99]) {
+      add(new THREE.BoxGeometry(0.04, 0.06, 3.1), this.coilMat, x, 0.92, -0.2, vp, false);
+      for (const z of [1.45, -1.25]) add(new THREE.BoxGeometry(0.46, 0.08, 1.15), carbonMat, x * 0.96, WHEEL_R * 2 + 0.06, z, vp);
+    }
+    // Rear wing on two struts.
+    for (const x of [-0.6, 0.6]) add(new THREE.BoxGeometry(0.08, 0.5, 0.14), carbonMat, x, 1.48, -1.75, vp);
+    add(new THREE.BoxGeometry(2.1, 0.06, 0.45), this.paintMat, 0, 1.75, -1.8, vp);
+    add(new THREE.BoxGeometry(2.1, 0.03, 0.05), this.coilMat, 0, 1.79, -1.6, vp, false);
+    // Twin Tesla coils on the rear deck, between canopy and wing.
     const coilBaseMat = new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.4, metalness: 0.7 });
-    for (const x of [-0.6, 0.6]) {
+    for (const x of [-0.55, 0.55]) {
       const coil = new THREE.Group();
-      coil.position.set(x, 1.88, -1.05);
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.5, 12), coilBaseMat);
-      base.position.y = 0.25;
+      coil.position.set(x, 1.27, -1.0);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.3, 12), coilBaseMat);
+      base.position.y = 0.15;
       coil.add(base);
       for (let i = 0; i < 4; i++) {
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17 - i * 0.02, 0.045, 6, 16), this.coilMat);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.15 - i * 0.02, 0.04, 6, 16), this.coilMat);
         ring.rotation.x = Math.PI / 2;
-        ring.position.y = 0.58 + i * 0.16;
+        ring.position.y = 0.38 + i * 0.13;
         coil.add(ring);
       }
-      const top = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), this.coilMat);
-      top.position.y = 1.3;
+      const top = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), this.coilMat);
+      top.position.y = 0.95;
       coil.add(top);
       this.coilTops.push(top);
-      this.voltParts.add(coil);
+      vp.add(coil);
     }
-    for (const x of [-1.06, 1.06]) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 1.9), this.coilMat);
-      strip.position.set(x, 1.3, -0.95);
-      this.voltParts.add(strip);
-    }
-    this.voltParts.visible = false;
-    this.body.add(this.voltParts);
+    // Underglow.
+    const underGeo = new THREE.PlaneGeometry(2.6, 4.6);
+    underGeo.rotateX(-Math.PI / 2);
+    this.underglowMat = new THREE.MeshBasicMaterial({ color: 0x2fb8ff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+    add(underGeo, this.underglowMat, 0, 0.08, 0.05, vp, false);
+    vp.visible = false;
+    this.body.add(vp);
 
-    // Roof beacon.
-    add(new THREE.BoxGeometry(0.9, 0.08, 0.3), darkMat, 0, 2.32, 0.8);
-    this.beacon = add(new THREE.CylinderGeometry(0.16, 0.18, 0.24, 12), this.beaconMat, 0, 2.48, 0.8, this.body, false);
-    this.beacon.add(this.beaconSpinner);
-    const reflector = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.04), new THREE.MeshBasicMaterial({ color: 0xffe08a }));
-    this.beaconSpinner.add(reflector);
+    /* ---- BRUTUS: a tracked bulldozer — tank treads, armored engine block, caged cab, twin stacks, ripper. ---- */
+    const hazardTex = hazardTexture();
+    hazardTex.repeat.set(3, 1);
+    const hazardMat = new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.55, metalness: 0.25 });
+    const trackMat = new THREE.MeshStandardMaterial({ color: 0x1a1b1f, roughness: 0.95, flatShading: true });
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.6, metalness: 0.6 });
+    // Tracks: a rounded rubber loop on each side with road wheels and moving cleats.
+    const TRACK_LEN = 3.9;
+    const TRACK_H = 0.95;
+    for (const x of [-1.12, 1.12]) {
+      add(new THREE.BoxGeometry(0.62, TRACK_H - 0.3, TRACK_LEN - 0.9), trackMat, x, TRACK_H / 2 + 0.02, 0.1, bp);
+      for (const z of [0.1 + (TRACK_LEN - 0.9) / 2, 0.1 - (TRACK_LEN - 0.9) / 2]) {
+        const end = add(new THREE.CylinderGeometry(TRACK_H / 2 - 0.02, TRACK_H / 2 - 0.02, 0.62, 16), trackMat, x, TRACK_H / 2 + 0.02, z, bp);
+        end.rotation.z = Math.PI / 2;
+        const sprocket = add(new THREE.CylinderGeometry(0.3, 0.3, 0.66, 8), this.hubMat, x, TRACK_H / 2 + 0.02, z, bp);
+        sprocket.rotation.z = Math.PI / 2;
+      }
+      for (let i = 0; i < 4; i++) {
+        const rw = add(new THREE.CylinderGeometry(0.2, 0.2, 0.66, 10), ironMat, x, 0.3, -1.05 + i * 0.75, bp, false);
+        rw.rotation.z = Math.PI / 2;
+      }
+      add(new THREE.BoxGeometry(0.7, 0.08, TRACK_LEN + 0.1), ironMat, x, TRACK_H + 0.07, 0.1, bp); // track guard
+    }
+    const cleatGeo = new THREE.BoxGeometry(0.64, 0.07, 0.14);
+    for (const x of [-1.12, 1.12]) {
+      for (let i = 0; i < 9; i++) {
+        for (const top of [true, false]) {
+          const c = add(cleatGeo, ironMat, x, top ? TRACK_H + 0.0 : 0.04, 0, bp, false);
+          this.cleats.push({ mesh: c, top, i });
+        }
+      }
+    }
+    this.cleatSpan = TRACK_LEN - 0.9;
+    // Armored engine block at the rear with vent slats + hazard side plates + striped rear bumper.
+    add(new THREE.BoxGeometry(1.75, 1.15, 1.9), this.paintMat, 0, 1.38, -1.0, bp);
+    for (let i = 0; i < 5; i++) add(new THREE.BoxGeometry(1.5, 0.05, 0.12), darkMat, 0, 1.98, -1.75 + i * 0.32, bp, false);
+    for (const x of [-0.9, 0.9]) add(new THREE.BoxGeometry(0.05, 0.62, 1.7), hazardMat, x, 1.3, -1.0, bp);
+    const bumperTex = hazardTexture();
+    bumperTex.repeat.set(6, 1);
+    add(new THREE.BoxGeometry(2.4, 0.3, 0.2), new THREE.MeshStandardMaterial({ map: bumperTex, roughness: 0.55 }), 0, 0.75, -2.05, bp);
+    // Ripper tooth hanging off the back.
+    add(new THREE.BoxGeometry(0.22, 0.2, 0.7), ironMat, 0, 0.9, -2.4, bp);
+    const tooth = add(new THREE.BoxGeometry(0.16, 0.9, 0.22), ironMat, 0, 0.55, -2.7, bp);
+    tooth.rotation.x = -0.35;
+    // Twin exhaust stacks.
+    for (const x of [-0.55, 0.55]) {
+      const st = add(new THREE.CylinderGeometry(0.11, 0.13, 1.3, 10), chromeMat, x, 2.4, -1.45, bp);
+      add(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 10), darkMat, 0, 0.62, 0, st);
+    }
+    // Caged cab: a squat box with a roll cage around the glass and a roof light bar.
+    add(new THREE.BoxGeometry(1.5, 0.35, 1.25), this.paintMat, 0, 1.13, 0.75, bp);
+    add(new THREE.BoxGeometry(1.4, 0.85, 1.15), glassMat, 0, 1.72, 0.75, bp, false);
+    add(new THREE.BoxGeometry(1.62, 0.12, 1.4), this.paintMat, 0, 2.2, 0.75, bp);
+    for (const x of [-0.74, 0.74]) for (const z of [0.14, 1.36]) add(new THREE.BoxGeometry(0.1, 0.95, 0.1), darkMat, x, 1.7, z, bp);
+    for (const y of [1.45, 1.95]) {
+      add(new THREE.BoxGeometry(1.5, 0.06, 0.06), darkMat, 0, y, 1.36, bp, false);
+      for (const x of [-0.74, 0.74]) add(new THREE.BoxGeometry(0.06, 0.06, 1.22), darkMat, x, y, 0.75, bp, false);
+    }
+    add(new THREE.BoxGeometry(1.4, 0.14, 0.16), darkMat, 0, 2.35, 1.3, bp);
+    for (const x of [-0.45, 0, 0.45]) add(new THREE.BoxGeometry(0.3, 0.16, 0.06), this.headMat, x, 2.35, 1.39, bp, false);
+    // Low front deck + chunky hydraulic pistons out to the blade.
+    add(new THREE.BoxGeometry(1.75, 0.45, 0.8), this.paintMat, 0, 1.05, 1.75, bp);
+    for (const x of [-0.65, 0.65]) {
+      const pis = add(new THREE.CylinderGeometry(0.1, 0.1, 1.1, 10), chromeMat, x, 1.25, 2.0, bp);
+      pis.rotation.x = Math.PI / 2 - 0.35;
+      const sleeve = add(new THREE.CylinderGeometry(0.15, 0.15, 0.6, 10), this.hubMat, x, 1.45, 1.6, bp);
+      sleeve.rotation.x = Math.PI / 2 - 0.35;
+    }
+    bp.visible = false;
+    this.body.add(bp);
+
+    // Beacon light (colour/intensity per plow in update).
     this.beaconLight = new THREE.PointLight(0xffa020, 0, 7, 2);
     this.beaconLight.position.set(0, 2.8, 0.8);
     this.body.add(this.beaconLight);
 
-    // Wheels.
+    // Wheels (Classic + VOLT-9; BRUTUS rides on tracks).
     const tireGeo = new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, 0.42, 14);
     tireGeo.rotateZ(Math.PI / 2);
     const hubGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.44, 8);
@@ -382,10 +514,6 @@ export class Plow implements PlowAPI {
       this.body.add(w);
       this.wheels.push(w);
     }
-    // Fenders.
-    for (const [x, z] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const) {
-      add(new THREE.BoxGeometry(0.5, 0.1, 1.1), darkMat, x, WHEEL_R * 2 + 0.08, z);
-    }
 
     // Blade: curved sheet (unit width, scaled on X) + mounting arms.
     const R = 0.78;
@@ -400,6 +528,18 @@ export class Plow implements PlowAPI {
     const edge = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 0.12), darkMat);
     edge.position.set(0, 0.08, 0.22);
     this.bladeSheet.add(edge);
+    // BRUTUS hazard bands along the top and lower face of the blade (just in front of the concave sheet).
+    const bandTex = hazardTexture();
+    bandTex.repeat.set(1, 5);
+    const bandMat = new THREE.MeshStandardMaterial({ map: bandTex, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide });
+    for (const t0 of [Math.PI - 0.95, Math.PI + 0.25]) {
+      const bandGeo = new THREE.CylinderGeometry(R - 0.025, R - 0.025, 1, 14, 1, true, t0, 0.32);
+      bandGeo.rotateZ(Math.PI / 2);
+      bandGeo.translate(0, 0.72, R - 0.05);
+      this.bruteBlade.add(new THREE.Mesh(bandGeo, bandMat));
+    }
+    this.bruteBlade.visible = false;
+    this.bladeSheet.add(this.bruteBlade);
     // Blade-side hazard caps (repositioned in setBladeWidth).
     const capGeo = new THREE.BoxGeometry(0.08, 1.2, 0.5);
     for (let i = 0; i < 2; i++) {
@@ -652,6 +792,9 @@ export class Plow implements PlowAPI {
       d.obj.quaternion.copy(d.quat);
       d.obj.scale.set(1, 1, 1);
     }
+    this.applyBladeScale();
+    this.hop = 0;
+    this.spin.position.y = 0;
     for (const g of this.ghosts) {
       g.active = false;
       g.group.visible = false;
@@ -660,20 +803,47 @@ export class Plow implements PlowAPI {
   }
 
   /** Swap the paint job + parts for the selected starter plow. */
-  private setKind(kind: 'classic' | 'volt'): void {
+  private setKind(kind: PlowKind): void {
     this.kind = kind;
     const volt = kind === 'volt';
-    this.paintBase.setHex(volt ? 0x1f5fe0 : 0xff7a1a);
-    this.bedBase.setHex(volt ? 0x18213a : 0xffb21f);
+    const brute = kind === 'brute';
+    this.paintBase.setHex(volt ? 0x1f5fe0 : brute ? 0x7d8794 : 0xff7a1a);
+    this.bedBase.setHex(volt ? 0x18213a : brute ? 0x4a525d : 0xffb21f);
     this.paintMat.color.copy(this.paintBase);
     this.bedMat.color.copy(this.bedBase);
-    this.steelMat.color.setHex(volt ? 0x9fe8ff : 0xffd23a);
+    this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : 0xffd23a);
     this.steelMat.emissive.setHex(volt ? 0x1a8cff : 0x000000);
     this.steelMat.emissiveIntensity = volt ? 0.6 : 0;
-    this.hubMat.color.setHex(volt ? 0x7fdcff : 0xffd23a);
+    this.hubMat.color.setHex(volt ? 0x7fdcff : brute ? 0xffc21a : 0xffd23a);
     this.beaconMat.color.setHex(volt ? 0x7fdcff : 0xffb000);
     this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : 0xff9a00);
+    this.classicParts.visible = !volt && !brute;
     this.voltParts.visible = volt;
+    this.bruteParts.visible = brute;
+    this.bruteBlade.visible = brute;
+    for (const w of this.wheels) w.visible = !brute;
+    // Dash flame: out of the stack (Classic), a rear thruster (VOLT-9) or the right-hand twin stack (BRUTUS).
+    if (volt) {
+      this.exhaustTip.set(0, 1.05, -2.05);
+      this.flame.rotation.set(-Math.PI / 2, 0, 0);
+    } else if (brute) {
+      this.exhaustTip.set(0.55, 3.1, -1.45);
+      this.flame.rotation.set(0, 0, 0);
+    } else {
+      this.exhaustTip.set(-0.72, 2.55, 0.05);
+      this.flame.rotation.set(0, 0, 0);
+    }
+    this.flame.position.copy(this.exhaustTip);
+    this.engineTip.set(0, brute ? 2.0 : 1.6, brute ? -1.0 : 1.7);
+    this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : 2.8, volt ? 0 : brute ? 1.4 : 0.8);
+    this.applyBladeScale();
+  }
+
+  /** BRUTUS gets a taller, deeper blade (re-applied after a reset, since the wreck pops restore part scales). */
+  private applyBladeScale(): void {
+    const brute = this.kind === 'brute';
+    const volt = this.kind === 'volt';
+    this.bladeGroup.scale.set(1, brute ? BRUTE_BLADE_Y : volt ? 0.82 : 1, brute ? BRUTE_BLADE_Z : volt ? 0.85 : 1);
   }
 
   applyStats(stats: PlayerStats): void {
@@ -878,7 +1048,7 @@ export class Plow implements PlowAPI {
   private slamImpact(): void {
     const ctx = this.ctx;
     this.slamHit = true;
-    this.slamCd = SLAM_COOLDOWN * this.ctx.stats.cooldownMult;
+    this.slamCd = cooldown(SLAM_COOLDOWN, this.ctx.stats.cooldownMult);
     const r = this.heldBallRadius;
     if (r < 0.2) {
       // Ball got stolen / chipped away mid-windup.
@@ -1401,7 +1571,9 @@ export class Plow implements PlowAPI {
     g.group.visible = true;
     g.group.position.copy(this.position);
     g.group.rotation.set(0, this.heading + this.spinAngle, 0);
-    g.mat.color.setHSL(0.07 + Math.random() * 0.03, 1, 0.55);
+    if (this.kind === 'volt') g.mat.color.setHSL(0.54 + Math.random() * 0.03, 1, 0.6);
+    else if (this.kind === 'brute') g.mat.color.setHSL(0.13 + Math.random() * 0.02, 1, 0.5);
+    else g.mat.color.setHSL(0.07 + Math.random() * 0.03, 1, 0.55);
   }
 
   private updateGhosts(dt: number): void {
@@ -1426,6 +1598,7 @@ export class Plow implements PlowAPI {
     const absS = Math.abs(this.speed);
     this.object.rotation.set(0, this.heading, 0);
     this.spin.rotation.y = this.spinAngle;
+    this.spin.position.y = this.hop;
 
     // Ride height: sink a little into the snow, bob more in deep snow.
     const depth = snow.getDepth(this.position.x, this.position.z);
@@ -1460,6 +1633,16 @@ export class Plow implements PlowAPI {
     for (const w of this.wheels) w.rotation.x += spin;
     const st = this.ctx.input.steer * 0.35;
     this.wheels[0].rotation.y = this.wheels[1].rotation.y = st;
+    // BRUTUS: cleats crawl round the track loops (bottom run stays put on the ground, top run moves forward).
+    if (this.kind === 'brute') {
+      this.trackPhase += (this.speed + this.lungeVel) * dt;
+      const span = this.cleatSpan;
+      const step = span / 9;
+      for (const c of this.cleats) {
+        const u = (((c.i * step + (c.top ? 1 : -1) * this.trackPhase) % span) + span) % span;
+        c.mesh.position.z = 0.1 - span / 2 + u;
+      }
+    }
 
     // Beacon.
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 9);
@@ -1468,6 +1651,10 @@ export class Plow implements PlowAPI {
     this.beaconMat.emissiveIntensity = 0.6 + pf * 2.2;
     this.beaconLight.intensity = 2 + pf * 8;
     this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : 0xffa020);
+    if (this.kind === 'volt') {
+      this.beaconLight.intensity = 3 + pf * 3;
+      this.underglowMat.opacity = 0.28 + 0.12 * Math.sin(this.time * 6) + (this.dashT > 0 ? 0.3 : 0);
+    }
     // VOLT-9: pulsing coils + arcs jumping between them.
     if (this.kind === 'volt') {
       this.coilMat.emissiveIntensity = 1.2 + 0.8 * Math.sin(this.time * 14) * Math.sin(this.time * 5.3);
@@ -1493,7 +1680,7 @@ export class Plow implements PlowAPI {
     if (dashing) {
       const s = 1.6 + Math.random() * 1.2;
       this.flame.scale.set(1.6, s, 1.6);
-      this.flameMat.color.setHSL(0.06 + Math.random() * 0.05, 1, 0.55);
+      this.flameMat.color.setHSL(this.kind === 'volt' ? 0.53 + Math.random() * 0.04 : 0.06 + Math.random() * 0.05, 1, this.kind === 'volt' ? 0.65 : 0.55);
       this.ghostT -= dt;
       if (this.ghostT <= 0) {
         this.ghostT = 0.05;
@@ -1511,9 +1698,15 @@ export class Plow implements PlowAPI {
     if (this.puffT <= 0) {
       this.puffT = dashing ? 0.035 : throttle !== 0 ? 0.18 : 0.45;
       this.exhaustWorld(_c);
-      ctx.fx.burst(_c, dashing
-        ? { color: 0xff9a2a, count: 3, speed: 2, size: 0.22, gravity: -3, life: 0.35 }
-        : { color: 0x9aa0aa, count: 1, speed: 0.6, size: 0.25 + 0.1 * Math.abs(throttle), gravity: -2, life: 0.8 });
+      // VOLT-9 is electric: cyan sparks instead of diesel smoke. BRUTUS belches thick black smoke.
+      if (this.kind === 'volt') {
+        if (dashing || throttle !== 0) ctx.fx.burst(_c, { color: 0x7fdcff, count: dashing ? 3 : 1, speed: dashing ? 2.5 : 1, size: 0.1, gravity: 2, life: 0.3 });
+      } else {
+        const brute = this.kind === 'brute';
+        ctx.fx.burst(_c, dashing
+          ? { color: 0xff9a2a, count: 3, speed: 2, size: 0.22, gravity: -3, life: 0.35 }
+          : { color: brute ? 0x3a3b40 : 0x9aa0aa, count: 1, speed: 0.6, size: (brute ? 0.4 : 0.25) + 0.1 * Math.abs(throttle), gravity: -2, life: brute ? 1.1 : 0.8 });
+      }
       if (lowHp && !dashing) ctx.fx.burst(this.engineWorld(_c), { color: 0x2e2e34, count: 1, speed: 0.8, size: 0.4, gravity: -2.5, life: 1.1 });
     }
 

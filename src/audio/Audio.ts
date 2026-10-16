@@ -10,6 +10,10 @@ export class AudioSystem implements AudioAPI {
   private ac: AudioContext | null = null;
   private master: GainNode | null = null;
   private sfx: GainNode | null = null;
+  /** Player volume buses (settings menu): one-shots + engine/plow loops, and music/wind. */
+  private sfxBus: GainNode | null = null;
+  private musicBus: GainNode | null = null;
+  private vol = { master: 1, music: 1, sfx: 1 };
   private noiseBuf: AudioBuffer | null = null;
   private _muted = false;
 
@@ -39,8 +43,19 @@ export class AudioSystem implements AudioAPI {
   set muted(v: boolean) {
     this._muted = v;
     if (this.ac && this.master) {
-      this.master.gain.setTargetAtTime(v ? 0 : MASTER_VOL, this.ac.currentTime, 0.05);
+      this.master.gain.setTargetAtTime(v ? 0 : MASTER_VOL * this.vol.master, this.ac.currentTime, 0.05);
     }
+  }
+
+  /** Player volume sliders, each 0..1. Safe to call before unlock(). */
+  setVolumes(master: number, music: number, sfx: number): void {
+    this.vol = { master, music, sfx };
+    const ac = this.ac;
+    if (!ac || !this.master || !this.sfxBus || !this.musicBus) return;
+    const t = ac.currentTime;
+    this.master.gain.setTargetAtTime(this._muted ? 0 : MASTER_VOL * master, t, 0.05);
+    this.musicBus.gain.setTargetAtTime(music, t, 0.05);
+    this.sfxBus.gain.setTargetAtTime(sfx, t, 0.05);
   }
 
   unlock(): void {
@@ -68,11 +83,17 @@ export class AudioSystem implements AudioAPI {
     comp.release.value = 0.2;
     comp.connect(ac.destination);
     this.master = ac.createGain();
-    this.master.gain.value = this._muted ? 0 : MASTER_VOL;
+    this.master.gain.value = this._muted ? 0 : MASTER_VOL * this.vol.master;
     this.master.connect(comp);
+    this.sfxBus = ac.createGain();
+    this.sfxBus.gain.value = this.vol.sfx;
+    this.sfxBus.connect(this.master);
+    this.musicBus = ac.createGain();
+    this.musicBus.gain.value = this.vol.music;
+    this.musicBus.connect(this.master);
     this.sfx = ac.createGain();
     this.sfx.gain.value = 0.9;
-    this.sfx.connect(this.master);
+    this.sfx.connect(this.sfxBus);
 
     // white noise buffer 2s
     const len = ac.sampleRate * 2;
@@ -99,7 +120,7 @@ export class AudioSystem implements AudioAPI {
     o2g.gain.value = 0.5;
     this.engO1.connect(this.engFilter);
     this.engO2.connect(o2g).connect(this.engFilter);
-    this.engFilter.connect(this.engGain).connect(this.master);
+    this.engFilter.connect(this.engGain).connect(this.sfxBus);
     this.engO1.start();
     this.engO2.start();
 
@@ -120,13 +141,13 @@ export class AudioSystem implements AudioAPI {
     lfoG.gain.value = 500;
     lfo.connect(lfoG).connect(this.plowFilter.frequency);
     lfo.start();
-    pn.connect(this.plowFilter).connect(this.plowGain).connect(this.master);
+    pn.connect(this.plowFilter).connect(this.plowGain).connect(this.sfxBus);
     pn.start();
 
     // music bus
     this.musicGain = ac.createGain();
     this.musicGain.gain.value = 0;
-    this.musicGain.connect(this.master);
+    this.musicGain.connect(this.musicBus);
     const wind = ac.createBufferSource();
     wind.buffer = buf;
     wind.loop = true;
@@ -721,6 +742,14 @@ export class AudioSystem implements AudioAPI {
         this.tone('sine', 70 * p, 30 * p, t + 0.04, 1.4, 0.9, o, 0.01);
         this.noise(t + 0.05, 1.6, 0.6, o, 'lowpass', 500 * p, 60, 0.9, 0.04, 0.5);
         return 1.6;
+      case 'thud':
+        // BRUTUS Ground Pound: crunchy impact, a sub-bass drop and a snowy rumble rolling outward
+        this.noise(t, 0.08, 0.8, o, 'bandpass', 900 * p, 300, 1.2, 0.001);
+        this.tone('sine', 120 * p, 32 * p, t, 0.7, 1, o, 0.002);
+        this.tone('triangle', 60 * p, 38 * p, t, 0.5, 0.35, o, 0.003);
+        this.noise(t + 0.02, 0.9, 0.55, o, 'lowpass', 900 * p, 80, 0.8, 0.005, 0.5);
+        this.noise(t + 0.06, 0.4, 0.18, o, 'highpass', 2500, 1200, 0.7, 0.01);
+        return 0.95;
       case 'countdown':
         this.tone('square', 880 * p, 880 * p, t, 0.14, 0.12, o, 0.002);
         this.tone('sine', 880 * p, 880 * p, t, 0.2, 0.2, o, 0.002);

@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
 import { Progression } from './Progression';
+import { applyAllSettings, settingsUi } from './settings';
 import { BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, GameContext, HudState, RunSummary, UIHandlers } from './types';
 import { BRAWL_ZONE, ZONES } from '../config/zones';
 import { ENEMIES } from '../config/enemies';
+import { PLOWS } from '../config/plows';
 import { SnowField } from '../world/SnowField';
 import { Environment } from '../world/Environment';
 import { Plow } from '../entities/Plow';
@@ -13,16 +15,20 @@ import { Combat } from '../entities/Combat';
 import { EnemyManager } from '../entities/Enemies';
 import { WaveDirector } from '../entities/Waves';
 import { BrawlManager } from '../brawl/BrawlManager';
+import { SurvivalManager, survivalUnlocked } from '../survival/SurvivalManager';
 import { Pickups } from '../fx/Pickups';
 import { Fx } from '../fx/Fx';
 import { CameraRig } from '../fx/CameraRig';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
+import { Tutorial } from '../ui/Tutorial';
 
 type State =
   | 'menu' | 'countdown' | 'playing' | 'shop' | 'paused' | 'wrecked' | 'gameover' | 'victory'
-  | 'brawlCountdown' | 'brawl' | 'brawlOver';
-type Mode = 'campaign' | 'brawl';
+  | 'brawlCountdown' | 'brawl' | 'brawlOver' | 'tutorial';
+type Mode = 'campaign' | 'brawl' | 'survival';
+/** States where a DOM menu has focus (gamepad drives it via synthetic key events). */
+const MENU_STATES = new Set<State>(['menu', 'shop', 'paused', 'gameover', 'victory', 'brawlOver']);
 
 const COUNTDOWN_SECONDS = 3;
 const BOSS_COUNTDOWN_SECONDS = 4;
@@ -48,6 +54,8 @@ export class Game {
   private mode: Mode = 'campaign';
   private campaignEnemies: EnemyManager;
   private brawlDifficulty: BrawlDifficulty = 'pro';
+  private survival: SurvivalManager;
+  private tutorial: Tutorial;
 
   constructor(container: HTMLElement, uiRoot: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -81,6 +89,7 @@ export class Game {
 
     ctx.audio = new AudioSystem();
     ctx.audio.muted = progression.data.muted;
+    applyAllSettings(ctx);
     ctx.cameraRig = new CameraRig(ctx);
     ctx.fx = new Fx(ctx);
     ctx.world = new Environment(ctx);
@@ -91,6 +100,7 @@ export class Game {
     ctx.enemies = this.campaignEnemies;
     ctx.brawl = new BrawlManager(ctx);
     ctx.waves = new WaveDirector(ctx);
+    this.survival = new SurvivalManager(ctx);
     ctx.pickups = new Pickups(ctx);
 
     const handlers: UIHandlers = {
@@ -98,7 +108,9 @@ export class Game {
       onStartBrawl: (d) => this.startBrawl(d),
       onResume: () => this.resume(),
       onQuitToMenu: () => this.toMenu(),
-      onRetry: () => this.startRun(this.zoneIndex),
+      onStartSurvival: () => this.startSurvival(),
+      onStartTutorial: () => this.startTutorial(),
+      onRetry: () => (this.mode === 'survival' ? this.startSurvival() : this.startRun(this.zoneIndex)),
       onResetSave: () => {
         progression.resetSave();
         this.refreshStats();
@@ -106,6 +118,7 @@ export class Game {
       onToggleMute: () => this.toggleMute(),
     };
     ctx.ui = new UI(ctx, uiRoot, handlers);
+    this.tutorial = new Tutorial(ctx, uiRoot, (next) => (next === 'arena' ? this.startRun(0) : this.toMenu()));
 
     this.hud = this.blankHud();
     this.wireEvents();
@@ -121,7 +134,8 @@ export class Game {
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' || e.code === 'KeyP') this.togglePause();
+      if (e.code === 'Escape' && this.state === 'tutorial') return this.tutorial.skip();
+      if (ctx.input.matches('pause', e.code)) this.togglePause();
       if (e.code === 'KeyM') this.toggleMute();
     });
 
@@ -129,6 +143,7 @@ export class Game {
     (window as unknown as { __game: Game }).__game = this;
 
     this.toMenu();
+    if (Tutorial.shouldAutoStart(progression)) this.startTutorial();
     this.timer.connect(document);
     renderer.setAnimationLoop((t) => this.frame(t));
   }
@@ -143,7 +158,7 @@ export class Game {
     this.mode = mode;
     setArenaHalfSize(mode === 'brawl' ? BRAWL_ARENA_HALF : CAMPAIGN_ARENA_HALF);
     ctx.enemies = mode === 'brawl' ? ctx.brawl : this.campaignEnemies;
-    ctx.zone = mode === 'brawl' ? BRAWL_ZONE : ZONES[0];
+    ctx.zone = mode === 'brawl' ? BRAWL_ZONE : mode === 'survival' ? this.survival.zone : ZONES[0];
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
@@ -153,6 +168,7 @@ export class Game {
     const { ctx } = this;
     this.setMode('campaign');
     this.state = 'menu';
+    this.tutorial.stop();
     this.clearArena();
     ctx.plow.reset();
     ctx.ui.setHudVisible(false);
@@ -217,6 +233,83 @@ export class Game {
     ctx.ui.toast('Everyone hunts everyone. Streaks multiply your coins!', 'info');
   }
 
+  /** Guided onboarding in arena 1 with training bots (see Tutorial). Replayable from the main menu. */
+  startTutorial(): void {
+    const { ctx } = this;
+    this.setMode('campaign');
+    this.zoneIndex = 0;
+    this.roundIndex = 0;
+    this.run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
+    this.combo = 0;
+    ctx.zone = ZONES[0];
+    this.refreshStats();
+    this.clearArena();
+    ctx.fx.clear();
+    ctx.world.setZone(ctx.zone);
+    ctx.snow.reset(ctx.zone);
+    ctx.plow.reset();
+    ctx.ui.hideOverlays();
+    ctx.ui.setHudVisible(true);
+    ctx.ui.toast('TRAINING YARD', 'big');
+    ctx.cameraRig.setMode('follow');
+    ctx.cameraRig.snap();
+    ctx.input.clear();
+    this.state = 'tutorial';
+    this.tutorial.start();
+  }
+
+  /** Endless Survival: campaign bots in one arena, scaling waves, a boss every 5 (see SurvivalManager). */
+  startSurvival(): void {
+    const { ctx } = this;
+    if (!survivalUnlocked(ctx.progression)) return;
+    this.setMode('survival');
+    this.roundIndex = 0;
+    this.run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
+    this.combo = 0;
+    this.survival.reset();
+    this.refreshStats();
+    this.clearArena();
+    ctx.fx.clear();
+    ctx.snow.reset(ctx.zone);
+    ctx.plow.reset();
+    ctx.ui.hideOverlays();
+    ctx.ui.setHudVisible(true);
+    ctx.ui.toast('SURVIVAL', 'big');
+    ctx.cameraRig.setMode('follow');
+    ctx.cameraRig.snap();
+    this.beginCountdown();
+  }
+
+  /** Survival wave cleared: bonus + patch-up, then a short breather into the next wave. */
+  private survivalWaveCleared(): void {
+    const { ctx } = this;
+    ctx.pickups.collectAll();
+    ctx.combat.clear();
+    if (this.survival.isBossWave) this.run.bossDefeated = true;
+    const bonus = this.survival.waveCleared();
+    this.run.coins += bonus;
+    ctx.audio.play('roundClear');
+    ctx.ui.toast(`WAVE ${this.survival.wave} CLEARED! +${bonus}`, 'good');
+    this.beginCountdown();
+  }
+
+  private survivalOver(): void {
+    const { ctx } = this;
+    const sv = this.survival;
+    this.state = 'gameover';
+    const newBest = sv.finish(this.run.kills);
+    ctx.audio.play('gameOver');
+    ctx.ui.setHudVisible(false);
+    ctx.ui.showGameOver({
+      ...this.summaryBase(sv.cleared),
+      totalRounds: sv.wave,
+      firstClear: false,
+      clearReward: 0,
+      unlockedZoneName: null,
+      survival: { wave: sv.wave, best: sv.best, newBest },
+    });
+  }
+
   private brawlOver(): void {
     const { ctx } = this;
     const result = ctx.brawl.result;
@@ -238,7 +331,14 @@ export class Game {
     const { ctx } = this;
     this.state = 'countdown';
     this.lastCountdownInt = -1;
-    if (this.isBossRound) {
+    if (this.mode === 'survival') {
+      this.countdown = this.survival.nextWave();
+      const boss = this.survival.boss;
+      if (boss) {
+        ctx.ui.bossIntro(boss.name, `Wave ${this.survival.wave} · ${ENEMIES[boss.types[0]].title}`);
+        ctx.audio.play('boss');
+      } else ctx.ui.toast(`Wave ${this.survival.wave} incoming…`, 'info');
+    } else if (this.isBossRound) {
       this.countdown = BOSS_COUNTDOWN_SECONDS;
       const first = ctx.zone.rounds[this.roundIndex].groups[0];
       const def = ENEMIES[first.type];
@@ -256,11 +356,13 @@ export class Game {
     ctx.waves.start(ctx.zone, this.roundIndex);
     ctx.events.emit('roundStarted', { round: this.roundIndex + 1, total: ctx.zone.rounds.length, boss: this.isBossRound });
     ctx.audio.play('roundStart');
-    ctx.ui.toast(this.isBossRound ? 'FIGHT!' : `ROUND ${this.roundIndex + 1}`, 'big');
+    const label = this.mode === 'survival' ? `WAVE ${this.survival.wave}` : `ROUND ${this.roundIndex + 1}`;
+    ctx.ui.toast(this.isBossRound ? 'FIGHT!' : label, 'big');
   }
 
   private roundCleared(): void {
     const { ctx } = this;
+    if (this.mode === 'survival') return this.survivalWaveCleared();
     ctx.pickups.collectAll();
     const bonus = Math.round((15 + 10 * this.roundIndex) * ctx.zone.coinMult);
     ctx.progression.addCoins(bonus);
@@ -317,6 +419,7 @@ export class Game {
 
   private gameOver(): void {
     const { ctx } = this;
+    if (this.mode === 'survival') return this.survivalOver();
     this.state = 'gameover';
     ctx.progression.recordRun(this.zoneIndex, this.roundIndex, false, this.run.kills);
     ctx.audio.play('gameOver');
@@ -339,7 +442,7 @@ export class Game {
   }
 
   private togglePause(): void {
-    if (this.state === 'playing' || this.state === 'countdown' || this.state === 'brawl' || this.state === 'brawlCountdown') {
+    if (this.state === 'playing' || this.state === 'countdown' || this.state === 'brawl' || this.state === 'brawlCountdown' || this.state === 'tutorial') {
       this.pausedFrom = this.state;
       this.state = 'paused';
       this.ctx.audio.setEngine(0, 0);
@@ -396,6 +499,11 @@ export class Game {
   private frame(t: number): void {
     this.timer.update(t);
     const dt = Math.min(this.timer.getDelta(), 0.05);
+    // Gamepad: menus get synthetic arrow/Enter/Esc keys; Start toggles pause (not under the settings overlay).
+    const input = this.ctx.input;
+    input.menuNav = MENU_STATES.has(this.state) || settingsUi.open;
+    input.poll();
+    if (input.padPause && !settingsUi.open) this.togglePause();
     this.tick(dt);
     this.renderer.render(this.ctx.scene, this.ctx.camera);
   }
@@ -407,7 +515,7 @@ export class Game {
       return;
     }
     const { ctx, state } = this;
-    const active = state === 'playing' || state === 'countdown' || state === 'wrecked';
+    const active = state === 'playing' || state === 'countdown' || state === 'wrecked' || state === 'tutorial';
 
     if (active) {
       // Slow-motion while the wreck animation plays.
@@ -425,7 +533,9 @@ export class Game {
         if (this.comboT <= 0) this.combo = 0;
       }
 
-      if (state === 'wrecked') {
+      if (state === 'tutorial') {
+        this.tutorial.update(simDt); // handles its own wrecks; no waves / round flow
+      } else if (state === 'wrecked') {
         this.wreckT -= dt;
         if (this.wreckT <= 0) this.gameOver();
       } else if (ctx.plow.dead) {
@@ -440,11 +550,11 @@ export class Game {
         this.roundCleared();
       }
 
-      if (this.state === 'playing' || this.state === 'countdown') {
+      if (this.state === 'playing' || this.state === 'countdown' || this.state === 'tutorial') {
         const speedFrac = Math.min(1, Math.abs(ctx.plow.speed) / ctx.stats.maxSpeed);
         ctx.audio.setEngine(ctx.input.throttle, speedFrac);
       }
-      this.updateHud();
+      if (this.state !== 'menu') this.updateHud();
     }
 
     ctx.fx.update(dt);
@@ -513,18 +623,25 @@ export class Game {
     hud.dashReady = ctx.plow.dashReady;
     hud.whirlReady = ctx.plow.whirlReady;
     hud.flameReady = ctx.combat.flameReady;
-    hud.fAbility = ctx.stats.plowKind === 'volt' ? 'zap' : 'fire';
+    hud.fAbility = PLOWS[ctx.stats.plowKind].fAbility;
     hud.shield = ctx.combat.shieldFrac;
+    hud.overload = ctx.combat.overloadHeat;
+    hud.overloadCost = ctx.combat.overloadCost;
     hud.snowFraction = ctx.snow.totalSnowFraction();
     hud.bosses = ctx.enemies.bosses.map((b) => ({ name: ENEMIES[b.type].name, title: ENEMIES[b.type].title, hp: b.hp, maxHp: b.maxHp }));
     hud.combo = this.combo;
     const counting = this.state === 'countdown' || this.state === 'brawlCountdown';
     hud.countdown = counting ? Math.max(0, this.countdown) : 0;
     hud.brawl = this.mode === 'brawl' ? ctx.brawl.hud() : null;
+    hud.survival = this.mode === 'survival' ? this.survival.hud() : null;
     if (hud.brawl) {
       hud.zoneName = ctx.zone.name;
       hud.bossRound = false;
       hud.enemiesRemaining = 0;
+    }
+    if (this.state === 'tutorial') {
+      hud.zoneName = 'TRAINING YARD';
+      hud.enemiesRemaining = ctx.enemies.aliveCount();
     }
     this.run.biggestBall = Math.max(this.run.biggestBall, hud.ballRadius);
     ctx.ui.updateHud(hud);
