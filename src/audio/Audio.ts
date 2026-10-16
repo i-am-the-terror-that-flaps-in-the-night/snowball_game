@@ -708,6 +708,19 @@ export class AudioSystem implements AudioAPI {
         }
         this.noise(t, 0.6, 0.18, o, 'highpass', 5000, 9000, 1, 0.05);
         return 0.65;
+      case 'zap':
+        // electric crackle: buzzy saw burst + fizzing highpass noise
+        this.tone('sawtooth', 1400 * p, 260 * p, t, 0.09, 0.16, o, 0.001);
+        this.tone('square', 2200 * p, 900 * p, t + 0.02, 0.06, 0.07, o, 0.001);
+        this.noise(t, 0.12, 0.3, o, 'highpass', 3500 * p, 6000, 0.8, 0.001, 1.6);
+        return 0.13;
+      case 'thunder':
+        // sharp crack, then a rolling low boom
+        this.noise(t, 0.12, 0.9, o, 'highpass', 2000 * p, 5000, 0.7, 0.001, 1.4);
+        this.tone('sawtooth', 900 * p, 120 * p, t, 0.15, 0.25, o, 0.001);
+        this.tone('sine', 70 * p, 30 * p, t + 0.04, 1.4, 0.9, o, 0.01);
+        this.noise(t + 0.05, 1.6, 0.6, o, 'lowpass', 500 * p, 60, 0.9, 0.04, 0.5);
+        return 1.6;
       case 'countdown':
         this.tone('square', 880 * p, 880 * p, t, 0.14, 0.12, o, 0.002);
         this.tone('sine', 880 * p, 880 * p, t, 0.2, 0.2, o, 0.002);

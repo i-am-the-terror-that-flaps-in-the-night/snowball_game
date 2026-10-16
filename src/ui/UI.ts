@@ -3,6 +3,7 @@ import './brawl.css';
 import type { BrawlDifficulty, BrawlEntry, BrawlResult, GameContext, HudBoss, HudState, RunSummary, SoundName, UIAPI, UIHandlers } from '../core/types';
 import { MIN_BALL_RADIUS } from '../core/types';
 import { UPGRADES, type UpgradeCategory, type UpgradeDef } from '../config/upgrades';
+import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES, type ZoneDef } from '../config/zones';
 import { ENEMIES, type EnemyDef, type EnemyType } from '../config/enemies';
 import {
@@ -37,6 +38,7 @@ const CATEGORIES: { id: UpgradeCategory; label: string; icon: string }[] = [
   { id: 'ball', label: 'Snowball', icon: '⚪' },
   { id: 'defense', label: 'Defense', icon: '🛡️' },
   { id: 'pilot', label: "Pilot Perks — bots can't copy these", icon: '🧑‍✈️' },
+  { id: 'volt', label: 'VOLT-9 Upgrades — only while driving VOLT-9', icon: '⚡' },
   { id: 'special', label: 'Specials', icon: '✨' },
 ];
 
@@ -56,7 +58,7 @@ const CONTROLS: [string[], string][] = [
   [['SPACE'], 'SLAM snowball'],
   [['SHIFT'], 'DASH STRIKE (long burst)'],
   [['E'], 'Whirlwind tornado'],
-  [['F'], 'Inferno fire blast (Pilot perk)'],
+  [['F'], 'Inferno fire (Classic) / Thunderclap (VOLT-9)'],
   [['ESC', 'P'], 'Pause'],
   [['M'], 'Mute sound'],
 ];
@@ -167,6 +169,9 @@ export class UI implements UIAPI {
   private shopSub!: HTMLElement;
   private shopCoins!: HTMLElement;
   private shopPreview!: HTMLElement;
+  /** Starter-plow picker (Garage only). */
+  private plowPick!: HTMLElement;
+  private plowCards = new Map<PlowKind, HTMLElement>();
   private shopBack!: HTMLButtonElement;
   private shopStart!: HTMLButtonElement;
   private shopHint!: HTMLElement;
@@ -193,6 +198,7 @@ export class UI implements UIAPI {
     coins: HTMLElement; coinBox: HTMLElement;
     combo: HTMLElement; comboN: HTMLElement;
     hpBox: HTMLElement; hpNum: HTMLElement; hpFill: HTMLElement; hpChip: HTMLElement;
+    batt: HTMLElement; battFill: HTMLElement;
     gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
     slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
     dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement;
@@ -203,7 +209,7 @@ export class UI implements UIAPI {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1,
+    dash: -1, whirl: -2, flame: -2, fKind: '', batt: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1,
   };
   private hintTimer = 0;
 
@@ -551,6 +557,25 @@ export class UI implements UIAPI {
     this.shopSub = el('div', 'ss-shop-sub', '', titles);
     this.shopCoins = this.coinPill(head, 'ss-shop-coins');
     this.shopPreview = el('div', 'ss-round-preview', undefined, panel);
+    this.plowPick = el('div', 'ss-plow-pick', undefined, panel);
+    for (const def of Object.values(PLOWS)) {
+      const card = el('button', `ss-plow-card ss-plow-${def.id}`, undefined, this.plowPick) as HTMLButtonElement;
+      card.type = 'button';
+      el('div', 'ss-plow-icon', def.icon, card);
+      const info = el('div', 'ss-plow-info', undefined, card);
+      el('div', 'ss-plow-name', def.name, info);
+      el('div', 'ss-plow-tag', def.tagline, info);
+      const ul = el('ul', 'ss-plow-traits', undefined, info);
+      for (const t of def.traits) el('li', '', t, ul);
+      el('div', 'ss-plow-sel', '✓ DRIVING', card);
+      card.addEventListener('click', () => {
+        this.ctx.progression.setPlow(def.id);
+        this.ctx.stats = this.ctx.progression.computeStats();
+        this.ctx.plow.applyStats(this.ctx.stats);
+        this.sfx(def.id === 'volt' ? 'buy' : 'click');
+      });
+      this.plowCards.set(def.id, card);
+    }
 
     const body = el('div', 'ss-shop-body', undefined, panel);
     for (const cat of CATEGORIES) {
@@ -612,6 +637,8 @@ export class UI implements UIAPI {
 
   private refreshCards(): void {
     const p = this.ctx.progression;
+    const plow = p.plow;
+    for (const [id, card] of this.plowCards) card.classList.toggle('on', id === plow);
     for (const c of this.cards) {
       const lvl = p.level(c.def.id);
       const maxed = p.isMaxed(c.def.id);
@@ -624,6 +651,8 @@ export class UI implements UIAPI {
       c.next.textContent = maxed ? '' : c.def.valueLabel(lvl + 1);
       c.arrow.style.display = maxed ? 'none' : '';
       c.root.classList.toggle('maxed', maxed);
+      // Plow-exclusive upgrades are dimmed (still buyable) while driving the other plow.
+      c.root.classList.toggle('inactive', !!c.def.plowOnly && c.def.plowOnly !== plow);
       c.root.classList.toggle('poor', !maxed && !afford);
       c.root.classList.toggle('afford', afford);
       c.buy.innerHTML = maxed ? (c.def.maxLevel === 1 ? '✓ OWNED' : '★ MAXED') : `<span class="ss-coin sm"></span>${fmt(p.cost(c.def.id))}`;
@@ -637,6 +666,7 @@ export class UI implements UIAPI {
     this.shopTitle.textContent = 'GARAGE';
     this.shopSub.textContent = 'Spend your coins on permanent upgrades. They never max out — keep stacking past the pips.';
     this.shopPreview.classList.add('hidden');
+    this.plowPick.classList.remove('hidden');
     this.shopBack.classList.remove('hidden');
     this.shopStart.classList.add('hidden');
     this.shopHint.classList.add('hidden');
@@ -1032,6 +1062,10 @@ export class UI implements UIAPI {
     H.hpChip = el('div', 'ss-hp-chip', undefined, hb);
     H.hpFill = el('div', 'ss-hp-fill', undefined, hb);
     el('div', 'ss-segs', undefined, hb);
+    H.batt = el('div', 'ss-batt hidden', undefined, bl);
+    el('span', 'ss-batt-label', '🔋', H.batt);
+    const bb = el('div', 'ss-batt-bar', undefined, H.batt);
+    H.battFill = el('div', 'ss-batt-fill', undefined, bb);
 
     // bottom-center: abilities + snowball gauge
     const bc = el('div', 'ss-hud-bc', undefined, hud);
@@ -1078,7 +1112,7 @@ export class UI implements UIAPI {
     H.snowTxt = el('span', 'ss-snow-txt', '', br);
 
     H.count = el('div', 'ss-count hidden', '', hud);
-    H.hint = el('div', 'ss-hint hidden', 'W/S drive  ·  A/D steer  ·  plow snow to grow a ball  ·  SPACE slam  ·  SHIFT dash strike  ·  E whirlwind  ·  F fire (perk)  ·  ESC pause', hud);
+    H.hint = el('div', 'ss-hint hidden', 'W/S drive  ·  A/D steer  ·  plow snow to grow a ball  ·  SPACE slam  ·  SHIFT dash strike  ·  E whirlwind  ·  F fire / thunderclap  ·  ESC pause', hud);
     this.bh = new BrawlHudView(this.ctx, hud, bc);
   }
 
@@ -1291,6 +1325,7 @@ export class UI implements UIAPI {
     const cleared = Math.max(1, nextRound - 1);
     this.shopSub.textContent = `${this.ctx.zone?.name ?? ''}: round ${cleared} cleared! Gear up before the next fight.`;
     this.renderRoundPreview(nextRound, totalRounds);
+    this.plowPick.classList.add('hidden');
     this.shopBack.classList.add('hidden');
     this.shopStart.classList.remove('hidden');
     this.shopHint.classList.remove('hidden');
@@ -1482,6 +1517,22 @@ export class UI implements UIAPI {
     if (w !== L.whirl) {
       this.setAbility(H.whirl, w, L.whirl);
       L.whirl = w;
+    }
+    // F icon follows the plow: Inferno fire (Classic) or Thunderclap (VOLT-9).
+    if (s.fAbility !== L.fKind) {
+      L.fKind = s.fAbility;
+      const zap = s.fAbility === 'zap';
+      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : '🔥';
+      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : 'FIRE';
+      H.flame.classList.toggle('ss-ab-zap', zap);
+    }
+    // Battery Shield (VOLT-9).
+    const bt = s.shield < 0 ? -1 : Math.round(clamp01(s.shield) * 100) / 100;
+    if (bt !== L.batt) {
+      H.batt.classList.toggle('hidden', bt < 0);
+      if (bt >= 0) H.battFill.style.transform = `scaleX(${bt})`;
+      H.batt.classList.toggle('empty', bt === 0);
+      L.batt = bt;
     }
     // Inferno (pilot perk) only shows once owned.
     const f = s.flameReady < 0 ? -1 : Math.round(clamp01(s.flameReady) * 50) / 50;

@@ -22,9 +22,14 @@ export type UpgradeId =
   | 'adrenaline'
   | 'inferno'
   | 'vitality'
-  | 'overclock';
+  | 'overclock'
+  // VOLT-9 plow line (only active while driving VOLT-9; player-only).
+  | 'voltChain'
+  | 'voltField'
+  | 'voltClap'
+  | 'voltCell';
 
-export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'pilot' | 'special';
+export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'pilot' | 'volt' | 'special';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -44,6 +49,8 @@ export interface UpgradeDef {
   valueLabel: (level: number) => string;
   /** Player-only: Brawl rivals never copy this upgrade into their rolled garages. */
   playerOnly?: boolean;
+  /** Only takes effect while driving this starter plow (see config/plows.ts). */
+  plowOnly?: 'classic' | 'volt';
 }
 
 /** Cost multiplier per level beyond an upgrade's pips. */
@@ -96,6 +103,20 @@ export const FX = {
   bonusHp: (L: number) => 40 * grow(L, 5),
   /** Overclock: multiplier on every ability cooldown (slam, dash, whirl, fire). 10 levels: 1 -> 0. */
   cooldownMult: (L: number) => Math.max(0, 1 - L / 10),
+  // ---- VOLT-9 line (level 0 = not owned)
+  /** Chain Lightning: extra bots each of your hits arcs to, and the share of the hit they take. */
+  chainCount: (L: number) => (L <= 0 ? 0 : Math.min(6, 1 + Math.floor(soft(L, 5, 4) / 2))),
+  chainFrac: (L: number) => (L <= 0 ? 0 : 0.3 + 0.05 * soft(L, 5)),
+  /** Tesla Field: passive shock aura radius and damage per second. */
+  fieldRadius: (L: number) => (L <= 0 ? 0 : 4.5 + 0.5 * soft(L, 5)),
+  fieldDps: (L: number) => (L <= 0 ? 0 : 10 + 6 * grow(L - 1, 4)),
+  /** Thunderclap (F on VOLT-9): shock blast radius, damage, shock (slow) seconds, recharge. */
+  clapRadius: (L: number) => 7 + 0.6 * soft(L, 5),
+  clapDamage: (L: number) => (L <= 0 ? 0 : 45 + 22 * grow(L - 1, 4)),
+  clapStun: (L: number) => 1.5 + 0.2 * soft(L, 5),
+  clapCooldown: (L: number) => (L <= 0 ? Infinity : 4 + 4 * Math.exp(-(L - 1) / 4)),
+  /** Battery Shield: absorbs this much damage, recharging after 3s out of combat. */
+  shieldMax: (L: number) => (L <= 0 ? 0 : 35 + 25 * grow(L - 1, 4)),
 };
 
 const owned = (l: number) => (l ? 'Installed' : 'Locked');
@@ -120,9 +141,13 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'secondWind', name: 'Second Wind', icon: '💨', category: 'pilot', playerOnly: true, description: 'A lethal hit leaves you at 1 HP with 1.5s of invulnerability instead. Recharges.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => (l ? `every ${Math.round(FX.secondWindCd(l))}s` : 'Locked') },
   { id: 'wreckingBall', name: 'Wrecking Ball', icon: '🏗️', category: 'pilot', playerOnly: true, description: 'Your hits punch through the Brawl hit cap (bots stay capped at 60%).', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round((0.6 + FX.hitCapBonus(l)) * 100)}% max hit` },
   { id: 'adrenaline', name: 'Adrenaline', icon: '⚡', category: 'pilot', playerOnly: true, description: 'Wrecking a bot instantly refunds part of your dash and whirl recharge.', pips: 4, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.killRecharge(l) * 100)}% refund on kill` },
-  { id: 'inferno', name: 'Inferno Exhaust', icon: '🔥', category: 'pilot', playerOnly: true, description: 'Press F to roar a cone of fire from your blade: scorches everything in it, sets bots ablaze for 4s (burning bots take +20% damage from everything) and melts snow.', pips: 5, maxLevel: ENDLESS, baseCost: 160, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.flameDps(l))} burn/s, ${f1(FX.flameRange(l))} m, ${f1(FX.flameCooldown(l))}s` : 'Locked') },
+  { id: 'inferno', name: 'Inferno Exhaust', icon: '🔥', category: 'pilot', playerOnly: true, plowOnly: 'classic', description: 'Classic Plow only. Press F to roar a cone of fire from your blade: scorches everything in it, sets bots ablaze for 4s (burning bots take +20% damage from everything) and melts snow.', pips: 5, maxLevel: ENDLESS, baseCost: 160, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.flameDps(l))} burn/s, ${f1(FX.flameRange(l))} m, ${f1(FX.flameCooldown(l))}s` : 'Locked') },
   { id: 'vitality', name: 'Vitality Core', icon: '❤️', category: 'pilot', playerOnly: true, description: 'Bonus hit points on top of Armor Plating.', pips: 5, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.75, valueLabel: (l) => `+${Math.round(FX.bonusHp(l))} HP` },
   { id: 'overclock', name: 'Overclock', icon: '⏱️', category: 'pilot', playerOnly: true, description: 'Cuts EVERY ability cooldown (slam, dash, whirl, fire) by 10% per level. Level 10: no cooldowns at all.', pips: 10, maxLevel: 10, baseCost: 150, costGrowth: 1.6, valueLabel: (l) => (l >= 10 ? 'NO COOLDOWNS' : `-${l * 10}% cooldowns`) },
+  { id: 'voltChain', name: 'Chain Lightning', icon: '⚡', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'Your slams, rams, dashes, whirls and claps arc lightning to nearby bots.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `${FX.chainCount(l)} arcs × ${Math.round(FX.chainFrac(l) * 100)}%` : 'Locked') },
+  { id: 'voltField', name: 'Tesla Field', icon: '🌩️', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'A crackling shock aura that constantly zaps every bot near you.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.fieldDps(l))} dps, ${f1(FX.fieldRadius(l))} m` : 'Locked') },
+  { id: 'voltClap', name: 'Thunderclap', icon: '🌀', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'Press F: a lightning blast around you that shocks bots (big damage + slowed) and knocks them back.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.clapDamage(l))} dmg, ${f1(FX.clapRadius(l))} m, ${f1(FX.clapCooldown(l))}s` : 'Locked') },
+  { id: 'voltCell', name: 'Battery Shield', icon: '🔋', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'An energy shield soaks up damage before your HP, recharging after 3s without taking hits.', pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.75, valueLabel: (l) => (l ? `${Math.round(FX.shieldMax(l))} shield` : 'Locked') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },

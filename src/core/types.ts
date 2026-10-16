@@ -111,6 +111,21 @@ export interface PlayerStats {
   flameRange: number;
   flameDps: number;
   flameCooldown: number;
+  /** Which starter plow is being driven (config/plows.ts). */
+  plowKind: 'classic' | 'volt';
+  /** VOLT-9 line (all 0 unless driving VOLT-9 with the upgrade): chain lightning arcs + share of the hit. */
+  chainCount: number;
+  chainFrac: number;
+  /** Tesla Field passive aura. */
+  fieldRadius: number;
+  fieldDps: number;
+  /** Thunderclap (F on VOLT-9). */
+  clapRadius: number;
+  clapDamage: number;
+  clapStun: number;
+  clapCooldown: number;
+  /** Battery Shield capacity. */
+  shieldMax: number;
   /** Overclock (pilot perk): multiplier on all ability cooldowns, 1 -> 0. Already folded into
    *  dashCooldown / whirlCooldown / flameCooldown; Plow applies it to the slam cooldown. */
   cooldownMult: number;
@@ -214,8 +229,10 @@ export interface CombatAPI {
    *  {source: 'ram'}). Returns the raw damage. Contact handlers must NOT kill the plow's speed while it is
    *  dashing (the dash plows through). */
   playerRam(enemy: EnemyHandle, closingSpeed: number): number;
-  /** Inferno (F) recharge 0..1, or -1 when the player doesn't own it. */
+  /** F-ability recharge 0..1 (Inferno on Classic, Thunderclap on VOLT-9), or -1 when not owned. */
   readonly flameReady: number;
+  /** Battery Shield fraction 0..1, or -1 when not owned. */
+  readonly shieldFrac: number;
   clear(): void;
   update(dt: number): void;
 }
@@ -315,7 +332,9 @@ export type SoundName =
   | 'charge' | 'stun' | 'shockwave' | 'wallHit' | 'steal' | 'bossDefeated' | 'gameOver' | 'victory'
   | 'freeze' | 'countdown'
   // Brawl mode
-  | 'streak' | 'shutdown' | 'respawn' | 'heal' | 'dashStrike' | 'whirlTick';
+  | 'streak' | 'shutdown' | 'respawn' | 'heal' | 'dashStrike' | 'whirlTick'
+  // VOLT-9
+  | 'zap' | 'thunder';
 
 export interface AudioAPI {
   /** Resume/create the AudioContext; call from a user gesture. Safe to call repeatedly. */
@@ -354,8 +373,12 @@ export interface HudState {
   dashReady: number;
   /** 0..1, or -1 when Whirlwind is not owned. */
   whirlReady: number;
-  /** 0..1 Inferno (F) recharge, or -1 when not owned. */
+  /** 0..1 F-ability recharge (Inferno or Thunderclap), or -1 when not owned. */
   flameReady: number;
+  /** What F does right now (icon). */
+  fAbility: 'fire' | 'zap';
+  /** Battery Shield 0..1, or -1 when not owned. */
+  shield: number;
   snowFraction: number;
   bosses: HudBoss[];
   /** Consecutive hits without a 2.5s gap (0/1 = no combo). */

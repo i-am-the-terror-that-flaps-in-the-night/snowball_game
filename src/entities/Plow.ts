@@ -203,6 +203,14 @@ export class Plow implements PlowAPI {
   private beaconLight: THREE.PointLight;
   private beacon: THREE.Mesh;
   private beaconSpinner = new THREE.Group();
+  // Starter-plow skin (Classic orange vs VOLT-9 electric blue).
+  private kind: 'classic' | 'volt' = 'classic';
+  private steelMat!: THREE.MeshStandardMaterial;
+  private hubMat!: THREE.MeshStandardMaterial;
+  private voltParts = new THREE.Group();
+  private coilMat = new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x2fb8ff, emissiveIntensity: 1.5, roughness: 0.3, metalness: 0.4 });
+  private coilTops: THREE.Object3D[] = [];
+  private arcT = 0;
   private headMat: THREE.MeshStandardMaterial;
   private flame: THREE.Mesh;
   private flameMat: THREE.MeshBasicMaterial;
@@ -251,10 +259,12 @@ export class Plow implements PlowAPI {
     this.bedMat = new THREE.MeshStandardMaterial({ color: this.bedBase, roughness: 0.5, metalness: 0.1, emissive: 0xff0000, emissiveIntensity: 0 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2f38, roughness: 0.7, metalness: 0.3 });
     const glassMat = new THREE.MeshStandardMaterial({ color: 0x1b2a40, roughness: 0.12, metalness: 0.6, emissive: 0x0b1830, emissiveIntensity: 0.4 });
-    const steelMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide });
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide, emissive: 0x000000 });
+    this.steelMat = steelMat;
     const chromeMat = new THREE.MeshStandardMaterial({ color: 0xc9d2dc, roughness: 0.25, metalness: 0.85 });
     const rubberMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.9, flatShading: true });
     const hubMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.4, metalness: 0.4 });
+    this.hubMat = hubMat;
     const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
     const redMat = new THREE.MeshStandardMaterial({ color: 0xe8283a, roughness: 0.4, emissive: 0x550000, emissiveIntensity: 0.4 });
     this.headMat = new THREE.MeshStandardMaterial({ color: 0xfff6d0, emissive: 0xfff1b8, emissiveIntensity: 1.6 });
@@ -309,6 +319,34 @@ export class Plow implements PlowAPI {
     flameGeo.translate(0, 0.35, 0);
     this.flame = add(flameGeo, this.flameMat, -0.72, 2.55, 0.05, this.body, false);
     this.flame.visible = false;
+
+    // VOLT-9 parts (hidden on the Classic): twin Tesla coils on the bed + glowing battery strips.
+    const coilBaseMat = new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.4, metalness: 0.7 });
+    for (const x of [-0.6, 0.6]) {
+      const coil = new THREE.Group();
+      coil.position.set(x, 1.88, -1.05);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.5, 12), coilBaseMat);
+      base.position.y = 0.25;
+      coil.add(base);
+      for (let i = 0; i < 4; i++) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17 - i * 0.02, 0.045, 6, 16), this.coilMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.58 + i * 0.16;
+        coil.add(ring);
+      }
+      const top = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), this.coilMat);
+      top.position.y = 1.3;
+      coil.add(top);
+      this.coilTops.push(top);
+      this.voltParts.add(coil);
+    }
+    for (const x of [-1.06, 1.06]) {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 1.9), this.coilMat);
+      strip.position.set(x, 1.3, -0.95);
+      this.voltParts.add(strip);
+    }
+    this.voltParts.visible = false;
+    this.body.add(this.voltParts);
 
     // Roof beacon.
     add(new THREE.BoxGeometry(0.9, 0.08, 0.3), darkMat, 0, 2.32, 0.8);
@@ -621,7 +659,25 @@ export class Plow implements PlowAPI {
     this.updateStreaks(0);
   }
 
+  /** Swap the paint job + parts for the selected starter plow. */
+  private setKind(kind: 'classic' | 'volt'): void {
+    this.kind = kind;
+    const volt = kind === 'volt';
+    this.paintBase.setHex(volt ? 0x1f5fe0 : 0xff7a1a);
+    this.bedBase.setHex(volt ? 0x18213a : 0xffb21f);
+    this.paintMat.color.copy(this.paintBase);
+    this.bedMat.color.copy(this.bedBase);
+    this.steelMat.color.setHex(volt ? 0x9fe8ff : 0xffd23a);
+    this.steelMat.emissive.setHex(volt ? 0x1a8cff : 0x000000);
+    this.steelMat.emissiveIntensity = volt ? 0.6 : 0;
+    this.hubMat.color.setHex(volt ? 0x7fdcff : 0xffd23a);
+    this.beaconMat.color.setHex(volt ? 0x7fdcff : 0xffb000);
+    this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : 0xff9a00);
+    this.voltParts.visible = volt;
+  }
+
   applyStats(stats: PlayerStats): void {
+    if (stats.plowKind !== this.kind) this.setKind(stats.plowKind);
     const ratio = this.maxHp > 0 ? this.hp / this.maxHp : 1;
     this.maxHp = stats.maxHp;
     this.hp = Math.max(0, Math.min(this.maxHp, ratio * this.maxHp));
@@ -1411,7 +1467,18 @@ export class Plow implements PlowAPI {
     const pf = lowHp ? 0.5 + 0.5 * Math.sin(this.time * 22) : pulse;
     this.beaconMat.emissiveIntensity = 0.6 + pf * 2.2;
     this.beaconLight.intensity = 2 + pf * 8;
-    this.beaconLight.color.setHex(lowHp ? 0xff3020 : 0xffa020);
+    this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : 0xffa020);
+    // VOLT-9: pulsing coils + arcs jumping between them.
+    if (this.kind === 'volt') {
+      this.coilMat.emissiveIntensity = 1.2 + 0.8 * Math.sin(this.time * 14) * Math.sin(this.time * 5.3);
+      this.arcT -= dt;
+      if (this.arcT <= 0 && this.coilTops.length === 2) {
+        this.arcT = 0.15 + Math.random() * 0.35;
+        const a = this.coilTops[0].getWorldPosition(_a);
+        const b = this.coilTops[1].getWorldPosition(_b);
+        (this.ctx.combat as Combat | undefined)?.lightning.bolt(a, b, { life: 0.12, width: 0.1, jag: 0.25 });
+      }
+    }
     this.beaconSpinner.rotation.y += dt * (lowHp ? 16 : 9);
 
     // Damage flash.
