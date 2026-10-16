@@ -948,7 +948,7 @@
   margin: 6px 0 4px;
   animation: ss-bi-name 2.6s cubic-bezier(0.2, 1, 0.3, 1) both;
 }
-.ss-bi-title { font-family: var(--display); font-weight: 900; font-size: clamp(16px, 1.8vw, 24px); font-style: italic; letter-spacing: 0.12em; color: #ffd0d6; text-shadow: 0 2px 0 #4a0010; animation: ss-bi-title 2.6s ease both; }
+.ss-bi-title { white-space: pre-line; line-height: 1.35; font-family: var(--display); font-weight: 900; font-size: clamp(16px, 1.8vw, 24px); font-style: italic; letter-spacing: 0.12em; color: #ffd0d6; text-shadow: 0 2px 0 #4a0010; animation: ss-bi-title 2.6s ease both; }
 
 /* ------------------------------------------------------------ toasts */
 .ss-toasts { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 40; width: min(640px, 92vw); }
@@ -1097,3 +1097,9 @@
 .ss-heat[data-t='1'] .ss-heat-txt { color: #ffa25a; }
 .ss-heat[data-t='2'] .ss-heat-txt { color: #ff5a4a; }
 .ss-heat[data-t='2'] .ss-heat-fill { box-shadow: 0 0 8px #ff5a4a; }
+
+/* Survival between-wave shop (PIT STOP) */
+.ss-sv-shoprow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ss-sv-repair { font-size: 16px; padding: 8px 16px; }
+.ss-sv-repair.poor { opacity: 0.6; }
+.ss-sv-repair:disabled { opacity: 0.45; cursor: default; }

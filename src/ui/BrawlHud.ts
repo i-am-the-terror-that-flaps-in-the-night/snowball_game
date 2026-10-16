@@ -6,7 +6,7 @@ import { STREAK_TIERS } from '../config/brawl';
  * minimap and respawn overlay. Owned by UI; lives inside the HUD element so it fades with it. */
 
 const METHOD_ICON: Record<GameEvents['brawlKill']['method'], string> = {
-  slam: '⚪', ram: '🚜', dash: '⚡', whirl: '🌀', wall: '💥', other: '☠',
+  slam: '⚪', ram: '🚜', dash: '💨', whirl: '🌀', wall: '💥', zap: '⚡', pound: '🦏', other: '☠',
 };
 const ROW_H = 25;
 const MAP_PX = 190;

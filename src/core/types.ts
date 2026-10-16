@@ -413,6 +413,8 @@ export interface HudState {
   brawl: BrawlHud | null;
   /** Survival mode wave line (current wave + best), or null/absent outside Survival. */
   survival?: { wave: number; best: number } | null;
+  /** Hide the round / wave counter + pips (Tutorial). */
+  hideRound?: boolean;
 }
 
 /* ------------------------------------------------------------------ Brawl (free-for-all) mode */
@@ -501,6 +503,20 @@ export interface RunSummary {
   survival?: { wave: number; best: number; newBest: boolean };
 }
 
+export interface SurvivalShopOpts {
+  /** Wave just cleared (1-based). */
+  cleared: number;
+  /** Boss lineup name if the next wave is a boss wave. */
+  nextBoss: string | null;
+  /** Coins for a Full Repair. */
+  repairCost: number;
+  /** True while the plow is below max HP (repair offered). */
+  canRepair(): boolean;
+  /** Attempt the repair; returns true if it went through. */
+  onRepair(): boolean;
+  onContinue(): void;
+}
+
 export interface UIHandlers {
   onStartZone(zoneIndex: number): void;
   onStartBrawl(difficulty: BrawlDifficulty): void;
@@ -522,6 +538,8 @@ export interface UIAPI {
   showGarage(): void;
   /** Between-round upgrade shop. `nextRound` is 1-based. Calls onContinue when the player is ready. */
   showShop(nextRound: number, totalRounds: number, onContinue: () => void): void;
+  /** Survival between-wave shop: Garage upgrades + an optional one-off Full Repair. Calls onContinue on NEXT WAVE. */
+  showSurvivalShop(opts: SurvivalShopOpts): void;
   showPause(): void;
   showGameOver(summary: RunSummary): void;
   showVictory(summary: RunSummary): void;

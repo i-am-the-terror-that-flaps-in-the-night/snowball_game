@@ -47,7 +47,9 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 - **Snowdome Brawl** — a 180 m free-for-all against 8 named rival plows that hunt everyone, including each other.
   Kill streaks multiply your coins (×1.5 → ×4), shutting down a streak pays a bounty, and placement pays a bonus.
   Rookie / Pro / Legend lobbies; elite clan-tagged bots farm streaks, and every bot rolls its own garage around
-  your upgrade levels. Some rivals roll as VOLT-9s (⚡ name badge) with a telegraphed bot Thunderclap.
+  your upgrade levels. Some rivals roll as VOLT-9s (⚡ name badge, VOLT wedge body) with a telegraphed bot
+  Thunderclap, others as BRUTUS (🦏 badge, tracked dozer) with a telegraphed hop-and-slam Ground Pound (damage ring,
+  outward knockback, short stun) — get out of the amber ring.
 - **Survival** (unlocked by beating arena 1) — endless waves in the Frozen Foundry. Bot HP, damage and coins scale
   every wave, a boss arrives every 5th wave (cycling the campaign bosses, with escorts on later loops), and you
   get a short breather plus a partial repair between waves. Your best wave is saved.
@@ -73,7 +75,7 @@ src/core      Game loop + mode switching, shared contracts (types.ts), events, i
               save/progression (export / import)
 src/config    Tuning data: upgrades (FX curves), plows, campaign bots + arenas, Brawl difficulties
 src/entities  Player plow, melee combat resolution, campaign bots/bosses + round director
-src/brawl     Brawl mode: rival AI, VOLT-9 rivals, streaks/coins, respawns, rival models, name tags
+src/brawl     Brawl mode: rival AI, VOLT-9 + BRUTUS rivals, streaks/coins, respawns, rival models, name tags
 src/survival  Survival mode: endless wave generator + scaling
 src/world     Deformable snow field, arenas / Snowdome environment
 src/fx        Particles, camera rig, coin pickups

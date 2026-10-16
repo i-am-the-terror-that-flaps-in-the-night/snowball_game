@@ -41,7 +41,7 @@ import {
 import { FX, UPGRADES, type UpgradeId } from '../config/upgrades';
 import { BLADE_W, BLADE_Z, RIVAL_KINDS, createCocoa, createRivalRig, getDarkMaterial, getDebrisGeometry, type RivalRig } from './models';
 import { NameTag, SpeechBubble } from './tags';
-import { PLOWS } from '../config/plows';
+import { PLOWS, type PlowKind } from '../config/plows';
 import { Lightning } from '../fx/Lightning';
 import {
   VOLT_CLAP_CD,
@@ -55,12 +55,30 @@ import {
   attachVoltRig,
   type VoltRig,
 } from './voltRival';
+import {
+  BRUTE_ELITE_BONUS,
+  BRUTE_RIVAL_CHANCE,
+  POUND_CD,
+  POUND_CROUCH,
+  POUND_DMG,
+  POUND_HOP,
+  POUND_HOP_H,
+  POUND_KB,
+  POUND_R,
+  POUND_RIM_FRAC,
+  POUND_STUN,
+  POUND_STUN_PLAYER,
+  POUND_WIND,
+  attachBruteRig,
+  type BruteRig,
+} from './bruteRival';
 
 /* Snowdome Brawl: the player + BRAWL_BOTS rival AI plows in a huge arena, everyone hunting everyone.
  * Rivals carry the player's kit (plow a ball, slam, ram, dash strike, whirlwind). Implements
  * EnemyManagerAPI, so every external damage() call is the PLAYER attacking. */
 
-type Method = 'slam' | 'ram' | 'dash' | 'whirl' | 'wall' | 'other';
+/** How a hit landed (kill feed icon): 'zap' = VOLT-9 lightning, 'pound' = BRUTUS Ground Pound. */
+type Method = 'slam' | 'ram' | 'dash' | 'whirl' | 'wall' | 'zap' | 'pound' | 'other';
 type Personality = (typeof BRAWL_PERSONALITIES)[number];
 type Mode = 'gather' | 'fight' | 'heal' | 'flee';
 
@@ -139,6 +157,8 @@ interface RivalStats {
   avalanche: boolean;
   /** Drives VOLT-9: plow stat multipliers applied, electric skin, bot Thunderclap. */
   volt: boolean;
+  /** Drives BRUTUS: plow stat multipliers applied, tracked-dozer body, bot Ground Pound. */
+  brute: boolean;
 }
 
 class Rival implements EnemyHandle {
@@ -197,6 +217,12 @@ class Rival implements EnemyHandle {
   clapT = -1;
   clapCd = 2 + Math.random() * 3;
   volt: VoltRig | null = null;
+  /** BRUTUS Ground Pound: telegraph/hop timer (-1 = idle) and cooldown. */
+  poundT = -1;
+  poundCd = 2 + Math.random() * 3;
+  brute: BruteRig | null = null;
+  /** Hard stun (Ground Pound): no driving, steering or attacks. */
+  stunT = 0;
 
   // AI
   mode: Mode = 'gather';
@@ -205,8 +231,8 @@ class Rival implements EnemyHandle {
   goalZ = 0;
   goalT = 0;
 
-  constructor(kindIndex: number, name: string, color: string, pers: Personality, hp: number) {
-    this.rig = createRivalRig(RIVAL_KINDS[kindIndex % RIVAL_KINDS.length], color);
+  constructor(kindIndex: number, name: string, color: string, pers: Personality, hp: number, plow: PlowKind = 'classic') {
+    this.rig = createRivalRig(RIVAL_KINDS[kindIndex % RIVAL_KINDS.length], color, plow);
     this.position = this.rig.root.position;
     this.hp = hp;
     this.maxHp = hp;
@@ -429,8 +455,16 @@ export class BrawlManager implements BrawlAPI {
     const r = enemy as Rival;
     if (!(r instanceof Rival) || !r.targetable || this._over) return false;
     const src = opts?.source ?? 'other';
-    const method: Method = src === 'ram' ? (this.ctx.plow.dashing ? 'dash' : 'ram') : src === 'slam' ? 'slam' : src === 'whirl' ? 'whirl' : 'other';
+    // F abilities come through as 'other': a stun is the Ground Pound, anything else on VOLT-9 is lightning.
+    const method: Method =
+      src === 'ram' ? (this.ctx.plow.dashing ? 'dash' : 'ram')
+      : src === 'slam' ? 'slam'
+      : src === 'whirl' ? 'whirl'
+      : opts?.stunSeconds ? 'pound'
+      : this.ctx.stats.plowKind === 'volt' ? 'zap'
+      : 'other';
     if (opts?.freezeSeconds) r.frozenT = Math.max(r.frozenT, opts.freezeSeconds);
+    if (opts?.stunSeconds) this.stunRival(r, opts.stunSeconds);
     const k = opts?.knockback;
     const fx = opts?.fromX ?? this.ctx.plow.position.x;
     const fz = opts?.fromZ ?? this.ctx.plow.position.z;
@@ -542,10 +576,20 @@ export class BrawlManager implements BrawlAPI {
     const perkP = elite ? d.perkChance.elite : d.perkChance.regular;
     const iceShield = prog.level('iceShield') > 0 && Math.random() < perkP;
     const avalanche = prog.level('avalancheCore') > 0 && Math.random() < perkP;
-    // Some rivals roll the VOLT-9 plow (more often in harder lobbies and among elites): its stat multipliers
-    // only — the Volt upgrade line is player-only; they get a fixed bot Thunderclap instead.
-    const volt = Math.random() < VOLT_RIVAL_CHANCE[d.id] + (elite ? VOLT_ELITE_BONUS : 0);
-    const pd = PLOWS[volt ? 'volt' : 'classic'];
+    // Some rivals roll the VOLT-9 or BRUTUS plow (more often in harder lobbies and among elites): their stat
+    // multipliers only — the Volt / Brute upgrade lines are player-only; they get a fixed bot Thunderclap /
+    // Ground Pound instead. One roll; if the two chances add past 90% they're scaled down to leave some Classics.
+    let pv = VOLT_RIVAL_CHANCE[d.id] + (elite ? VOLT_ELITE_BONUS : 0);
+    let pb = BRUTE_RIVAL_CHANCE[d.id] + (elite ? BRUTE_ELITE_BONUS : 0);
+    if (pv + pb > 0.9) {
+      const k = 0.9 / (pv + pb);
+      pv *= k;
+      pb *= k;
+    }
+    const roll = Math.random();
+    const volt = roll < pv;
+    const brute = !volt && roll < pv + pb;
+    const pd = PLOWS[volt ? 'volt' : brute ? 'brute' : 'classic'];
     const stats: RivalStats = {
       elite,
       maxSpeed: FX.maxSpeed(L('engine')) * (elite ? 1.02 : 1) * pd.speedMult,
@@ -570,6 +614,7 @@ export class BrawlManager implements BrawlAPI {
       shieldBlock: iceShield ? 0.75 : 0.4,
       avalanche,
       volt,
+      brute,
     };
     const hp = FX.maxHp(L('armor')) * (140 / 120) * d.hpMult * (elite ? 1.15 : 1) * pd.hpMult;
     return { stats, hp };
@@ -595,11 +640,14 @@ export class BrawlManager implements BrawlAPI {
   private makeRival(name: string, color: string, kind: number, pers: Personality, hpMult = 1, elite = false): Rival {
     const rs = this.rivalStats(elite);
     const hp = Math.round(rs.hp * hpMult);
-    const r = new Rival(kind, name, color, pers, hp);
+    const r = new Rival(kind, name, color, pers, hp, rs.stats.volt ? 'volt' : rs.stats.brute ? 'brute' : 'classic');
     r.s = rs.stats;
     if (r.s.volt) {
-      r.volt = attachVoltRig(r.rig, RIVAL_KINDS[kind % RIVAL_KINDS.length]);
+      r.volt = attachVoltRig(r.rig);
       r.tag.setBadge('⚡');
+    } else if (r.s.brute) {
+      r.brute = attachBruteRig(r.rig);
+      r.tag.setBadge('🦏');
     }
     r.f = {
       entry: { name, color, kills: 0, deaths: 0, streak: 0, bestStreak: 0, isPlayer: false, alive: true },
@@ -631,6 +679,9 @@ export class BrawlManager implements BrawlAPI {
     r.whirlT = -1;
     r.slamT = -1;
     r.clapT = -1;
+    r.poundT = -1;
+    r.stunT = 0;
+    r.rig.body.position.y = 0;
     r.frozenT = 0;
     r.protectT = BRAWL_SPAWN_PROTECT;
     r.mode = 'gather';
@@ -649,6 +700,7 @@ export class BrawlManager implements BrawlAPI {
     this.group.remove(r.bubble.sprite);
     r.rig.dispose();
     r.volt?.dispose();
+    r.brute?.dispose();
     r.tag.dispose();
     r.bubble.dispose();
   }
@@ -752,14 +804,15 @@ export class BrawlManager implements BrawlAPI {
     const pers = r.pers;
     const hp = r.hp / r.maxHp;
 
-    // Get clear of a crackling VOLT-9 about to Thunderclap.
+    // Get clear of a crackling VOLT-9 about to Thunderclap / a BRUTUS winding up a Ground Pound.
     if (r.dodgeT <= 0 && skill > 0.5 && Math.random() < skill) {
       for (const o of this.rivals) {
-        if (o === r || !o.alive || o.clapT < 0) continue;
+        if (o === r || !o.alive || (o.clapT < 0 && o.poundT < 0)) continue;
         const dx = r.position.x - o.position.x;
         const dz = r.position.z - o.position.z;
-        if (Math.hypot(dx, dz) > VOLT_CLAP_R + RIVAL_R + 1) continue;
-        r.dodgeT = VOLT_CLAP_WIND;
+        const clap = o.clapT >= 0;
+        if (Math.hypot(dx, dz) > (clap ? VOLT_CLAP_R : POUND_R) + RIVAL_R + 1) continue;
+        r.dodgeT = clap ? VOLT_CLAP_WIND : POUND_WIND;
         r.dodgeH = Math.atan2(dx, dz);
         return;
       }
@@ -873,9 +926,20 @@ export class BrawlManager implements BrawlAPI {
       r.desSpeed = r.slamT < SLAM_WIND ? 2 : this.topSpeed(r);
       return;
     }
+    if (r.stunT > 0) {
+      r.desSpeed = 0;
+      r.desH = r.heading;
+      return;
+    }
     if (r.clapT >= 0) {
       // Charging a Thunderclap: brake and crackle.
       r.desSpeed = 1.5;
+      return;
+    }
+    if (r.poundT >= 0) {
+      // Winding up a Ground Pound: plant and hop.
+      r.desSpeed = 0;
+      r.desH = r.heading;
       return;
     }
     if (r.stuckT > 0) {
@@ -958,6 +1022,11 @@ export class BrawlManager implements BrawlAPI {
         // THUNDERCLAP (VOLT-9) when anyone is well inside the blast radius.
         if (r.s.volt && r.clapCd <= 0 && r.slamT < 0 && r.whirlT < 0 && !r.dashing && this.countEnemiesNear(r, VOLT_CLAP_R * 0.75) >= 1) {
           this.startClap(r);
+          break;
+        }
+        // GROUND POUND (BRUTUS) when anyone is well inside the ring.
+        if (r.s.brute && r.poundCd <= 0 && r.slamT < 0 && r.whirlT < 0 && !r.dashing && this.countEnemiesNear(r, POUND_R * 0.7) >= 1) {
+          this.startPound(r);
           break;
         }
         // SLAM when close and lined up with a decent ball.
@@ -1127,7 +1196,84 @@ export class BrawlManager implements BrawlAPI {
         this.lightning.bolt(_v, _v2, { life: 0.3, width: 0.32 });
       }
       if (f.rival) f.rival.frozenT = Math.max(f.rival.frozenT, VOLT_CLAP_STUN);
-      this.hitFighter(f, r.f, dmg, 'other', nx * VOLT_CLAP_KB, nz * VOLT_CLAP_KB, VOLT_CLAP_KB, true, px, pz);
+      this.hitFighter(f, r.f, dmg, 'zap', nx * VOLT_CLAP_KB, nz * VOLT_CLAP_KB, VOLT_CLAP_KB, true, px, pz);
+    }
+  }
+
+  private startPound(r: Rival): void {
+    r.poundT = 0;
+    r.poundCd = POUND_CD * (0.9 + Math.random() * 0.2);
+    this.sfx('charge', r.position.x, r.position.z, 0.7, 0.6);
+  }
+
+  /** Bot Ground Pound: the BRUTUS lands its hop — a snow shockwave that damages every other fighter in the ring
+   *  (falling off to POUND_RIM_FRAC at the rim, brawl-capped), hurls them outward and briefly stuns them. The
+   *  player is hit through combat.hitPlow (shield can't block it; i-frames / spawn protection apply). */
+  private groundPound(r: Rival): void {
+    const ctx = this.ctx;
+    const px = r.position.x;
+    const pz = r.position.z;
+    const R = POUND_R;
+    const base = POUND_DMG * this.dmgMult(r);
+    if (this.near(px, pz, 90)) {
+      _v.set(px, 0.1, pz);
+      ctx.fx.ring(_v, R * 0.45, 0xffffff);
+      ctx.fx.ring(_v, R, 0xdff2ff);
+      ctx.fx.ring(_v, R * 1.1, 0xffc21a);
+      ctx.fx.burst(_v, { color: 0xffffff, count: 34, speed: 13, size: 0.24, gravity: 18, life: 0.7 });
+      ctx.fx.burst(_v, { color: 0x6b7280, count: 10, speed: 6, size: 0.18, gravity: 22, life: 0.5 });
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3;
+        const rr = R * (0.55 + Math.random() * 0.4);
+        _v.set(px + Math.sin(a) * rr, 0.3, pz + Math.cos(a) * rr);
+        ctx.fx.burst(_v, { color: 0xffffff, count: 5, speed: 6, size: 0.22, gravity: 16, life: 0.5 });
+      }
+      const k = this.hear(px, pz);
+      if (k > 0.1) ctx.fx.shake(0.2 + 0.5 * k);
+    }
+    this.sfx('thud', px, pz, 1);
+    for (const f of this.fighters) {
+      if (f.rival === r || !this.isTargetable(f)) continue;
+      const tx = this.fx(f);
+      const tz = this.fz(f);
+      const tR = f.rival ? RIVAL_R : ctx.plow.radius;
+      const d = Math.hypot(tx - px, tz - pz);
+      if (d > R + tR * 0.5) continue;
+      let nx = Math.sin(r.heading);
+      let nz = Math.cos(r.heading);
+      if (d > 1e-3) {
+        nx = (tx - px) / d;
+        nz = (tz - pz) / d;
+      }
+      const fall = 1 - (1 - POUND_RIM_FRAC) * Math.min(1, d / R);
+      const kb = POUND_KB * (0.75 + 0.25 * fall);
+      if (f.rival) {
+        this.stunRival(f.rival, POUND_STUN);
+        this.hitFighter(f, r.f, base * fall, 'pound', nx * kb, nz * kb, kb, true, px, pz);
+      } else {
+        const hp0 = ctx.plow.hp;
+        this.hitFighter(f, r.f, base * fall, 'pound', nx * kb, nz * kb, kb, true, px, pz);
+        if (ctx.plow.hp < hp0 && !ctx.plow.dead) {
+          (ctx.plow as unknown as { hitStop?: (s: number) => void }).hitStop?.(POUND_STUN_PLAYER);
+          _v.set(tx, 3.2, tz);
+          ctx.fx.floatText(_v, 'STUNNED', '#ffd23a', 0.7);
+        }
+      }
+    }
+    // Shockwave throws the snow around a bit.
+    ctx.snow.addSnow(px, pz, R * 0.4, 0.05);
+  }
+
+  /** Hard-stun a rival: it stops, can't steer or attack, and any wind-up (slam / clap / pound) is interrupted. */
+  private stunRival(r: Rival, seconds: number): void {
+    if (!r.targetable || seconds <= 0) return;
+    r.stunT = Math.max(r.stunT, seconds);
+    r.dashT = 0;
+    if (r.slamT >= 0 && r.slamT < SLAM_WIND) r.slamT = -1;
+    r.clapT = -1;
+    if (r.poundT >= 0) {
+      r.poundT = -1;
+      r.rig.body.position.y = 0;
     }
   }
 
@@ -1414,6 +1560,7 @@ export class BrawlManager implements BrawlAPI {
     r.protectT = Math.max(0, r.protectT - dt);
     if (r.s.hpRegen > 0 && r.hp < r.maxHp) r.hp = Math.min(r.maxHp, r.hp + r.s.hpRegen * dt);
     r.frozenT = Math.max(0, r.frozenT - dt);
+    r.stunT = Math.max(0, r.stunT - dt);
     r.flashT = Math.max(0, r.flashT - dt);
     r.ramCd = Math.max(0, r.ramCd - dt);
     r.slamCd = Math.max(0, r.slamCd - dt);
@@ -1451,12 +1598,23 @@ export class BrawlManager implements BrawlAPI {
         }
       } else r.clapCd = Math.max(0, r.clapCd - dt);
     }
+    // BRUTUS Ground Pound: crouch telegraph -> hop -> slam (only once the match is live).
+    if (r.s.brute) {
+      if (r.poundT >= 0) {
+        r.poundT += dt;
+        if (r.poundT >= POUND_WIND) {
+          r.poundT = -1;
+          r.rig.body.position.y = 0;
+          if (this.active && !this._over) this.groundPound(r);
+        }
+      } else r.poundCd = Math.max(0, r.poundCd - dt);
+    }
     // Stuck detection.
     r.stuckCheckT -= dt;
     if (r.stuckCheckT <= 0) {
       r.stuckCheckT = 1.2;
       const moved = Math.hypot(r.position.x - r.stuckX, r.position.z - r.stuckZ);
-      if (moved < 1.2 && r.desSpeed > 3 && r.slamT < 0 && r.whirlT < 0 && this.active) r.stuckT = 0.8;
+      if (moved < 1.2 && r.desSpeed > 3 && r.slamT < 0 && r.whirlT < 0 && r.stunT <= 0 && this.active) r.stuckT = 0.8;
       r.stuckX = r.position.x;
       r.stuckZ = r.position.z;
     }
@@ -1465,8 +1623,10 @@ export class BrawlManager implements BrawlAPI {
   private drive(r: Rival, dt: number): void {
     const ctx = this.ctx;
     const frozen = r.frozenT > 0 ? 0.5 : 1;
+    const stunned = r.stunT > 0;
+    if (stunned) r.desSpeed = 0;
     const diff = wrap(r.desH - r.heading);
-    const turnRate = r.s.turn * (r.dashing ? 0.4 : 1) * frozen * (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4));
+    const turnRate = stunned ? 0 : r.s.turn * (r.dashing ? 0.4 : 1) * frozen * (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4));
     const turn = clamp(diff, -turnRate * dt, turnRate * dt);
     r.heading = wrap(r.heading + turn);
     r.lean += (clamp(turn / Math.max(dt, 1e-4) * 0.04, -0.12, 0.12) - r.lean) * Math.min(1, dt * 6);
@@ -1475,7 +1635,7 @@ export class BrawlManager implements BrawlAPI {
     if (!r.dashing) {
       const target = clamp(r.desSpeed, -cap * 0.45, cap);
       if (r.speed > cap) r.speed = Math.max(cap, r.speed - 14 * dt);
-      else r.speed += clamp(target - r.speed, -r.s.accel * 1.4 * dt, r.s.accel * dt);
+      else r.speed += clamp(target - r.speed, -(stunned ? 30 : r.s.accel * 1.4) * dt, r.s.accel * dt);
     }
 
     const fx = Math.sin(r.heading);
@@ -1756,6 +1916,9 @@ export class BrawlManager implements BrawlAPI {
     if (r.flashT > 0) {
       paint.emissive.setRGB(1, 1, 1);
       paint.emissiveIntensity = 0.8;
+    } else if (r.stunT > 0) {
+      paint.emissive.setRGB(1, 0.85, 0.2);
+      paint.emissiveIntensity = 0.35 + 0.3 * Math.max(0, Math.sin(this.time * 18));
     } else if (r.frozenT > 0) {
       paint.emissive.setRGB(0.3, 0.6, 1);
       paint.emissiveIntensity = 0.6;
@@ -1765,6 +1928,7 @@ export class BrawlManager implements BrawlAPI {
     rig.root.visible = r.protectT <= 0 || Math.sin(this.time * 30) > -0.3;
     rig.beacon.emissiveIntensity = 1.5 + Math.sin(this.time * 8 + r.id) * 1;
     if (r.volt) this.animateVolt(r, dt);
+    if (r.brute) this.animateBrute(r, dt);
     // Tag + bubble.
     const top = rig.height + 0.9;
     r.tag.set(r.hp / r.maxHp, r.f.entry.streak, r.protectT > 0);
@@ -1784,7 +1948,7 @@ export class BrawlManager implements BrawlAPI {
       v.telegraph.scale.setScalar(VOLT_CLAP_R * (0.35 + 0.65 * k));
       v.telegraphMat.opacity = (0.35 + 0.45 * k) * (0.75 + 0.25 * Math.sin(this.time * 40));
     }
-    if (!this.near(r.position.x, r.position.z, 70) || !r.rig.root.visible) return;
+    if (!this.near(r.position.x, r.position.z, 70) || !r.rig.root.visible || v.coilTops.length < 2) return;
     v.arcT -= dt;
     v.crackleT -= dt;
     const arc = v.arcT <= 0;
@@ -1804,6 +1968,39 @@ export class BrawlManager implements BrawlAPI {
       const rad = VOLT_CLAP_R * (0.3 + 0.6 * k) * (0.5 + 0.5 * Math.random());
       _fwd.set(r.position.x + Math.sin(ang) * rad, 0.15, r.position.z + Math.cos(ang) * rad);
       this.lightning.bolt(from, _fwd, { life: 0.12, width: 0.14, jag: 0.7, color: 0x9fe8ff });
+    }
+  }
+
+  /** BRUTUS rival: crawling track cleats, and the Ground Pound telegraph — a crouch while an amber ring sweeps
+   *  out to the full radius over a faint danger disc, then the hop (ring at full size, flashing) and the slam. */
+  private animateBrute(r: Rival, dt: number): void {
+    const b = r.brute!;
+    const rig = r.rig;
+    const near = this.near(r.position.x, r.position.z, 80);
+    if (near) {
+      b.trackPhase += r.speed * dt;
+      rig.setTrackPhase(b.trackPhase);
+    }
+    const t = r.poundT;
+    const charging = t >= 0;
+    b.telegraph.visible = charging;
+    b.fill.visible = charging;
+    if (!charging) {
+      rig.body.position.y = 0;
+      return;
+    }
+    if (t < POUND_CROUCH) {
+      const k = t / POUND_CROUCH;
+      rig.body.position.y = -0.18 * Math.sin(k * Math.PI * 0.5);
+      b.telegraph.scale.setScalar(POUND_R * (0.3 + 0.7 * k));
+      b.telegraphMat.opacity = 0.4 + 0.4 * k;
+      b.fillMat.opacity = 0.08 + 0.1 * k;
+    } else {
+      const u = Math.min(1, (t - POUND_CROUCH) / POUND_HOP);
+      rig.body.position.y = POUND_HOP_H * (u < 0.55 ? Math.sin((u / 0.55) * Math.PI * 0.5) : Math.cos(((u - 0.55) / 0.45) * Math.PI * 0.5));
+      b.telegraph.scale.setScalar(POUND_R);
+      b.telegraphMat.opacity = 0.75 + 0.25 * Math.sin(this.time * 40);
+      b.fillMat.opacity = 0.2 + 0.08 * Math.sin(this.time * 40);
     }
   }
 

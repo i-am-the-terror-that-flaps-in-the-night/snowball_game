@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getSnowballGeometry, getSnowballMaterial } from '../entities/snowballMesh';
+import type { PlowKind } from '../config/plows';
+import { PLOW_WHEEL_POS, PLOW_WHEEL_R, buildBruteParts, buildVoltParts, cleatZ } from '../entities/plowModels';
 
 /* Procedural rival snowplow vehicles for Brawl mode. All face local +Z, ground at y = 0.
  * Static parts of each kind are merged per material ONCE (cached); instances share those geometries and
- * only own three materials (paint / blade / beacon) so each rival can be painted and flash. */
+ * only own three materials (paint / blade / beacon) so each rival can be painted and flash.
+ * VOLT-9 / BRUTUS rivals swap the vehicle body for the player's own starter-plow silhouette
+ * (src/entities/plowModels.ts), scaled to the rival footprint and painted in the rival's color. */
 
 export type RivalKind = 'pickup' | 'tractor' | 'monster' | 'dozer' | 'rally' | 'zamboni';
 export const RIVAL_KINDS: RivalKind[] = ['pickup', 'tractor', 'monster', 'dozer', 'rally', 'zamboni'];
@@ -272,6 +276,118 @@ function template(kind: RivalKind): KindTemplate {
   return t;
 }
 
+/* ------------------------------------------------------------------ VOLT-9 / BRUTUS plow bodies */
+
+/** Player-plow models are ~4.6 m long; rivals are ~3.4 m (blade front at BLADE_Z). */
+const PM_SCALE = 0.75;
+const PM_Z = -0.1;
+
+type Slot = 'paint' | 'blade' | 'coil';
+interface PlowTemplate {
+  parts: { geo: THREE.BufferGeometry; slot: Slot | null; mat: THREE.Material; shadow: boolean }[];
+  wheels: WheelSpec[];
+  height: number;
+  beacon: [number, number, number];
+  /** Tesla coil tops (rival-local), VOLT-9 only. */
+  coilTops: THREE.Vector3[];
+  /** Track cleats (rival-local x / y; z animates), BRUTUS only. */
+  cleats: { x: number; y: number; top: boolean; i: number }[];
+  cleatSpan: number;
+  cleatGeo: THREE.BufferGeometry | null;
+  cleatMat: THREE.Material | null;
+}
+const PLOW_TEMPLATES = new Map<PlowKind, PlowTemplate>();
+
+function buildPlowTemplate(kind: 'volt' | 'brute'): PlowTemplate {
+  // Slot placeholders: swapped for the rival's own paint / coil materials per instance.
+  const paintSlot = new THREE.MeshStandardMaterial();
+  const coilSlot = new THREE.MeshStandardMaterial();
+  const root = new THREE.Group();
+  root.scale.setScalar(PM_SCALE);
+  root.position.z = PM_Z;
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.35, 4.0), shared('dark'));
+  chassis.position.set(0, 0.62, 0.05);
+  root.add(chassis);
+  const skip = new Set<THREE.Object3D>();
+  const coilTopObjs: THREE.Object3D[] = [];
+  const cleats: PlowTemplate['cleats'] = [];
+  let cleatSpan = 0;
+  let cleatGeo: THREE.BufferGeometry | null = null;
+  let cleatMat: THREE.Material | null = null;
+  let beacon: [number, number, number];
+  if (kind === 'volt') {
+    const v = buildVoltParts({ paint: paintSlot, coil: coilSlot });
+    root.add(v.group);
+    coilTopObjs.push(...v.coilTops);
+    beacon = [0, (1.26 + 0.55) * PM_SCALE + 0.06, 0.25 * PM_SCALE + PM_Z];
+  } else {
+    const hub = new THREE.MeshStandardMaterial({ color: 0xffc21a, roughness: 0.4, metalness: 0.4 });
+    const b = buildBruteParts({ paint: paintSlot, dark: shared('dark'), glass: shared('glass'), chrome: shared('chrome'), hub, head: shared('light') });
+    root.add(b.group);
+    for (const c of b.cleats) {
+      skip.add(c.mesh);
+      cleats.push({ x: c.mesh.position.x * PM_SCALE, y: c.mesh.position.y * PM_SCALE, top: c.top, i: c.i });
+    }
+    cleatSpan = b.cleatSpan;
+    if (b.cleats.length) {
+      cleatGeo = b.cleats[0].mesh.geometry.clone().scale(PM_SCALE, PM_SCALE, PM_SCALE);
+      cleatMat = b.cleats[0].mesh.material as THREE.Material;
+    }
+    beacon = [0, (2.2 + 0.06) * PM_SCALE + 0.08, 0.75 * PM_SCALE + PM_Z];
+  }
+  root.updateMatrixWorld(true);
+  // Merge every static mesh per material, baked into rival-local space.
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  root.traverse((o) => {
+    if (!(o instanceof THREE.Mesh) || skip.has(o)) return;
+    const mat = o.material as THREE.Material;
+    let a = byMat.get(mat);
+    if (!a) byMat.set(mat, (a = []));
+    a.push((o.geometry as THREE.BufferGeometry).clone().applyMatrix4(o.matrixWorld));
+  });
+  const parts: PlowTemplate['parts'] = [];
+  let height = 1.5;
+  for (const [mat, list] of byMat) {
+    const g = mergeGeometries(list)!;
+    for (const x of list) x.dispose();
+    g.computeBoundingSphere();
+    g.computeBoundingBox();
+    height = Math.max(height, g.boundingBox!.max.y);
+    const slot: Slot | null = mat === paintSlot ? 'paint' : mat === coilSlot ? 'coil' : null;
+    const shadow = !(mat instanceof THREE.MeshBasicMaterial) && !mat.transparent;
+    parts.push({ geo: g, slot, mat, shadow });
+  }
+  // The rival blade (same dimensions as every other rival, so hitboxes / ball placement stay consistent).
+  const blade: KindTemplate['parts'] = [];
+  addBlade(blade, kind === 'volt' ? 0.5 : 0.6, kind === 'volt' ? 1.1 : 1.2);
+  const bladeBy = new Map<MatKey, THREE.BufferGeometry[]>();
+  for (const p of blade) {
+    let a = bladeBy.get(p.key);
+    if (!a) bladeBy.set(p.key, (a = []));
+    a.push(p.geo);
+  }
+  for (const [key, list] of bladeBy) {
+    const g = mergeGeometries(list)!;
+    for (const x of list) x.dispose();
+    g.computeBoundingSphere();
+    parts.push({ geo: g, slot: key === 'blade' ? 'blade' : null, mat: shared(key), shadow: true });
+  }
+  const wheels: WheelSpec[] =
+    kind === 'volt'
+      ? PLOW_WHEEL_POS.map(([x, z]) => ({ x: x * PM_SCALE, y: PLOW_WHEEL_R * PM_SCALE, z: z * PM_SCALE + PM_Z, r: PLOW_WHEEL_R * PM_SCALE, w: 0.42 * PM_SCALE }))
+      : [];
+  const coilTops = coilTopObjs.map((o) => o.getWorldPosition(new THREE.Vector3()));
+  return { parts, wheels, height, beacon, coilTops, cleats, cleatSpan, cleatGeo, cleatMat };
+}
+
+function plowTemplate(kind: 'volt' | 'brute'): PlowTemplate {
+  let t = PLOW_TEMPLATES.get(kind);
+  if (!t) PLOW_TEMPLATES.set(kind, (t = buildPlowTemplate(kind)));
+  return t;
+}
+
+const _cm = new THREE.Matrix4();
+
 let beaconGeo: THREE.BufferGeometry | null = null;
 let tornadoGeo: THREE.BufferGeometry | null = null;
 let tornadoMat: THREE.MeshBasicMaterial | null = null;
@@ -292,11 +408,21 @@ export interface RivalRig {
   blade: THREE.MeshStandardMaterial;
   beacon: THREE.MeshStandardMaterial;
   height: number;
+  /** Which starter-plow body this rig wears. */
+  plow: PlowKind;
+  /** VOLT-9 body: Tesla coil tops (arc endpoints) + the rig's own coil material (pulsed per rival). */
+  coilTops: THREE.Object3D[];
+  coilMat: THREE.MeshStandardMaterial | null;
+  /** BRUTUS body: move the track cleats to `phase` (m travelled). No-op on other bodies. */
+  setTrackPhase(phase: number): void;
   dispose(): void;
 }
 
-export function createRivalRig(kind: RivalKind, color: string): RivalRig {
-  const t = template(kind);
+/** A rival vehicle. `plow` 'volt' / 'brute' wear the matching starter-plow silhouette instead of the `kind`
+ *  vehicle body; every body keeps the rival's own paint color. */
+export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 'classic'): RivalRig {
+  const pt = plow === 'classic' ? null : plowTemplate(plow);
+  const t = pt ?? template(kind);
   const col = new THREE.Color(color);
   const paint = new THREE.MeshStandardMaterial({ color: col, roughness: 0.42, metalness: 0.2, flatShading: true });
   const bladeCol = col.clone().lerp(new THREE.Color(0xffffff), 0.12).multiplyScalar(0.85);
@@ -306,12 +432,47 @@ export function createRivalRig(kind: RivalKind, color: string): RivalRig {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  for (const p of t.parts) {
-    const m = p.key === 'paint' ? paint : p.key === 'blade' ? blade : shared(p.key);
-    const mesh = new THREE.Mesh(p.geo, m);
-    mesh.castShadow = true;
-    body.add(mesh);
+  const coilTops: THREE.Object3D[] = [];
+  let coilMat: THREE.MeshStandardMaterial | null = null;
+  let cleatMesh: THREE.InstancedMesh | null = null;
+  if (pt) {
+    if (plow === 'volt') coilMat = new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x2fb8ff, emissiveIntensity: 1.5, roughness: 0.3, metalness: 0.4 });
+    for (const p of pt.parts) {
+      const m = p.slot === 'paint' ? paint : p.slot === 'blade' ? blade : p.slot === 'coil' ? coilMat! : p.mat;
+      const mesh = new THREE.Mesh(p.geo, m);
+      mesh.castShadow = p.shadow;
+      body.add(mesh);
+    }
+    for (const v of pt.coilTops) {
+      const o = new THREE.Object3D();
+      o.position.copy(v);
+      body.add(o);
+      coilTops.push(o);
+    }
+    if (pt.cleatGeo && pt.cleatMat && pt.cleats.length) {
+      cleatMesh = new THREE.InstancedMesh(pt.cleatGeo, pt.cleatMat, pt.cleats.length);
+      cleatMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      cleatMesh.frustumCulled = false;
+      body.add(cleatMesh);
+    }
+  } else {
+    for (const p of (t as KindTemplate).parts) {
+      const m = p.key === 'paint' ? paint : p.key === 'blade' ? blade : shared(p.key);
+      const mesh = new THREE.Mesh(p.geo, m);
+      mesh.castShadow = true;
+      body.add(mesh);
+    }
   }
+  const setTrackPhase = (phase: number) => {
+    if (!cleatMesh || !pt) return;
+    for (let i = 0; i < pt.cleats.length; i++) {
+      const c = pt.cleats[i];
+      _cm.makeTranslation(c.x, c.y, cleatZ(c.i, c.top, phase / PM_SCALE, pt.cleatSpan) * PM_SCALE + PM_Z);
+      cleatMesh.setMatrixAt(i, _cm);
+    }
+    cleatMesh.instanceMatrix.needsUpdate = true;
+  };
+  setTrackPhase(0);
   const wheels: THREE.Mesh[] = [];
   const wheelR: number[] = [];
   const wheelMats = [shared('black'), shared('steel')];
@@ -365,11 +526,17 @@ export function createRivalRig(kind: RivalKind, color: string): RivalRig {
     blade,
     beacon,
     height: t.height,
+    plow,
+    coilTops,
+    coilMat,
+    setTrackPhase,
     dispose() {
       paint.dispose();
       blade.dispose();
       beacon.dispose();
       glowMat.dispose();
+      coilMat?.dispose();
+      cleatMesh?.dispose();
     },
   };
 }

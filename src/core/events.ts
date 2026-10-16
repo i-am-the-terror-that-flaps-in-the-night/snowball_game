@@ -25,7 +25,8 @@ export interface GameEvents {
     killerColor: string;
     victim: string;
     victimColor: string;
-    method: 'slam' | 'ram' | 'dash' | 'whirl' | 'wall' | 'other';
+    /** 'zap' = VOLT-9 lightning (Thunderclap etc.), 'pound' = BRUTUS Ground Pound. */
+    method: 'slam' | 'ram' | 'dash' | 'whirl' | 'wall' | 'zap' | 'pound' | 'other';
     killerIsPlayer: boolean;
     victimIsPlayer: boolean;
   };

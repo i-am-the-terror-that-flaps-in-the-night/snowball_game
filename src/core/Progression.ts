@@ -124,6 +124,15 @@ export class Progression {
     this.changed();
   }
 
+  /** Spend coins on a one-off purchase (e.g. Survival's Full Repair). False if unaffordable. */
+  spend(n: number): boolean {
+    n = Math.round(n);
+    if (n <= 0 || this.data.coins < n) return false;
+    this.data.coins -= n;
+    this.changed();
+    return true;
+  }
+
   level(id: UpgradeId): number {
     return this.data.upgrades[id] ?? 0;
   }

@@ -47,6 +47,9 @@ export const waveCoinMult = (w: number) => 1 + 0.06 * (w - 1);
 /** Bonus coins for clearing wave w (boss waves pay triple). */
 export const waveClearBonus = (w: number) => Math.round((10 + 6 * w) * (w % BOSS_EVERY === 0 ? 3 : 1));
 
+/** Coins for the between-wave shop's one-off Full Repair after clearing wave w. */
+export const fullRepairCost = (w: number) => Math.round(30 + 12 * w);
+
 /** Unlocked after beating arena 1 (also true in ?debug, which unlocks every arena). */
 export function survivalUnlocked(p: Progression): boolean {
   return p.data.unlockedZones > 1 || p.zoneRecord(ZONES[0].id).cleared;
@@ -134,6 +137,12 @@ export class SurvivalManager {
     p.data.totalKills += kills;
     p.save();
     return newBest;
+  }
+
+  /** Lineup name of wave w if it's a boss wave (for the between-wave shop's preview), else null. */
+  bossNameFor(w: number): string | null {
+    if (w <= 0 || w % BOSS_EVERY !== 0) return null;
+    return BOSS_CYCLE[(w / BOSS_EVERY - 1) % BOSS_CYCLE.length].name;
   }
 
   get best(): number {

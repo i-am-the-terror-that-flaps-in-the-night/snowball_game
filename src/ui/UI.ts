@@ -1,6 +1,6 @@
 import './ui.css';
 import './brawl.css';
-import type { BrawlDifficulty, BrawlEntry, BrawlResult, GameContext, HudBoss, HudState, RunSummary, SoundName, UIAPI, UIHandlers } from '../core/types';
+import type { BrawlDifficulty, BrawlEntry, BrawlResult, GameContext, HudBoss, HudState, RunSummary, SoundName, SurvivalShopOpts, UIAPI, UIHandlers } from '../core/types';
 import { MIN_BALL_RADIUS } from '../core/types';
 import { UPGRADES, type UpgradeCategory, type UpgradeDef } from '../config/upgrades';
 import { PLOWS, type PlowKind } from '../config/plows';
@@ -185,6 +185,9 @@ export class UI implements UIAPI {
   private shopHint!: HTMLElement;
   private cards: CardRefs[] = [];
   private shopContinue: (() => void) | null = null;
+  /** Open Survival between-wave shop (null otherwise); drives the Full Repair button. */
+  private survivalShop: SurvivalShopOpts | null = null;
+  private repairBtn: HTMLButtonElement | null = null;
   private garageBack: 'menu' | 'quit' = 'menu';
 
   // result
@@ -218,7 +221,7 @@ export class UI implements UIAPI {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, fKind: '', batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1,
+    dash: -1, whirl: -2, flame: -2, fKind: '', batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false,
   };
   private hintTimer = 0;
 
@@ -408,11 +411,13 @@ export class UI implements UIAPI {
     if (isActivate) {
       e.preventDefault();
       if (e.repeat || performance.now() - this.shownAt < 450) return;
+      const a = document.activeElement;
       if (name === 'garage' && this.shopContinue && code !== 'Space') {
-        this.shopStart.click();
+        // Enter fights, unless a card / repair button was picked with arrows / d-pad (gamepad A buys it).
+        const picked = a instanceof HTMLButtonElement && scr.contains(a) && a.matches(':focus-visible');
+        (picked ? a : this.shopStart).click();
         return;
       }
-      const a = document.activeElement;
       if (a instanceof HTMLButtonElement && scr.contains(a)) {
         a.click();
       } else if (code !== 'Space') {
@@ -671,6 +676,7 @@ export class UI implements UIAPI {
 
   private refreshCards(): void {
     const p = this.ctx.progression;
+    this.refreshRepair();
     const plow = p.plow;
     for (const [id, card] of this.plowCards) card.classList.toggle('on', id === plow);
     for (const c of this.cards) {
@@ -694,9 +700,44 @@ export class UI implements UIAPI {
     }
   }
 
+  private refreshRepair(): void {
+    const b = this.repairBtn;
+    const o = this.survivalShop;
+    if (!b || !o) return;
+    const need = o.canRepair();
+    const afford = this.ctx.progression.coins >= o.repairCost;
+    b.disabled = !need;
+    b.classList.toggle('poor', need && !afford);
+    b.innerHTML = need
+      ? `🔧 FULL REPAIR <span class="ss-coin sm"></span>${fmt(o.repairCost)}`
+      : '🔧 PLOW AT FULL HP';
+  }
+
+  private renderSurvivalPreview(o: SurvivalShopOpts): void {
+    const w = this.shopPreview;
+    const next = o.cleared + 1;
+    w.textContent = '';
+    w.classList.remove('hidden');
+    w.classList.toggle('boss', !!o.nextBoss);
+    const t = el('div', 'ss-rp-title', undefined, w);
+    t.innerHTML = `Wave <b>${next}</b> next${o.nextBoss ? ` · ☠ BOSS: ${o.nextBoss}` : ''}`;
+    const row = el('div', 'ss-sv-shoprow', undefined, w);
+    this.repairBtn = this.btn('', 'ss-ice ss-sv-repair', () => {
+      const ok = o.onRepair();
+      this.sfx(ok ? 'buy' : 'error');
+      if (!ok && this.repairBtn) restart(this.repairBtn, 'shake');
+      this.refreshRepair();
+    }, row, null);
+    el('span', 'ss-foot-hint', 'Upgrades apply to your plow right now. The next wave waits for you.', row);
+  }
+
   private openGarage(back: 'menu' | 'quit'): void {
     this.garageBack = back;
     this.shopContinue = null;
+    this.survivalShop = null;
+    this.repairBtn = null;
+    this.shopStart.innerHTML = '⚔ FIGHT ▶';
+    this.shopHint.textContent = 'Press ENTER to fight';
     this.shopTitle.textContent = 'GARAGE';
     this.shopSub.textContent = 'Spend your coins on permanent upgrades. They never max out — keep stacking past the pips.';
     this.shopPreview.classList.add('hidden');
@@ -1348,6 +1389,8 @@ export class UI implements UIAPI {
 
   showMainMenu(): void {
     this.shopContinue = null;
+    this.survivalShop = null;
+    this.repairBtn = null;
     this.refreshProgress();
     this.refreshMute();
     this.show('menu');
@@ -1364,6 +1407,10 @@ export class UI implements UIAPI {
 
   showShop(nextRound: number, totalRounds: number, onContinue: () => void): void {
     this.shopContinue = onContinue;
+    this.survivalShop = null;
+    this.repairBtn = null;
+    this.shopStart.innerHTML = '⚔ FIGHT ▶';
+    this.shopHint.textContent = 'Press ENTER to fight';
     this.shopTitle.textContent = 'UPGRADE SHOP';
     const cleared = Math.max(1, nextRound - 1);
     this.shopSub.textContent = `${this.ctx.zone?.name ?? ''}: round ${cleared} cleared! Gear up before the next fight.`;
@@ -1372,6 +1419,28 @@ export class UI implements UIAPI {
     this.shopBack.classList.add('hidden');
     this.shopStart.classList.remove('hidden');
     this.shopHint.classList.remove('hidden');
+    delete this.shopBack.dataset.primary;
+    this.shopStart.dataset.primary = '1';
+    this.refreshCards();
+    this.show('garage');
+  }
+
+  showSurvivalShop(o: SurvivalShopOpts): void {
+    this.shopContinue = () => {
+      this.survivalShop = null;
+      this.repairBtn = null;
+      o.onContinue();
+    };
+    this.survivalShop = o;
+    this.shopTitle.textContent = 'PIT STOP';
+    this.shopSub.textContent = `Wave ${o.cleared} cleared! Spend your coins before the next wave.`;
+    this.renderSurvivalPreview(o);
+    this.plowPick.classList.add('hidden');
+    this.shopBack.classList.add('hidden');
+    this.shopStart.classList.remove('hidden');
+    this.shopStart.innerHTML = 'NEXT WAVE ▶';
+    this.shopHint.classList.remove('hidden');
+    this.shopHint.textContent = 'Press ENTER for the next wave';
     delete this.shopBack.dataset.primary;
     this.shopStart.dataset.primary = '1';
     this.refreshCards();
@@ -1463,6 +1532,12 @@ export class UI implements UIAPI {
     if (s.zoneName !== L.zone) {
       L.zone = s.zoneName;
       H.zone.textContent = s.zoneName;
+    }
+    const hideRound = !!s.hideRound;
+    if (hideRound !== L.hideRound) {
+      L.hideRound = hideRound;
+      H.round.classList.toggle('hidden', hideRound);
+      H.pips.classList.toggle('hidden', hideRound);
     }
     const sv = s.survival;
     if (sv) {

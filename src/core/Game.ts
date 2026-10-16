@@ -6,7 +6,7 @@ import { applyAllSettings, settingsUi } from './settings';
 import { BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, GameContext, HudState, RunSummary, UIHandlers } from './types';
 import { BRAWL_ZONE, ZONES } from '../config/zones';
-import { ENEMIES } from '../config/enemies';
+import { ENEMIES, type EnemyType } from '../config/enemies';
 import { PLOWS } from '../config/plows';
 import { SnowField } from '../world/SnowField';
 import { Environment } from '../world/Environment';
@@ -15,7 +15,7 @@ import { Combat } from '../entities/Combat';
 import { EnemyManager } from '../entities/Enemies';
 import { WaveDirector } from '../entities/Waves';
 import { BrawlManager } from '../brawl/BrawlManager';
-import { SurvivalManager, survivalUnlocked } from '../survival/SurvivalManager';
+import { SurvivalManager, fullRepairCost, survivalUnlocked } from '../survival/SurvivalManager';
 import { Pickups } from '../fx/Pickups';
 import { Fx } from '../fx/Fx';
 import { CameraRig } from '../fx/CameraRig';
@@ -35,6 +35,15 @@ const BOSS_COUNTDOWN_SECONDS = 4;
 /** Seconds of slow-motion wreck animation before the game-over screen. */
 const WRECK_SECONDS = 1.6;
 const COMBO_WINDOW = 2.5;
+/** Arena 1 for the Tutorial, paying no coins (kills / strikes give nothing; progression is untouched). */
+const TUTORIAL_ZONE = { ...ZONES[0], coinMult: 0 };
+
+/** Boss intro subtitle: one boss -> its title; a pair (SLUSH & SLEET) -> one "NAME — title" line each. */
+function bossIntroTitle(types: EnemyType[]): string {
+  const uniq = [...new Set(types)].filter((t) => ENEMIES[t].isBoss);
+  if (uniq.length <= 1) return uniq.length ? ENEMIES[uniq[0]].title : '';
+  return uniq.map((t) => `${ENEMIES[t].name} — ${ENEMIES[t].title}`).join('\n');
+}
 
 export class Game {
   readonly ctx: GameContext;
@@ -122,6 +131,10 @@ export class Game {
 
     this.hud = this.blankHud();
     this.wireEvents();
+    // Survival pit stop: purchases apply to the live plow straight away.
+    progression.onChange(() => {
+      if (this.state === 'shop' && this.mode === 'survival') this.applyLiveStats();
+    });
 
     // Menu backdrop: arena 0 scenery.
     ctx.world.setZone(ctx.zone);
@@ -241,7 +254,7 @@ export class Game {
     this.roundIndex = 0;
     this.run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
     this.combo = 0;
-    ctx.zone = ZONES[0];
+    ctx.zone = TUTORIAL_ZONE;
     this.refreshStats();
     this.clearArena();
     ctx.fx.clear();
@@ -290,7 +303,49 @@ export class Game {
     this.run.coins += bonus;
     ctx.audio.play('roundClear');
     ctx.ui.toast(`WAVE ${this.survival.wave} CLEARED! +${bonus}`, 'good');
-    this.beginCountdown();
+    this.openSurvivalShop();
+  }
+
+  /** Between-wave PIT STOP: the sim is frozen (state 'shop') until NEXT WAVE, then the breather countdown runs. */
+  private openSurvivalShop(): void {
+    const { ctx } = this;
+    const sv = this.survival;
+    const wave = sv.wave;
+    const repairCost = fullRepairCost(wave);
+    this.state = 'shop';
+    ctx.audio.setEngine(0, 0);
+    ctx.audio.setPlowing(0);
+    this.updateHud();
+    ctx.ui.showSurvivalShop({
+      cleared: wave,
+      nextBoss: sv.bossNameFor(wave + 1),
+      repairCost,
+      canRepair: () => ctx.plow.hp < ctx.plow.maxHp - 0.5,
+      onRepair: () => {
+        if (ctx.plow.hp >= ctx.plow.maxHp - 0.5 || !ctx.progression.spend(repairCost)) return false;
+        ctx.plow.hp = ctx.plow.maxHp;
+        this.updateHud();
+        return true;
+      },
+      onContinue: () => {
+        if (this.state !== 'shop' || this.mode !== 'survival') return;
+        this.applyLiveStats();
+        ctx.ui.hideOverlays();
+        ctx.input.clear();
+        this.beginCountdown();
+      },
+    });
+  }
+
+  /** Recompute stats mid-run (Survival pit stop): max-HP gains also heal by the delta. */
+  private applyLiveStats(): void {
+    const { ctx } = this;
+    const plow = ctx.plow;
+    const oldHp = plow.hp;
+    const oldMax = plow.maxHp;
+    this.refreshStats();
+    plow.hp = Math.min(plow.maxHp, Math.max(0, oldHp + Math.max(0, plow.maxHp - oldMax)));
+    this.updateHud();
   }
 
   private survivalOver(): void {
@@ -335,14 +390,13 @@ export class Game {
       this.countdown = this.survival.nextWave();
       const boss = this.survival.boss;
       if (boss) {
-        ctx.ui.bossIntro(boss.name, `Wave ${this.survival.wave} · ${ENEMIES[boss.types[0]].title}`);
+        const sub = bossIntroTitle(boss.types);
+        ctx.ui.bossIntro(boss.name, boss.types.length > 1 ? `Wave ${this.survival.wave}\n${sub}` : `Wave ${this.survival.wave} · ${sub}`);
         ctx.audio.play('boss');
       } else ctx.ui.toast(`Wave ${this.survival.wave} incoming…`, 'info');
     } else if (this.isBossRound) {
       this.countdown = BOSS_COUNTDOWN_SECONDS;
-      const first = ctx.zone.rounds[this.roundIndex].groups[0];
-      const def = ENEMIES[first.type];
-      ctx.ui.bossIntro(ctx.zone.bossName, def.title);
+      ctx.ui.bossIntro(ctx.zone.bossName, bossIntroTitle(ctx.zone.rounds[this.roundIndex].groups.map((g) => g.type)));
       ctx.audio.play('boss');
     } else {
       this.countdown = COUNTDOWN_SECONDS;
@@ -484,7 +538,8 @@ export class Game {
     });
     events.on('strike', ({ count }) => {
       // Brawl economy is kills/streaks/shutdowns only (keeps the results breakdown exact).
-      if (this.mode === 'brawl') return void ui.toast(`STRIKE! x${count}`, 'info');
+      // Tutorial pays nothing either.
+      if (this.mode === 'brawl' || this.state === 'tutorial') return void ui.toast(`STRIKE! x${count}`, 'info');
       const bonus = Math.round(count * 4 * this.ctx.zone.coinMult);
       this.ctx.progression.addCoins(bonus);
       this.run.coins += bonus;
@@ -634,6 +689,7 @@ export class Game {
     hud.countdown = counting ? Math.max(0, this.countdown) : 0;
     hud.brawl = this.mode === 'brawl' ? ctx.brawl.hud() : null;
     hud.survival = this.mode === 'survival' ? this.survival.hud() : null;
+    hud.hideRound = this.state === 'tutorial' || (this.state === 'paused' && this.pausedFrom === 'tutorial');
     if (hud.brawl) {
       hud.zoneName = ctx.zone.name;
       hud.bossRound = false;
@@ -642,6 +698,7 @@ export class Game {
     if (this.state === 'tutorial') {
       hud.zoneName = 'TRAINING YARD';
       hud.enemiesRemaining = ctx.enemies.aliveCount();
+      hud.bossRound = false;
     }
     this.run.biggestBall = Math.max(this.run.biggestBall, hud.ballRadius);
     ctx.ui.updateHud(hud);
