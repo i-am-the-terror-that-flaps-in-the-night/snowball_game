@@ -31,6 +31,7 @@ import {
   BRAWL_SPAWN_PROTECT,
   BRAWL_TAUNTS,
   BRAWL_TIME,
+  BRAWL_HIT_CAP,
   PLAYER_BRAWL_COLOR,
   brawlHit,
   STREAK_TIERS,
@@ -492,7 +493,8 @@ export class BrawlManager implements BrawlAPI {
   /** Snapshot of the player's garage (endless upgrades only; specials are player perks). */
   private captureGear(): void {
     this.playerLevels = {};
-    for (const u of UPGRADES) if (u.maxLevel === Infinity) this.playerLevels[u.id] = this.ctx.progression.level(u.id);
+    // Endless upgrades only, minus Pilot perks (player-only — rivals never copy those).
+    for (const u of UPGRADES) if (u.maxLevel === Infinity && !u.playerOnly) this.playerLevels[u.id] = this.ctx.progression.level(u.id);
   }
 
   /** A rival's own garage: every upgrade rolled around the player's level for this lobby, then turned into
@@ -1103,7 +1105,9 @@ export class BrawlManager implements BrawlAPI {
   private hurtRival(r: Rival, amount: number, attacker: Fighter | null, method: Method, kx: number, kz: number, unblockable: boolean, fromX: number, fromZ: number): boolean {
     if (!r.targetable || this._over || amount <= 0) return false;
     // Brawl hit cap: nothing one-shots from full hp.
-    let dmg = brawlHit(amount, r.maxHp) * r.s.damageTaken;
+    // Wrecking Ball (player-only perk) raises the cap on the player's own hits.
+    const capFrac = attacker === this.player ? BRAWL_HIT_CAP + this.ctx.stats.hitCapBonus : BRAWL_HIT_CAP;
+    let dmg = brawlHit(amount, r.maxHp, capFrac) * r.s.damageTaken;
     // Ball shield on frontal hits.
     const br = r.ballR;
     if (!unblockable && br >= 0.2) {

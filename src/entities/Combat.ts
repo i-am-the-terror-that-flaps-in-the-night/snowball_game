@@ -9,6 +9,13 @@ import {
 
 /** Seconds of damage i-frames after the plow is hit (overlapping hits only add their excess). */
 const IFRAME_SECONDS = 0.15;
+const SECOND_WIND_GUARD = 1.5;
+/** Inferno (F): flame duration, cone half-angle (cos), seconds between ignite checks, burn length + tick. */
+const FLAME_SECONDS = 1.0;
+const FLAME_COS = Math.cos(0.6);
+const FLAME_IGNITE_EVERY = 0.12;
+const BURN_SECONDS = 3;
+const BURN_TICK = 0.5;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
 const RAM_REPEAT = 0.25;
 /** cos(60°): attacker must be within ±60° of the plow's front for the ball to shield. */
@@ -33,6 +40,14 @@ const _tip = new THREE.Vector3();
 export class Combat implements CombatAPI {
   private ctx: GameContext;
   private iframe = 0;
+  /** Second Wind: invulnerable window left, and when it can trigger again (ctx.time). */
+  private guardT = 0;
+  /** Inferno flame attack state + burning enemies. */
+  private flameCharge = 1;
+  private flameT = 0;
+  private flameIgniteT = 0;
+  private burns = new Map<EnemyHandle, { t: number; tickT: number }>();
+  private secondWindReadyAt = 0;
   /** Largest final damage already applied during the current i-frame window. */
   private iframeDmg = 0;
   private ramCd = new Map<number, number>();
@@ -52,7 +67,7 @@ export class Combat implements CombatAPI {
     const ctx = this.ctx;
     const plow = ctx.plow;
     const stats = ctx.stats;
-    if (!plow || plow.dead || amount <= 0 || plow.invulnerable) return 0;
+    if (!plow || plow.dead || amount <= 0 || plow.invulnerable || this.guardT > 0) return 0;
 
     // Direction plow -> attacker.
     let dx = fromX - plow.position.x;
@@ -92,6 +107,18 @@ export class Combat implements CombatAPI {
       this.iframeDmg = dmg;
     }
 
+    // Second Wind (pilot perk): a lethal hit leaves 1 HP and a short invulnerable window instead.
+    if (final >= plow.hp && plow.hp > 1 && Number.isFinite(stats.secondWindCd) && ctx.time >= this.secondWindReadyAt) {
+      final = Math.max(0, plow.hp - 1);
+      this.secondWindReadyAt = ctx.time + stats.secondWindCd;
+      this.guardT = SECOND_WIND_GUARD;
+      _q.set(plow.position.x, 3.4, plow.position.z);
+      ctx.fx.floatText(_q, 'SECOND WIND!', '#9fe6ff', 1.3);
+      _q.set(plow.position.x, 0.1, plow.position.z);
+      ctx.fx.ring(_q, 6, 0x9fe6ff);
+      ctx.fx.shake(0.5);
+      ctx.audio.play('respawn');
+    }
     if (final > 0) plow.damage(final);
 
     // Knockback away from the attacker (shield absorbs some of it).
@@ -169,6 +196,7 @@ export class Combat implements CombatAPI {
     });
     // Show what actually landed (after armor / Brawl's hit cap), not the raw number.
     const dealt = Math.max(0, hp0 - Math.max(0, enemy.hp));
+    this.onPlayerHit(dealt, killed);
 
     // Ball sheds snow on impact.
     if (r > 0) plow.stealSnow(0.1);
@@ -218,6 +246,7 @@ export class Combat implements CombatAPI {
       ballRadius: r,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, enemy.hp));
+    this.onPlayerHit(dealt, killed);
     if (r > 0) plow.stealSnow(0.1);
 
     // Hit-stop (plow + camera) and keep the dash going through the target.
@@ -283,6 +312,7 @@ export class Combat implements CombatAPI {
       });
       count++;
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed);
       _q.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
       if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, freeze ? '#9fe6ff' : killed ? '#fff3a0' : '#ffffff', 1 + Math.min(1, r * 0.4));
       _q.set(e.position.x, 1, e.position.z);
@@ -361,6 +391,7 @@ export class Combat implements CombatAPI {
       fx.burst(_q, { color: 0xffffff, count: 6, speed: 4, size: 0.2, gravity: 12, life: 0.5 });
       _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed);
       if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : final ? '#9fe6ff' : '#d8f2ff', final ? 1.05 : 0.85);
     }
     this.targets.length = 0;
@@ -389,7 +420,120 @@ export class Combat implements CombatAPI {
     return out;
   }
 
+  /** Pilot perks that trigger on the player's own hits: Salvage Rig lifesteal and Adrenaline refunds. */
+  private onPlayerHit(dealt: number, killed: boolean): void {
+    const plow = this.ctx.plow;
+    const st = this.ctx.stats;
+    if (plow.dead) return;
+    if (st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
+    if (killed && st.killRecharge > 0) {
+      // Plow keeps its cooldown charges private; refund them through a narrow duck-typed view.
+      const p = plow as unknown as { dashCharge: number; whirlCharge: number };
+      p.dashCharge = Math.min(1, p.dashCharge + st.killRecharge);
+      p.whirlCharge = Math.min(1, p.whirlCharge + st.killRecharge);
+    }
+  }
+
+  get flameReady(): number {
+    return this.ctx.stats.flameDps > 0 ? this.flameCharge : -1;
+  }
+
+  /** Inferno (F, pilot perk): a 1s cone of fire from the blade that ignites bots and melts snow. */
+  private updateFlame(dt: number): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    const plow = ctx.plow;
+    if (st.flameDps <= 0 || !plow) return;
+    if (this.flameT <= 0 && this.flameCharge < 1) this.flameCharge = Math.min(1, this.flameCharge + (st.flameCooldown > 0 ? dt / st.flameCooldown : 1));
+    if (ctx.input.wasPressed('KeyF') && !plow.dead) {
+      if (this.flameCharge >= 1 && this.flameT <= 0) {
+        this.flameCharge = 0;
+        this.flameT = FLAME_SECONDS;
+        this.flameIgniteT = 0;
+        ctx.audio.play('dash', { pitch: 0.55, volume: 0.9 });
+        ctx.audio.play('burst', { pitch: 0.6 });
+      } else if (this.flameT <= 0) ctx.audio.play('error');
+    }
+    if (this.flameT <= 0) return;
+    this.flameT -= dt;
+    if (plow.dead) {
+      this.flameT = 0;
+      return;
+    }
+    const range = st.flameRange;
+    plow.getForward(_fwd);
+    plow.getBladeTip(_tip);
+    const fx = ctx.fx;
+    // Flames: rising orange/yellow bursts spread along the cone, plus melted snow underneath.
+    for (let i = 0; i < 3; i++) {
+      const k = 0.2 + Math.random() * 0.8;
+      const side = (Math.random() - 0.5) * 2 * k * range * 0.6;
+      _p.set(_tip.x + _fwd.x * k * range + _fwd.z * side, 0.8 + Math.random() * 0.6, _tip.z + _fwd.z * k * range - _fwd.x * side);
+      fx.burst(_p, { color: Math.random() < 0.5 ? 0xff6a1a : 0xffc23a, count: 3, speed: 2.5, size: 0.28 + k * 0.25, gravity: -6, life: 0.35 });
+    }
+    if (Math.random() < 0.3) {
+      _p.set(_tip.x + _fwd.x * range * 0.5, 1.2, _tip.z + _fwd.z * range * 0.5);
+      fx.burst(_p, { color: 0x3a3236, count: 2, speed: 1.5, size: 0.5, gravity: -3, life: 0.9 });
+    }
+    if (ctx.snow) {
+      ctx.snow.melt(_tip.x + _fwd.x * range * 0.35, _tip.z + _fwd.z * range * 0.35, range * 0.3, 0.8 * dt);
+      ctx.snow.melt(_tip.x + _fwd.x * range * 0.75, _tip.z + _fwd.z * range * 0.75, range * 0.4, 0.8 * dt);
+    }
+    // Ignite everything inside the cone.
+    this.flameIgniteT -= dt;
+    if (this.flameIgniteT > 0) return;
+    this.flameIgniteT = FLAME_IGNITE_EVERY;
+    const hits = this.collect(_tip.x + _fwd.x * range * 0.5, _tip.z + _fwd.z * range * 0.5, range * 0.5 + 1);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      const dx = e.position.x - _tip.x;
+      const dz = e.position.z - _tip.z;
+      const d = Math.hypot(dx, dz);
+      if (d > range + e.radius || (d > e.radius && (dx * _fwd.x + dz * _fwd.z) / d < FLAME_COS)) continue;
+      const b = this.burns.get(e);
+      if (b) b.t = BURN_SECONDS;
+      else this.burns.set(e, { t: BURN_SECONDS, tickT: 0.1 });
+    }
+    this.targets.length = 0;
+  }
+
+  /** Burn damage over time from Inferno, credited to the player (lifesteal / adrenaline apply). */
+  private updateBurns(dt: number): void {
+    if (this.burns.size === 0) return;
+    const ctx = this.ctx;
+    const dps = ctx.stats.flameDps;
+    for (const [e, b] of this.burns) {
+      if (!e.alive || dps <= 0) {
+        this.burns.delete(e);
+        continue;
+      }
+      b.t -= dt;
+      b.tickT -= dt;
+      if (Math.random() < dt * 14) {
+        _p.set(e.position.x + (Math.random() - 0.5) * e.radius, e.position.y + 0.8 + Math.random() * e.radius, e.position.z + (Math.random() - 0.5) * e.radius);
+        ctx.fx.burst(_p, { color: Math.random() < 0.5 ? 0xff6a1a : 0xffc23a, count: 2, speed: 1.5, size: 0.22, gravity: -5, life: 0.4 });
+      }
+      if (b.tickT <= 0) {
+        b.tickT = BURN_TICK;
+        const hp0 = e.hp;
+        const killed = ctx.enemies.damage(e, dps * BURN_TICK, { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+        const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+        this.onPlayerHit(dealt, killed);
+        if (dealt > 0) {
+          _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
+          ctx.fx.floatText(_q, `${Math.round(dealt)}`, '#ff8a3a', 0.7);
+        }
+      }
+      if (b.t <= 0 || !e.alive) this.burns.delete(e);
+    }
+  }
+
   clear(): void {
+    this.flameT = 0;
+    this.flameCharge = 1;
+    this.burns.clear();
+    this.guardT = 0;
+    this.secondWindReadyAt = 0;
     this.iframe = 0;
     this.iframeDmg = 0;
     this.ramCd.clear();
@@ -397,6 +541,9 @@ export class Combat implements CombatAPI {
   }
 
   update(dt: number): void {
+    if (this.guardT > 0) this.guardT = Math.max(0, this.guardT - dt);
+    this.updateFlame(dt);
+    this.updateBurns(dt);
     if (this.iframe > 0) {
       this.iframe -= dt;
       if (this.iframe <= 0) {

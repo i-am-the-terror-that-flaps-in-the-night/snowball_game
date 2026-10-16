@@ -14,9 +14,17 @@ export type UpgradeId =
   | 'magnet'
   | 'frostCore'
   | 'avalancheCore'
-  | 'iceShield';
+  | 'iceShield'
+  // Pilot perks — player-only: Brawl rivals never roll these.
+  | 'salvage'
+  | 'secondWind'
+  | 'wreckingBall'
+  | 'adrenaline'
+  | 'inferno'
+  | 'vitality'
+  | 'overclock';
 
-export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'special';
+export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'pilot' | 'special';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -34,6 +42,8 @@ export interface UpgradeDef {
   costGrowth: number;
   /** Short human-readable value at a given level, e.g. "12.2 m/s". */
   valueLabel: (level: number) => string;
+  /** Player-only: Brawl rivals never copy this upgrade into their rolled garages. */
+  playerOnly?: boolean;
 }
 
 /** Cost multiplier per level beyond an upgrade's pips. */
@@ -69,6 +79,23 @@ export const FX = {
   hpRegen: (L: number) => 0.8 * grow(L, 3),
   snowRegen: (L: number) => 0.006 * (1 + soft(L, 3)),
   magnetRadius: (L: number) => 4 + 3 * soft(L, 3),
+  // ---- Pilot perks (player-only)
+  /** Fraction of damage you deal that repairs your plow. */
+  lifesteal: (L: number) => 0.03 * soft(L, 5),
+  /** Seconds between Second Wind saves (Infinity = not owned). */
+  secondWindCd: (L: number) => (L <= 0 ? Infinity : 30 + 60 * Math.exp(-(L - 1) / 4)),
+  /** Extra Brawl hit cap on YOUR hits (fraction of the target's max hp). */
+  hitCapBonus: (L: number) => 0.06 * soft(L, 5, 5 / 3),
+  /** Fraction of the dash + whirl recharge refunded when you wreck something. */
+  killRecharge: (L: number) => Math.min(1, 0.2 * soft(L, 4, 2)),
+  /** Inferno (F): flame cone reach (m), burn damage per second, recharge (s). Level 0 = not owned. */
+  flameRange: (L: number) => 6 + 0.5 * soft(L, 5),
+  flameDps: (L: number) => (L <= 0 ? 0 : 18 + 9 * grow(L - 1, 4)),
+  flameCooldown: (L: number) => (L <= 0 ? Infinity : 4 + 4 * Math.exp(-(L - 1) / 4)),
+  /** Vitality: flat bonus HP on top of Armor Plating (rivals never get it). */
+  bonusHp: (L: number) => 40 * grow(L, 5),
+  /** Overclock: multiplier on every ability cooldown (slam, dash, whirl, fire). 10 levels: 1 -> 0. */
+  cooldownMult: (L: number) => Math.max(0, 1 - L / 10),
 };
 
 const owned = (l: number) => (l ? 'Installed' : 'Locked');
@@ -89,6 +116,13 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'repairKit', name: 'Repair Kit', icon: '🧰', category: 'defense', description: 'Repairs more between rounds and slowly regenerates HP.', pips: 3, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.9, valueLabel: (l) => `${Math.round(FX.repairFraction(l) * 100)}% repair, ${f1(FX.hpRegen(l))} HP/s` },
   { id: 'snowMachine', name: 'Snow Machine', icon: '🌨️', category: 'defense', description: 'Snow falls back onto plowed ground faster.', pips: 3, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.9, valueLabel: (l) => `x${f1(1 + soft(l, 3))} snowfall` },
   { id: 'magnet', name: 'Bolt Magnet', icon: '🧲', category: 'defense', description: 'Grab dropped coins from farther away.', pips: 3, maxLevel: ENDLESS, baseCost: 35, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.magnetRadius(l))} m reach` },
+  { id: 'salvage', name: 'Salvage Rig', icon: '🔧', category: 'pilot', playerOnly: true, description: 'Every hit you land repairs your plow by a share of the damage.', pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.lifesteal(l) * 100)}% lifesteal` },
+  { id: 'secondWind', name: 'Second Wind', icon: '💨', category: 'pilot', playerOnly: true, description: 'A lethal hit leaves you at 1 HP with 1.5s of invulnerability instead. Recharges.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => (l ? `every ${Math.round(FX.secondWindCd(l))}s` : 'Locked') },
+  { id: 'wreckingBall', name: 'Wrecking Ball', icon: '🏗️', category: 'pilot', playerOnly: true, description: 'Your hits punch through the Brawl hit cap (bots stay capped at 60%).', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round((0.6 + FX.hitCapBonus(l)) * 100)}% max hit` },
+  { id: 'adrenaline', name: 'Adrenaline', icon: '⚡', category: 'pilot', playerOnly: true, description: 'Wrecking a bot instantly refunds part of your dash and whirl recharge.', pips: 4, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.killRecharge(l) * 100)}% refund on kill` },
+  { id: 'inferno', name: 'Inferno Exhaust', icon: '🔥', category: 'pilot', playerOnly: true, description: 'Press F to blast a cone of fire in front of you: sets bots ablaze (burn damage over 3s) and melts snow.', pips: 5, maxLevel: ENDLESS, baseCost: 160, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.flameDps(l))} burn/s, ${f1(FX.flameRange(l))} m, ${f1(FX.flameCooldown(l))}s` : 'Locked') },
+  { id: 'vitality', name: 'Vitality Core', icon: '❤️', category: 'pilot', playerOnly: true, description: 'Bonus hit points on top of Armor Plating.', pips: 5, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.75, valueLabel: (l) => `+${Math.round(FX.bonusHp(l))} HP` },
+  { id: 'overclock', name: 'Overclock', icon: '⏱️', category: 'pilot', playerOnly: true, description: 'Cuts EVERY ability cooldown (slam, dash, whirl, fire) by 10% per level. Level 10: no cooldowns at all.', pips: 10, maxLevel: 10, baseCost: 150, costGrowth: 1.6, valueLabel: (l) => (l >= 10 ? 'NO COOLDOWNS' : `-${l * 10}% cooldowns`) },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },

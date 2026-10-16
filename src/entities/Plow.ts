@@ -684,9 +684,9 @@ export class Plow implements PlowAPI {
       if (this.dashT <= 0) this.dashEase = DASH_EASE;
     } else {
       if (this.dashEase > 0) this.dashEase = Math.max(0, this.dashEase - dt);
-      if (this.dashCharge < 1) this.dashCharge = Math.min(1, this.dashCharge + dt / Math.max(0.2, stats.dashCooldown));
+      if (this.dashCharge < 1) this.dashCharge = Math.min(1, this.dashCharge + (stats.dashCooldown > 0 ? dt / stats.dashCooldown : 1));
     }
-    if (this.whirlT < 0 && this.whirlCharge < 1) this.whirlCharge = Math.min(1, this.whirlCharge + dt / Math.max(0.5, stats.whirlCooldown));
+    if (this.whirlT < 0 && this.whirlCharge < 1) this.whirlCharge = Math.min(1, this.whirlCharge + (stats.whirlCooldown > 0 ? dt / stats.whirlCooldown : 1));
 
     const throttle = input.throttle;
     const steer = input.steer;
@@ -822,7 +822,7 @@ export class Plow implements PlowAPI {
   private slamImpact(): void {
     const ctx = this.ctx;
     this.slamHit = true;
-    this.slamCd = SLAM_COOLDOWN;
+    this.slamCd = SLAM_COOLDOWN * this.ctx.stats.cooldownMult;
     const r = this.heldBallRadius;
     if (r < 0.2) {
       // Ball got stolen / chipped away mid-windup.

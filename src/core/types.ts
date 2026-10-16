@@ -99,6 +99,21 @@ export interface PlayerStats {
   magnetRadius: number;
   /** Fraction of frontal damage the held snowball blocks (0.4, or 0.75 with Ice Shield). */
   shieldBlock: number;
+  /** Pilot perks (player-only; Brawl rivals never get these). Fraction of dealt damage healed. */
+  lifesteal: number;
+  /** Seconds between Second Wind saves; Infinity when not owned. */
+  secondWindCd: number;
+  /** Extra Brawl hit cap on the player's hits. */
+  hitCapBonus: number;
+  /** Fraction of dash/whirl recharge refunded per kill. */
+  killRecharge: number;
+  /** Inferno flame attack (F): reach m, burn dps (0 = not owned), recharge s. */
+  flameRange: number;
+  flameDps: number;
+  flameCooldown: number;
+  /** Overclock (pilot perk): multiplier on all ability cooldowns, 1 -> 0. Already folded into
+   *  dashCooldown / whirlCooldown / flameCooldown; Plow applies it to the slam cooldown. */
+  cooldownMult: number;
   frostCore: boolean;
   avalancheCore: boolean;
 }
@@ -199,6 +214,8 @@ export interface CombatAPI {
    *  {source: 'ram'}). Returns the raw damage. Contact handlers must NOT kill the plow's speed while it is
    *  dashing (the dash plows through). */
   playerRam(enemy: EnemyHandle, closingSpeed: number): number;
+  /** Inferno (F) recharge 0..1, or -1 when the player doesn't own it. */
+  readonly flameReady: number;
   clear(): void;
   update(dt: number): void;
 }
@@ -337,6 +354,8 @@ export interface HudState {
   dashReady: number;
   /** 0..1, or -1 when Whirlwind is not owned. */
   whirlReady: number;
+  /** 0..1 Inferno (F) recharge, or -1 when not owned. */
+  flameReady: number;
   snowFraction: number;
   bosses: HudBoss[];
   /** Consecutive hits without a 2.5s gap (0/1 = no combo). */

@@ -796,6 +796,7 @@
 
 .ss-ab { --p: 1; --ac: #ffb03a; position: relative; width: 66px; height: 66px; transition: opacity 0.2s; }
 .ss-ab-whirl { --ac: #7fe0ff; }
+.ss-ab-flame { --ac: #ff7a2a; }
 .ss-ab.off { visibility: hidden; }
 .ss-ab-ring {
   position: absolute;

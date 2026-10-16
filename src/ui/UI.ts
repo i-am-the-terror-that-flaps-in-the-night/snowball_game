@@ -36,6 +36,7 @@ const CATEGORIES: { id: UpgradeCategory; label: string; icon: string }[] = [
   { id: 'plow', label: 'Plow', icon: '🚜' },
   { id: 'ball', label: 'Snowball', icon: '⚪' },
   { id: 'defense', label: 'Defense', icon: '🛡️' },
+  { id: 'pilot', label: "Pilot Perks — bots can't copy these", icon: '🧑‍✈️' },
   { id: 'special', label: 'Specials', icon: '✨' },
 ];
 
@@ -55,6 +56,7 @@ const CONTROLS: [string[], string][] = [
   [['SPACE'], 'SLAM snowball'],
   [['SHIFT'], 'DASH STRIKE (long burst)'],
   [['E'], 'Whirlwind tornado'],
+  [['F'], 'Inferno fire blast (Pilot perk)'],
   [['ESC', 'P'], 'Pause'],
   [['M'], 'Mute sound'],
 ];
@@ -193,7 +195,7 @@ export class UI implements UIAPI {
     hpBox: HTMLElement; hpNum: HTMLElement; hpFill: HTMLElement; hpChip: HTMLElement;
     gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
     slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
-    dash: HTMLElement; whirl: HTMLElement;
+    dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement;
     snowFill: HTMLElement; snowTxt: HTMLElement;
     count: HTMLElement; hint: HTMLElement;
   };
@@ -201,7 +203,7 @@ export class UI implements UIAPI {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1,
+    dash: -1, whirl: -2, flame: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1,
   };
   private hintTimer = 0;
 
@@ -1063,6 +1065,8 @@ export class UI implements UIAPI {
     H.radius = el('div', 'ss-gauge-r', '0.00m', inner);
     H.tier = el('div', 'ss-gauge-tier', 'Snowball', inner);
     H.whirl = this.buildAbility(row, '🌀', 'WHIRL', 'E', 'whirl');
+    H.flame = this.buildAbility(row, '🔥', 'FIRE', 'F', 'flame');
+    H.flame.style.display = 'none';
     H.slam = el('div', 'ss-slam-hint', undefined, bc);
     H.slam.innerHTML = '<kbd class="ss-kbd">SPACE</kbd> SLAM!';
 
@@ -1074,7 +1078,7 @@ export class UI implements UIAPI {
     H.snowTxt = el('span', 'ss-snow-txt', '', br);
 
     H.count = el('div', 'ss-count hidden', '', hud);
-    H.hint = el('div', 'ss-hint hidden', 'W/S drive  ·  A/D steer  ·  plow snow to grow a ball  ·  SPACE slam  ·  SHIFT dash strike  ·  E whirlwind  ·  ESC pause', hud);
+    H.hint = el('div', 'ss-hint hidden', 'W/S drive  ·  A/D steer  ·  plow snow to grow a ball  ·  SPACE slam  ·  SHIFT dash strike  ·  E whirlwind  ·  F fire (perk)  ·  ESC pause', hud);
     this.bh = new BrawlHudView(this.ctx, hud, bc);
   }
 
@@ -1478,6 +1482,13 @@ export class UI implements UIAPI {
     if (w !== L.whirl) {
       this.setAbility(H.whirl, w, L.whirl);
       L.whirl = w;
+    }
+    // Inferno (pilot perk) only shows once owned.
+    const f = s.flameReady < 0 ? -1 : Math.round(clamp01(s.flameReady) * 50) / 50;
+    if (f !== L.flame) {
+      H.flame.style.display = f < 0 ? 'none' : '';
+      if (f >= 0) this.setAbility(H.flame, f, L.flame);
+      L.flame = f;
     }
 
     // combo

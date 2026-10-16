@@ -11,8 +11,8 @@ export const BRAWL_SPAWN_PROTECT = 2;
 /** Brawl hit cap: one hit can take at most this fraction of the target's max hp (smooth taper — small hits
  *  are barely affected). Stops full-ball slams from one-shotting anyone, player or bot. */
 export const BRAWL_HIT_CAP = 0.6;
-export function brawlHit(raw: number, targetMaxHp: number): number {
-  const cap = BRAWL_HIT_CAP * targetMaxHp;
+export function brawlHit(raw: number, targetMaxHp: number, capFrac = BRAWL_HIT_CAP): number {
+  const cap = capFrac * targetMaxHp;
   return cap * (1 - Math.exp(-raw / cap));
 }
 

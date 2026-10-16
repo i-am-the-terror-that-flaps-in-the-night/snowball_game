@@ -150,6 +150,7 @@ export class Progression {
 
   computeStats(): PlayerStats {
     const L = (id: UpgradeId) => this.level(id);
+    const cd = FX.cooldownMult(L('overclock'));
     return {
       maxSpeed: FX.maxSpeed(L('engine')),
       accel: FX.accel(L('engine')),
@@ -159,18 +160,26 @@ export class Progression {
       maxBallRadius: FX.maxBallRadius(L('hopper')),
       damageMult: FX.damageMult(L('packedIce')),
       ramDamage: FX.ramDamage(L('ramSpikes')),
-      maxHp: FX.maxHp(L('armor')),
+      maxHp: FX.maxHp(L('armor')) + FX.bonusHp(L('vitality')),
       damageTaken: FX.damageTaken(L('plating')),
       repairFraction: FX.repairFraction(L('repairKit')),
       hpRegen: FX.hpRegen(L('repairKit')),
-      dashCooldown: FX.dashCooldown(L('nitro')),
+      dashCooldown: FX.dashCooldown(L('nitro')) * cd,
       dashPower: FX.dashPower(L('nitro')),
       whirlRadius: FX.whirlRadius(L('whirl')),
       whirlDamage: FX.whirlDamage(L('whirl')),
-      whirlCooldown: FX.whirlCooldown(L('whirl')),
+      whirlCooldown: FX.whirlCooldown(L('whirl')) * cd,
       snowRegen: FX.snowRegen(L('snowMachine')),
       magnetRadius: FX.magnetRadius(L('magnet')),
       shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,
+      lifesteal: FX.lifesteal(L('salvage')),
+      secondWindCd: FX.secondWindCd(L('secondWind')),
+      hitCapBonus: FX.hitCapBonus(L('wreckingBall')),
+      killRecharge: FX.killRecharge(L('adrenaline')),
+      flameRange: FX.flameRange(L('inferno')),
+      flameDps: FX.flameDps(L('inferno')),
+      flameCooldown: FX.flameCooldown(L('inferno')) * cd,
+      cooldownMult: cd,
       frostCore: L('frostCore') > 0,
       avalancheCore: L('avalancheCore') > 0,
     };

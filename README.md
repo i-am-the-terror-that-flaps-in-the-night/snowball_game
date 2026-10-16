@@ -23,6 +23,7 @@ npm run build      # typecheck + production build into dist/
 | Space | **Slam** your snowball into whatever is in front (bigger ball = much more damage) |
 | Shift | **Dash** — a long burst; hitting a bot mid-dash is a Dash Strike |
 | E | **Whirlwind** — spin, pull bots in, blast them out, suck up snow |
+| F | **Inferno** — cone of fire that sets bots ablaze (Pilot perk) |
 | Esc / P | Pause |
 | M | Mute |
 
@@ -38,6 +39,8 @@ npm run build      # typecheck + production build into dist/
 
 Coins from both modes buy permanent upgrades in the Garage. Stat upgrades are **endless**: full-strength gains up
 to the pips, then speed/size/cooldown stats taper toward a ceiling while damage, HP and regen keep growing.
+**Pilot perks** (Salvage Rig, Second Wind, Wrecking Ball, Adrenaline, Inferno Exhaust, Vitality Core) are
+player-only: Brawl bots never roll them into their garages.
 
 ## Project layout
 

@@ -494,7 +494,7 @@ export class Game {
   private blankHud(): HudState {
     return {
       zoneName: '', round: 1, totalRounds: 1, bossRound: false, enemiesRemaining: 0, plowHp: 1, plowMaxHp: 1,
-      ballRadius: 0, ballMaxRadius: 1, coins: 0, dashReady: 1, whirlReady: -1, snowFraction: 1, bosses: [], combo: 0, countdown: 0, brawl: null,
+      ballRadius: 0, ballMaxRadius: 1, coins: 0, dashReady: 1, whirlReady: -1, flameReady: -1, snowFraction: 1, bosses: [], combo: 0, countdown: 0, brawl: null,
     };
   }
 
@@ -512,6 +512,7 @@ export class Game {
     hud.coins = ctx.progression.coins;
     hud.dashReady = ctx.plow.dashReady;
     hud.whirlReady = ctx.plow.whirlReady;
+    hud.flameReady = ctx.combat.flameReady;
     hud.snowFraction = ctx.snow.totalSnowFraction();
     hud.bosses = ctx.enemies.bosses.map((b) => ({ name: ENEMIES[b.type].name, title: ENEMIES[b.type].title, hp: b.hp, maxHp: b.maxHp }));
     hud.combo = this.combo;
