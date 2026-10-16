@@ -430,7 +430,9 @@ export class BrawlManager implements BrawlAPI {
     if (!(r instanceof Rival) || !r.targetable || this._over) return false;
     const src = opts?.source ?? 'other';
     const method: Method = src === 'ram' ? (this.ctx.plow.dashing ? 'dash' : 'ram') : src === 'slam' ? 'slam' : src === 'whirl' ? 'whirl' : 'other';
-    if (opts?.freezeSeconds) r.frozenT = Math.max(r.frozenT, opts.freezeSeconds);
+    // Rivals have no hard-stun state: a stun (BRUTUS Ground Pound) lands as a shock-slow like a freeze.
+    const freeze = Math.max(opts?.freezeSeconds ?? 0, opts?.stunSeconds ?? 0);
+    if (freeze > 0) r.frozenT = Math.max(r.frozenT, freeze);
     const k = opts?.knockback;
     const fx = opts?.fromX ?? this.ctx.plow.position.x;
     const fz = opts?.fromZ ?? this.ctx.plow.position.z;

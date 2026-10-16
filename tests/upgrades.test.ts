@@ -103,8 +103,8 @@ describe('FX curves', () => {
   });
 
   it('Ground Pound values', () => {
-    expect(FX.poundDamage(0)).toBe(60);
-    expect(FX.poundDamage(5)).toBe(185);
+    expect(FX.poundDamage(0)).toBe(85);
+    expect(FX.poundDamage(5)).toBe(210);
     expect(FX.poundRadius(0)).toBe(8);
     expect(FX.poundStun(0)).toBeCloseTo(0.8);
     expect(FX.poundKnock(0)).toBe(20);
@@ -128,6 +128,8 @@ describe('FX curves', () => {
     expect(FX.killRecharge(1e4)).toBeLessThanOrEqual(1);
     expect(FX.damageTaken(1e4)).toBeGreaterThan(0);
     expect(FX.ironHide(1e4)).toBeGreaterThan(0);
+    // Iron Hide tops out around -36% so BRUTUS (x1.35 HP, stacking with Reinforced Frame) can't run away on effective HP.
+    expect(FX.ironHide(1e4)).toBeGreaterThanOrEqual(1 - 0.045 * 8 - 1e-9);
     expect(FX.secondWindCd(1e4)).toBeGreaterThanOrEqual(30);
   });
 });
