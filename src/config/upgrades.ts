@@ -136,12 +136,12 @@ export const FX = {
   /** Ground Pound (F on BRUTUS, free at level 0): ring radius, damage (x your damage mult), stun s, outward
    *  knockback m/s, recharge. */
   poundRadius: (L: number) => 8 + 0.7 * soft(L, 5),
-  poundDamage: (L: number) => 60 + 25 * grow(L, 5),
+  poundDamage: (L: number) => 85 + 25 * grow(L, 5),
   poundStun: (L: number) => 0.8 + 0.15 * soft(L, 5),
   poundKnock: (L: number) => 20 + 2.5 * soft(L, 5),
   poundCooldown: (L: number) => 4 + 2 * Math.exp(-L / 4),
   /** Iron Hide: multiplier on damage taken (stacks with Plating). */
-  ironHide: (L: number) => 1 - 0.06 * soft(L, 5, 3),
+  ironHide: (L: number) => 1 - 0.045 * soft(L, 5, 3),
   /** Momentum: extra ram damage per m/s of closing speed, as a fraction (0.04 = +40% at 10 m/s). */
   momentum: (L: number) => (L <= 0 ? 0 : 0.03 + 0.015 * soft(L - 1, 4)),
 };
