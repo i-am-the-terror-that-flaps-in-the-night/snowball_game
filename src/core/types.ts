@@ -135,6 +135,9 @@ export interface PlayerStats {
   poundCooldown: number;
   /** Momentum (BRUTUS): extra ram damage fraction per m/s of closing speed (0 = not owned). */
   momentum: number;
+  /** Buzzsaws (BRUTUS): reach (m) and damage per second to bots in the front arc (0 = not owned). */
+  sawRadius: number;
+  sawDps: number;
   /** Overclock (pilot perk): multiplier on all ability cooldowns, 1 -> 0.4. Already folded into
    *  dashCooldown / whirlCooldown / flameCooldown / clapCooldown; Plow applies it to the slam cooldown. Every
    *  cooldown is floored at MIN_COOLDOWN (config/upgrades.ts) after the multiplier. */

@@ -62,11 +62,11 @@ to the pips, then speed/size/cooldown stats taper toward a ceiling while damage,
 are player-only: Brawl bots never roll them into their garages. Overclock tops out at -60% cooldowns, and no
 ability ever recharges faster than 0.35s.
 
-**Starter plows** (picked in the Garage): the **Classic Plow** (tough, heavy-hitting, free Inferno fire on F that its own Inferno Exhaust upgrade makes hotter) or the
+**Starter plows** (picked in the Garage): the **Classic Plow** (+25% HP, free Inferno fire on F that grows with Packed Ice and its own Inferno Exhaust upgrade) or the
 electric **VOLT-9** (faster, more fragile) with its own upgrade line — Chain Lightning, Tesla Field, Thunderclap
-and Battery Shield — or the armored **BRUTUS** (+35% HP, +20% damage, bigger blade; slower and sluggish to
-accelerate) with a free Ground Pound on F (AoE damage ring, outward knockback, short stun) and its own line —
-Ground Pound, Iron Hide (less damage taken) and Momentum (rams and dash strikes scale with speed).
+and Battery Shield — or the armored **BRUTUS** (+35% HP, +20% damage, bigger blade; sluggish to accelerate) with a free Ground Pound on F (AoE damage ring, short knockback, stun) and its own line —
+Ground Pound, Iron Hide (less damage taken), Momentum (rams and dash strikes scale with speed) and Buzzsaws
+(spinning saws on the blade ends that shred every bot in front of and beside you).
 
 ## Project layout
 

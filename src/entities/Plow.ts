@@ -14,7 +14,7 @@ import type { Combat } from './Combat';
 import { getSnowballGeometry, getSnowballMaterial } from './snowballMesh';
 import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
-import { buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat } from './plowModels';
+import { buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw } from './plowModels';
 
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
 const BLADE_Z = 2.35;
@@ -214,6 +214,8 @@ export class Plow implements PlowAPI {
   private classicParts = new THREE.Group();
   private bruteParts!: THREE.Group;
   private cleats: Cleat[] = [];
+  /** Buzzsaws upgrade (BRUTUS): one saw per blade end. */
+  private saws: Buzzsaw[] = [];
   private cleatSpan = 3;
   private trackPhase = 0;
   private underglowMat!: THREE.MeshBasicMaterial;
@@ -418,6 +420,13 @@ export class Plow implements PlowAPI {
       cap.castShadow = true;
       this.bladeGroup.add(cap);
       this.bladeCaps.push(cap);
+    }
+    // BRUTUS Buzzsaws (shown only with the upgrade; repositioned in setBladeWidth).
+    for (let i = 0; i < 2; i++) {
+      const saw = buildBuzzsaw();
+      saw.group.visible = false;
+      this.bladeGroup.add(saw.group);
+      this.saws.push(saw);
     }
     const armGeo = new THREE.BoxGeometry(0.14, 0.14, 0.9);
     for (const x of [-0.55, 0.55]) {
@@ -714,6 +723,8 @@ export class Plow implements PlowAPI {
     const brute = this.kind === 'brute';
     const volt = this.kind === 'volt';
     this.bladeGroup.scale.set(1, brute ? BRUTE_BLADE_Y : volt ? 0.82 : 1, brute ? BRUTE_BLADE_Z : volt ? 0.85 : 1);
+    // Keep the saws round inside the stretched blade group.
+    for (const saw of this.saws) saw.group.scale.set(1, 1 / this.bladeGroup.scale.y, 1 / this.bladeGroup.scale.z);
   }
 
   applyStats(stats: PlayerStats): void {
@@ -732,6 +743,8 @@ export class Plow implements PlowAPI {
     this.bladeSheet.scale.x = w;
     this.bladeCaps[0].position.x = -w / 2;
     this.bladeCaps[1].position.x = w / 2;
+    this.saws[0].group.position.set(-w / 2 - 0.12, 0.62, 0.42);
+    this.saws[1].group.position.set(w / 2 + 0.12, 0.62, 0.42);
     for (const g of this.ghosts) g.blade.scale.x = w;
   }
 
@@ -1497,6 +1510,14 @@ export class Plow implements PlowAPI {
     const jz = j > 0 ? (Math.random() - 0.5) * 0.14 * j : 0;
     this.body.rotation.set(this.pitch + poseP - kickP, 0, this.roll + jx * 0.4);
     this.body.position.set(jx, bob + (this.whirlT >= 0 ? 0.08 : 0), poseZ - kickP * 1.5 + jz);
+
+    // Buzzsaws: always spinning, screaming faster with speed.
+    const sawsOn = this.kind === 'brute' && stats.sawDps > 0;
+    for (let i = 0; i < this.saws.length; i++) {
+      const saw = this.saws[i];
+      saw.group.visible = sawsOn;
+      if (sawsOn) saw.rotor.rotation.x += dt * (18 + absS * 2) * (i === 0 ? -1 : 1);
+    }
 
     // Wheels.
     const spin = ((this.speed + this.lungeVel) * dt) / WHEEL_R;

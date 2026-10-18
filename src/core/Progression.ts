@@ -265,6 +265,8 @@ export class Progression {
       poundKnock: FX.poundKnock(L('brutePound')),
       poundCooldown: cooldown(FX.poundCooldown(L('brutePound')), cd),
       momentum: FX.momentum(L('bruteMomentum')),
+      sawRadius: FX.sawRadius(L('bruteSaws')),
+      sawDps: plow.id === 'brute' ? FX.sawDps(L('bruteSaws')) : 0,
       maxSpeed: FX.maxSpeed(L('engine')) * plow.speedMult,
       accel: FX.accel(L('engine')) * plow.accelMult,
       turnRate: FX.turnRate(L('engine')),

@@ -225,3 +225,55 @@ export function buildBruteParts(m: BrutePartsMats): BruteParts {
   }
   return { group: bp, cleats, cleatSpan };
 }
+
+export interface Buzzsaw {
+  group: THREE.Group;
+  /** Spin this around X. */
+  rotor: THREE.Group;
+}
+
+/** BRUTUS Buzzsaws upgrade: a toothed circular saw standing upright on the blade end (axis along X), with a
+ *  guard arm and a hub. Shared materials are cached across calls. */
+let sawMats: { disc: THREE.MeshStandardMaterial; tooth: THREE.MeshStandardMaterial; hub: THREE.MeshStandardMaterial } | null = null;
+export function buildBuzzsaw(): Buzzsaw {
+  sawMats ??= {
+    disc: new THREE.MeshStandardMaterial({ color: 0xdfe4ea, metalness: 0.35, roughness: 0.3 }),
+    tooth: new THREE.MeshStandardMaterial({ color: 0xffc21a, metalness: 0.6, roughness: 0.35 }),
+    hub: new THREE.MeshStandardMaterial({ color: 0x16181c, metalness: 0.5, roughness: 0.5 }),
+  };
+  const R = 0.55;
+  const group = new THREE.Group();
+  const rotor = new THREE.Group();
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.05, 28), sawMats.disc);
+  disc.rotation.z = Math.PI / 2;
+  disc.castShadow = true;
+  rotor.add(disc);
+  // Teeth: raked wedges around the rim.
+  const toothGeo = new THREE.BoxGeometry(0.06, 0.16, 0.12);
+  const TEETH = 16;
+  for (let i = 0; i < TEETH; i++) {
+    const a = (i / TEETH) * Math.PI * 2;
+    const t = new THREE.Mesh(toothGeo, sawMats.tooth);
+    t.position.set(0, Math.cos(a) * (R + 0.04), Math.sin(a) * (R + 0.04));
+    t.rotation.x = -a + 0.5;
+    rotor.add(t);
+  }
+  // Cut-outs read as dark slots on the face.
+  const slotGeo = new THREE.BoxGeometry(0.07, 0.24, 0.07);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.4;
+    const s = new THREE.Mesh(slotGeo, sawMats.hub);
+    s.position.set(0, Math.cos(a) * 0.3, Math.sin(a) * 0.3);
+    s.rotation.x = -a;
+    rotor.add(s);
+  }
+  group.add(rotor);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.14, 12), sawMats.hub);
+  hub.rotation.z = Math.PI / 2;
+  group.add(hub);
+  // Guard arm bolting the saw back to the blade.
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.7), sawMats.hub);
+  arm.position.set(0, 0, -0.35);
+  group.add(arm);
+  return { group, rotor };
+}

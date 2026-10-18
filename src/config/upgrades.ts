@@ -33,7 +33,8 @@ export type UpgradeId =
   // BRUTUS plow line (only active while driving BRUTUS; player-only).
   | 'brutePound'
   | 'bruteHide'
-  | 'bruteMomentum';
+  | 'bruteMomentum'
+  | 'bruteSaws';
 
 export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'pilot' | 'volt' | 'brute' | 'special';
 
@@ -111,9 +112,9 @@ export const FX = {
   /** Fraction of the dash + whirl recharge refunded when you wreck something. */
   killRecharge: (L: number) => Math.min(1, 0.2 * soft(L, 4, 2)),
   /** Inferno (F on the Classic Plow, free at level 0): flame cone reach (m), burn damage per second, recharge (s). */
-  flameRange: (L: number) => 7.5 + 0.6 * soft(L, 5),
-  flameDps: (L: number) => 26 + 12 * grow(L, 5),
-  flameCooldown: (L: number) => 4 + 5 * Math.exp(-L / 4),
+  flameRange: (L: number) => 8.5 + 0.8 * soft(L, 5),
+  flameDps: (L: number) => 45 + 26 * grow(L, 5),
+  flameCooldown: (L: number) => 2.5 + 3.5 * Math.exp(-L / 4),
   /** Vitality: flat bonus HP on top of Armor Plating (rivals never get it). */
   bonusHp: (L: number) => 40 * grow(L, 5),
   /** Overclock: multiplier on every ability cooldown (slam, dash, whirl, fire). 10 levels, -6% each: 1 -> 0.4. */
@@ -135,15 +136,19 @@ export const FX = {
   // ---- BRUTUS line
   /** Ground Pound (F on BRUTUS, free at level 0): ring radius, damage (x your damage mult), stun s, outward
    *  knockback m/s, recharge. */
-  poundRadius: (L: number) => 8 + 0.7 * soft(L, 5),
-  poundDamage: (L: number) => 85 + 25 * grow(L, 5),
-  poundStun: (L: number) => 0.8 + 0.15 * soft(L, 5),
-  poundKnock: (L: number) => 20 + 2.5 * soft(L, 5),
-  poundCooldown: (L: number) => 4 + 2 * Math.exp(-L / 4),
+  poundRadius: (L: number) => 9.5 + 0.7 * soft(L, 5),
+  poundDamage: (L: number) => 160 + 55 * grow(L, 5),
+  poundStun: (L: number) => 1.2 + 0.15 * soft(L, 5),
+  poundKnock: (L: number) => 12 + 1.5 * soft(L, 5),
+  poundCooldown: (L: number) => 3 + 2.5 * Math.exp(-L / 4),
   /** Iron Hide: multiplier on damage taken (stacks with Plating). */
-  ironHide: (L: number) => 1 - 0.045 * soft(L, 5, 3),
+  ironHide: (L: number) => 1 - 0.06 * soft(L, 5, 3),
   /** Momentum: extra ram damage per m/s of closing speed, as a fraction (0.04 = +40% at 10 m/s). */
   momentum: (L: number) => (L <= 0 ? 0 : 0.03 + 0.015 * soft(L - 1, 4)),
+  /** Buzzsaws: spinning saws on the blade ends grind every bot in the front arc — reach (m) and damage per second
+   *  (x your damage mult). BRUTUS's answer to the Tesla Field: hits harder, but only in front and to the sides. */
+  sawRadius: (L: number) => (L <= 0 ? 0 : 4.2 + 0.5 * soft(L, 5)),
+  sawDps: (L: number) => (L <= 0 ? 0 : 20 + 12 * grow(L - 1, 4)),
 };
 
 const owned = (l: number) => (l ? 'Installed' : 'Locked');
@@ -178,6 +183,7 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'brutePound', name: 'Ground Pound', icon: '💥', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'F (free on BRUTUS): hop up and slam down — a snow shockwave that damages, stuns and hurls back every bot around you. Upgrades make it wider, harder-hitting and faster to recharge.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.poundDamage(l))} dmg, ${f1(FX.poundRadius(l))} m, ${f1(FX.poundCooldown(l))}s` },
   { id: 'bruteHide', name: 'Iron Hide', icon: '🛡️', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Bolted-on armor plates: take less damage from everything (stacks with Reinforced Frame).', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `-${Math.round((1 - FX.ironHide(l)) * 100)}% damage taken` : 'Locked') },
   { id: 'bruteMomentum', name: 'Momentum', icon: '🦏', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Rams and dash strikes hit harder the faster you are going. Get BRUTUS rolling and nothing stands.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round(FX.momentum(l) * 1000)}% ram dmg at 10 m/s` : 'Locked') },
+  { id: 'bruteSaws', name: 'Buzzsaws', icon: '🪚', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Bolts a pair of spinning saw blades onto the ends of your blade: they constantly shred every bot in front of you and off to the sides. Upgrades make them bite harder and reach further.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.sawDps(l))} dps, ${f1(FX.sawRadius(l))} m` : 'Locked') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },

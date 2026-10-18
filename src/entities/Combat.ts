@@ -18,7 +18,7 @@ const FLAME_SECONDS = 1.4;
 const FLAME_HALF = 0.7;
 const FLAME_COS = Math.cos(FLAME_HALF);
 /** Direct damage while standing in the cone, as a fraction of burn dps (on top of the burn). */
-const FLAME_CONTACT = 0.8;
+const FLAME_CONTACT = 1.0;
 /** Burning bots take this much extra damage from every source the player deals. */
 const BURN_VULN = 1.2;
 const FLAME_IGNITE_EVERY = 0.12;
@@ -91,6 +91,8 @@ export class Combat implements CombatAPI {
   private clapHeat = 0;
   private lastClapAt = -999;
   private fieldT = 0;
+  // BRUTUS state.
+  private sawT = 0;
   private idleArcT = 0;
   private chainReadyAt = 0;
   private chainBuf: EnemyHandle[] = [];
@@ -194,6 +196,48 @@ export class Combat implements CombatAPI {
       this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
     }
     if (any) ctx.audio.play('zap', { volume: 0.35, pitch: 1.4 });
+  }
+
+  /** Buzzsaws (BRUTUS): the saws on the blade ends grind every bot in the front arc (BRUTUS's Tesla Field). */
+  private updateSaws(dt: number): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    const plow = ctx.plow;
+    if (st.sawDps <= 0 || !plow || plow.dead) return;
+    this.sawT -= dt;
+    if (this.sawT > 0) return;
+    const TICK = 0.25;
+    this.sawT = TICK;
+    plow.getForward(_fwd);
+    const R = st.sawRadius;
+    const hits = ctx.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
+    let any = false;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - plow.position.x;
+      const dz = e.position.z - plow.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      // Front and sides only (about 105 degrees either way of the nose): nothing behind the cab.
+      if ((dx * _fwd.x + dz * _fwd.z) / d < -0.25) continue;
+      any = true;
+      const hp0 = e.hp;
+      const killed = ctx.enemies.damage(e, st.sawDps * st.damageMult * TICK * this.burnMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3((dx / d) * 2.5, 0, (dz / d) * 2.5),
+        fromX: e.position.x,
+        fromZ: e.position.z,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e, false, false);
+      _q.set(e.position.x - (dx / d) * e.radius, e.position.y + 0.5, e.position.z - (dz / d) * e.radius);
+      ctx.fx.burst(_q, { color: Math.random() < 0.5 ? 0xffd040 : 0xfff2b0, count: 10, speed: 9, size: 0.07, gravity: 14, life: 0.35 });
+      if (dealt > 0) {
+        _q.y = e.position.y + e.radius + 1;
+        ctx.fx.floatText(_q, `🪚${Math.round(dealt)}`, '#ffd040', 0.75);
+      }
+    }
+    if (any) ctx.audio.play('whirlTick', { volume: 0.35, pitch: 1.8 });
   }
 
   /** Thunderclap (F on VOLT-9): lightning blast around the plow — damage, shock-slow and knockback. */
@@ -938,7 +982,7 @@ export class Combat implements CombatAPI {
       // Scorch: direct damage + a shove away from the blade while caught in the cone.
       const nd = d || 1;
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.flameDps * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN, {
+      const killed = ctx.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN, {
         source: 'other',
         knockback: new THREE.Vector3((dx / nd) * 3, 0, (dz / nd) * 3),
         fromX: e.position.x,
@@ -973,7 +1017,7 @@ export class Combat implements CombatAPI {
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dps * BURN_TICK * BURN_VULN, { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+        const killed = ctx.enemies.damage(e, dps * ctx.stats.damageMult * BURN_TICK * BURN_VULN, { source: 'other', fromX: e.position.x, fromZ: e.position.z });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(dealt, killed, e, false);
         if (dealt > 0) {
@@ -1017,6 +1061,7 @@ export class Combat implements CombatAPI {
     this.updatePound(dt);
     this.updateStorm(dt);
     this.updateField(dt);
+    this.updateSaws(dt);
     this.updateShield(dt);
     this.lightning.update(dt);
     if (this.iframe > 0) {

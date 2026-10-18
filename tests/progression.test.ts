@@ -235,7 +235,7 @@ describe('save export / import', () => {
     expect(p.level('armor')).toBe(1);
     expect(p.plow).toBe('classic');
     expect(p.data.brawlBestKills).toBe(0);
-    expect(p.computeStats().maxHp).toBeCloseTo(FX.maxHp(1));
+    expect(p.computeStats().maxHp).toBeCloseTo(FX.maxHp(1) * PLOWS.classic.hpMult);
   });
 
   it('falls back to a fresh save on corrupted storage', () => {

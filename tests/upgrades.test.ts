@@ -89,7 +89,7 @@ describe('FX curves', () => {
       }
     }
     expect(FX.clapCooldown(1000)).toBeGreaterThanOrEqual(3);
-    expect(FX.poundCooldown(1000)).toBeGreaterThanOrEqual(4);
+    expect(FX.poundCooldown(1000)).toBeGreaterThanOrEqual(3);
   });
 
   it('Thunderclap values', () => {
@@ -103,12 +103,12 @@ describe('FX curves', () => {
   });
 
   it('Ground Pound values', () => {
-    expect(FX.poundDamage(0)).toBe(85);
-    expect(FX.poundDamage(5)).toBe(210);
-    expect(FX.poundRadius(0)).toBe(8);
-    expect(FX.poundStun(0)).toBeCloseTo(0.8);
-    expect(FX.poundKnock(0)).toBe(20);
-    expect(FX.poundCooldown(0)).toBe(6);
+    expect(FX.poundDamage(0)).toBe(160);
+    expect(FX.poundDamage(5)).toBe(435);
+    expect(FX.poundRadius(0)).toBe(9.5);
+    expect(FX.poundStun(0)).toBeCloseTo(1.2);
+    expect(FX.poundKnock(0)).toBe(12);
+    expect(FX.poundCooldown(0)).toBe(5.5);
   });
 
   it('level 0 of owned-only Volt/Brute upgrades is inert', () => {
@@ -129,7 +129,7 @@ describe('FX curves', () => {
     expect(FX.damageTaken(1e4)).toBeGreaterThan(0);
     expect(FX.ironHide(1e4)).toBeGreaterThan(0);
     // Iron Hide tops out around -36% so BRUTUS (x1.35 HP, stacking with Reinforced Frame) can't run away on effective HP.
-    expect(FX.ironHide(1e4)).toBeGreaterThanOrEqual(1 - 0.045 * 8 - 1e-9);
+    expect(FX.ironHide(1e4)).toBeGreaterThanOrEqual(1 - 0.06 * 8 - 1e-9);
     expect(FX.secondWindCd(1e4)).toBeGreaterThanOrEqual(30);
   });
 });
