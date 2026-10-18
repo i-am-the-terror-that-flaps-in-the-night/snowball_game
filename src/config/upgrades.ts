@@ -147,8 +147,8 @@ export const FX = {
   momentum: (L: number) => (L <= 0 ? 0 : 0.03 + 0.015 * soft(L - 1, 4)),
   /** Buzzsaws: spinning saws on the blade ends grind every bot in the front arc — reach (m) and damage per second
    *  (x your damage mult). BRUTUS's answer to the Tesla Field: hits harder, but only in front and to the sides. */
-  sawRadius: (L: number) => (L <= 0 ? 0 : 4.2 + 0.5 * soft(L, 5)),
-  sawDps: (L: number) => (L <= 0 ? 0 : 20 + 12 * grow(L - 1, 4)),
+  sawRadius: (L: number) => (L <= 0 ? 0 : 4.6 + 0.5 * soft(L, 5)),
+  sawDps: (L: number) => (L <= 0 ? 0 : 40 + 20 * grow(L - 1, 4)),
 };
 
 const owned = (l: number) => (l ? 'Installed' : 'Locked');

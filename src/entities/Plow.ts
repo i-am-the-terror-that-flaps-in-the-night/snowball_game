@@ -724,7 +724,8 @@ export class Plow implements PlowAPI {
     const volt = this.kind === 'volt';
     this.bladeGroup.scale.set(1, brute ? BRUTE_BLADE_Y : volt ? 0.82 : 1, brute ? BRUTE_BLADE_Z : volt ? 0.85 : 1);
     // Keep the saws round inside the stretched blade group.
-    for (const saw of this.saws) saw.group.scale.set(1, 1 / this.bladeGroup.scale.y, 1 / this.bladeGroup.scale.z);
+    // (The left saw is mirrored on X so its mounting arm points back at the blade.)
+    this.saws.forEach((saw, i) => saw.group.scale.set(i === 0 ? -1 : 1, 1 / this.bladeGroup.scale.y, 1 / this.bladeGroup.scale.z));
   }
 
   applyStats(stats: PlayerStats): void {
@@ -743,8 +744,8 @@ export class Plow implements PlowAPI {
     this.bladeSheet.scale.x = w;
     this.bladeCaps[0].position.x = -w / 2;
     this.bladeCaps[1].position.x = w / 2;
-    this.saws[0].group.position.set(-w / 2 - 0.12, 0.62, 0.42);
-    this.saws[1].group.position.set(w / 2 + 0.12, 0.62, 0.42);
+    this.saws[0].group.position.set(-w / 2 - 0.6, 0.5, 0.45);
+    this.saws[1].group.position.set(w / 2 + 0.6, 0.5, 0.45);
     for (const g of this.ghosts) g.blade.scale.x = w;
   }
 
@@ -1516,7 +1517,7 @@ export class Plow implements PlowAPI {
     for (let i = 0; i < this.saws.length; i++) {
       const saw = this.saws[i];
       saw.group.visible = sawsOn;
-      if (sawsOn) saw.rotor.rotation.x += dt * (18 + absS * 2) * (i === 0 ? -1 : 1);
+      if (sawsOn) saw.rotor.rotation.y += dt * (16 + absS * 1.5);
     }
 
     // Wheels.

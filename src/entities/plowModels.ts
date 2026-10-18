@@ -228,52 +228,79 @@ export function buildBruteParts(m: BrutePartsMats): BruteParts {
 
 export interface Buzzsaw {
   group: THREE.Group;
-  /** Spin this around X. */
+  /** Spin this around Y. */
   rotor: THREE.Group;
 }
 
-/** BRUTUS Buzzsaws upgrade: a toothed circular saw standing upright on the blade end (axis along X), with a
- *  guard arm and a hub. Shared materials are cached across calls. */
-let sawMats: { disc: THREE.MeshStandardMaterial; tooth: THREE.MeshStandardMaterial; hub: THREE.MeshStandardMaterial } | null = null;
+/** BRUTUS Buzzsaws upgrade: a big toothed circular saw lying flat (axis along Y) and jutting out past the blade
+ *  end, with a hazard-striped face, glowing teeth, a spin-blur ring and a mounting arm. Shared materials and
+ *  geometry are cached across calls. */
+let sawKit: {
+  disc: THREE.MeshStandardMaterial;
+  face: THREE.MeshStandardMaterial;
+  tooth: THREE.MeshStandardMaterial;
+  hub: THREE.MeshStandardMaterial;
+  blur: THREE.MeshBasicMaterial;
+  toothGeo: THREE.BufferGeometry;
+} | null = null;
+export const SAW_R = 0.95;
 export function buildBuzzsaw(): Buzzsaw {
-  sawMats ??= {
-    disc: new THREE.MeshStandardMaterial({ color: 0xdfe4ea, metalness: 0.35, roughness: 0.3 }),
-    tooth: new THREE.MeshStandardMaterial({ color: 0xffc21a, metalness: 0.6, roughness: 0.35 }),
-    hub: new THREE.MeshStandardMaterial({ color: 0x16181c, metalness: 0.5, roughness: 0.5 }),
-  };
-  const R = 0.55;
+  if (!sawKit) {
+    const faceTex = hazardTexture();
+    faceTex.repeat.set(3, 3);
+    // Raked triangular tooth in the XZ plane, pointing along +X, extruded thin on Y.
+    const shape = new THREE.Shape();
+    shape.moveTo(0, -0.13);
+    shape.lineTo(0.26, 0.1);
+    shape.lineTo(0, 0.13);
+    shape.closePath();
+    const toothGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: false });
+    toothGeo.rotateX(Math.PI / 2);
+    toothGeo.translate(0, 0.035, 0);
+    sawKit = {
+      disc: new THREE.MeshStandardMaterial({ color: 0xe8edf2, metalness: 0.7, roughness: 0.22 }),
+      face: new THREE.MeshStandardMaterial({ map: faceTex, metalness: 0.3, roughness: 0.45 }),
+      tooth: new THREE.MeshStandardMaterial({ color: 0xffb000, emissive: 0xff5a00, emissiveIntensity: 0.9, metalness: 0.5, roughness: 0.3 }),
+      hub: new THREE.MeshStandardMaterial({ color: 0x16181c, metalness: 0.5, roughness: 0.5 }),
+      blur: new THREE.MeshBasicMaterial({ color: 0xffd060, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false }),
+      toothGeo,
+    };
+  }
+  const k = sawKit;
+  const R = SAW_R;
   const group = new THREE.Group();
   const rotor = new THREE.Group();
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.05, 28), sawMats.disc);
-  disc.rotation.z = Math.PI / 2;
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.07, 40), k.disc);
   disc.castShadow = true;
   rotor.add(disc);
-  // Teeth: raked wedges around the rim.
-  const toothGeo = new THREE.BoxGeometry(0.06, 0.16, 0.12);
-  const TEETH = 16;
+  // Hazard-striped inner faces (top and bottom) so the spin reads from the chase camera.
+  for (const y of [0.037, -0.037]) {
+    const face = new THREE.Mesh(new THREE.CircleGeometry(R * 0.72, 32), k.face);
+    face.rotation.x = y > 0 ? -Math.PI / 2 : Math.PI / 2;
+    face.position.y = y;
+    rotor.add(face);
+  }
+  // Teeth: glowing raked wedges around the rim.
+  const TEETH = 20;
   for (let i = 0; i < TEETH; i++) {
     const a = (i / TEETH) * Math.PI * 2;
-    const t = new THREE.Mesh(toothGeo, sawMats.tooth);
-    t.position.set(0, Math.cos(a) * (R + 0.04), Math.sin(a) * (R + 0.04));
-    t.rotation.x = -a + 0.5;
+    const t = new THREE.Mesh(k.toothGeo, k.tooth);
+    t.position.set(Math.cos(a) * (R - 0.04), 0, Math.sin(a) * (R - 0.04));
+    t.rotation.y = -a - 0.35;
     rotor.add(t);
   }
-  // Cut-outs read as dark slots on the face.
-  const slotGeo = new THREE.BoxGeometry(0.07, 0.24, 0.07);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + 0.4;
-    const s = new THREE.Mesh(slotGeo, sawMats.hub);
-    s.position.set(0, Math.cos(a) * 0.3, Math.sin(a) * 0.3);
-    s.rotation.x = -a;
-    rotor.add(s);
-  }
+  // Spin blur: a faint glowing ring just past the teeth.
+  const blur = new THREE.Mesh(new THREE.RingGeometry(R * 0.8, R + 0.24, 40), k.blur);
+  blur.rotation.x = -Math.PI / 2;
+  blur.position.y = 0.06;
+  rotor.add(blur);
   group.add(rotor);
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.14, 12), sawMats.hub);
-  hub.rotation.z = Math.PI / 2;
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.22, 14), k.hub);
   group.add(hub);
-  // Guard arm bolting the saw back to the blade.
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.7), sawMats.hub);
-  arm.position.set(0, 0, -0.35);
+  // Mounting arm bolting the saw back to the blade end.
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 0.22), k.hub);
+  arm.position.set(-0.42, 0.12, -0.25);
+  arm.rotation.y = 0.5;
   group.add(arm);
   return { group, rotor };
 }
