@@ -206,6 +206,11 @@ export interface PlowAPI {
   readonly whirling: boolean;
   /** Spawn protection / dash start i-frames: Combat.hitPlow ignores damage while true. */
   readonly invulnerable: boolean;
+  /** 0..1 growth of the BRUTUS Buzzsaw halos (0 = idle or no saws). Grows with saw spin, which rises with plow
+   *  speed and saw fury; Combat widens the saw reach and BRUTUS's ram splash with it. */
+  readonly sawHalo: number;
+  /** Build Buzzsaw fury from damage dealt and taken (spins the saws up). No-op without the saws. */
+  feedSawFury(dealt: number, taken: number): void;
   /** World-space position of the front of the blade (where the held ball sits). */
   getBladeTip(out: THREE.Vector3): THREE.Vector3;
   getForward(out: THREE.Vector3): THREE.Vector3;

@@ -230,6 +230,8 @@ export interface Buzzsaw {
   group: THREE.Group;
   /** Spin this around Y. */
   rotor: THREE.Group;
+  /** Flat glow disc around the saw (unit radius: scale it to the halo radius). Its material is per saw. */
+  halo: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
 }
 
 /** BRUTUS Buzzsaws upgrade: a big toothed circular saw lying flat (axis along Y) and jutting out past the blade
@@ -242,8 +244,28 @@ let sawKit: {
   hub: THREE.MeshStandardMaterial;
   blur: THREE.MeshBasicMaterial;
   toothGeo: THREE.BufferGeometry;
+  haloTex: THREE.CanvasTexture;
+  haloGeo: THREE.CircleGeometry;
 } | null = null;
 export const SAW_R = 0.95;
+
+/** Radial glow for the saw halo: clear in the middle (the saw covers it), a hot band near the rim, fading out. */
+function haloTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+  grad.addColorStop(0.72, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.82, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 export function buildBuzzsaw(): Buzzsaw {
   if (!sawKit) {
     const faceTex = hazardTexture();
@@ -264,6 +286,8 @@ export function buildBuzzsaw(): Buzzsaw {
       hub: new THREE.MeshStandardMaterial({ color: 0x16181c, metalness: 0.5, roughness: 0.5 }),
       blur: new THREE.MeshBasicMaterial({ color: 0xffd060, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false }),
       toothGeo,
+      haloTex: haloTexture(),
+      haloGeo: new THREE.CircleGeometry(1, 48),
     };
   }
   const k = sawKit;
@@ -295,6 +319,15 @@ export function buildBuzzsaw(): Buzzsaw {
   blur.position.y = 0.06;
   rotor.add(blur);
   group.add(rotor);
+  // Halo: a glow disc around the teeth (alpha-blended so it still reads on white snow), grown and tinted by Plow as the saws spin up.
+  const halo = new THREE.Mesh(
+    k.haloGeo,
+    new THREE.MeshBasicMaterial({ map: k.haloTex, color: 0xffb030, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
+  );
+  halo.rotation.x = -Math.PI / 2;
+  halo.scale.setScalar(R * 1.3);
+  halo.renderOrder = 2;
+  group.add(halo);
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.22, 14), k.hub);
   group.add(hub);
   // Mounting arm bolting the saw back to the blade end.
@@ -302,5 +335,5 @@ export function buildBuzzsaw(): Buzzsaw {
   arm.position.set(-0.42, 0.12, -0.25);
   arm.rotation.y = 0.5;
   group.add(arm);
-  return { group, rotor };
+  return { group, rotor, halo };
 }

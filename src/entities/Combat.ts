@@ -40,6 +40,13 @@ const POUND_HOP_HEIGHT = 1.5;
 const POUND_RIM_FRAC = 0.6;
 /** Momentum (BRUTUS) only counts closing speed up to this many m/s. */
 const MOMENTUM_SPEED_CAP = 20;
+/** Buzzsaw halos (BRUTUS): a full halo stretches the saw reach by this share... */
+const SAW_HALO_REACH = 0.5;
+/** ...and BRUTUS's rams splash this share of their damage onto every other bot within
+ *  SAW_SPLASH_R0 + SAW_SPLASH_R * halo metres of the target. */
+const SAW_SPLASH_FRAC = 0.6;
+const SAW_SPLASH_R0 = 1.5;
+const SAW_SPLASH_R = 4.5;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
 const RAM_REPEAT = 0.25;
 /** cos(60°): attacker must be within ±60° of the plow's front for the ball to shield. */
@@ -78,6 +85,7 @@ export class Combat implements CombatAPI {
   private iframeDmg = 0;
   private ramCd = new Map<number, number>();
   private queryOut: EnemyHandle[] = [];
+  private splashBuf: EnemyHandle[] = [];
   private targets: EnemyHandle[] = [];
   private lastFreezeSound = -10;
   private lastBlockSound = -10;
@@ -209,7 +217,7 @@ export class Combat implements CombatAPI {
     const TICK = 0.25;
     this.sawT = TICK;
     plow.getForward(_fwd);
-    const R = st.sawRadius;
+    const R = st.sawRadius * (1 + SAW_HALO_REACH * plow.sawHalo);
     const hits = ctx.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
     let any = false;
     for (let i = 0; i < hits.length; i++) {
@@ -586,7 +594,10 @@ export class Combat implements CombatAPI {
       ctx.fx.shake(0.5);
       ctx.audio.play('respawn');
     }
-    if (final > 0) plow.damage(final);
+    if (final > 0) {
+      plow.damage(final);
+      plow.feedSawFury(0, final);
+    }
 
     // Knockback away from the attacker (shield absorbs some of it).
     const kb = (opts?.knockback ?? 6) * (blocked > 0 ? 0.75 : 1);
@@ -684,7 +695,43 @@ export class Combat implements CombatAPI {
     ctx.audio.play('ram', { volume: Math.min(1, 0.45 + closingSpeed * 0.04) });
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1, enemy.position.z);
     if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : '#ffffff', 0.8 + Math.min(0.5, dealt * 0.01));
+    this.sawRamSplash(enemy, dmg);
     return dmg;
+  }
+
+  /** Saw fury splash (BRUTUS with Buzzsaws): a ram also shreds every other bot around the target, out to a
+   *  radius that grows with the saw halos. */
+  private sawRamSplash(target: EnemyHandle, dmg: number): void {
+    const ctx = this.ctx;
+    const plow = ctx.plow;
+    const h = plow.sawHalo;
+    if (ctx.stats.sawDps <= 0 || h < 0.05 || plow.dead) return;
+    const R = SAW_SPLASH_R0 + SAW_SPLASH_R * h;
+    const cx = target.position.x;
+    const cz = target.position.z;
+    const hits = ctx.enemies.query(cx, cz, R, this.splashBuf);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (e === target || !e.alive) continue;
+      const dx = e.position.x - cx;
+      const dz = e.position.z - cz;
+      const d = Math.hypot(dx, dz) || 1;
+      const hp0 = e.hp;
+      const killed = ctx.enemies.damage(e, dmg * SAW_SPLASH_FRAC * this.burnMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3((dx / d) * 6, 0, (dz / d) * 6),
+        fromX: cx,
+        fromZ: cz,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e, false, false);
+      if (dealt > 0) {
+        _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
+        ctx.fx.floatText(_q, `🪚${Math.round(dealt)}`, '#ff8a30', 0.8);
+      }
+    }
+    _q.set(cx, 0.05, cz);
+    ctx.fx.ring(_q, R, 0xff6a20);
   }
 
   /** DASH STRIKE: the dashing plow hits a bot like a truck. The dash keeps going (80% speed). */
@@ -740,6 +787,7 @@ export class Combat implements CombatAPI {
     ctx.audio.play('dashStrike');
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1.4, enemy.position.z);
     fx.floatText(_q, dealt > 0 ? `DASH! ${Math.round(dealt)}` : 'DASH!', killed ? '#fff3a0' : '#ff9a2a', 1.35);
+    this.sawRamSplash(enemy, dmg);
     return dmg;
   }
 
@@ -898,6 +946,7 @@ export class Combat implements CombatAPI {
     const plow = this.ctx.plow;
     const st = this.ctx.stats;
     if (plow.dead) return;
+    if (dealt > 0) plow.feedSawFury(dealt, 0);
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.chainLightning(target, dealt, heal);
     if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
     if (killed && st.killRecharge > 0) {

@@ -14,7 +14,7 @@ import type { Combat } from './Combat';
 import { getSnowballGeometry, getSnowballMaterial } from './snowballMesh';
 import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
-import { buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw } from './plowModels';
+import { buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R } from './plowModels';
 
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
 const BLADE_Z = 2.35;
@@ -24,6 +24,17 @@ const WHEEL_R = 0.48;
 /** BRUTUS's taller, deeper blade (visual scale on Y / Z; width still follows bladeWidth). */
 const BRUTE_BLADE_Y = 1.28;
 const BRUTE_BLADE_Z = 1.15;
+/** Buzzsaw spin (rad/s) at rest; the halo is fully grown at SAW_SPIN_BASE + SAW_SPIN_FULL. */
+const SAW_SPIN_BASE = 16;
+const SAW_SPIN_FULL = 75;
+/** Full fury multiplies the spin by 1 + SAW_FURY_SPIN. */
+const SAW_FURY_SPIN = 2;
+/** Damage dealt / taken that fills the saw fury from empty; it drains SAW_FURY_DRAIN per second. */
+const SAW_FURY_DEALT = 250;
+const SAW_FURY_TAKEN = 60;
+const SAW_FURY_DRAIN = 0.15;
+const _haloCool = new THREE.Color(0xffc040);
+const _haloHot = new THREE.Color(0xff3010);
 
 const SLAM_WINDUP = 0.12;
 const SLAM_LUNGE = 0.2;
@@ -216,6 +227,9 @@ export class Plow implements PlowAPI {
   private cleats: Cleat[] = [];
   /** Buzzsaws upgrade (BRUTUS): one saw per blade end. */
   private saws: Buzzsaw[] = [];
+  /** 0..1 saw fury: built by damage dealt and taken, drains over time; spins the saws up. */
+  private sawFury = 0;
+  private _sawHalo = 0;
   private cleatSpan = 3;
   private trackPhase = 0;
   private underglowMat!: THREE.MeshBasicMaterial;
@@ -553,6 +567,13 @@ export class Plow implements PlowAPI {
   get whirling(): boolean {
     return this.whirlT >= 0;
   }
+  get sawHalo(): number {
+    return this._sawHalo;
+  }
+  feedSawFury(dealt: number, taken: number): void {
+    if (this.kind !== 'brute' || this.ctx.stats.sawDps <= 0 || this._dead) return;
+    this.sawFury = Math.min(1, this.sawFury + dealt / SAW_FURY_DEALT + taken / SAW_FURY_TAKEN);
+  }
   get invulnerable(): boolean {
     return !this._dead && (this.spawnProt > 0 || this.dashT > DASH_SECONDS - DASH_IFRAMES);
   }
@@ -614,6 +635,8 @@ export class Plow implements PlowAPI {
     this.dashSpeed = 0;
     this.hitStopT = 0;
     this.whirlTick = 0;
+    this.sawFury = 0;
+    this._sawHalo = 0;
     this.tornadoA = 0;
     this.ringPulse = 0;
     this.tornado.visible = false;
@@ -1513,12 +1536,22 @@ export class Plow implements PlowAPI {
     this.body.rotation.set(this.pitch + poseP - kickP, 0, this.roll + jx * 0.4);
     this.body.position.set(jx, bob + (this.whirlT >= 0 ? 0.08 : 0), poseZ - kickP * 1.5 + jz);
 
-    // Buzzsaws: always spinning, screaming faster with speed.
+    // Buzzsaws: always spinning, screaming faster with speed and fury; the halos grow with the spin.
     const sawsOn = this.kind === 'brute' && stats.sawDps > 0;
+    this.sawFury = sawsOn ? Math.max(0, this.sawFury - dt * SAW_FURY_DRAIN) : 0;
+    const sawSpin = (SAW_SPIN_BASE + absS * 1.5) * (1 + SAW_FURY_SPIN * this.sawFury);
+    const haloTarget = sawsOn && !this._dead ? THREE.MathUtils.clamp((sawSpin - SAW_SPIN_BASE) / SAW_SPIN_FULL, 0, 1) : 0;
+    this._sawHalo += (haloTarget - this._sawHalo) * Math.min(1, dt * 6);
+    const h = this._sawHalo;
     for (let i = 0; i < this.saws.length; i++) {
       const saw = this.saws[i];
       saw.group.visible = sawsOn;
-      if (sawsOn) saw.rotor.rotation.y += dt * (16 + absS * 1.5);
+      if (!sawsOn) continue;
+      saw.rotor.rotation.y += dt * sawSpin;
+      const flicker = 1 + Math.sin(this.bobT * 7 + i * 2) * 0.03 * h;
+      saw.halo.scale.setScalar(SAW_R * (1.3 + 1.9 * h) * flicker);
+      saw.halo.material.opacity = 0.55 + 0.45 * h;
+      saw.halo.material.color.copy(_haloCool).lerp(_haloHot, this.sawFury);
     }
 
     // Wheels.
