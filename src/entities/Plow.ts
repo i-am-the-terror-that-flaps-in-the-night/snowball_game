@@ -744,8 +744,9 @@ export class Plow implements PlowAPI {
     this.bladeSheet.scale.x = w;
     this.bladeCaps[0].position.x = -w / 2;
     this.bladeCaps[1].position.x = w / 2;
-    this.saws[0].group.position.set(-w / 2 - 0.6, 0.5, 0.45);
-    this.saws[1].group.position.set(w / 2 + 0.6, 0.5, 0.45);
+    // Mounted high (~1.3 m world) so the flat saws ride above the snow and the berms the blade pushes aside.
+    this.saws[0].group.position.set(-w / 2 - 0.6, 1.0, 0.45);
+    this.saws[1].group.position.set(w / 2 + 0.6, 1.0, 0.45);
     for (const g of this.ghosts) g.blade.scale.x = w;
   }
 
