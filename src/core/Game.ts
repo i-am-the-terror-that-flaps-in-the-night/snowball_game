@@ -26,6 +26,7 @@ import { Tutorial } from '../ui/Tutorial';
 import { ChallengeTracker, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
+import { renderFrame } from '../render/post';
 import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
@@ -663,7 +664,7 @@ export class Game {
     input.poll();
     if (input.padPause && !settingsUi.open) this.togglePause();
     this.tick(dt);
-    this.renderer.render(this.ctx.scene, this.ctx.camera);
+    renderFrame(this.renderer, this.ctx.scene, this.ctx.camera);
   }
 
   /** Advance the simulation by dt seconds without rendering (also used by headless playtests). */

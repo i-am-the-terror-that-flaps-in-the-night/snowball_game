@@ -23,7 +23,7 @@ export interface SettingsHooks {
 const PAD_HELP = 'Left stick / d-pad drive & steer · RT/LT throttle · A slam · B / RB dash · X whirlwind · Y F-ability (Inferno / Thunderclap / Ground Pound) · START pause · menus: d-pad + A, B = back';
 
 /**
- * Settings overlay (volume, screen shake, graphics quality, key rebinding, save export/import/reset).
+ * Settings overlay (volume, screen shake, graphics quality + bloom, key rebinding, save export/import/reset).
  * Lives on top of whatever screen opened it (main menu or pause) and owns the keyboard while open.
  */
 export class SettingsMenu {
@@ -34,6 +34,7 @@ export class SettingsMenu {
   private keyBtns = new Map<Action, HTMLButtonElement>();
   private qualityBtns = new Map<Quality, HTMLButtonElement>();
   private flashBtns = new Map<boolean, HTMLButtonElement>();
+  private bloomBtns = new Map<boolean, HTMLButtonElement>();
   private sliders: { input: HTMLInputElement; val: HTMLElement; get: () => number }[] = [];
   private padStatus!: HTMLElement;
   private keyMsg!: HTMLElement;
@@ -149,6 +150,17 @@ export class SettingsMenu {
         this.refresh();
       }, seg));
     }
+    const bRow = el('div', 'ss-set-row', undefined, vid);
+    el('span', 'ss-set-label', 'Bloom', bRow);
+    const bSeg = el('div', 'ss-set-seg', undefined, bRow);
+    for (const [on, label] of [[false, 'OFF'], [true, 'ON · HIGH only']] as [boolean, string][]) {
+      this.bloomBtns.set(on, this.btn(label, 'ss-ice ss-small', () => {
+        settings.bloom = on;
+        applyQuality(this.ctx);
+        saveSettings();
+        this.refresh();
+      }, bSeg));
+    }
 
     const fRow = el('div', 'ss-set-row', undefined, vid);
     el('span', 'ss-set-label', 'Flashes', fRow);
@@ -205,6 +217,7 @@ export class SettingsMenu {
     }
     for (const [q, b] of this.qualityBtns) b.classList.toggle('ss-set-on', settings.quality === q);
     for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
+    for (const [on, b] of this.bloomBtns) b.classList.toggle('ss-set-on', settings.bloom === on);
     for (const a of ACTIONS) {
       const b = this.keyBtns.get(a.id)!;
       const keys = this.ctx.input.keysFor(a.id);
