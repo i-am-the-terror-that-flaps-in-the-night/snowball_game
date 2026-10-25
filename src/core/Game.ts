@@ -24,6 +24,7 @@ import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
 import { ChallengeTracker, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
 import { Achievements } from '../meta/achievements';
+import { installShadowProxies } from '../render/shadowProxy';
 import { todaysDaily } from '../meta/daily';
 import type { GameEvents, KillSource } from './events';
 
@@ -95,6 +96,8 @@ export class Game {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     container.appendChild(renderer.domElement);
+    // Shadow-only proxy casters (render/shadowProxy.ts) need their stand-in visible during the shadow pass only.
+    installShadowProxies(renderer);
     this.renderer = renderer;
 
     const scene = new THREE.Scene();
