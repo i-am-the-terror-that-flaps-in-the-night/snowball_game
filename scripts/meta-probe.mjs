@@ -11,7 +11,7 @@ const root = process.cwd();
 const port = 6200 + Math.floor(Math.random() * 100);
 const server = await createServer({ root, server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: [process.env.PROBE_GPU === '0' ? '--use-angle=swiftshader' : '--use-angle=metal', '--enable-unsafe-swiftshader'] });
 const errors = [];
 const log = (...a) => console.log(...a);
 
@@ -21,7 +21,7 @@ async function session(w, h, tag) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`[${tag}] ${m.text()}`); });
   await page.goto(`http://localhost:${port}/?debug`, { waitUntil: 'load' });
   await page.waitForTimeout(1500);
-  const shot = async (name) => { await page.waitForTimeout(350); await page.screenshot({ path: `${out}/${tag}-${name}.png` }); };
+  const shot = async (name, wait = 350) => { await page.waitForTimeout(wait); await page.screenshot({ path: `${out}/${tag}-${name}.png` }); };
   const clickText = async (text) => {
     const b = page.locator('button:visible', { hasText: text }).first();
     if (!(await b.count())) { log(`  [${tag}] no visible button "${text}"`); return false; }
@@ -62,7 +62,7 @@ async function session(w, h, tag) {
     return { name, state: g.state, hardCleared: g.ctx.progression.data.hardCleared, stars: g.ctx.progression.data.challenges };
   });
   log(`  [${tag}] hard run:`, JSON.stringify(hard));
-  await shot('hard-victory');
+  await shot('hard-victory', 2500);
 
   // Daily run: start, tick a few waves' worth, then wreck -> game over.
   const daily = await page.evaluate(() => {
@@ -75,7 +75,7 @@ async function session(w, h, tag) {
     return { zone: hud, state: g.state, dailyBest: g.ctx.progression.data.dailyBest, spec: g.survival.daily };
   });
   log(`  [${tag}] daily run:`, JSON.stringify(daily));
-  await shot('daily-over');
+  await shot('daily-over', 2500);
 
   const meta = await page.evaluate(() => {
     const d = window.__game.ctx.progression.data;

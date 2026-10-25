@@ -43,7 +43,8 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 
 - **Campaign** — five walled arenas. Each is a few rounds of bot minions (scrappers, brute dozers, buzzsaws,
   snow thieves) and then a bot boss with telegraphed attacks: BULLDOZA, FROSTBYTE, THE GRINDER, SLUSH & SLEET,
-  and MEGAPLOW Ω. Beating a boss unlocks the next arena.
+  and MEGAPLOW Ω. Beating a boss unlocks the next arena. Every arena has **3 challenge stars** and, once cleared,
+  a **Hard mode** (see Meta progression).
 - **Snowdome Brawl** — a 180 m free-for-all against 8 named rival plows that hunt everyone, including each other.
   Kill streaks multiply your coins (×1.5 → ×4), shutting down a streak pays a bounty, and placement pays a bonus.
   Rookie / Pro / Legend lobbies; elite clan-tagged bots farm streaks, and every bot rolls its own garage around
@@ -53,10 +54,29 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 - **Survival** (unlocked by beating arena 1) — endless waves in the Frozen Foundry. Bot HP, damage and coins scale
   every wave, a boss arrives every 5th wave (cycling the campaign bosses, with escorts on later loops), and you
   get a short breather plus a partial repair between waves. Your best wave is saved.
+- **Daily run** (📅 DAILY, unlocked with Survival) — one seeded Survival run per day: the same wave lineup for
+  everyone on that date, plus one of 8 modifiers (Deep Snow, Whiteout, Swarm, Thief Night, Boss Rush, Heavy
+  Hitters, Glass Cannon, Overclocked) that rotate so none repeats two days running. Pays ×1.25 coins. Your best
+  wave for each day is saved separately from normal Survival, and the game-over screen shows the last 7 days.
 - **Tutorial** — a 7-step guided Training Yard (drive, snowball, slam, dash, whirlwind, your plow's F ability,
   ball-shield). Runs once on a fresh save; replay it from **🎓 TUTORIAL** on the main menu, Esc skips.
 
-Coins from both modes buy permanent upgrades in the Garage. Stat upgrades are **endless**: full-strength gains up
+## Meta progression
+
+- **Challenge stars** — 3 per arena (15 total): slam kills, ball size, clear times, combos, damage limits,
+  boss-fight speed and a few plow-specific goals. They're judged on any winning run (normal or Hard), shown on
+  the arena cards and the results screen, and each new star pays a one-time bonus (+75 to +600 by arena).
+- **Hard mode** — opens once an arena is cleared: ×1.8 bot HP, ×1.5 bot damage, ~35% more minions, same boss,
+  ×1.75 coins. The first Hard clear pays 2.5× the arena's clear reward (repeats 0.6×) and earns a 💀 badge on
+  its card. Hard clears never change unlocks.
+- **🏆 Trophies** — 46 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Garage & loot) paying
+  25–500 coins each, plus a lifetime STATS page. Unlocks are re-checked from the save, so old saves and imports
+  get credit for what they've already done. Tutorial fights don't count.
+- **🎨 Paint Shop** — 8 paints, 5 decals and 5 exhaust trails for your plow (all three starter plows), 250–6000
+  coins. Purely visual; five premium items also need challenge stars or achievements. Hover or focus an item to
+  preview it on the plow before buying.
+
+Coins from every mode buy permanent upgrades in the Garage. Stat upgrades are **endless**: full-strength gains up
 to the pips, then speed/size/cooldown stats taper toward a ceiling while damage, HP and regen keep growing.
 **Pilot perks** (Salvage Rig, Second Wind, Wrecking Ball, Adrenaline, Last Stand, Overclock) are player-only:
 Brawl bots never roll them into their garages. Wrecking Ball only matters in Brawl (it raises the Brawl hit cap).
@@ -82,11 +102,12 @@ src/core      Game loop + mode switching, shared contracts (types.ts), events, i
 src/config    Tuning data: upgrades (FX curves), plows, campaign bots + arenas, Brawl difficulties
 src/entities  Player plow, melee combat resolution, campaign bots/bosses + round director
 src/brawl     Brawl mode: rival AI, VOLT-9 + BRUTUS rivals, streaks/coins, respawns, rival models, name tags
-src/survival  Survival mode: endless wave generator + scaling
+src/survival  Survival mode: endless wave generator + scaling (seeded for the Daily run)
+src/meta      Meta progression: challenge stars + Hard mode, achievements + lifetime stats, Daily run, cosmetics
 src/world     Deformable snow field, arenas / Snowdome environment
 src/fx        Particles, camera rig, coin pickups
 src/audio     WebAudio synth (SFX + music)
-src/ui        Menus, HUD, shop/garage, Brawl HUD, Settings overlay, Tutorial
+src/ui        Menus, HUD, shop/garage, Brawl HUD, Settings overlay, Tutorial, Paint Shop, Trophies
 tests         vitest unit tests: upgrade costs/curves, brawlHit, computeStats, save import/export, settings
 ```
 
@@ -102,6 +123,7 @@ Each script boots Vite and drives the game in headless Chrome via `window.__game
 node scripts/smoke.mjs                 # campaign smoke test + screenshots
 node scripts/combat-probe.mjs          # slam / ram / boss numbers
 node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
+node scripts/meta-probe.mjs            # Paint Shop, Trophies, stars + Hard mode, Daily run + results screens
 node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
 ```
 

@@ -986,6 +986,10 @@
 .ss-root.has-boss .ss-toasts { top: 112px; }
 .ss-root.has-twin .ss-toasts { top: 150px; }
 .ss-toasts { transition: top 0.3s ease; }
+/* While a menu / results screen is up, reward toasts (stars, trophies) stack in the top-right corner instead of
+   over the screen's headline. */
+.ss-root:has(> .ss-screen.show) .ss-toasts { top: 16px; left: auto; right: 16px; transform: none; width: min(360px, 70vw); align-items: flex-end; }
+.ss-root:has(> .ss-screen.show) .ss-toast { font-size: 15px; padding: 8px 16px; }
 .ss-toast {
   padding: 10px 22px;
   border-radius: 999px;
