@@ -1,5 +1,6 @@
 import './ui.css';
 import './brawl.css';
+import './challenges.css';
 import type { BrawlDifficulty, BrawlEntry, BrawlResult, GameContext, HudBoss, HudState, RunSummary, SoundName, SurvivalShopOpts, UIAPI, UIHandlers } from '../core/types';
 import { MIN_BALL_RADIUS } from '../core/types';
 import { UPGRADES, type UpgradeCategory, type UpgradeDef } from '../config/upgrades';
@@ -17,6 +18,10 @@ import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
 import { StyleShop } from './StyleShop';
 import { Trophies } from './Trophies';
 import { dailyButtonLabel } from '../meta/daily';
+import {
+  HARD, earnedIds, hardCleared, hardReward, hardUnlocked, lastChallengeReport, maxStars, starReward, zoneChallenges, zoneStars,
+} from '../meta/challenges';
+import { totalStars } from '../meta/progress';
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
 
@@ -123,6 +128,13 @@ function zoneBossDef(z: ZoneDef): EnemyDef | undefined {
   return undefined;
 }
 
+/** Challenge stars as HTML: `got` gold (the last `fresh` of them pop in), the rest of `total` empty. */
+function starsHtml(got: number, fresh = 0, total = 3): string {
+  let h = '';
+  for (let i = 0; i < total; i++) h += `<i class="ss-star ${i < got ? (i >= got - fresh ? 'on fresh' : 'on') : 'off'}">★</i>`;
+  return h;
+}
+
 interface CardRefs {
   def: UpgradeDef;
   tab: ShopTabId;
@@ -181,6 +193,7 @@ export class UI implements UIAPI {
 
   // zones
   private zoneGrid!: HTMLElement;
+  private zoneStarTotal!: HTMLElement;
 
   // garage / shop
   private shopTitle!: HTMLElement;
@@ -561,7 +574,10 @@ export class UI implements UIAPI {
   private buildZones(): void {
     const s = this.screen('zones', 'ss-center ss-dim');
     const panel = el('div', 'ss-panel ss-glass ss-zones ss-icicles', undefined, s);
-    el('h2', 'ss-h2', 'CHOOSE YOUR ARENA', panel);
+    const head = el('div', 'ss-zones-head', undefined, panel);
+    el('h2', 'ss-h2', 'CHOOSE YOUR ARENA', head);
+    this.zoneStarTotal = el('div', 'ss-star-total', '', head);
+    this.zoneStarTotal.title = 'Challenge stars: 3 per arena. Each new star pays coins.';
     this.zoneGrid = el('div', 'ss-zone-grid', undefined, panel);
     const foot = el('div', 'ss-panel-foot', undefined, panel);
     this.btn('◀ BACK', 'ss-ice', () => this.showMainMenu(), foot);
@@ -570,12 +586,15 @@ export class UI implements UIAPI {
   private renderZones(): void {
     const p = this.ctx.progression;
     this.zoneGrid.textContent = '';
+    this.zoneStarTotal.innerHTML = `<span class="ss-star-ico">★</span> ${totalStars(p)}<small>/${maxStars()}</small>`;
     let firstPlayable: HTMLButtonElement | null = null;
     ZONES.forEach((z, i) => {
       const unlocked = p.isZoneUnlocked(i);
       const rec = p.zoneRecord(z.id);
       const total = z.rounds.length;
-      const card = el('button', `ss-zone ${unlocked ? '' : 'locked'} ${rec.cleared ? 'cleared' : ''}`, undefined, this.zoneGrid);
+      // Slot = arena card + its Hard-mode strip (a separate button: buttons can't nest).
+      const slot = el('div', 'ss-zone-slot', undefined, this.zoneGrid);
+      const card = el('button', `ss-zone ${unlocked ? '' : 'locked'} ${rec.cleared ? 'cleared' : ''}`, undefined, slot);
       card.type = 'button';
       card.style.setProperty('--sky-top', hex(z.skyTop));
       card.style.setProperty('--sky-bottom', hex(z.skyBottom));
@@ -593,10 +612,14 @@ export class UI implements UIAPI {
       el('b', '', z.bossName, bt);
 
       const bottom = el('div', 'ss-zone-bottom', undefined, card);
-      if (rec.cleared) el('div', 'ss-zone-badge', '✓ CLEARED', bottom);
-      el('div', 'ss-zone-stat', `⚔ ${total} rounds (${total - 1} + boss)`, bottom);
+      if (rec.cleared) {
+        const badges = el('div', 'ss-zone-badges', undefined, bottom);
+        el('div', 'ss-zone-badge', '✓ CLEARED', badges);
+        if (hardCleared(p, i)) el('div', 'ss-zone-skull', '💀 HARD', badges).title = 'Hard mode beaten';
+      }
+      this.zoneChallengeList(i, bottom);
       const best = Math.min(rec.bestRound, total);
-      el('div', 'ss-zone-stat', best > 0 ? `🏁 Best: round ${best}/${total}` : '🏁 Best: —', bottom);
+      el('div', 'ss-zone-stat', `⚔ ${total - 1} + boss  ·  🏁 ${best > 0 ? `best ${best}/${total}` : 'best —'}`, bottom);
       el('div', 'ss-zone-stat ss-zone-reward', `🪙 ${fmt(rec.cleared ? Math.round(z.clearReward * 0.4) : z.clearReward)} clear reward`, bottom);
       if (!unlocked) {
         const lock = el('div', 'ss-zone-lock', undefined, card);
@@ -613,12 +636,53 @@ export class UI implements UIAPI {
         this.sfx('click');
         this.handlers.onStartZone(i);
       });
+      this.zoneHardStrip(i, slot);
       if (unlocked && !rec.cleared && !firstPlayable) firstPlayable = card;
       if (unlocked && i === p.data.unlockedZones - 1) firstPlayable = card;
     });
     const fp = firstPlayable as HTMLButtonElement | null;
     this.zoneGrid.querySelectorAll('[data-primary]').forEach((n) => delete (n as HTMLElement).dataset.primary);
     if (fp) fp.dataset.primary = '1';
+  }
+
+  /** Zone card: ★★☆ and the arena's three challenge goals, earned ones ticked (full name + goal on hover). */
+  private zoneChallengeList(zoneIndex: number, parent: HTMLElement): void {
+    const p = this.ctx.progression;
+    const got = earnedIds(p, zoneIndex);
+    const n = zoneStars(p, zoneIndex);
+    const box = el('div', `ss-zone-chals ${n >= 3 ? 'all' : ''}`, undefined, parent);
+    const head = el('div', 'ss-zone-chal-head', undefined, box);
+    el('span', 'ss-zone-stars', undefined, head).innerHTML = starsHtml(n);
+    el('small', '', `+${fmt(starReward(zoneIndex))} 🪙 / star`, head);
+    for (const c of zoneChallenges(zoneIndex)) {
+      const done = got.has(c.id);
+      const row = el('div', `ss-zone-chal ${done ? 'done' : ''}`, undefined, box);
+      el('span', 'ss-zone-chal-mark', done ? '✓' : c.icon, row);
+      el('span', 'ss-zone-chal-goal', c.goal, row);
+      row.title = `${c.name}: ${c.goal}${done ? ' ✓' : ''}`;
+    }
+  }
+
+  /** Under each card: the HARD button once the arena is cleared (💀 ✓ once beaten), a locked hint before that. */
+  private zoneHardStrip(zoneIndex: number, slot: HTMLElement): void {
+    const p = this.ctx.progression;
+    const tip =
+      `Hard mode: bots ×${HARD.hpMult} HP, ×${HARD.dmgMult} damage, +${Math.round((HARD.minionMult - 1) * 100)}% minions. ` +
+      `×${HARD.coinMult} coins. Stars count here too.`;
+    if (!hardUnlocked(p, zoneIndex)) {
+      const s = el('div', 'ss-zone-hard locked', undefined, slot);
+      s.innerHTML = '🔒 <b>HARD</b> <small>clear to unlock</small>';
+      s.title = tip;
+      return;
+    }
+    const beaten = hardCleared(p, zoneIndex);
+    const b = this.btn(
+      `💀 <b>HARD</b> <small>${beaten ? '✓ · ' : ''}🪙 ${fmt(hardReward(p, zoneIndex))}</small>`,
+      `ss-zone-hard ${beaten ? 'beaten' : ''}`,
+      () => this.handlers.onStartZone(zoneIndex, true),
+      slot,
+    );
+    b.title = tip;
   }
 
   /* ================================================================== garage / shop */
@@ -969,6 +1033,7 @@ export class UI implements UIAPI {
     stat('🔥', 'Best combo', sum.bestCombo >= 2 ? `x${sum.bestCombo}` : '—', 260);
     stat('⚪', 'Biggest ball', `${sum.biggestBall.toFixed(2)} m`, 340);
     stat('🪙', 'Coins earned', `+${fmt(sum.coinsEarned)}`, 420);
+    if (!sum.survival) this.renderCampaignChallenges(p, sum);
 
     if (win && sum.clearReward > 0) {
       const r = el('div', 'ss-reward', undefined, p);
@@ -995,6 +1060,30 @@ export class UI implements UIAPI {
     const g = this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('quit'), btns);
     const m = this.btn('🏠 MAIN MENU', 'ss-ice', () => this.handlers.onQuitToMenu(), btns);
     if (!btns.querySelector('[data-primary]')) (win ? m : g).dataset.primary = '1';
+  }
+
+  /** Campaign results: HARD badge under the emoji, then the arena's three challenges (✓ met this run,
+   *  NEW for first-time stars, ★ already owned) and the star coin bonus. */
+  private renderCampaignChallenges(p: HTMLElement, sum: RunSummary): void {
+    if (sum.hard) p.querySelector('.ss-result-emoji')?.after(el('div', 'ss-hard-badge', '💀 HARD MODE'));
+    const rep = lastChallengeReport();
+    if (!rep) return;
+    const box = el('div', `ss-chal-result ${rep.newStars ? 'has-new' : ''}`, undefined, p);
+    const head = el('div', 'ss-chal-result-head', undefined, box);
+    el('span', 'ss-chal-result-stars', undefined, head).innerHTML = starsHtml(rep.stars, rep.results.filter((r) => r.isNew).length);
+    el('span', 'ss-chal-result-title', 'CHALLENGES', head);
+    if (rep.bonus > 0) el('span', 'ss-chal-result-bonus', `+${fmt(rep.bonus)} 🪙 star bonus`, head);
+    else if (!rep.won) el('span', 'ss-chal-result-hint', 'Clear the arena to earn stars', head);
+    rep.results.forEach((r, i) => {
+      const row = el('div', `ss-chal-row ${r.met ? 'met' : ''} ${r.isNew ? 'new' : ''} ${r.owned ? 'owned' : ''}`, undefined, box);
+      row.style.animationDelay = `${520 + i * 110}ms`;
+      el('span', 'ss-chal-row-mark', r.met ? '✓' : r.owned ? '★' : r.def.icon, row);
+      const tx = el('span', 'ss-chal-row-text', undefined, row);
+      el('b', '', r.def.name, tx);
+      el('small', '', r.def.goal, tx);
+      if (r.isNew) el('span', 'ss-chal-row-new', 'NEW ★', row);
+      else if (r.owned) el('span', 'ss-chal-row-owned', '★', row);
+    });
   }
 
   /* ================================================================== brawl lobby */
