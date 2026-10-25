@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { FxAPI } from '../core/types';
 import type { PlowKind } from '../config/plows';
-import type { DecalStyle, TrailDef } from '../config/cosmetics';
+import type { BladeStyle, DecalStyle, TrailDef } from '../config/cosmetics';
 import { mergeStatic } from '../render/mergeStatic';
 
 /* Starter-plow silhouettes shared by the player's Plow and Brawl rival rigs (src/brawl/models.ts).
@@ -30,6 +30,153 @@ export function hazardTexture(): THREE.CanvasTexture {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/** Paint Shop blade skin, drawn on a canvas (cached per style). Canvas X runs along the blade's width, Y from the
+ *  top lip (0) down to the cutting edge; the texture is rotated onto the curved sheet's UVs by the caller. */
+const bladeTexCache = new Map<BladeStyle, THREE.CanvasTexture>();
+export function bladeTexture(style: BladeStyle): THREE.CanvasTexture {
+  const hit = bladeTexCache.get(style);
+  if (hit) return hit;
+  const W = 256;
+  const H = 96;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  drawBladeSkin(c.getContext('2d')!, style, W, H);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  bladeTexCache.set(style, t);
+  return t;
+}
+
+/** Also used for the Paint Shop swatches. */
+export function drawBladeSkin(g: CanvasRenderingContext2D, style: BladeStyle, W: number, H: number): void {
+  const rnd = mulberry(style.length * 7919);
+  switch (style) {
+    case 'hazard': {
+      g.fillStyle = '#ffc21a';
+      g.fillRect(0, 0, W, H);
+      g.fillStyle = '#16181c';
+      const s = H * 0.5;
+      for (let x = -H; x < W + H; x += s * 2) {
+        g.beginPath();
+        g.moveTo(x, 0);
+        g.lineTo(x + s, 0);
+        g.lineTo(x + s + H, H);
+        g.lineTo(x + H, H);
+        g.closePath();
+        g.fill();
+      }
+      break;
+    }
+    case 'chrome':
+    case 'gold': {
+      const gold = style === 'gold';
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, gold ? '#ffe27a' : '#ffffff');
+      gr.addColorStop(0.45, gold ? '#ffc72e' : '#d8e2ee');
+      gr.addColorStop(1, gold ? '#b8761a' : '#8a98aa');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      // Brushed-metal streaks + rivets along the top lip.
+      g.globalAlpha = 0.18;
+      for (let i = 0; i < 70; i++) {
+        g.fillStyle = rnd() < 0.5 ? '#ffffff' : gold ? '#8a5a10' : '#55606e';
+        g.fillRect(rnd() * W, rnd() * H, 20 + rnd() * 80, 1);
+      }
+      g.globalAlpha = 1;
+      g.fillStyle = gold ? '#7a4c0c' : '#4a5462';
+      for (let x = 12; x < W; x += 28) {
+        g.beginPath();
+        g.arc(x, 8, 3.2, 0, Math.PI * 2);
+        g.fill();
+      }
+      break;
+    }
+    case 'ice': {
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, '#e8fbff');
+      gr.addColorStop(1, '#3a8fd8');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      g.strokeStyle = 'rgba(255,255,255,0.85)';
+      g.lineWidth = 1.6;
+      for (let i = 0; i < 26; i++) {
+        let x = rnd() * W;
+        let y = rnd() * H;
+        g.beginPath();
+        g.moveTo(x, y);
+        for (let k = 0; k < 4; k++) {
+          x += (rnd() - 0.5) * 40;
+          y += (rnd() - 0.5) * 30;
+          g.lineTo(x, y);
+        }
+        g.stroke();
+      }
+      // Icicle teeth along the cutting edge.
+      g.fillStyle = '#ffffff';
+      for (let x = 0; x < W; x += 16) {
+        g.beginPath();
+        g.moveTo(x, H);
+        g.lineTo(x + 8, H - 14 - rnd() * 10);
+        g.lineTo(x + 16, H);
+        g.fill();
+      }
+      break;
+    }
+    case 'flame': {
+      g.fillStyle = '#1c0705';
+      g.fillRect(0, 0, W, H);
+      // Flame tongues rising from the cutting edge (bottom) toward the lip.
+      for (const [col, k] of [['#ff2a0a', 1], ['#ff8a1a', 0.72], ['#ffd23a', 0.42]] as const) {
+        g.fillStyle = col;
+        g.beginPath();
+        g.moveTo(0, H);
+        for (let x = 0; x <= W; x += 21) {
+          const h = H * k * (0.65 + rnd() * 0.35);
+          g.quadraticCurveTo(x + 4, H - h * 0.5, x + 10, H - h);
+          g.quadraticCurveTo(x + 13, H - h * 0.45, x + 21, H);
+        }
+        g.lineTo(W, H);
+        g.closePath();
+        g.fill();
+      }
+      break;
+    }
+    case 'camo': {
+      g.fillStyle = '#e8eef4';
+      g.fillRect(0, 0, W, H);
+      for (const col of ['#a9b6c4', '#6e7c8c', '#3c4654']) {
+        g.fillStyle = col;
+        for (let i = 0; i < 14; i++) {
+          const x = rnd() * W;
+          const y = rnd() * H;
+          g.beginPath();
+          for (let a = 0; a < 7; a++) {
+            const ang = (a / 7) * Math.PI * 2;
+            const r = 6 + rnd() * 12;
+            g[a ? 'lineTo' : 'moveTo'](x + Math.cos(ang) * r * 1.5, y + Math.sin(ang) * r);
+          }
+          g.closePath();
+          g.fill();
+        }
+      }
+      break;
+    }
+  }
+}
+
+function mulberry(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /** Wheel radius / track layout of the shared chassis. */

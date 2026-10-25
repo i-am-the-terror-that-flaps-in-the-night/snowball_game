@@ -16,7 +16,7 @@ import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
 import {
   buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
-  FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS,
+  FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS, bladeTexture,
 } from './plowModels';
 import type { CosmeticSlot } from '../config/cosmetics';
 import { bakeGeometry, mergeBaked, mergeStatic } from '../render/mergeStatic';
@@ -322,6 +322,9 @@ export class Plow implements PlowAPI {
     roughness: 0.5, metalness: 0.1, emissive: 0xffffff, emissiveIntensity: 0.3, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
   });
   private trailT = 0;
+  /** Paint Shop blade skin (swapped onto bladeSheet instead of steelMat while a skin is equipped). */
+  private bladeSkinMat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.4, metalness: 0.3, emissive: 0xff0000, emissiveIntensity: 0 });
+  private bladeKey = '';
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -770,6 +773,8 @@ export class Plow implements PlowAPI {
     this.paintMat.color.copy(this.paintBase);
     this.bedMat.color.copy(this.bedBase);
     this.decalMat.color.setRGB(1, 1, 1);
+    this.bladeSkinMat.color.setRGB(1, 1, 1);
+    this.bladeSkinMat.emissiveIntensity = 0;
     this.paintMat.emissiveIntensity = 0;
     this.bedMat.emissiveIntensity = 0;
     this.headMat.emissiveIntensity = 1.6;
@@ -840,7 +845,7 @@ export class Plow implements PlowAPI {
    *  only: Brawl rivals and campaign bots build their own materials. */
   private syncLook(force = false): void {
     const look = resolveLook({ ...cosmeticsState(this.ctx.progression).equipped, ...this.preview });
-    const key = `${this.kind}|${look.paint.id}|${look.decal.id}|${look.trail.id}`;
+    const key = `${this.kind}|${look.paint.id}|${look.decal.id}|${look.trail.id}|${look.blade.id}|${look.horn.id}|${look.kill.id}`;
     if (!force && key === this.lookKey) return;
     this.lookKey = key;
     this.look = look;
@@ -864,6 +869,27 @@ export class Plow implements PlowAPI {
     if (!this._dead) {
       this.paintMat.color.copy(this.paintBase);
       this.bedMat.color.copy(this.bedBase);
+    }
+    // Blade skin: a textured material on the main blade sheet (factory steel otherwise).
+    const b = look.blade;
+    if (b.id !== this.bladeKey) {
+      this.bladeKey = b.id;
+      if (b.style) {
+        const m = this.bladeSkinMat;
+        const tex = bladeTexture(b.style);
+        // The sheet's UVs run around the curve (u) and along the width (v): turn the canvas a quarter.
+        tex.center.set(0.5, 0.5);
+        tex.rotation = Math.PI / 2;
+        m.map = tex;
+        m.metalness = b.metalness ?? 0.3;
+        m.roughness = b.roughness ?? 0.45;
+        m.envMap = b.mirror ? getPaintEnvMap(this.ctx.renderer) : null;
+        m.envMapIntensity = b.mirror ? 1.2 : 1;
+        m.needsUpdate = true;
+        this.bladeSheet.material = m;
+      } else {
+        this.bladeSheet.material = this.steelMat;
+      }
     }
     // Decal: rebuilt only when the style or the plow body changes.
     const decalKey = `${this.kind}|${look.decal.style ?? ''}`;
@@ -1223,6 +1249,7 @@ export class Plow implements PlowAPI {
     this.streakT = 0;
     this.kick = Math.max(this.kick, 0.8);
     ctx.audio.play('dash');
+    if (this.look.horn.sound) ctx.audio.play(this.look.horn.sound, { volume: 0.4, pitch: 1.25 });
     // Rear blast: snow kicked back + exhaust flare.
     this.getForward(_fwd);
     _c.set(this.position.x - _fwd.x * REAR_Z, 0.5, this.position.z - _fwd.z * REAR_Z);
@@ -1553,9 +1580,11 @@ export class Plow implements PlowAPI {
     this.bedMat.color.lerpColors(this.bedBase, this.charColor, ch * 0.85);
     this.decalMat.color.setScalar(1 - ch * 0.85);
     this.decalMat.emissiveIntensity = 0.3 * (1 - ch);
+    this.bladeSkinMat.color.setScalar(1 - ch * 0.75);
     this.flash = Math.max(0, this.flash - dt * 3);
     this.paintMat.emissiveIntensity = this.flash * 1.4 + 0.25 * (0.5 + 0.5 * Math.sin(this.time * 23));
     this.bedMat.emissiveIntensity = this.flash * 1.4;
+    this.bladeSkinMat.emissiveIntensity = this.flash * 1.4;
 
     // Fire from the stack and smoke from the engine.
     this.flame.scale.set(2.2, 1.6 + Math.random() * 1.6, 2.2);
@@ -1835,6 +1864,7 @@ export class Plow implements PlowAPI {
     const fl = this.flash * 1.4;
     this.paintMat.emissiveIntensity = fl;
     this.bedMat.emissiveIntensity = fl;
+    this.bladeSkinMat.emissiveIntensity = fl;
 
     // Dash flame + afterimages / exhaust puffs.
     const dashing = this.dashT > 0;

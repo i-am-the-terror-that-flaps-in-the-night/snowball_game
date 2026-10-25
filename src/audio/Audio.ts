@@ -742,6 +742,42 @@ export class AudioSystem implements AudioAPI {
         this.tone('sine', 70 * p, 30 * p, t + 0.04, 1.4, 0.9, o, 0.01);
         this.noise(t + 0.05, 1.6, 0.6, o, 'lowpass', 500 * p, 60, 0.9, 0.04, 0.5);
         return 1.6;
+      // ---- Paint Shop horns (layered over a softened slam; also a short honk on dash at a higher pitch)
+      case 'hornAir':
+        // stadium air horn: detuned saw stack through a bright bandpass
+        for (const d of [0, 4, -5, 9]) this.tone('sawtooth', (466 + d) * p, (452 + d) * p, t, 0.75, 0.14, o, 0.02, 'lin');
+        this.tone('sawtooth', 233 * p, 226 * p, t, 0.75, 0.12, o, 0.02, 'lin');
+        this.noise(t, 0.7, 0.12, o, 'bandpass', 1400 * p, 1200 * p, 2, 0.02);
+        return 0.8;
+      case 'hornClown':
+        // two squeaky bulb honks
+        for (const [dt, f] of [[0, 330], [0.2, 300]] as const) {
+          this.tone('square', f * 1.15 * p, f * p, t + dt, 0.17, 0.16, o, 0.01);
+          this.tone('sawtooth', f * 2.3 * p, f * 2 * p, t + dt, 0.15, 0.06, o, 0.01);
+        }
+        return 0.4;
+      case 'hornBoom':
+        // close thunder: crack + long rumbling sub
+        this.noise(t, 0.1, 0.9, o, 'highpass', 1800 * p, 4500, 0.7, 0.001, 1.4);
+        this.tone('sine', 62 * p, 26 * p, t, 1.5, 1, o, 0.006);
+        this.tone('triangle', 110 * p, 40 * p, t, 0.6, 0.35, o, 0.004);
+        this.noise(t + 0.03, 1.7, 0.7, o, 'lowpass', 700 * p, 50, 0.9, 0.03, 0.45);
+        return 1.7;
+      case 'hornBell':
+        // heavy bell clang: inharmonic partials + a metallic hit
+        this.bell(392 * p, t, 1.4, 0.45, o);
+        this.tone('sine', 392 * 4.2 * p, 392 * 4.2 * p, t, 0.5, 0.1, o, 0.001);
+        this.tone('sine', 392 * 0.5 * p, 392 * 0.5 * p, t, 1.2, 0.25, o, 0.004);
+        this.noise(t, 0.06, 0.4, o, 'highpass', 3000, 6000, 0.8, 0.001);
+        return 1.4;
+      case 'hornPixel': {
+        // chiptune: falling square arpeggio + noise crunch
+        const notes = [784, 523, 392, 262, 196];
+        notes.forEach((f, i) => this.tone('square', f * p, f * p, t + i * 0.055, 0.07, 0.14, o, 0.001, 'lin'));
+        this.tone('square', 130 * p, 45 * p, t + 0.27, 0.25, 0.18, o, 0.001, 'lin');
+        this.noise(t + 0.27, 0.2, 0.25, o, 'lowpass', 1800, 300, 0.7, 0.001, 0.25);
+        return 0.55;
+      }
       case 'thud':
         // BRUTUS Ground Pound: crunchy impact, a sub-bass drop and a snowy rumble rolling outward
         this.noise(t, 0.08, 0.8, o, 'bandpass', 900 * p, 300, 1.2, 0.001);

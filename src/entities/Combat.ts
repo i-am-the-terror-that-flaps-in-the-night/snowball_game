@@ -1,3 +1,4 @@
+import { equippedLook } from '../meta/cosmetics';
 import * as THREE from 'three';
 import { FlameCone } from '../fx/FlameCone';
 import { Lightning } from '../fx/Lightning';
@@ -847,7 +848,11 @@ export class Combat implements CombatAPI {
     fx.ring(_p, zone, freeze ? 0x9fe6ff : 0xffffff);
     if (avalanche) fx.ring(_p, zone * 1.25, 0xcfe0ff);
     fx.shake(0.25 + 0.25 * r);
-    ctx.audio.play('slam', { pitch: THREE.MathUtils.clamp(1.3 - 0.35 * r, 0.5, 1.3), volume: Math.min(1, 0.7 + 0.2 * r) });
+    // Paint Shop horn: layered over a softer snow whumpf.
+    const horn = equippedLook(ctx.progression).horn.sound;
+    const slamVol = Math.min(1, 0.7 + 0.2 * r);
+    ctx.audio.play('slam', { pitch: THREE.MathUtils.clamp(1.3 - 0.35 * r, 0.5, 1.3), volume: horn ? slamVol * 0.5 : slamVol });
+    if (horn) ctx.audio.play(horn, { volume: slamVol });
     if (freeze && ctx.time - this.lastFreezeSound > 0.3) {
       this.lastFreezeSound = ctx.time;
       ctx.audio.play('freeze', { volume: 0.8 });

@@ -20,9 +20,16 @@
 .ss-style-head .ss-h2 { margin: 0; font-size: 34px; text-align: left; }
 .ss-style-coins { font-size: 19px; padding: 6px 16px 6px 8px; }
 .ss-style-sub { text-align: left; margin: 4px 0 12px; font-size: 14px; }
+/* Six slots: compact tabs (icon over label, badge in the corner) so they fit the panel. */
+.ss-style-tabs { gap: 4px; }
+.ss-style-tabs .ss-tab { flex-direction: column; gap: 3px; padding: 7px 4px 6px; min-width: 0; font-size: 12px; letter-spacing: 0.04em; }
+.ss-style-tabs .ss-tab-badge { position: absolute; top: 2px; right: 4px; min-width: 17px; height: 17px; padding: 0 4px; font-size: 10.5px; line-height: 17px; }
 .ss-style-tabs .ss-style-tab-paint { --acc: #ff5aa8; }
 .ss-style-tabs .ss-style-tab-decal { --acc: #ff8a1f; }
 .ss-style-tabs .ss-style-tab-trail { --acc: #3fa7f0; }
+.ss-style-tabs .ss-style-tab-blade { --acc: #ffc21a; }
+.ss-style-tabs .ss-style-tab-horn { --acc: #35c86b; }
+.ss-style-tabs .ss-style-tab-kill { --acc: #b05cf0; }
 .ss-style-note {
   min-height: 1.35em;
   margin: 10px 4px 8px;
@@ -120,6 +127,13 @@
 .ss-style-decal .ss-style-swatch { background: linear-gradient(160deg, color-mix(in srgb, var(--body, #888) 85%, white), var(--body, #888)); }
 .ss-style-canvas { width: 100%; height: 100%; object-fit: contain; }
 .ss-style-trail .ss-style-swatch { background: radial-gradient(ellipse at 30% 40%, #3b6491, #1b3556 75%); justify-items: start; }
+.ss-style-blade .ss-style-swatch { background: linear-gradient(180deg, #2a3442, #141a22); padding: 6px; }
+.ss-style-blade-canvas { border-radius: 4px 4px 10px 10px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.3); }
+.ss-style-swatch.ss-style-blade-stock { background: linear-gradient(180deg, #2a3442, #141a22); }
+.ss-style-swatch.ss-style-blade-stock::after { content: ''; width: 80%; height: 52%; border-radius: 4px 4px 10px 10px; background: linear-gradient(180deg, color-mix(in srgb, var(--blade, #ffd23a) 70%, white), var(--blade, #ffd23a)); }
+.ss-style-swatch.ss-style-icon { background: radial-gradient(circle at 50% 45%, var(--glow, #3b6491), var(--glow2, #1b3556) 80%); }
+.ss-style-horn .ss-style-swatch.ss-style-icon { background: radial-gradient(circle at 50% 45%, #46d483, #1d5e3c 80%); }
+.ss-style-icon-glyph { font-size: 30px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.35)); }
 .ss-style-swatch.ss-style-none { background: linear-gradient(180deg, #f2f7fb, #dbe7f1) !important; color: #8aa2b8; font-size: 26px; font-weight: 900; }
 .ss-style-mini { position: absolute; left: 3px; top: 50%; transform: translateY(-50%); font-size: 20px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3)); }
 .ss-style-puff {
@@ -156,6 +170,7 @@
   .ss-style-head .ss-h2 { font-size: 26px; }
   .ss-style-sub { display: none; }
   .ss-style-tabs .ss-tab-label { display: inline; }
+  .ss-style-tabs .ss-tab { font-size: 10.5px; }
   .ss-style-grid { gap: 8px; }
   .ss-style-card { grid-template-columns: 52px 1fr; padding: 7px 8px; gap: 8px; }
   .ss-style-swatch { width: 52px; height: 44px; }

@@ -373,7 +373,9 @@ export type SoundName =
   // VOLT-9
   | 'zap' | 'thunder'
   // BRUTUS
-  | 'thud';
+  | 'thud'
+  // Paint Shop horns (slam sound cosmetics)
+  | 'hornAir' | 'hornClown' | 'hornBoom' | 'hornBell' | 'hornPixel';
 
 export interface AudioAPI {
   /** Resume/create the AudioContext; call from a user gesture. Safe to call repeatedly. */
