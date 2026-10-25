@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { FxAPI } from '../core/types';
 import type { PlowKind } from '../config/plows';
 import type { DecalStyle, TrailDef } from '../config/cosmetics';
+import { mergeStatic } from '../render/mergeStatic';
 
 /* Starter-plow silhouettes shared by the player's Plow and Brawl rival rigs (src/brawl/models.ts).
  * Model layout (local, facing +Z, ground at y = 0) matches the player plow: chassis at y ~0.62, wheels at
@@ -309,12 +310,14 @@ export function buildBuzzsaw(): Buzzsaw {
   }
   // Teeth: glowing raked wedges around the rim.
   const TEETH = 20;
+  const teeth: THREE.Mesh[] = [];
   for (let i = 0; i < TEETH; i++) {
     const a = (i / TEETH) * Math.PI * 2;
     const t = new THREE.Mesh(k.toothGeo, k.tooth);
     t.position.set(Math.cos(a) * (R - 0.04), 0, Math.sin(a) * (R - 0.04));
     t.rotation.y = -a - 0.35;
     rotor.add(t);
+    teeth.push(t);
   }
   // Spin blur: a faint glowing ring just past the teeth.
   const blur = new THREE.Mesh(new THREE.RingGeometry(R * 0.8, R + 0.24, 40), k.blur);
@@ -338,6 +341,10 @@ export function buildBuzzsaw(): Buzzsaw {
   arm.position.set(-0.42, 0.12, -0.25);
   arm.rotation.y = 0.5;
   group.add(arm);
+  // Static sub-parts share draws: the two faces inside the rotor, the hub + arm on the mount. (The teeth stay
+  // separate: their flat sides are coplanar with the disc faces, and merging them would flip that depth tie.)
+  mergeStatic(rotor, { keep: teeth });
+  mergeStatic(group, { keep: [rotor] });
   return { group, rotor, halo };
 }
 
@@ -648,6 +655,8 @@ export function buildDecals(kind: PlowKind, style: DecalStyle, mat: THREE.MeshSt
       group.add(holder);
     }
   }
+  // All spots share `mat`: one draw (the emptied holders are dropped).
+  if (mergeStatic(group).meshes.length) for (const h of group.children.filter((o) => !(o as THREE.Mesh).isMesh)) group.remove(h);
   return group;
 }
 

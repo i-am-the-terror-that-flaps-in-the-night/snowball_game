@@ -52,6 +52,8 @@ export function attachVoltRig(rig: RivalRig): VoltRig {
   const coilTops = rig.coilTops;
 
   const telegraphMat = new THREE.MeshBasicMaterial({ color: 0x7fdcff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  // A flat ring: one pass draws exactly what the back + front passes would (no extra draw / program switch).
+  telegraphMat.forceSinglePass = true;
   const telegraph = new THREE.Mesh(telegraphGeo!, telegraphMat);
   telegraph.position.y = 0.08;
   telegraph.visible = false;
