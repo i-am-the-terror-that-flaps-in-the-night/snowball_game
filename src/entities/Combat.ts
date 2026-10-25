@@ -48,10 +48,9 @@ const POOL_TICK = 0.3;
 const MAX_POOLS = 4;
 const CHAIN_RADIUS = 4;
 /** NUKE (ISOTOPE): Critical Mass fills from radiation damage dealt (this much fills it); the next F arms a
- *  warhead that detonates after NUKE_FUSE seconds — NUKE_DMG_MULT x Meltdown damage across NUKE_RADIUS, falling
+ *  NUKE that goes off instantly — NUKE_DMG_MULT x Meltdown damage across NUKE_RADIUS, falling
  *  off to NUKE_RIM_FRAC at the edge, plus a giant fallout pool. */
 const NUKE_CHARGE_DMG = 900;
-const NUKE_FUSE = 1.5;
 const NUKE_RADIUS = 18;
 const NUKE_DMG_MULT = 4;
 const NUKE_RIM_FRAC = 0.35;
@@ -140,11 +139,9 @@ export class Combat implements CombatAPI {
   private auraT = 0;
   private chainQueue: { x: number; z: number }[] = [];
   private critCharge = 0;
-  /** Armed warhead: seconds to detonation (-1 = none) and where it was dropped. */
-  private nukeT = -1;
+  /** Where the NUKE went off (detonate reads it). */
   private nukeX = 0;
   private nukeZ = 0;
-  private nukeBeepT = 0;
   /** BRUTUS Ground Pound: recharge 0..1 and the hop timer (-1 = grounded). */
   private poundCharge = 1;
   private poundT = -1;
@@ -1172,7 +1169,7 @@ export class Combat implements CombatAPI {
     const hp0 = e.hp;
     const killed = this.ctx.enemies.damage(e, amount * this.ctx.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-    if (this.nukeT < 0) this.critCharge = Math.min(1, this.critCharge + dealt / NUKE_CHARGE_DMG);
+    this.critCharge = Math.min(1, this.critCharge + dealt / NUKE_CHARGE_DMG);
     this.onPlayerHit(dealt, killed, e, false, heal);
   }
 
@@ -1183,7 +1180,6 @@ export class Combat implements CombatAPI {
     const plow = ctx.plow;
     if (st.meltDamage <= 0 || !plow || plow.dead) return;
     if (this.meltCharge < 1) this.meltCharge = Math.min(1, this.meltCharge + (st.meltCooldown > 0 ? dt / st.meltCooldown : 1));
-    if (this.nukeT >= 0) return this.updateNuke(dt);
     if (!ctx.input.wasPressed('KeyF')) return;
     if (this.critCharge >= 1) return this.armNuke(plow);
     if (this.meltCharge < 1) {
@@ -1233,35 +1229,13 @@ export class Combat implements CombatAPI {
     pl.mesh.visible = true;
   }
 
-  /** Critical Mass full + F: drop a warhead where the plow stands. Siren, a shrinking target ring, then boom. */
+  /** Critical Mass full + F: the NUKE goes off right where the plow stands. */
   private armNuke(plow: PlowAPI): void {
-    const ctx = this.ctx;
     this.critCharge = 0;
-    this.nukeT = NUKE_FUSE;
-    this.nukeBeepT = 0;
     this.nukeX = plow.position.x;
     this.nukeZ = plow.position.z;
-    ctx.audio.play('boss');
-    ctx.ui.toast('☢ NUKE INCOMING!', 'big');
-  }
-
-  private updateNuke(dt: number): void {
-    const ctx = this.ctx;
-    this.nukeT -= dt;
-    this.nukeBeepT -= dt;
-    if (this.nukeBeepT <= 0) {
-      // Beeps speed up as the fuse burns down; the target ring closes in.
-      const u = Math.max(0, this.nukeT / NUKE_FUSE);
-      this.nukeBeepT = 0.12 + 0.3 * u;
-      _q.set(this.nukeX, 0.2, this.nukeZ);
-      ctx.fx.ring(_q, NUKE_RADIUS * (0.25 + 0.75 * u), 0xff3b2f);
-      ctx.fx.ring(_q, 1.2, 0xffe14a);
-      ctx.audio.play('error', { volume: 0.5, pitch: 1.6 + (1 - u) * 0.8 });
-    }
-    if (this.nukeT <= 0) {
-      this.nukeT = -1;
-      this.detonate();
-    }
+    this.ctx.ui.toast('☢ NUKE!', 'big');
+    this.detonate();
   }
 
   private detonate(): void {
@@ -1423,7 +1397,6 @@ export class Combat implements CombatAPI {
     this.burns.clear();
     this.meltCharge = 1;
     this.critCharge = 0;
-    this.nukeT = -1;
     this.rads.clear();
     this.chainQueue.length = 0;
     for (const pl of this.pools) {

@@ -95,7 +95,7 @@ Ground Pound, Iron Hide (less damage taken the faster you're going), Momentum (r
 speed) and Buzzsaws (spinning saws on the blade ends that shred every bot in front of and beside you) — or the
 radioactive **ISOTOPE** ☢️ (+10% HP, +5% speed; bots it irradiates glow green and take +15% damage from you) with a
 free Meltdown on F (a toxic blast that melts the snow and leaves a glowing fallout pool). Radiation damage fills
-its ☢ Critical Mass bar; when full, F drops a **NUKE** (1.5s fuse, then a huge blast and a giant fallout pool). Its own line — Meltdown,
+its ☢ Critical Mass bar; when full, F fires a **NUKE** (an instant huge blast and a giant fallout pool). Its own line — Meltdown,
 Half-Life (bigger, hotter, longer pools), Rad Aura (passive radiation around you) and Chain Reaction (irradiated
 bots explode when wrecked, setting off their neighbours).
 
