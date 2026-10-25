@@ -99,7 +99,8 @@ export const M = {
   rustDark: () => mat('rustDark', 0x5a2a16, { roughness: 0.8, metalness: 0.2 }),
   gold: () => mat('gold', 0xf0b928, { roughness: 0.32, metalness: 0.3, emissive: 0x4a3000, emissiveIntensity: 0.35 }),
   capRed: () => mat('capRed', 0xc8102e, { roughness: 0.7 }),
-  maga: () => mat('maga', 0xffffff, { map: magaTexture(), roughness: 0.7, flatShading: false }),
+  // A touch of self-lit glow from the same texture so the white letters stay white (not cream) in shade.
+  maga: () => mat('maga', 0xffffff, { map: magaTexture(), emissiveMap: magaTexture(), emissive: 0xffffff, emissiveIntensity: 0.4, roughness: 0.7, flatShading: false }),
   flagBlue: () => mat('flagBlue', 0x1f3b8c, { roughness: 0.7 }),
 };
 const paint = (t: EnemyType) => mat('paint_' + t, ENEMIES[t].color, { roughness: 0.48, metalness: 0.15 }, 'paint');

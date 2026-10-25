@@ -1048,7 +1048,8 @@ function donald(h: Host, e: Bot, dt: number): void {
       e.glow = e.prog;
       if (e.stateT <= 0) {
         e.windup = 0;
-        e.set('wallPause', s.plated ? 0.9 : 1.3);
+        // A real beat to read the walls and smash out before the steamroll (it was too tight to escape).
+        e.set('wallPause', s.plated ? 1.4 : 2.0);
       }
       break;
     case 'wallPause':
@@ -1058,7 +1059,8 @@ function donald(h: Host, e: Bot, dt: number): void {
       e.glow = Math.max(0, e.glow - dt);
       if (e.stateT <= 0) {
         e.chargesLeft = 1;
-        beginChargeWind(h, e, 1.0);
+        h.label(e, "YOU'RE FIRED!", '#ff5d5d', 1.15);
+        beginChargeWind(h, e, s.plated ? 1.2 : 1.5);
       }
       break;
     case 'beamWind':
