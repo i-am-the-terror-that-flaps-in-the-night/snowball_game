@@ -324,7 +324,7 @@ export class Game {
     ctx.plow.reset();
     ctx.ui.hideOverlays();
     ctx.ui.setHudVisible(true);
-    ctx.ui.toast('SURVIVAL', 'big');
+    ctx.ui.toast(this.survival.title, 'big');
     ctx.cameraRig.setMode('follow');
     ctx.cameraRig.snap();
     this.beginCountdown();

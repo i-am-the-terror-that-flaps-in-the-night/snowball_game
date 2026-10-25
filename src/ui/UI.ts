@@ -16,7 +16,8 @@ import { ACTIONS, keyLabel, type Action } from '../core/input';
 import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
 import { StyleShop } from './StyleShop';
 import { Trophies } from './Trophies';
-import { dailyButtonLabel } from '../meta/daily';
+import { activeDaily, dailyButtonLabel } from '../meta/daily';
+import { renderDailyResult, renderDailyShopTag } from './DailyResult';
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
 
@@ -839,6 +840,8 @@ export class UI implements UIAPI {
     w.classList.toggle('boss', !!o.nextBoss);
     const t = el('div', 'ss-rp-title', undefined, w);
     t.innerHTML = `Wave <b>${next}</b> next${o.nextBoss ? ` · ☠ BOSS: ${o.nextBoss}` : ''}`;
+    const daily = activeDaily();
+    if (daily) renderDailyShopTag(w, daily);
     const row = el('div', 'ss-sv-shoprow', undefined, w);
     this.repairBtn = this.btn('', 'ss-ice ss-sv-repair', () => {
       const ok = o.onRepair();
@@ -949,7 +952,9 @@ export class UI implements UIAPI {
       'ss-sub',
       win
         ? `${sum.zoneName} cleared! The arena is yours.`
-        : sum.survival
+        : sum.survival && sum.daily
+          ? `Scrapped on wave ${sum.survival.wave}. Same lineup all day, so retry and push your best!`
+          : sum.survival
           ? `Scrapped on wave ${sum.survival.wave}. ${sum.survival.newBest ? '🌟 NEW BEST!' : `Best: wave ${sum.survival.best}.`} Coins are kept, so upgrade and go again!`
           : `Your plow got scrapped in ${sum.zoneName}. Coins are kept, so upgrade and get back in there!`,
       p,
@@ -969,6 +974,11 @@ export class UI implements UIAPI {
     stat('🔥', 'Best combo', sum.bestCombo >= 2 ? `x${sum.bestCombo}` : '—', 260);
     stat('⚪', 'Biggest ball', `${sum.biggestBall.toFixed(2)} m`, 340);
     stat('🪙', 'Coins earned', `+${fmt(sum.coinsEarned)}`, 420);
+
+    // ---- Daily Survival: date, modifier, wave vs today's best, last 7 days (ui/DailyResult.ts).
+    const daily = sum.survival && sum.daily ? activeDaily() : null;
+    if (daily && sum.survival) renderDailyResult(p, this.ctx.progression, daily, sum.survival.wave, sum.survival.newBest);
+    // ---- end Daily
 
     if (win && sum.clearReward > 0) {
       const r = el('div', 'ss-reward', undefined, p);
