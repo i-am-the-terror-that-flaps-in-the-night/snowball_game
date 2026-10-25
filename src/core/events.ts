@@ -12,6 +12,8 @@ export interface GameEvents {
   enemyHit: { enemy: EnemyHandle; damage: number };
   /** The player slammed their snowball. */
   slam: { hits: number; radius: number; position: THREE.Vector3 };
+  /** The player fired their F ability (Inferno, Thunderclap, Ground Pound, Meltdown; `nuke` = ISOTOPE's NUKE). */
+  ability: { nuke: boolean };
   /** One slam / whirl hit `count` (>= 3) bots. */
   strike: { count: number; position: THREE.Vector3 };
   plowDamaged: { amount: number; blocked: number };

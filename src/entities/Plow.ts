@@ -9,8 +9,11 @@ import {
   type GameContext,
   type PlayerStats,
   type PlowAPI,
+  type SoundName,
 } from '../core/types';
 import type { Combat } from './Combat';
+import { ctxPilot, type PilotBinding } from './pilot';
+import { NP } from '../net/protocol';
 import { getSnowballGeometry, getSnowballMaterial } from './snowballMesh';
 import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
@@ -70,6 +73,8 @@ const STREAK_LIFE = 0.24;
 const TRAIL_EVERY = 0.07;
 const TRAIL_EVERY_DASH = 0.025;
 const TRAIL_MIN_SPEED = 2.5;
+/** Share of camera shake a duel opponent's plow causes on this screen. */
+const REMOTE_SHAKE = 0.35;
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -192,6 +197,8 @@ export class Plow implements PlowAPI {
   maxHp = 120;
 
   private ctx: GameContext;
+  /** Whose input / stats / combat drive this plow (ctxPilot = the single-player singletons). */
+  private b: PilotBinding;
   private _dead = false;
   private heldVolume = 0;
   private pushVel = new THREE.Vector3();
@@ -329,8 +336,9 @@ export class Plow implements PlowAPI {
   private bladeSkinMat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.4, metalness: 0.3, emissive: 0xff0000, emissiveIntensity: 0 });
   private bladeKey = '';
 
-  constructor(ctx: GameContext) {
+  constructor(ctx: GameContext, binding?: PilotBinding) {
     this.ctx = ctx;
+    this.b = binding ?? ctxPilot(ctx);
     this.object.name = 'plow';
 
     this.paintMat = new THREE.MeshStandardMaterial({ color: this.paintBase, roughness: 0.45, metalness: 0.15, emissive: 0xff0000, emissiveIntensity: 0 });
@@ -644,7 +652,7 @@ export class Plow implements PlowAPI {
     ctx.scene.add(this.whirlRing);
 
     ctx.scene.add(this.object);
-    this.applyStats(ctx.stats);
+    this.applyStats(this.b.stats);
     // Paint Shop look: applied now and re-checked on every save change (buy / equip / import / reset).
     this.syncLook(true);
     ctx.progression.onChange(() => this.syncLook());
@@ -675,11 +683,198 @@ export class Plow implements PlowAPI {
     return this._sawHalo;
   }
   feedSawFury(dealt: number, taken: number): void {
-    if (this.kind !== 'brute' || this.ctx.stats.sawDps <= 0 || this._dead) return;
+    if (this.kind !== 'brute' || this.b.stats.sawDps <= 0 || this._dead) return;
     this.sawFury = Math.min(1, this.sawFury + dealt / SAW_FURY_DEALT + taken / SAW_FURY_TAKEN);
   }
   get invulnerable(): boolean {
     return !this._dead && (this.spawnProt > 0 || this.dashT > DASH_SECONDS - DASH_IFRAMES);
+  }
+
+  /** Re-bind this plow to another pilot (the online Duel), or back to the single-player singletons (null). */
+  bind(binding: PilotBinding | null): void {
+    this.b = binding ?? ctxPilot(this.ctx);
+    this.applyStats(this.b.stats);
+    this.syncLook(true);
+  }
+
+  get pilot(): PilotBinding {
+    return this.b;
+  }
+
+  /** Camera shake from this plow: full strength for the local pilot, a fraction for a duel opponent. */
+  private shake(intensity: number): void {
+    this.ctx.fx.shake(this.b.local ? intensity : intensity * REMOTE_SHAKE);
+  }
+
+  /** The Paint Shop horn on this plow (slam sound layer), if any. */
+  get hornSound(): SoundName | null {
+    return this.look.horn.sound;
+  }
+
+  /** Show / hide the whole plow and its world-space parts (the duel's second plow sits out single-player modes). */
+  setInWorld(on: boolean): void {
+    this.object.visible = on;
+    if (!on) {
+      this.ball.visible = false;
+      this.glow.visible = false;
+      this.tornado.visible = false;
+      this.whirlRing.visible = false;
+      this.ballWasVisible = false;
+      for (const g of this.ghosts) {
+        g.active = false;
+        g.group.visible = false;
+      }
+      for (const st of this.streaks) st.active = false;
+      this.updateStreaks(0);
+      for (const d of this.debris) if (d.popped) d.obj.visible = false;
+    } else {
+      for (const d of this.debris) d.obj.visible = true;
+    }
+    this.streakMesh.visible = on;
+  }
+
+  /* ------------------------------------------------------------------ duel netcode */
+
+  /** Pack the network-visible state into `out` at offset `o` (layout: NET_PLOW in net/protocol.ts). */
+  writeNet(out: Float32Array, o: number): void {
+    out[o + NP.x] = this.position.x;
+    out[o + NP.z] = this.position.z;
+    out[o + NP.heading] = this.heading;
+    out[o + NP.speed] = this.speed;
+    out[o + NP.hp] = this.hp;
+    out[o + NP.maxHp] = this.maxHp;
+    out[o + NP.ball] = this.heldVolume;
+    out[o + NP.dashCharge] = this.dashCharge;
+    out[o + NP.whirlCharge] = this.whirlCharge;
+    out[o + NP.dashT] = this.dashT;
+    out[o + NP.dashEase] = this.dashEase;
+    out[o + NP.whirlT] = this.whirlT;
+    out[o + NP.slamPhase] = this.slamPhase;
+    out[o + NP.slamT] = this.slamT;
+    out[o + NP.hop] = this.hop;
+    out[o + NP.spawnProt] = this.spawnProt;
+    out[o + NP.dead] = this._dead ? 1 : 0;
+    out[o + NP.pushX] = this.pushVel.x;
+    out[o + NP.pushZ] = this.pushVel.z;
+    out[o + NP.throttle] = this._dead ? 0 : this.b.input.throttle;
+    out[o + NP.steer] = this._dead ? 0 : this.b.input.steer;
+    out[o + NP.sawFury] = this.sawFury;
+  }
+
+  /**
+   * Duel guest, own plow: pull the locally predicted plow toward the host's view of it. `tx/tz/th` is the host pose
+   * (already extrapolated by the caller), `k` the blend fraction this frame (1 = snap). Health, death and the ball
+   * follow the host; charges follow it unless the pilot just used that ability locally (`keep*`), so a stale
+   * snapshot never re-arms a dash the host has not seen yet.
+   */
+  netCorrect(s: Float32Array, o: number, tx: number, tz: number, th: number, k: number, keepBall: boolean, keepDash: boolean, keepWhirl: boolean): void {
+    const dead = s[o + NP.dead] > 0.5;
+    if (!this._dead) {
+      this.position.x += (tx - this.position.x) * k;
+      this.position.z += (tz - this.position.z) * k;
+      let dh = th - this.heading;
+      dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+      this.heading += dh * k;
+    }
+    this.maxHp = s[o + NP.maxHp];
+    const hp = s[o + NP.hp];
+    if (dead && !this._dead) this.damage(this.hp + 1);
+    else if (!this._dead) {
+      if (hp < this.hp - 0.01) this.damage(this.hp - hp);
+      else this.hp = hp;
+    }
+    if (this._dead) return;
+    if (!keepBall) this.heldVolume = s[o + NP.ball];
+    if (!keepDash) this.dashCharge = s[o + NP.dashCharge];
+    if (!keepWhirl) this.whirlCharge = s[o + NP.whirlCharge];
+    this.spawnProt = s[o + NP.spawnProt];
+    this.sawFury = s[o + NP.sawFury];
+  }
+
+  /** Duel guest: shove the predicted plow right away when the host reports a knockback on it. */
+  netPush(vx: number, vz: number): void {
+    this.push(vx, vz);
+  }
+
+  /**
+   * Duel guest, opponent plow: no simulation at all. Pose, health, ball and ability timers come from the
+   * (interpolated) snapshot in `s` at `o`; this only animates them and replays the launch effects (dash blast,
+   * whirl tornado + its ticks, wreck explosion) when they start.
+   */
+  updatePuppet(dt: number, s: Float32Array, o: number): void {
+    const stats = this.b.stats;
+    this.time += dt;
+    if (stats.bladeWidth !== this.bladeWidth) this.setBladeWidth(stats.bladeWidth);
+    if (stats.maxHp !== this.maxHp) this.applyStats(stats);
+    const dead = s[o + NP.dead] > 0.5;
+    const prevHeading = this.heading;
+    this.position.x = s[o + NP.x];
+    this.position.z = s[o + NP.z];
+    this.heading = s[o + NP.heading];
+    this.speed = s[o + NP.speed];
+    this.maxHp = s[o + NP.maxHp];
+    if (dead && !this._dead) {
+      this.hp = 0;
+      this.die();
+    } else if (!dead && this._dead) {
+      this.reset({ x: this.position.x, z: this.position.z, heading: this.heading });
+    }
+    this.updateGhosts(dt);
+    this.updateStreaks(dt);
+    this.updateTornado(dt);
+    if (this._dead) {
+      this.updateWreck(dt);
+      return;
+    }
+    const hp = s[o + NP.hp];
+    if (hp < this.hp - 0.5) {
+      this.flash = 1;
+      this.jitter = Math.min(0.2, 0.08 + (this.hp - hp) * 0.004);
+    }
+    this.hp = hp;
+    this.heldVolume = s[o + NP.ball];
+    this.dashCharge = s[o + NP.dashCharge];
+    this.whirlCharge = s[o + NP.whirlCharge];
+    this.spawnProt = s[o + NP.spawnProt];
+    if (this.spawnProt > 0) this.body.visible = Math.floor(this.spawnProt * 14) % 2 === 0;
+    else this.body.visible = true;
+    this.sawFury = s[o + NP.sawFury];
+    this.hop = s[o + NP.hop];
+    this.slamPhase = s[o + NP.slamPhase] as 0 | 1 | 2;
+    this.slamT = s[o + NP.slamT];
+    this.lungeVel = 0;
+    // Dash: replay the launch once, then follow the host's timers (flame, ghosts and streaks key off them).
+    const dT = s[o + NP.dashT];
+    if (dT > 0 && this.dashT <= 0 && dT > DASH_SECONDS - 0.3) {
+      this.ghostT = 0;
+      this.streakT = 0;
+      this.kick = Math.max(this.kick, 0.8);
+      this.dashFx();
+    }
+    this.dashT = dT;
+    this.dashEase = s[o + NP.dashEase];
+    // Whirl: run the local tornado up to the host's whirl clock (ticks replay their sprays and sounds; the puppet's
+    // Combat has nothing to hit).
+    const wT = s[o + NP.whirlT];
+    if (wT >= 0) {
+      // Only a fresh whirl starts one (the local tornado can finish a frame before the host's clock does).
+      if (this.whirlT < 0 && wT < 0.4) {
+        this.whirlT = 0;
+        this.whirlTick = 0;
+        this.whirlHits.clear();
+        this.whirlFx();
+      }
+      if (this.whirlT >= 0 && wT > this.whirlT) this.updateWhirl(wT - this.whirlT);
+    } else if (this.whirlT >= 0) {
+      this.whirlT = -1;
+      this.spinAngle = 0;
+    }
+    let dh = this.heading - prevHeading;
+    dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    const turn = dt > 0 ? dh / dt : 0;
+    const throttle = s[o + NP.throttle];
+    this.updateVisuals(dt, turn, throttle);
+    if (this.dashT > 0 || Math.abs(this.speed) > TRAIL_MIN_SPEED) this.emitTrail(dt, this.dashT > 0);
   }
 
   /** Freeze the plow for `seconds` (impact hit-stop). */
@@ -863,7 +1058,7 @@ export class Plow implements PlowAPI {
   /** Re-read the equipped Paint Shop look (+ any shop preview) and repaint / re-decal if it changed. Player plow
    *  only: Brawl rivals and campaign bots build their own materials. */
   private syncLook(force = false): void {
-    const look = resolveLook({ ...cosmeticsState(this.ctx.progression).equipped, ...this.preview });
+    const look = resolveLook({ ...(this.b.look ?? cosmeticsState(this.ctx.progression).equipped), ...this.preview });
     const key = `${this.kind}|${look.paint.id}|${look.decal.id}|${look.trail.id}|${look.blade.id}|${look.horn.id}|${look.kill.id}`;
     if (!force && key === this.lookKey) return;
     this.lookKey = key;
@@ -1045,7 +1240,8 @@ export class Plow implements PlowAPI {
 
   update(dt: number): void {
     const ctx = this.ctx;
-    const stats = ctx.stats;
+    const b = this.b;
+    const stats = b.stats;
     this.time += dt;
     if (stats.bladeWidth !== this.bladeWidth) this.setBladeWidth(stats.bladeWidth);
     if (stats.maxHp !== this.maxHp) this.applyStats(stats);
@@ -1067,13 +1263,13 @@ export class Plow implements PlowAPI {
     // Impact hit-stop: hold everything still for a few frames.
     if (this.hitStopT > 0) {
       this.hitStopT -= dt;
-      if (ctx.input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
+      if (b.input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
       this.jitter = Math.max(this.jitter, 0.1);
       return;
     }
 
-    const input = ctx.input;
-    const snow = ctx.snow;
+    const input = b.input;
+    const snow = b.snow;
     const maxBallR = stats.maxBallRadius;
 
     // ---- regen + timers
@@ -1102,7 +1298,7 @@ export class Plow implements PlowAPI {
         this.slamT = 0;
         this.slamHit = false;
       } else {
-        ctx.audio.play('error');
+        b.audio.play('error');
       }
     }
     if (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight')) this.tryDash();
@@ -1178,7 +1374,8 @@ export class Plow implements PlowAPI {
       _a.set(bx - _right.x * hw, 0, bz - _right.z * hw);
       _b.set(bx + _right.x * hw, 0, bz + _right.z * hw);
       const removed = snow.plowLine(_a.x, _a.z, _b.x, _b.z, vf * dt + 0.35, dashing ? 1 : 0.9);
-      if (removed > 0) {
+      // Duel guest: the blade still kicks up spray, but only the host's snapshot fills the ball.
+      if (removed > 0 && b.authoritative) {
         const cap = ballVolume(maxBallR);
         const add = removed * stats.collectRate;
         const room = Math.max(0, cap - this.heldVolume);
@@ -1214,7 +1411,7 @@ export class Plow implements PlowAPI {
       }
     }
     this.plowSmooth += (plowIntensity - this.plowSmooth) * Math.min(1, dt * 10);
-    ctx.audio.setPlowing(this.plowSmooth < 0.02 ? 0 : this.plowSmooth);
+    b.audio.setPlowing(this.plowSmooth < 0.02 ? 0 : this.plowSmooth);
 
     // ---- whirl
     if (this.whirlT >= 0) this.updateWhirl(dt);
@@ -1229,15 +1426,15 @@ export class Plow implements PlowAPI {
   private slamImpact(): void {
     const ctx = this.ctx;
     this.slamHit = true;
-    this.slamCd = cooldown(SLAM_COOLDOWN, this.ctx.stats.cooldownMult);
+    this.slamCd = cooldown(SLAM_COOLDOWN, this.b.stats.cooldownMult);
     const r = this.heldBallRadius;
     if (r < 0.2) {
       // Ball got stolen / chipped away mid-windup.
-      ctx.audio.play('error');
+      this.b.audio.play('error');
       return;
     }
     // Snow Reserve (Classic Plow) keeps part of the ball on the blade; the slam still hits with the full radius.
-    const volume = this.heldVolume * (1 - ctx.stats.reserveFrac);
+    const volume = this.heldVolume * (1 - this.b.stats.reserveFrac);
     this.heldVolume -= volume;
     if (this.heldBallRadius < 0.2) {
       this.heldVolume = 0;
@@ -1251,16 +1448,16 @@ export class Plow implements PlowAPI {
     const cx = _c.x + _fwd.x * (r + 0.5);
     const cz = _c.z + _fwd.z * (r + 0.5);
     this.kick = 1;
-    (ctx.combat as Combat).slamAt(cx, cz, r, volume);
+    this.b.combat.slamAt(cx, cz, r, volume);
   }
 
   private tryDash(): void {
     const ctx = this.ctx;
     if (this.dashCharge < 1 || this.dashT > 0) {
-      if (this.dashT <= 0) ctx.audio.play('error', { volume: 0.4 });
+      if (this.dashT <= 0) this.b.audio.play('error', { volume: 0.4 });
       return;
     }
-    const stats = ctx.stats;
+    const stats = this.b.stats;
     this.dashCharge = 0;
     this.dashT = DASH_SECONDS;
     this.dashEase = 0;
@@ -1271,8 +1468,14 @@ export class Plow implements PlowAPI {
     this.ghostT = 0;
     this.streakT = 0;
     this.kick = Math.max(this.kick, 0.8);
-    ctx.audio.play('dash');
-    if (this.look.horn.sound) ctx.audio.play(this.look.horn.sound, { volume: 0.4, pitch: 1.25 });
+    this.dashFx();
+  }
+
+  /** Dash launch feedback: sound, rear blast, exhaust flare (also replayed for a duel opponent's puppet). */
+  private dashFx(): void {
+    const ctx = this.ctx;
+    this.b.audio.play('dash');
+    if (this.look.horn.sound) this.b.audio.play(this.look.horn.sound, { volume: 0.4, pitch: 1.25 });
     // Rear blast: snow kicked back + exhaust flare.
     this.getForward(_fwd);
     _c.set(this.position.x - _fwd.x * REAR_Z, 0.5, this.position.z - _fwd.z * REAR_Z);
@@ -1283,13 +1486,13 @@ export class Plow implements PlowAPI {
     ctx.fx.ring(_c, 2.6, 0xffb060);
     this.exhaustWorld(_c);
     ctx.fx.burst(_c, { color: 0xff9a2a, count: 16, speed: 4, size: 0.24, gravity: -4, life: 0.4 });
-    ctx.fx.shake(0.22);
+    this.shake(0.22);
   }
 
   /** Dash safety net: anything the blade plows into while dashing gets a DASH STRIKE (Combat dedupes per bot). */
   private dashHits(): void {
     const ctx = this.ctx;
-    const enemies = ctx.enemies;
+    const enemies = this.b.enemies;
     if (!enemies || this.speed < 3) return;
     const tx = this.position.x + _fwd.x * (TIP_Z - 0.4);
     const tz = this.position.z + _fwd.z * (TIP_Z - 0.4);
@@ -1300,7 +1503,7 @@ export class Plow implements PlowAPI {
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (!e.alive) continue;
-      ctx.combat.playerRam(e, this.speed);
+      this.b.combat.playerRam(e, this.speed);
       if (this.hitStopT > 0) break; // one strike per frame; the rest connect after the hit-stop
     }
     list.length = 0;
@@ -1310,7 +1513,7 @@ export class Plow implements PlowAPI {
     const ctx = this.ctx;
     if (this.whirlT >= 0) return;
     if (this.whirlCharge < 1) {
-      ctx.audio.play('error', { volume: 0.4 });
+      this.b.audio.play('error', { volume: 0.4 });
       return;
     }
     this.whirlCharge = 0;
@@ -1319,21 +1522,27 @@ export class Plow implements PlowAPI {
     this.whirlHits.clear();
     // Cancel a pending slam (the whirl takes over the blade).
     this.slamPhase = 0;
-    ctx.audio.play('whirl');
+    this.whirlFx();
+  }
+
+  /** Whirl start feedback (also replayed for a duel opponent's puppet). */
+  private whirlFx(): void {
+    const ctx = this.ctx;
+    this.b.audio.play('whirl');
     const R = this.whirlRadius();
     this.tornadoR = R;
     _c.set(this.position.x, 0.05, this.position.z);
     ctx.fx.ring(_c, R, 0xbfeaff);
-    ctx.fx.shake(0.15);
+    this.shake(0.15);
   }
 
   private whirlRadius(): number {
-    return this.ctx.stats.whirlRadius + this.bladeWidth / 2 + this.heldBallRadius;
+    return this.b.stats.whirlRadius + this.bladeWidth / 2 + this.heldBallRadius;
   }
 
   private updateWhirl(dt: number): void {
     const ctx = this.ctx;
-    const stats = ctx.stats;
+    const stats = this.b.stats;
     this.whirlT += dt;
     const tau = Math.min(1, this.whirlT / WHIRL_SECONDS);
     // Eased: whips up fast, slows at the end.
@@ -1348,11 +1557,11 @@ export class Plow implements PlowAPI {
     while (this.whirlTick < WHIRL_TICKS.length && this.whirlT >= WHIRL_TICKS[this.whirlTick]) {
       const tick = this.whirlTick++;
       const final = tick === WHIRL_TICKS.length - 1;
-      (ctx.combat as Combat).whirlTick(px, pz, R, this.heldBallRadius, tick, final, this.whirlHits);
+      this.b.combat.whirlTick(px, pz, R, this.heldBallRadius, tick, final, this.whirlHits);
       this.ringPulse = final ? 1.6 : 1;
       // Suck snow into the held ball.
-      const vol = ctx.snow.collectDisc(px, pz, R * 0.7, 0.35) * stats.collectRate;
-      if (vol > 0) {
+      const vol = this.b.snow.collectDisc(px, pz, R * 0.7, 0.35) * stats.collectRate;
+      if (vol > 0 && this.b.authoritative) {
         const cap = ballVolume(stats.maxBallRadius);
         this.heldVolume = Math.min(cap, this.heldVolume + vol);
       }
@@ -1383,8 +1592,8 @@ export class Plow implements PlowAPI {
       const count = this.whirlHits.size;
       this.whirlHits.clear();
       if (count >= 3) {
-        ctx.events.emit('strike', { count, position: new THREE.Vector3(px, 0, pz) });
-        ctx.audio.play('strike');
+        this.b.events.emit('strike', { count, position: new THREE.Vector3(px, 0, pz) });
+        this.b.audio.play('strike');
       }
     }
   }
@@ -1476,8 +1685,8 @@ export class Plow implements PlowAPI {
       this.wallCd = 0.4;
       this.kick = 1;
       this.jitter = 0.2;
-      ctx.audio.play('wallHit', { volume: 1, pitch: 0.75 });
-      ctx.fx.shake(0.6);
+      this.b.audio.play('wallHit', { volume: 1, pitch: 0.75 });
+      this.shake(0.6);
       _c.set(this.position.x - nx * (this.radius + 0.6), 1, this.position.z - nz * (this.radius + 0.6));
       ctx.fx.burst(_c, { color: 0xffffff, count: 34, speed: 7, size: 0.26, gravity: 14, life: 0.8 });
       ctx.fx.burst(_c, { color: 0xffc04a, count: 18, speed: 10, size: 0.08, gravity: 22, life: 0.35 });
@@ -1494,8 +1703,8 @@ export class Plow implements PlowAPI {
     }
     if (into > 5 && this.wallCd <= 0) {
       this.wallCd = 0.3;
-      ctx.audio.play('wallHit', { volume: Math.min(1, 0.4 + into * 0.04) });
-      ctx.fx.shake(Math.min(0.45, 0.12 + (into - 5) * 0.03));
+      this.b.audio.play('wallHit', { volume: Math.min(1, 0.4 + into * 0.04) });
+      this.shake(Math.min(0.45, 0.12 + (into - 5) * 0.03));
       _c.set(this.position.x - nx * (this.radius + 0.4), 1, this.position.z - nz * (this.radius + 0.4));
       ctx.fx.burst(_c, { color: 0xffffff, count: 10 + Math.round(into), speed: 4, size: 0.2, gravity: 14, life: 0.6 });
       ctx.fx.burst(_c, { color: 0xffc04a, count: 6, speed: 6, size: 0.07, gravity: 22, life: 0.3 });
@@ -1519,14 +1728,14 @@ export class Plow implements PlowAPI {
     this.whirlHits.clear();
     this.spinAngle = 0;
     this.spin.rotation.y = 0;
-    ctx.audio.setPlowing(0);
+    this.b.audio.setPlowing(0);
     this.plowSmooth = 0;
 
     // Drop the held ball as loose snow.
     if (this.heldVolume > 0) {
       const r = this.heldBallRadius;
       this.ballCenter(_c, r, this.heading, 0);
-      ctx.snow.addSnow(_c.x, _c.z, Math.max(1, r * 1.5), this.heldVolume);
+      this.b.snow.addSnow(_c.x, _c.z, Math.max(1, r * 1.5), this.heldVolume);
       ctx.fx.burst(_c, { color: 0xffffff, count: 16, speed: 3, size: 0.3, gravity: 10, life: 0.9 });
       this.heldVolume = 0;
     }
@@ -1575,7 +1784,7 @@ export class Plow implements PlowAPI {
     this.flame.visible = true;
     this.jitter = 0.2;
 
-    ctx.events.emit('plowDestroyed', {});
+    this.b.events.emit('plowDestroyed', {});
   }
 
   private updateWreck(dt: number): void {
@@ -1796,8 +2005,8 @@ export class Plow implements PlowAPI {
 
   private updateVisuals(dt: number, turn: number, throttle: number): void {
     const ctx = this.ctx;
-    const stats = ctx.stats;
-    const snow = ctx.snow;
+    const stats = this.b.stats;
+    const snow = this.b.snow;
     const absS = Math.abs(this.speed);
     this.object.rotation.set(0, this.heading, 0);
     this.spin.rotation.y = this.spinAngle;
@@ -1851,7 +2060,7 @@ export class Plow implements PlowAPI {
 
     // Wheels.
     const spin = ((this.speed + this.lungeVel) * dt) / WHEEL_R;
-    const st = this.ctx.input.steer * 0.35;
+    const st = this.b.input.steer * 0.35;
     if (spin !== 0 || st !== this.wheelSteer[0] || st !== this.wheelSteer[1]) {
       for (let i = 0; i < 4; i++) this.wheelSpin[i] += spin;
       this.wheelSteer[0] = this.wheelSteer[1] = st;
@@ -1872,7 +2081,7 @@ export class Plow implements PlowAPI {
     this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : this.kind === 'isotope' ? 0x5dff3a : 0xffa020);
     // ISOTOPE: the reactor core breathes; it flickers hot while Meltdown recharges.
     if (this.kind === 'isotope') {
-      const ready = this.ctx.combat?.flameReady ?? 1;
+      const ready = this.b.combat?.flameReady ?? 1;
       const flick = ready < 1 ? 0.5 + 0.5 * Math.sin(this.time * 25) : 0.5 + 0.5 * Math.sin(this.time * 3);
       this.coreMat.emissiveIntensity = 1.1 + flick * (ready < 1 ? 0.3 : 0.9);
       this.beaconLight.intensity = 2.5 + flick * 3;
@@ -1889,7 +2098,7 @@ export class Plow implements PlowAPI {
         this.arcT = 0.15 + Math.random() * 0.35;
         const a = this.coilTops[0].getWorldPosition(_a);
         const b = this.coilTops[1].getWorldPosition(_b);
-        (this.ctx.combat as Combat | undefined)?.lightning.bolt(a, b, { life: 0.12, width: 0.1, jag: 0.25 });
+        this.b.combat?.lightning.bolt(a, b, { life: 0.12, width: 0.1, jag: 0.25 });
       }
     }
     this.beaconSpinner.rotation.y += dt * (lowHp ? 16 : 9);

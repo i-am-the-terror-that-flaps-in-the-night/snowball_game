@@ -10,7 +10,7 @@ const out = process.argv.slice(2).find((a) => !a.startsWith('--')) || '/tmp/braw
 const SHOTS = !process.argv.includes('--noshots');
 mkdirSync(out, { recursive: true });
 const port = 5900 + Math.floor(Math.random() * 90);
-const server = await createServer({ root: '/Users/sachingupta/Developer/3js_game', server: { port, strictPort: true }, logLevel: 'error' });
+const server = await createServer({ root: process.cwd(), server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
 const errors = [];
 let browser, page;

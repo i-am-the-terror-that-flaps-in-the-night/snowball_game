@@ -1,7 +1,7 @@
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 const port = 5800 + Math.floor(Math.random() * 100);
-const server = await createServer({ root: '/Users/sachingupta/Developer/3js_game', server: { port, strictPort: true }, logLevel: 'error' });
+const server = await createServer({ root: process.cwd(), server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });

@@ -1,4 +1,3 @@
-import { equippedLook } from '../meta/cosmetics';
 import * as THREE from 'three';
 import { FlameCone } from '../fx/FlameCone';
 import { Lightning } from '../fx/Lightning';
@@ -8,9 +7,13 @@ import {
   type CombatAPI,
   type EnemyHandle,
   type GameContext,
+  type ImpactKind,
+  type ImpactOpts,
   type PlowAPI,
 } from '../core/types';
 import { COMBO_MAX, COMBO_WINDOW, LAST_STAND_HP } from '../config/upgrades';
+import { ctxPilot, type PilotBinding } from './pilot';
+import { NP } from '../net/protocol';
 
 /** Seconds of damage i-frames after the plow is hit (overlapping hits only add their excess). */
 const IFRAME_SECONDS = 0.15;
@@ -79,6 +82,10 @@ const WHIRL_BLAST = 22;
 /** The player's whirl hits harder than the base kit (Brawl rivals keep the base numbers). */
 const WHIRL_PLAYER_BONUS = 1.35;
 
+/** Share of camera shake / kick a duel opponent's attacks cause on this screen (no hit-stop at all). */
+const REMOTE_SHAKE = 0.35;
+const REMOTE_IMPACT: ImpactOpts = { stop: false, falloff: 0.5 };
+
 const _p = new THREE.Vector3();
 const _q = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
@@ -87,6 +94,8 @@ const _tip = new THREE.Vector3();
 /** All melee damage math for the player and the bots lives here. */
 export class Combat implements CombatAPI {
   private ctx: GameContext;
+  /** Whose plow / stats / input / targets this Combat resolves (ctxPilot = the single-player singletons). */
+  private b: PilotBinding;
   private iframe = 0;
   /** Second Wind: invulnerable window left, and when it can trigger again (ctx.time). */
   private guardT = 0;
@@ -146,8 +155,9 @@ export class Combat implements CombatAPI {
   private poundCharge = 1;
   private poundT = -1;
 
-  constructor(ctx: GameContext) {
+  constructor(ctx: GameContext, binding?: PilotBinding) {
     this.ctx = ctx;
+    this.b = binding ?? ctxPilot(ctx);
     this.flameCone = new FlameCone(ctx.scene);
     this.lightning = new Lightning(ctx.scene);
     const poolGeo = new THREE.CircleGeometry(1, 32);
@@ -162,12 +172,68 @@ export class Combat implements CombatAPI {
     }
   }
 
+  /** Re-bind to another pilot (the online Duel), or back to the single-player singletons (null). */
+  bind(binding: PilotBinding | null): void {
+    this.b = binding ?? ctxPilot(this.ctx);
+  }
+
+  /** Camera shake: full strength for the local pilot's own combat, a fraction for a duel opponent's. */
+  private shake(intensity: number): void {
+    this.ctx.fx.shake(this.b.local ? intensity : intensity * REMOTE_SHAKE);
+  }
+
+  /** Impact light / camera punch; a duel opponent's impacts never hit-stop this screen. */
+  private impactHit(kind: ImpactKind, pos: THREE.Vector3, strength?: number, opts?: ImpactOpts): void {
+    this.ctx.impact.hit(kind, pos, strength, this.b.local ? opts : REMOTE_IMPACT);
+  }
+
+  /* ------------------------------------------------------------------ duel netcode */
+
+  /** Pack F-ability charge, Battery Shield, Critical Mass and Overload heat at `o` (NP layout, net/protocol.ts). */
+  writeNet(out: Float32Array, o: number): void {
+    out[o + NP.fReady] = this.flameReady;
+    out[o + NP.shield] = this.shield;
+    out[o + NP.crit] = this.critCharge;
+    out[o + NP.heat] = this.heatNow();
+    out[o + NP.flameT] = this.flameT;
+    out[o + NP.poundT] = this.poundT;
+    out[o + NP.stormT] = this.stormT;
+  }
+
+  /** Duel guest, own plow: adopt the host's meters. `keepF`: the pilot just pressed F locally (keep the prediction). */
+  readNet(s: Float32Array, o: number, keepF: boolean): void {
+    const f = s[o + NP.fReady];
+    if (!keepF && f >= 0) {
+      const kind = this.b.stats.plowKind;
+      if (kind === 'volt') this.clapCharge = f;
+      else if (kind === 'brute') {
+        if (this.poundT < 0) this.poundCharge = f;
+      } else if (kind === 'isotope') this.meltCharge = f;
+      else if (this.flameT <= 0) this.flameCharge = f;
+    }
+    this.shield = s[o + NP.shield];
+    this.critCharge = s[o + NP.crit];
+    this.clapHeat = s[o + NP.heat];
+    this.lastClapAt = this.ctx.time;
+  }
+
+  /** Duel guest, the opponent's puppet: re-arm the F ability so the replayed press fires it (visuals only — this
+   *  Combat's targets are empty). `nuke`: ISOTOPE's Critical Mass was full, so it is the NUKE. */
+  armForReplay(nuke: boolean): void {
+    this.clapCharge = this.poundCharge = this.meltCharge = this.flameCharge = 1;
+    this.flameT = 0;
+    if (this.poundT >= 0) this.b.plow.hop = 0;
+    this.poundT = -1;
+    this.critCharge = nuke ? 1 : 0;
+    this.clapHeat = 0;
+  }
+
   get critMass(): number {
-    return this.ctx.stats.meltDamage > 0 ? this.critCharge : -1;
+    return this.b.stats.meltDamage > 0 ? this.critCharge : -1;
   }
 
   get shieldFrac(): number {
-    const max = this.ctx.stats.shieldMax;
+    const max = this.b.stats.shieldMax;
     return max > 0 ? this.shield / max : -1;
   }
 
@@ -177,7 +243,7 @@ export class Combat implements CombatAPI {
    *  triggering hit (arcs off a Thunderclap don't feed Salvage Rig either). */
   private chainLightning(from: EnemyHandle, dealt: number, heal = true): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
+    const st = this.b.stats;
     if (ctx.time < this.chainReadyAt) return;
     this.chainReadyAt = ctx.time + 0.2;
     this.chainHit.clear();
@@ -185,7 +251,7 @@ export class Combat implements CombatAPI {
     let src = from;
     const dmg = Math.max(6 * st.damageMult, dealt * st.chainFrac);
     for (let hop = 0; hop < st.chainCount; hop++) {
-      const near = ctx.enemies.query(src.position.x, src.position.z, 9, this.chainBuf);
+      const near = this.b.enemies.query(src.position.x, src.position.z, 9, this.chainBuf);
       let best: EnemyHandle | null = null;
       let bd = Infinity;
       for (const e of near) {
@@ -202,21 +268,21 @@ export class Combat implements CombatAPI {
       _q.set(best.position.x, best.position.y + best.radius + 0.6, best.position.z);
       this.lightning.bolt(_p, _q, { life: 0.22, width: 0.3 });
       const hp0 = best.hp;
-      const killed = ctx.enemies.damage(best, dmg * this.hitMult(best), { source: 'other', freezeSeconds: 0.4, fromX: best.position.x, fromZ: best.position.z });
+      const killed = this.b.enemies.damage(best, dmg * this.hitMult(best), { source: 'other', freezeSeconds: 0.4, fromX: best.position.x, fromZ: best.position.z });
       const d2 = Math.max(0, hp0 - Math.max(0, best.hp));
       this.onPlayerHit(d2, killed, best, false, heal);
       if (d2 > 0) ctx.fx.floatText(_q, `⚡${Math.round(d2)}`, '#7fdcff', 0.8);
       ctx.fx.burst(_q, { color: 0x9fe8ff, count: 8, speed: 6, size: 0.08, gravity: 10, life: 0.3 });
       src = best;
     }
-    if (this.chainHit.size > 1) ctx.audio.play('zap', { pitch: 1.1 });
+    if (this.chainHit.size > 1) this.b.audio.play('zap', { pitch: 1.1 });
   }
 
   /** Tesla Field: passive shock aura around the plow. */
   private updateField(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
-    const plow = ctx.plow;
+    const st = this.b.stats;
+    const plow = this.b.plow;
     if (st.fieldDps <= 0 || !plow || plow.dead) return;
     const R = st.fieldRadius;
     // Idle crackle so the field reads even with nobody in it.
@@ -233,7 +299,7 @@ export class Combat implements CombatAPI {
     if (this.fieldT > 0) return;
     const TICK = 0.4;
     this.fieldT = TICK;
-    const hits = ctx.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
+    const hits = this.b.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
     let any = false;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -243,17 +309,17 @@ export class Combat implements CombatAPI {
       _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.14, width: 0.18 });
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+      const killed = this.b.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
       this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
     }
-    if (any) ctx.audio.play('zap', { volume: 0.35, pitch: 1.4 });
+    if (any) this.b.audio.play('zap', { volume: 0.35, pitch: 1.4 });
   }
 
   /** Buzzsaws (BRUTUS): the saws on the blade ends grind every bot in the front arc (BRUTUS's Tesla Field). */
   private updateSaws(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
-    const plow = ctx.plow;
+    const st = this.b.stats;
+    const plow = this.b.plow;
     if (st.sawDps <= 0 || !plow || plow.dead) return;
     this.sawT -= dt;
     if (this.sawT > 0) return;
@@ -261,7 +327,7 @@ export class Combat implements CombatAPI {
     this.sawT = TICK;
     plow.getForward(_fwd);
     const R = st.sawRadius * (1 + SAW_HALO_REACH * plow.sawHalo);
-    const hits = ctx.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
+    const hits = this.b.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
     let any = false;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -273,7 +339,7 @@ export class Combat implements CombatAPI {
       if ((dx * _fwd.x + dz * _fwd.z) / d < -0.25) continue;
       any = true;
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.sawDps * st.damageMult * TICK * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.sawDps * st.damageMult * TICK * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3((dx / d) * 2.5, 0, (dz / d) * 2.5),
         fromX: e.position.x,
@@ -288,22 +354,23 @@ export class Combat implements CombatAPI {
         ctx.fx.floatText(_q, `🪚${Math.round(dealt)}`, '#ffd040', 0.75);
       }
     }
-    if (any) ctx.audio.play('whirlTick', { volume: 0.35, pitch: 1.8 });
+    if (any) this.b.audio.play('whirlTick', { volume: 0.35, pitch: 1.8 });
   }
 
   /** Thunderclap (F on VOLT-9): lightning blast around the plow — damage, shock-slow and knockback. */
   private updateClap(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
-    const plow = ctx.plow;
+    const st = this.b.stats;
+    const plow = this.b.plow;
     if (st.clapDamage <= 0 || !plow) return;
     if (this.clapCharge < 1) this.clapCharge = Math.min(1, this.clapCharge + (st.clapCooldown > 0 ? dt / st.clapCooldown : 1));
-    if (!ctx.input.wasPressed('KeyF') || plow.dead) return;
+    if (!this.b.input.wasPressed('KeyF') || plow.dead) return;
     if (this.clapCharge < 1) {
-      ctx.audio.play('error');
+      this.b.audio.play('error');
       return;
     }
     this.clapCharge = 0;
+    this.b.events.emit('ability', { nuke: false });
     this.clapBacklash(plow);
     const R = st.clapRadius;
     const px = plow.position.x;
@@ -324,9 +391,9 @@ export class Combat implements CombatAPI {
       _q.set(px + Math.sin(a) * R, 0.2, pz + Math.cos(a) * R);
       this.lightning.bolt(_p, _q, { life: 0.25, width: 0.22, jag: 1.1 });
     }
-    ctx.fx.shake(0.8);
-    ctx.impact.hit('clap', _q.set(px, 1, pz));
-    ctx.audio.play('thunder');
+    this.shake(0.8);
+    this.impactHit('clap', _q.set(px, 1, pz));
+    this.b.audio.play('thunder');
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -340,7 +407,7 @@ export class Combat implements CombatAPI {
       _q.set(e.position.x, e.position.y + e.radius, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.35 });
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.clapDamage * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.clapDamage * st.damageMult * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3(dx * 14, 0, dz * 14),
         freezeSeconds: st.clapStun,
@@ -365,8 +432,8 @@ export class Combat implements CombatAPI {
    *  every bot in the ring outward. */
   private updatePound(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
-    const plow = ctx.plow;
+    const st = this.b.stats;
+    const plow = this.b.plow;
     // Plow keeps its body pose private; the hop height goes through a narrow duck-typed view.
     const hopper = plow as unknown as { hop: number } | undefined;
     if (st.poundDamage <= 0 || !plow || plow.dead) {
@@ -387,21 +454,22 @@ export class Combat implements CombatAPI {
       return;
     }
     if (this.poundCharge < 1) this.poundCharge = Math.min(1, this.poundCharge + (st.poundCooldown > 0 ? dt / st.poundCooldown : 1));
-    if (!ctx.input.wasPressed('KeyF')) return;
+    if (!this.b.input.wasPressed('KeyF')) return;
     if (this.poundCharge < 1) {
-      ctx.audio.play('error');
+      this.b.audio.play('error');
       return;
     }
     this.poundCharge = 0;
     this.poundT = 0;
+    this.b.events.emit('ability', { nuke: false });
     _q.set(plow.position.x, 0.1, plow.position.z);
     ctx.fx.burst(_q, { color: 0xffffff, count: 14, speed: 4, size: 0.2, gravity: 10, life: 0.4 });
-    ctx.audio.play('dash', { volume: 0.5, pitch: 0.6 });
+    this.b.audio.play('dash', { volume: 0.5, pitch: 0.6 });
   }
 
   private poundImpact(plow: PlowAPI): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
+    const st = this.b.stats;
     const R = st.poundRadius;
     const px = plow.position.x;
     const pz = plow.position.z;
@@ -419,9 +487,9 @@ export class Combat implements CombatAPI {
       _q.set(px + Math.sin(a) * rr, 0.3, pz + Math.cos(a) * rr);
       ctx.fx.burst(_q, { color: 0xffffff, count: 6, speed: 6, size: 0.24, gravity: 16, life: 0.55 });
     }
-    ctx.fx.shake(0.9);
-    ctx.impact.hit('pound', _q.set(px, 0.5, pz));
-    ctx.audio.play('thud');
+    this.shake(0.9);
+    this.impactHit('pound', _q.set(px, 0.5, pz));
+    this.b.audio.play('thud');
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -439,7 +507,7 @@ export class Combat implements CombatAPI {
       }
       const fall = 1 - (1 - POUND_RIM_FRAC) * Math.min(1, d / R);
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.poundDamage * st.damageMult * fall * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.poundDamage * st.damageMult * fall * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3(dx * st.poundKnock * fall, 0, dz * st.poundKnock * fall),
         stunSeconds: st.poundStun,
@@ -474,12 +542,12 @@ export class Combat implements CombatAPI {
   }
 
   get overloadHeat(): number {
-    return this.ctx.stats.plowKind === 'volt' && this.ctx.stats.clapDamage > 0 ? this.heatNow() : -1;
+    return this.b.stats.plowKind === 'volt' && this.b.stats.clapDamage > 0 ? this.heatNow() : -1;
   }
 
   get overloadCost(): number {
     if (this.overloadHeat < 0) return 0;
-    const plow = this.ctx.plow;
+    const plow = this.b.plow;
     return Math.max(0, Math.min(plow.hp - 1, CLAP_BACKLASH * (1 + this.heatNow()) ** 2));
   }
 
@@ -487,7 +555,7 @@ export class Combat implements CombatAPI {
   private updateStorm(dt: number): void {
     if (this.stormT <= 0) return;
     const ctx = this.ctx;
-    const st = ctx.stats;
+    const st = this.b.stats;
     this.stormT -= dt;
     const R = st.clapRadius;
     const dmgBase = st.clapDamage * st.damageMult;
@@ -496,7 +564,7 @@ export class Combat implements CombatAPI {
     if (this.stormStrikes > 0 && this.stormStrikeT <= 0) {
       this.stormStrikes--;
       this.stormStrikeT = 0.14;
-      const near = ctx.enemies.query(this.stormX, this.stormZ, R, this.chainBuf);
+      const near = this.b.enemies.query(this.stormX, this.stormZ, R, this.chainBuf);
       let sx: number;
       let sz: number;
       if (near.length && Math.random() < 0.75) {
@@ -514,13 +582,13 @@ export class Combat implements CombatAPI {
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.55, jag: 1.8, color: 0x9fe8ff });
       ctx.fx.ring(_q, 3.5, 0x7fdcff);
       ctx.fx.burst(_q, { color: 0xbff0ff, count: 18, speed: 9, size: 0.1, gravity: 10, life: 0.4 });
-      ctx.audio.play('zap', { pitch: 0.7 + Math.random() * 0.3 });
-      const hits = ctx.enemies.query(sx, sz, 3.5, this.chainBuf);
+      this.b.audio.play('zap', { pitch: 0.7 + Math.random() * 0.3 });
+      const hits = this.b.enemies.query(sx, sz, 3.5, this.chainBuf);
       for (let i = 0; i < hits.length; i++) {
         const e = hits[i];
         if (!e.alive) continue;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz });
+        const killed = this.b.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz });
         const d = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(d, killed, e, false, false);
         _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
@@ -539,12 +607,12 @@ export class Combat implements CombatAPI {
     this.stormTickT -= dt;
     if (this.stormTickT <= 0) {
       this.stormTickT = 0.5;
-      const hits = ctx.enemies.query(this.stormX, this.stormZ, R, this.chainBuf);
+      const hits = this.b.enemies.query(this.stormX, this.stormZ, R, this.chainBuf);
       for (let i = 0; i < hits.length; i++) {
         const e = hits[i];
         if (!e.alive) continue;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dmgBase * STORM_FIELD_FRAC * 0.5 * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: e.position.x, fromZ: e.position.z });
+        const killed = this.b.enemies.damage(e, dmgBase * STORM_FIELD_FRAC * 0.5 * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: e.position.x, fromZ: e.position.z });
         this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
         _p.set(this.stormX, 0.3, this.stormZ);
         _q.set(e.position.x, e.position.y + e.radius * 0.6, e.position.z);
@@ -555,7 +623,7 @@ export class Combat implements CombatAPI {
 
   /** Battery Shield recharge (3s after the last hit, 25% of capacity per second). */
   private updateShield(dt: number): void {
-    const max = this.ctx.stats.shieldMax;
+    const max = this.b.stats.shieldMax;
     if (max <= 0) {
       this.shield = 0;
       return;
@@ -572,8 +640,8 @@ export class Combat implements CombatAPI {
 
   /** Last Stand (pilot perk): 1 + bonus while the plow is under LAST_STAND_HP, else 1. */
   private lastStandMult(): number {
-    const plow = this.ctx.plow;
-    const bonus = this.ctx.stats.lastStand;
+    const plow = this.b.plow;
+    const bonus = this.b.stats.lastStand;
     return bonus > 0 && plow.hp < plow.maxHp * LAST_STAND_HP ? 1 + bonus : 1;
   }
 
@@ -581,8 +649,8 @@ export class Combat implements CombatAPI {
 
   hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean }): number {
     const ctx = this.ctx;
-    const plow = ctx.plow;
-    const stats = ctx.stats;
+    const plow = this.b.plow;
+    const stats = this.b.stats;
     if (!plow || plow.dead || amount <= 0 || plow.invulnerable || this.guardT > 0) return 0;
 
     // Direction plow -> attacker.
@@ -626,7 +694,7 @@ export class Combat implements CombatAPI {
       _q.set(plow.position.x, 2.6, plow.position.z);
       ctx.fx.burst(_q, { color: 0x7fdcff, count: 10, speed: 5, size: 0.12, gravity: 4, life: 0.4 });
       if (soak >= 3) ctx.fx.floatText(_q, `🔋${Math.round(soak)}`, '#7fdcff', 0.75);
-      if (this.shield <= 0) ctx.audio.play('zap', { pitch: 0.6 });
+      if (this.shield <= 0) this.b.audio.play('zap', { pitch: 0.6 });
     }
     if (stats.shieldMax > 0) this.shieldDelay = 3;
 
@@ -649,8 +717,8 @@ export class Combat implements CombatAPI {
       ctx.fx.floatText(_q, 'SECOND WIND!', '#9fe6ff', 1.3);
       _q.set(plow.position.x, 0.1, plow.position.z);
       ctx.fx.ring(_q, 6, 0x9fe6ff);
-      ctx.fx.shake(0.5);
-      ctx.audio.play('respawn');
+      this.shake(0.5);
+      this.b.audio.play('respawn');
     }
     if (final > 0) {
       plow.damage(final);
@@ -669,12 +737,12 @@ export class Combat implements CombatAPI {
 
     // Feedback.
     const fx = ctx.fx;
-    const audio = ctx.audio;
+    const audio = this.b.audio;
     _p.set(plow.position.x + dx * 1.5, 1.1, plow.position.z + dz * 1.5);
     if (blocked > 0) {
       plow.getBladeTip(_tip);
       const br = Math.max(r, 0.3);
-      _q.set(_tip.x + _fwd.x * br, br + (ctx.snow ? ctx.snow.getDepth(_tip.x, _tip.z) : 0), _tip.z + _fwd.z * br);
+      _q.set(_tip.x + _fwd.x * br, br + (this.b.snow ? this.b.snow.getDepth(_tip.x, _tip.z) : 0), _tip.z + _fwd.z * br);
       fx.burst(_q, { color: 0xffffff, count: 10 + Math.round(blocked * 0.6), speed: 5, size: 0.22, gravity: 16, life: 0.6 });
       fx.burst(_q, { color: 0xbfe6ff, count: 6, speed: 3, size: 0.14, gravity: 8, life: 0.5 });
       if (ctx.time - this.lastBlockSound > 0.08) {
@@ -689,16 +757,16 @@ export class Combat implements CombatAPI {
         fx.burst(_p, { color: 0xffa23a, count: 10 + Math.round(Math.min(20, final)), speed: 8, size: 0.09, gravity: 22, life: 0.4 });
         fx.burst(_p, { color: 0x8c96a4, count: 5 + Math.round(Math.min(8, final * 0.3)), speed: 4.5, size: 0.17, gravity: 20, life: 0.7 });
       }
-      fx.shake(THREE.MathUtils.clamp(0.15 + final * 0.016, 0.15, 0.6));
-      ctx.impact.playerHit(final, fromX, fromZ);
+      this.shake(THREE.MathUtils.clamp(0.15 + final * 0.016, 0.15, 0.6));
+      if (this.b.local) ctx.impact.playerHit(final, fromX, fromZ);
       audio.play('plowHit', { volume: Math.min(1, (blocked > 0 ? 0.35 : 0.55) + final * 0.02), pitch: THREE.MathUtils.clamp(1.15 - final * 0.01, 0.75, 1.15) });
       _q.set(plow.position.x, 2.8, plow.position.z);
       fx.floatText(_q, `-${Math.round(final)}`, '#ff5a4a', 0.8 + Math.min(0.6, final * 0.015));
     } else if (blocked > 0) {
-      fx.shake(0.12);
+      this.shake(0.12);
     }
 
-    ctx.events.emit('plowDamaged', { amount: final, blocked });
+    this.b.events.emit('plowDamaged', { amount: final, blocked });
     return final;
   }
 
@@ -706,8 +774,8 @@ export class Combat implements CombatAPI {
 
   playerRam(enemy: EnemyHandle, closingSpeed: number): number {
     const ctx = this.ctx;
-    const plow = ctx.plow;
-    const stats = ctx.stats;
+    const plow = this.b.plow;
+    const stats = this.b.stats;
     if (!plow || plow.dead || !enemy.alive) return 0;
     const until = this.ramCd.get(enemy.id);
     if (until !== undefined && until > ctx.time) return 0;
@@ -732,7 +800,7 @@ export class Combat implements CombatAPI {
     const knock = new THREE.Vector3((dx / n) * k, 0, (dz / n) * k);
 
     const hp0 = enemy.hp;
-    const killed = ctx.enemies.damage(enemy, dmg * this.hitMult(enemy), {
+    const killed = this.b.enemies.damage(enemy, dmg * this.hitMult(enemy), {
       source: 'ram',
       knockback: knock,
       fromX: plow.position.x,
@@ -756,8 +824,8 @@ export class Combat implements CombatAPI {
     fx.sparks(_p, _fwd, { color: 0xffc04a, count: 10 + Math.round(Math.min(18, closingSpeed)), speed: 8 + closingSpeed * 0.35, spread: 0.85, gravity: 22, life: 0.35 });
     fx.burst(_p, { color: 0x9aa4b0, count: 4, speed: 4, size: 0.16, gravity: 20, life: 0.6 });
     if (r > 0) fx.burst(_p, { color: 0xffffff, count: 6, speed: 3.5, size: 0.18, gravity: 14, life: 0.6 });
-    fx.shake(Math.min(0.4, 0.1 + closingSpeed * 0.015));
-    ctx.audio.play('ram', { volume: Math.min(1, 0.45 + closingSpeed * 0.04) });
+    this.shake(Math.min(0.4, 0.1 + closingSpeed * 0.015));
+    this.b.audio.play('ram', { volume: Math.min(1, 0.45 + closingSpeed * 0.04) });
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1, enemy.position.z);
     if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : '#ffffff', 0.8 + Math.min(0.5, dealt * 0.01));
     return dmg;
@@ -766,8 +834,8 @@ export class Combat implements CombatAPI {
   /** DASH STRIKE: the dashing plow hits a bot like a truck. The dash keeps going (80% speed). */
   private dashStrike(enemy: EnemyHandle): number {
     const ctx = this.ctx;
-    const plow = ctx.plow;
-    const stats = ctx.stats;
+    const plow = this.b.plow;
+    const stats = this.b.stats;
     // Long cooldown: one strike per bot per dash.
     this.ramCd.set(enemy.id, ctx.time + DASH_STRIKE_REPEAT);
     const r = plow.heldBallRadius;
@@ -785,7 +853,7 @@ export class Combat implements CombatAPI {
     const knock = new THREE.Vector3((dx / n) * DASH_KNOCK, 0, (dz / n) * DASH_KNOCK);
 
     const hp0 = enemy.hp;
-    const killed = ctx.enemies.damage(enemy, dmg * this.hitMult(enemy), {
+    const killed = this.b.enemies.damage(enemy, dmg * this.hitMult(enemy), {
       source: 'ram',
       knockback: knock,
       fromX: plow.position.x,
@@ -798,7 +866,7 @@ export class Combat implements CombatAPI {
 
     // Hit-stop (plow + camera) and keep the dash going through the target.
     (plow as unknown as { dashImpact?: (stop: number) => void }).dashImpact?.(DASH_HITSTOP);
-    (ctx.cameraRig as unknown as { hitStop?: (s: number) => void }).hitStop?.(DASH_HITSTOP);
+    if (this.b.local) (ctx.cameraRig as unknown as { hitStop?: (s: number) => void }).hitStop?.(DASH_HITSTOP);
 
     const fx = ctx.fx;
     _p.set(
@@ -812,8 +880,8 @@ export class Combat implements CombatAPI {
     fx.burst(_p, { color: 0x9aa4b0, count: 8, speed: 5, size: 0.2, gravity: 18, life: 0.7 });
     _q.set(_p.x, 0.05, _p.z);
     fx.ring(_q, 3.2, 0xff9a2a);
-    fx.shake(0.5);
-    ctx.audio.play('dashStrike');
+    this.shake(0.5);
+    this.b.audio.play('dashStrike');
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1.4, enemy.position.z);
     fx.floatText(_q, dealt > 0 ? `DASH! ${Math.round(dealt)}` : 'DASH!', killed ? '#fff3a0' : '#ff9a2a', 1.35);
     return dmg;
@@ -823,8 +891,8 @@ export class Combat implements CombatAPI {
    *  by the plow). Damages every bot in the zone, shatters the ball. Returns the number of bots hit. */
   slamAt(x: number, z: number, r: number, volume: number): number {
     const ctx = this.ctx;
-    const stats = ctx.stats;
-    const plow = ctx.plow;
+    const stats = this.b.stats;
+    const plow = this.b.plow;
     const fx = ctx.fx;
     const avalanche = stats.avalancheCore;
     const zone = (r * 1.3 + stats.bladeWidth * 0.35) * (avalanche ? 1.5 : 1);
@@ -852,7 +920,7 @@ export class Combat implements CombatAPI {
         dz /= d;
       }
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, dmg * this.hitMult(e), {
         source: 'slam',
         knockback: new THREE.Vector3(dx * knockMag, 0, dz * knockMag),
         freezeSeconds: freeze,
@@ -880,34 +948,34 @@ export class Combat implements CombatAPI {
     }
 
     // Shatter the ball.
-    const ground = ctx.snow ? ctx.snow.getDepth(x, z) : 0;
+    const ground = this.b.snow ? this.b.snow.getDepth(x, z) : 0;
     _p.set(x, ground + r * 0.8, z);
     fx.burst(_p, { color: 0xffffff, count: Math.round(16 + r * 22), speed: 5.5 + r * 3.5, size: 0.17 + r * 0.13, gravity: 14, life: 1.1 });
     fx.burst(_p, { color: 0xcfe6ff, count: Math.round(10 + r * 12), speed: 3 + r * 2, size: 0.12 + r * 0.1, gravity: 7, life: 1.3 });
     if (freeze) fx.burst(_p, { color: 0x7fd4ff, count: Math.round(12 + r * 10), speed: 6 + r * 2, size: 0.14, gravity: 4, life: 0.9 });
     if (avalanche) fx.burst(_p, { color: 0xeaf4ff, count: Math.round(16 + r * 16), speed: 9 + r * 3, size: 0.3, gravity: 10, life: 1.0 });
     fx.powder(_p, { size: 0.8 + r * 0.5 + (avalanche ? 0.6 : 0), color: freeze ? 0xc4e4ff : 0xd6e3f3 });
-    ctx.snow?.addSnow(x, z, Math.max(1.2, r * 1.6), volume * 0.4);
+    this.b.snow?.addSnow(x, z, Math.max(1.2, r * 1.6), volume * 0.4);
     _p.y = ground;
     fx.ring(_p, zone, freeze ? 0x9fe6ff : 0xffffff);
     if (avalanche) fx.ring(_p, zone * 1.25, 0xcfe0ff);
-    fx.shake(0.25 + 0.25 * r);
-    ctx.impact.hit('slam', _p, r, { stop: count > 0 });
+    this.shake(0.25 + 0.25 * r);
+    this.impactHit('slam', _p, r, { stop: count > 0 });
     // Paint Shop horn: layered over a softer snow whumpf.
-    const horn = equippedLook(ctx.progression).horn.sound;
+    const horn = this.b.plow.hornSound;
     const slamVol = Math.min(1, 0.7 + 0.2 * r);
-    ctx.audio.play('slam', { pitch: THREE.MathUtils.clamp(1.3 - 0.35 * r, 0.5, 1.3), volume: horn ? slamVol * 0.5 : slamVol });
-    if (horn) ctx.audio.play(horn, { volume: slamVol });
+    this.b.audio.play('slam', { pitch: THREE.MathUtils.clamp(1.3 - 0.35 * r, 0.5, 1.3), volume: horn ? slamVol * 0.5 : slamVol });
+    if (horn) this.b.audio.play(horn, { volume: slamVol });
     if (freeze && ctx.time - this.lastFreezeSound > 0.3) {
       this.lastFreezeSound = ctx.time;
-      ctx.audio.play('freeze', { volume: 0.8 });
+      this.b.audio.play('freeze', { volume: 0.8 });
     }
 
     const position = new THREE.Vector3(x, ground, z);
-    ctx.events.emit('slam', { hits: count, radius: r, position });
+    this.b.events.emit('slam', { hits: count, radius: r, position });
     if (count >= 3) {
-      ctx.events.emit('strike', { count, position: position.clone() });
-      ctx.audio.play('strike');
+      this.b.events.emit('strike', { count, position: position.clone() });
+      this.b.audio.play('strike');
     }
     return count;
   }
@@ -916,17 +984,17 @@ export class Combat implements CombatAPI {
    *  but within stats.shardReach of it, for stats.shardFrac of the slam damage. */
   private shatter(x: number, z: number, zone: number, dmg: number, slammed: EnemyHandle[]): void {
     const ctx = this.ctx;
-    const stats = ctx.stats;
+    const stats = this.b.stats;
     const fx = ctx.fx;
     const R = zone + stats.shardReach;
-    const hits = ctx.enemies.query(x, z, R, this.shardBuf).slice();
+    const hits = this.b.enemies.query(x, z, R, this.shardBuf).slice();
     for (const e of hits) {
       if (!e.alive || slammed.includes(e)) continue;
       const dx = e.position.x - x;
       const dz = e.position.z - z;
       const d = Math.hypot(dx, dz) || 1;
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg * stats.shardFrac * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, dmg * stats.shardFrac * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3((dx / d) * 8, 0, (dz / d) * 8),
         fromX: x,
@@ -939,7 +1007,7 @@ export class Combat implements CombatAPI {
       _q.y = 1;
       fx.burst(_q, { color: 0xcfeeff, count: 6, speed: 6, size: 0.14, gravity: 14, life: 0.5 });
     }
-    const ground = ctx.snow ? ctx.snow.getDepth(x, z) : 0;
+    const ground = this.b.snow ? this.b.snow.getDepth(x, z) : 0;
     _p.set(x, ground + 0.6, z);
     fx.burst(_p, { color: 0xcfeeff, count: 18, speed: 9 + stats.shardReach, size: 0.12, gravity: 10, life: 0.6 });
     _p.y = ground;
@@ -951,7 +1019,7 @@ export class Combat implements CombatAPI {
    *  Distinct bots hit are added to `hitIds`. Returns the number of bots hit this tick. */
   whirlTick(x: number, z: number, radius: number, ballR: number, tick: number, final: boolean, hitIds: Set<number>): number {
     const ctx = this.ctx;
-    const stats = ctx.stats;
+    const stats = this.b.stats;
     const fx = ctx.fx;
     const dmg = (stats.whirlDamage + (ballR >= 0.2 ? 3 * ballR * ballR * stats.damageMult : 0)) * WHIRL_PLAYER_BONUS;
     const hits = this.collect(x, z, radius);
@@ -977,7 +1045,7 @@ export class Combat implements CombatAPI {
         kz = -dz * pull - dx * 3.5;
       }
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, dmg * this.hitMult(e), {
         source: 'whirl',
         knockback: new THREE.Vector3(kx, 0, kz),
         fromX: x,
@@ -995,22 +1063,22 @@ export class Combat implements CombatAPI {
     }
     this.targets.length = 0;
 
-    ctx.audio.play('whirlTick', { pitch: 0.9 + tick * 0.12, volume: final ? 1 : 0.7 });
-    _p.set(x, ctx.snow ? ctx.snow.getDepth(x, z) : 0, z);
+    this.b.audio.play('whirlTick', { pitch: 0.9 + tick * 0.12, volume: final ? 1 : 0.7 });
+    _p.set(x, this.b.snow ? this.b.snow.getDepth(x, z) : 0, z);
     if (final) {
       fx.ring(_p, radius * 1.15, 0xbfeaff);
       fx.ring(_p, radius * 0.7, 0xffffff);
-      fx.shake(0.35 + 0.04 * Math.min(4, count));
-      if (count > 0) ctx.audio.play('ram', { volume: 0.8, pitch: 0.8 });
+      this.shake(0.35 + 0.04 * Math.min(4, count));
+      if (count > 0) this.b.audio.play('ram', { volume: 0.8, pitch: 0.8 });
     } else {
-      fx.shake(0.1 + 0.04 * Math.min(3, count));
+      this.shake(0.1 + 0.04 * Math.min(3, count));
     }
     return count;
   }
 
   /** Snapshot of living enemies overlapping a circle (copied: damage() may mutate manager lists). */
   private collect(x: number, z: number, radius: number): EnemyHandle[] {
-    const enemies = this.ctx.enemies;
+    const enemies = this.b.enemies;
     const out = this.targets;
     out.length = 0;
     if (!enemies) return out;
@@ -1023,8 +1091,8 @@ export class Combat implements CombatAPI {
    *  `heal` = false for VOLT-9 area damage (Thunderclap blast + storm, Tesla field ticks) so the storm can't
    *  out-heal its own Overload backlash. */
   private onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true, heal = true): void {
-    const plow = this.ctx.plow;
-    const st = this.ctx.stats;
+    const plow = this.b.plow;
+    const st = this.b.stats;
     if (plow.dead) return;
     if (dealt > 0) plow.feedSawFury(dealt, 0);
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.chainLightning(target, dealt, heal);
@@ -1039,7 +1107,7 @@ export class Combat implements CombatAPI {
   }
 
   get flameReady(): number {
-    const st = this.ctx.stats;
+    const st = this.b.stats;
     if (st.plowKind === 'volt') return st.clapDamage > 0 ? this.clapCharge : -1;
     if (st.plowKind === 'brute') return st.poundDamage > 0 ? (this.poundT >= 0 ? 0 : this.poundCharge) : -1;
     if (st.plowKind === 'isotope') return st.meltDamage > 0 ? this.meltCharge : -1;
@@ -1049,22 +1117,23 @@ export class Combat implements CombatAPI {
   /** Inferno (F, pilot perk): a 1s cone of fire from the blade that ignites bots and melts snow. */
   private updateFlame(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
-    const plow = ctx.plow;
+    const st = this.b.stats;
+    const plow = this.b.plow;
     if (st.plowKind !== 'classic' || st.flameDps <= 0 || !plow) {
       if (this.flameT > 0 || st.plowKind !== 'classic') this.flameCone.hide();
       this.flameT = 0;
       return;
     }
     if (this.flameT <= 0 && this.flameCharge < 1) this.flameCharge = Math.min(1, this.flameCharge + (st.flameCooldown > 0 ? dt / st.flameCooldown : 1));
-    if (ctx.input.wasPressed('KeyF') && !plow.dead) {
+    if (this.b.input.wasPressed('KeyF') && !plow.dead) {
       if (this.flameCharge >= 1 && this.flameT <= 0) {
         this.flameCharge = 0;
         this.flameT = FLAME_SECONDS;
+        this.b.events.emit('ability', { nuke: false });
         this.flameIgniteT = 0;
-        ctx.audio.play('dash', { pitch: 0.55, volume: 0.9 });
-        ctx.audio.play('burst', { pitch: 0.6 });
-      } else if (this.flameT <= 0) ctx.audio.play('error');
+        this.b.audio.play('dash', { pitch: 0.55, volume: 0.9 });
+        this.b.audio.play('burst', { pitch: 0.6 });
+      } else if (this.flameT <= 0) this.b.audio.play('error');
     }
     const range = st.flameRange;
     plow.getForward(_fwd);
@@ -1091,10 +1160,10 @@ export class Combat implements CombatAPI {
       _p.set(_tip.x + _fwd.x * range * 0.9, 2.2, _tip.z + _fwd.z * range * 0.9);
       fx.burst(_p, { color: 0x2c2628, count: 2, speed: 1.5, size: 0.7, gravity: -3, life: 1.1 });
     }
-    if (Math.random() < dt * 10) fx.shake(0.06);
-    if (ctx.snow) {
-      ctx.snow.melt(_tip.x + _fwd.x * range * 0.35, _tip.z + _fwd.z * range * 0.35, range * 0.3, 0.8 * dt);
-      ctx.snow.melt(_tip.x + _fwd.x * range * 0.75, _tip.z + _fwd.z * range * 0.75, range * 0.4, 0.8 * dt);
+    if (Math.random() < dt * 10) this.shake(0.06);
+    if (this.b.snow) {
+      this.b.snow.melt(_tip.x + _fwd.x * range * 0.35, _tip.z + _fwd.z * range * 0.35, range * 0.3, 0.8 * dt);
+      this.b.snow.melt(_tip.x + _fwd.x * range * 0.75, _tip.z + _fwd.z * range * 0.75, range * 0.4, 0.8 * dt);
     }
     // Ignite everything inside the cone.
     this.flameIgniteT -= dt;
@@ -1113,7 +1182,7 @@ export class Combat implements CombatAPI {
       // Scorch: direct damage + a shove away from the blade while caught in the cone.
       const nd = d || 1;
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN * this.lastStandMult(), {
+      const killed = this.b.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN * this.lastStandMult(), {
         source: 'other',
         knockback: new THREE.Vector3((dx / nd) * 3, 0, (dz / nd) * 3),
         fromX: e.position.x,
@@ -1128,7 +1197,7 @@ export class Combat implements CombatAPI {
   private updateBurns(dt: number): void {
     if (this.burns.size === 0) return;
     const ctx = this.ctx;
-    const dps = ctx.stats.flameDps;
+    const dps = this.b.stats.flameDps;
     for (const [e, b] of this.burns) {
       if (!e.alive || dps <= 0) {
         this.burns.delete(e);
@@ -1148,7 +1217,7 @@ export class Combat implements CombatAPI {
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dps * ctx.stats.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+        const killed = this.b.enemies.damage(e, dps * this.b.stats.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(dealt, killed, e, false);
         if (dealt > 0) {
@@ -1172,7 +1241,7 @@ export class Combat implements CombatAPI {
     if (!e.alive) return;
     this.irradiate(e);
     const hp0 = e.hp;
-    const killed = this.ctx.enemies.damage(e, amount * this.ctx.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.critCharge = Math.min(1, this.critCharge + dealt / NUKE_CHARGE_DMG);
     this.onPlayerHit(dealt, killed, e, false, heal);
@@ -1181,17 +1250,18 @@ export class Combat implements CombatAPI {
   /** Meltdown (F on ISOTOPE): a toxic blast around the plow that leaves a fallout pool behind. */
   private updateMeltdown(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
-    const plow = ctx.plow;
+    const st = this.b.stats;
+    const plow = this.b.plow;
     if (st.meltDamage <= 0 || !plow || plow.dead) return;
     if (this.meltCharge < 1) this.meltCharge = Math.min(1, this.meltCharge + (st.meltCooldown > 0 ? dt / st.meltCooldown : 1));
-    if (!ctx.input.wasPressed('KeyF')) return;
+    if (!this.b.input.wasPressed('KeyF')) return;
     if (this.critCharge >= 1) return this.armNuke(plow);
     if (this.meltCharge < 1) {
-      ctx.audio.play('error');
+      this.b.audio.play('error');
       return;
     }
     this.meltCharge = 0;
+    this.b.events.emit('ability', { nuke: false });
     const px = plow.position.x;
     const pz = plow.position.z;
     const R = st.meltRadius;
@@ -1203,10 +1273,10 @@ export class Combat implements CombatAPI {
     ctx.fx.burst(_q, { color: 0xeaff6a, count: 24, speed: 7, size: 0.2, gravity: -6, life: 0.9 });
     _q.set(px, 2.2, pz);
     ctx.fx.burst(_q, { color: 0x3dff1a, count: 30, speed: 4, size: 0.5, gravity: -5, life: 1.2 });
-    ctx.fx.shake(0.7);
-    ctx.impact.hit('meltdown', _q.set(px, 1, pz));
-    ctx.audio.play('thud', { pitch: 0.7 });
-    ctx.audio.play('zap', { volume: 0.6, pitch: 0.5 });
+    this.shake(0.7);
+    this.impactHit('meltdown', _q.set(px, 1, pz));
+    this.b.audio.play('thud', { pitch: 0.7 });
+    this.b.audio.play('zap', { volume: 0.6, pitch: 0.5 });
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -1229,7 +1299,7 @@ export class Combat implements CombatAPI {
     pl.life = pl.t = st.poolSeconds;
     pl.tickT = 0;
     // The blast melts the snow, so the pool sits on bare ground.
-    ctx.snow.melt(px, pz, pl.r, 1);
+    this.b.snow.melt(px, pz, pl.r, 1);
     pl.mesh.position.set(px, 0.06, pz);
     pl.mesh.scale.setScalar(pl.r);
     pl.mesh.visible = true;
@@ -1238,15 +1308,16 @@ export class Combat implements CombatAPI {
   /** Critical Mass full + F: the NUKE goes off right where the plow stands. */
   private armNuke(plow: PlowAPI): void {
     this.critCharge = 0;
+    this.b.events.emit('ability', { nuke: true });
     this.nukeX = plow.position.x;
     this.nukeZ = plow.position.z;
-    this.ctx.ui.toast('☢ NUKE!', 'big');
+    this.ctx.ui.toast(this.b.local ? '☢ NUKE!' : '☢ INCOMING NUKE!', 'big');
     this.detonate();
   }
 
   private detonate(): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
+    const st = this.b.stats;
     const px = this.nukeX;
     const pz = this.nukeZ;
     const R = NUKE_RADIUS;
@@ -1270,12 +1341,12 @@ export class Combat implements CombatAPI {
     ctx.fx.smoke(_q, { count: 30, color: 0xa8a48a, size: 2.2, grow: 2.3, life: 3.4, speed: 6, up: 1.8, rise: 0.5, drag: 0.8, spread: 2.2, opacity: 0.8, radial: true });
     ctx.fx.smoke(_q, { count: 14, color: 0xffc860, additive: 0.35, size: 2, grow: 2, life: 1.6, speed: 3, up: 1, rise: 0.6, drag: 1, spread: 1.5, opacity: 0.75 });
     ctx.fx.smoke(_q, { count: 10, color: 0x7dff4a, additive: 0.3, size: 1.6, grow: 2.2, life: 2.2, speed: 7, up: 0.6, rise: 0.2, drag: 1, spread: 2, opacity: 0.5, radial: true });
-    ctx.fx.shake(1.8);
-    ctx.impact.hit('nuke', _q.set(px, 2, pz));
-    ctx.audio.play('explosion');
-    ctx.audio.play('thud', { pitch: 0.45 });
-    ctx.audio.play('boss', { volume: 0.6, pitch: 0.6 });
-    ctx.snow.melt(px, pz, R * 0.6, 1);
+    this.shake(1.8);
+    this.impactHit('nuke', _q.set(px, 2, pz));
+    this.b.audio.play('explosion');
+    this.b.audio.play('thud', { pitch: 0.45 });
+    this.b.audio.play('boss', { volume: 0.6, pitch: 0.6 });
+    this.b.snow.melt(px, pz, R * 0.6, 1);
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -1288,7 +1359,7 @@ export class Combat implements CombatAPI {
       const fall = 1 - (1 - NUKE_RIM_FRAC) * Math.min(1, d / R);
       this.irradiate(e);
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.meltDamage * NUKE_DMG_MULT * fall * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.meltDamage * NUKE_DMG_MULT * fall * st.damageMult * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3(dx * NUKE_KNOCK * fall, 0, dz * NUKE_KNOCK * fall),
         fromX: px,
@@ -1316,7 +1387,7 @@ export class Combat implements CombatAPI {
   /** Fallout pools: glow, bubble and dose every bot standing in them. */
   private updatePools(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
+    const st = this.b.stats;
     for (const pl of this.pools) {
       if (pl.t <= 0) continue;
       pl.t -= dt;
@@ -1334,7 +1405,7 @@ export class Combat implements CombatAPI {
       _q.set(pl.x + Math.sin(a) * rr, 0.3, pl.z + Math.cos(a) * rr);
       ctx.fx.burst(_q, { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gravity: -3, life: 0.7 });
       if (st.poolDps <= 0 || st.meltDamage <= 0) continue;
-      const hits = ctx.enemies.query(pl.x, pl.z, pl.r, this.chainBuf);
+      const hits = this.b.enemies.query(pl.x, pl.z, pl.r, this.chainBuf);
       for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.poolDps * POOL_TICK);
     }
   }
@@ -1342,8 +1413,8 @@ export class Combat implements CombatAPI {
   /** Rad Aura (ISOTOPE): passive radiation that doses every bot near the plow. */
   private updateAura(dt: number): void {
     const ctx = this.ctx;
-    const st = ctx.stats;
-    const plow = ctx.plow;
+    const st = this.b.stats;
+    const plow = this.b.plow;
     if (st.auraDps <= 0 || !plow || plow.dead) return;
     this.auraT -= dt;
     if (this.auraT > 0) return;
@@ -1356,7 +1427,7 @@ export class Combat implements CombatAPI {
       _q.set(plow.position.x + Math.sin(a) * rr, 0.4, plow.position.z + Math.cos(a) * rr);
       ctx.fx.burst(_q, { color: 0x5dff3a, count: 1, speed: 0.6, size: 0.18, gravity: -2.5, life: 0.6 });
     }
-    const hits = ctx.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
+    const hits = this.b.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
     for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.auraDps * TICK);
   }
 
@@ -1378,15 +1449,15 @@ export class Combat implements CombatAPI {
         ctx.fx.burst(_q, { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.16, gravity: -3, life: 0.5 });
       }
     }
-    const st = ctx.stats;
+    const st = this.b.stats;
     const queued = this.chainQueue.splice(0, this.chainQueue.length);
     for (const c of queued) {
       _q.set(c.x, 0.6, c.z);
       ctx.fx.ring(_q, CHAIN_RADIUS, 0x7dff4a);
       ctx.fx.burst(_q, { color: 0x9dff5a, count: 22, speed: 9, size: 0.26, gravity: 2, life: 0.55 });
-      ctx.audio.play('thud', { volume: 0.5, pitch: 1.3 });
+      this.b.audio.play('thud', { volume: 0.5, pitch: 1.3 });
       if (st.chainBlast <= 0) continue;
-      const hits = ctx.enemies.query(c.x, c.z, CHAIN_RADIUS, this.chainBuf);
+      const hits = this.b.enemies.query(c.x, c.z, CHAIN_RADIUS, this.chainBuf);
       for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.chainBlast);
     }
   }
@@ -1400,9 +1471,9 @@ export class Combat implements CombatAPI {
     this.stormT = 0;
     this.stormStrikes = 0;
     this.poundCharge = 1;
-    if (this.poundT >= 0 && this.ctx.plow) (this.ctx.plow as unknown as { hop: number }).hop = 0;
+    if (this.poundT >= 0 && this.b.plow) this.b.plow.hop = 0;
     this.poundT = -1;
-    this.shield = this.ctx.stats.shieldMax;
+    this.shield = this.b.stats.shieldMax;
     this.shieldDelay = 0;
     this.flameT = 0;
     this.flameCharge = 1;

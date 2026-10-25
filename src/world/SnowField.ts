@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { GameContext, SnowFieldAPI, ZoneDef } from '../core/types';
 import { ARENA, ENEMY_GATES, GATE_WIDTH, snowFieldSize } from '../core/types';
+import { dequantDepth, quantDepth, type SnowPatch } from '../net/protocol';
 
 const EDGE = 2; // edits never touch the outermost vertices (keeps the field rim flush with the outer ground)
 const LUT_SIZE = 256;
@@ -94,6 +95,13 @@ export class SnowField implements SnowFieldAPI {
   private rects = new Int32Array(MAX_RECTS * 4);
   private rectCount = 0;
   private regenTimer = 0;
+  /** Duel host: edits (not regen) since the last takeNetPatches(), for the snapshot stream. Off otherwise. */
+  netTrack = false;
+  private netRects = new Int32Array(MAX_RECTS * 4);
+  private netCount = 0;
+  /** Snow regrowth rate (m/s) override: the Duel uses one fixed rate for both players (0 on the guest, which only
+   *  shows the host's snow). null = the player's Snow Machine stats. */
+  regenRate: number | null = null;
 
   get size(): number {
     return this.fieldSize;
@@ -402,40 +410,89 @@ export class SnowField implements SnowFieldAPI {
 
   /** Merge into an overlapping/nearby dirty rect, else track a new one (merge into the closest when full). */
   private markDirty(x0: number, x1: number, z0: number, z1: number): void {
-    const r = this.rects;
-    const pad = 3;
-    let best = -1;
-    let bestCost = Infinity;
-    for (let k = 0; k < this.rectCount; k++) {
+    this.rectCount = mergeRect(this.rects, this.rectCount, x0, x1, z0, z1);
+  }
+
+  /** An edit (plow / collect / add / melt): GPU upload, plus the duel host's network patch list. */
+  private markEdit(x0: number, x1: number, z0: number, z1: number): void {
+    this.rectCount = mergeRect(this.rects, this.rectCount, x0, x1, z0, z1);
+    if (this.netTrack) this.netCount = mergeRect(this.netRects, this.netCount, x0, x1, z0, z1);
+  }
+
+  /* ------------------------------------------------------------------ duel netcode */
+
+  /** Vertices per side of the grid. */
+  get verts(): number {
+    return this.V;
+  }
+
+  /** Move the edits since the last call into `out` (vertex rects). Returns the count. */
+  takeNetPatches(out: SnowPatch[]): number {
+    const n = this.netCount;
+    const r = this.netRects;
+    for (let k = 0; k < n; k++) {
       const o = k * 4;
-      if (x0 <= r[o + 1] + pad && x1 >= r[o] - pad && z0 <= r[o + 3] + pad && z1 >= r[o + 2] - pad) {
-        best = k;
-        bestCost = -1;
-        break;
-      }
-      if (this.rectCount >= MAX_RECTS) {
-        const nx = Math.max(x1, r[o + 1]) - Math.min(x0, r[o]);
-        const nz = Math.max(z1, r[o + 3]) - Math.min(z0, r[o + 2]);
-        const cost = nx * nz - (r[o + 1] - r[o]) * (r[o + 3] - r[o + 2]);
-        if (cost < bestCost) {
-          bestCost = cost;
-          best = k;
-        }
+      let p = out[k];
+      if (!p) out[k] = p = { x0: 0, z0: 0, w: 0, h: 0 };
+      p.x0 = r[o];
+      p.z0 = r[o + 2];
+      p.w = r[o + 1] - r[o] + 1;
+      p.h = r[o + 3] - r[o + 2] + 1;
+    }
+    out.length = n;
+    this.netCount = 0;
+    return n;
+  }
+
+  /** Depth at vertex (ix, iz) quantised to a byte (net/protocol.ts SNOW_Q_MAX). */
+  readQuant(ix: number, iz: number): number {
+    return quantDepth(this.depth[iz * this.V + ix]);
+  }
+
+  /** Duel guest: set vertex (ix, iz) from a host byte (call patchDone after each patch). */
+  writeQuant(ix: number, iz: number, b: number): void {
+    if (ix < 0 || iz < 0 || ix >= this.V || iz >= this.V) return;
+    this.depth[iz * this.V + ix] = dequantDepth(b);
+  }
+
+  /** Duel guest: a host patch was written; queue it for upload. */
+  patchDone(p: SnowPatch): void {
+    const V = this.V;
+    this.markDirty(Math.max(0, p.x0), Math.min(V - 1, p.x0 + p.w - 1), Math.max(0, p.z0), Math.min(V - 1, p.z0 + p.h - 1));
+  }
+
+  /** Read-only plowLine: the volume the blade WOULD remove (duel guest: spray + sound while predicting). */
+  measureLine(x1: number, z1: number, x2: number, z2: number, thickness: number, fraction: number): number {
+    if (fraction <= 0) return 0;
+    const { V, CELL, HALF, INV_CELL } = this;
+    const r = Math.max(thickness * 0.5, CELL * 0.5);
+    const r2 = r * r;
+    const ix0 = Math.max(EDGE, Math.floor((Math.min(x1, x2) - r + HALF) * INV_CELL));
+    const ix1 = Math.min(V - 1 - EDGE, Math.ceil((Math.max(x1, x2) + r + HALF) * INV_CELL));
+    const iz0 = Math.max(EDGE, Math.floor((Math.min(z1, z2) - r + HALF) * INV_CELL));
+    const iz1 = Math.min(V - 1 - EDGE, Math.ceil((Math.max(z1, z2) + r + HALF) * INV_CELL));
+    if (ix0 > ix1 || iz0 > iz1) return 0;
+    const f = Math.min(1, fraction);
+    const sx = x2 - x1;
+    const sz = z2 - z1;
+    const len2 = sx * sx + sz * sz;
+    const invLen2 = len2 > 1e-9 ? 1 / len2 : 0;
+    const d = this.depth;
+    let removed = 0;
+    for (let iz = iz0; iz <= iz1; iz++) {
+      const pz = -HALF + iz * CELL - z1;
+      const row = iz * V;
+      for (let ix = ix0; ix <= ix1; ix++) {
+        const px = -HALF + ix * CELL - x1;
+        let t = (px * sx + pz * sz) * invLen2;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        const ex = px - sx * t;
+        const ez = pz - sz * t;
+        if (ex * ex + ez * ez <= r2) removed += d[row + ix] * f;
       }
     }
-    if (best < 0) {
-      const o = this.rectCount++ * 4;
-      r[o] = x0;
-      r[o + 1] = x1;
-      r[o + 2] = z0;
-      r[o + 3] = z1;
-      return;
-    }
-    const o = best * 4;
-    if (x0 < r[o]) r[o] = x0;
-    if (x1 > r[o + 1]) r[o + 1] = x1;
-    if (z0 < r[o + 2]) r[o + 2] = z0;
-    if (z1 > r[o + 3]) r[o + 3] = z1;
+    return removed * this.CELL_AREA;
   }
 
   plowLine(x1: number, z1: number, x2: number, z2: number, thickness: number, fraction: number): number {
@@ -479,7 +536,7 @@ export class SnowField implements SnowFieldAPI {
     if (removed > 0) {
       removed *= this.CELL_AREA;
       this.total -= removed;
-      this.markDirty(ix0, ix1, iz0, iz1);
+      this.markEdit(ix0, ix1, iz0, iz1);
     }
     return removed;
   }
@@ -520,7 +577,7 @@ export class SnowField implements SnowFieldAPI {
     if (removed > 0) {
       removed *= this.CELL_AREA;
       this.total -= removed;
-      this.markDirty(ix0, ix1, iz0, iz1);
+      this.markEdit(ix0, ix1, iz0, iz1);
     }
     return removed;
   }
@@ -575,7 +632,7 @@ export class SnowField implements SnowFieldAPI {
     }
     if (added > 0) {
       this.total += added * this.CELL_AREA;
-      this.markDirty(ix0, ix1, iz0, iz1);
+      this.markEdit(ix0, ix1, iz0, iz1);
     }
   }
 
@@ -612,7 +669,7 @@ export class SnowField implements SnowFieldAPI {
     }
     if (removed > 0) {
       this.total -= removed * this.CELL_AREA;
-      this.markDirty(ix0, ix1, iz0, iz1);
+      this.markEdit(ix0, ix1, iz0, iz1);
     }
   }
 
@@ -621,7 +678,7 @@ export class SnowField implements SnowFieldAPI {
   update(dt: number): void {
     this.regenTimer += dt;
     if (this.regenTimer >= REGEN_INTERVAL) {
-      const rate = this.ctx.stats.snowRegen * this.ctx.zone.snowRegenMult;
+      const rate = (this.regenRate ?? this.ctx.stats.snowRegen) * this.ctx.zone.snowRegenMult;
       const step = rate * this.regenTimer;
       this.regenTimer = 0;
       this.regen(step > 0 ? step : 0);
@@ -739,3 +796,43 @@ export class SnowField implements SnowFieldAPI {
     for (const a of this.attrs) a.addUpdateRange(start, count);
   }
 }
+
+/** Merge (x0..x1, z0..z1) into an overlapping / nearby rect of `r` (`n` used), else append one (merge into the
+ *  cheapest when full). Returns the new count. */
+function mergeRect(r: Int32Array, n: number, x0: number, x1: number, z0: number, z1: number): number {
+  const pad = 3;
+  let best = -1;
+  let bestCost = Infinity;
+  for (let k = 0; k < n; k++) {
+    const o = k * 4;
+    if (x0 <= r[o + 1] + pad && x1 >= r[o] - pad && z0 <= r[o + 3] + pad && z1 >= r[o + 2] - pad) {
+      best = k;
+      bestCost = -1;
+      break;
+    }
+    if (n >= MAX_RECTS) {
+      const nx = Math.max(x1, r[o + 1]) - Math.min(x0, r[o]);
+      const nz = Math.max(z1, r[o + 3]) - Math.min(z0, r[o + 2]);
+      const cost = nx * nz - (r[o + 1] - r[o]) * (r[o + 3] - r[o + 2]);
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = k;
+      }
+    }
+  }
+  if (best < 0) {
+    const o = n * 4;
+    r[o] = x0;
+    r[o + 1] = x1;
+    r[o + 2] = z0;
+    r[o + 3] = z1;
+    return n + 1;
+  }
+  const o = best * 4;
+  if (x0 < r[o]) r[o] = x0;
+  if (x1 > r[o + 1]) r[o + 1] = x1;
+  if (z0 < r[o + 2]) r[o + 2] = z0;
+  if (z1 > r[o + 3]) r[o + 3] = z1;
+  return n;
+}
+

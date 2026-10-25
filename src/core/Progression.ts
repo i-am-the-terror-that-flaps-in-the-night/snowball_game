@@ -295,80 +295,7 @@ export class Progression {
   }
 
   computeStats(): PlayerStats {
-    const plow = PLOWS[this.plow];
-    // Plow-exclusive upgrades only count while driving that plow.
-    const L = (id: UpgradeId) => {
-      const only = UPGRADE_BY_ID[id].plowOnly;
-      return only && only !== plow.id ? 0 : this.level(id);
-    };
-    const cd = FX.cooldownMult(L('overclock'));
-    const fire = plow.fAbility === 'fire';
-    return {
-      plowKind: plow.id,
-      chainCount: FX.chainCount(L('voltChain')),
-      chainFrac: FX.chainFrac(L('voltChain')),
-      fieldRadius: FX.fieldRadius(L('voltField')),
-      fieldDps: FX.fieldDps(L('voltField')),
-      clapRadius: FX.clapRadius(L('voltClap')),
-      clapDamage: plow.id === 'volt' ? FX.clapDamage(L('voltClap')) : 0,
-      clapStun: FX.clapStun(L('voltClap')),
-      clapCooldown: cooldown(FX.clapCooldown(L('voltClap')), cd),
-      shieldMax: FX.shieldMax(L('voltCell')),
-      poundRadius: FX.poundRadius(L('brutePound')),
-      poundDamage: plow.id === 'brute' ? FX.poundDamage(L('brutePound')) : 0,
-      poundStun: FX.poundStun(L('brutePound')),
-      poundKnock: FX.poundKnock(L('brutePound')),
-      poundCooldown: cooldown(FX.poundCooldown(L('brutePound')), cd),
-      momentum: FX.momentum(L('bruteMomentum')),
-      sawRadius: FX.sawRadius(L('bruteSaws')),
-      sawDps: plow.id === 'brute' ? FX.sawDps(L('bruteSaws')) : 0,
-      meltRadius: FX.meltRadius(L('isoMeltdown')),
-      meltDamage: plow.id === 'isotope' ? FX.meltDamage(L('isoMeltdown')) : 0,
-      meltCooldown: cooldown(FX.meltCooldown(L('isoMeltdown')), cd),
-      poolRadius: FX.poolRadius(L('isoHalfLife')),
-      poolDps: FX.poolDps(L('isoHalfLife')),
-      poolSeconds: FX.poolSeconds(L('isoHalfLife')),
-      auraRadius: FX.auraRadius(L('isoAura')),
-      auraDps: plow.id === 'isotope' ? FX.auraDps(L('isoAura')) : 0,
-      chainBlast: plow.id === 'isotope' ? FX.chainBlast(L('isoChain')) : 0,
-      maxSpeed: FX.maxSpeed(L('engine')) * plow.speedMult,
-      accel: FX.accel(L('engine')) * plow.accelMult,
-      turnRate: FX.turnRate(L('engine')),
-      bladeWidth: FX.bladeWidth(L('blade')),
-      collectRate: FX.collectRate(L('compactor')),
-      maxBallRadius: FX.maxBallRadius(L('hopper')),
-      damageMult: FX.damageMult(L('packedIce')) * plow.slamMult,
-      ramDamage: FX.ramDamage(L('ramSpikes')),
-      maxHp: FX.maxHp(L('armor')) * plow.hpMult,
-      damageTaken: FX.damageTaken(L('plating')),
-      ironHide: FX.ironHide(L('bruteHide')),
-      repairFraction: FX.repairFraction(L('repairKit')),
-      hpRegen: FX.hpRegen(L('repairKit')),
-      dashCooldown: cooldown(FX.dashCooldown(L('nitro')), cd),
-      dashPower: FX.dashPower(L('nitro')) * plow.dashPowerMult,
-      whirlRadius: FX.whirlRadius(L('whirl')),
-      whirlDamage: FX.whirlDamage(L('whirl')),
-      whirlCooldown: cooldown(FX.whirlCooldown(L('whirl')), cd),
-      snowRegen: FX.snowRegen(L('snowMachine')),
-      magnetRadius: FX.magnetRadius(L('magnet')),
-      shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,
-      lifesteal: FX.lifesteal(L('salvage')),
-      secondWindCd: FX.secondWindCd(L('secondWind')),
-      hitCapBonus: FX.hitCapBonus(L('wreckingBall')),
-      killRecharge: FX.killRecharge(L('adrenaline')),
-      lastStand: FX.lastStand(L('lastStand')),
-      shardFrac: FX.shardFrac(L('classicShatter')),
-      shardReach: FX.shardReach(L('classicShatter')),
-      reserveFrac: FX.reserveFrac(L('classicReserve')),
-      comboStep: FX.comboStep(L('classicCombo')),
-      flameRange: FX.flameRange(L('inferno')),
-      flameDps: fire ? FX.flameDps(L('inferno')) : 0,
-      // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.
-      flameCooldown: cooldown(FX.flameCooldown(L('inferno')), cd),
-      cooldownMult: cd,
-      frostCore: L('frostCore') > 0,
-      avalancheCore: L('avalancheCore') > 0,
-    };
+    return computeStatsFor(this.data.upgrades, this.plow);
   }
 
 
@@ -382,4 +309,85 @@ export class Progression {
   static get upgrades() {
     return UPGRADES;
   }
+}
+
+/** Stats for a garage given as upgrade levels + the driven plow. Pure: the save's computeStats and the Duel host
+ *  (which computes BOTH players' stats from the levels they bring) share it. */
+export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plowKind: PlowKind): PlayerStats {
+  const plow = PLOWS[plowKind] ?? PLOWS.classic;
+  // Plow-exclusive upgrades only count while driving that plow.
+  const L = (id: UpgradeId) => {
+    const only = UPGRADE_BY_ID[id].plowOnly;
+    if (only && only !== plow.id) return 0;
+    const v = levels[id] ?? 0;
+    return Number.isFinite(v) ? Math.max(0, Math.min(UPGRADE_BY_ID[id].maxLevel, Math.floor(v))) : 0;
+  };
+  const cd = FX.cooldownMult(L('overclock'));
+  const fire = plow.fAbility === 'fire';
+  return {
+    plowKind: plow.id,
+    chainCount: FX.chainCount(L('voltChain')),
+    chainFrac: FX.chainFrac(L('voltChain')),
+    fieldRadius: FX.fieldRadius(L('voltField')),
+    fieldDps: FX.fieldDps(L('voltField')),
+    clapRadius: FX.clapRadius(L('voltClap')),
+    clapDamage: plow.id === 'volt' ? FX.clapDamage(L('voltClap')) : 0,
+    clapStun: FX.clapStun(L('voltClap')),
+    clapCooldown: cooldown(FX.clapCooldown(L('voltClap')), cd),
+    shieldMax: FX.shieldMax(L('voltCell')),
+    poundRadius: FX.poundRadius(L('brutePound')),
+    poundDamage: plow.id === 'brute' ? FX.poundDamage(L('brutePound')) : 0,
+    poundStun: FX.poundStun(L('brutePound')),
+    poundKnock: FX.poundKnock(L('brutePound')),
+    poundCooldown: cooldown(FX.poundCooldown(L('brutePound')), cd),
+    momentum: FX.momentum(L('bruteMomentum')),
+    sawRadius: FX.sawRadius(L('bruteSaws')),
+    sawDps: plow.id === 'brute' ? FX.sawDps(L('bruteSaws')) : 0,
+    meltRadius: FX.meltRadius(L('isoMeltdown')),
+    meltDamage: plow.id === 'isotope' ? FX.meltDamage(L('isoMeltdown')) : 0,
+    meltCooldown: cooldown(FX.meltCooldown(L('isoMeltdown')), cd),
+    poolRadius: FX.poolRadius(L('isoHalfLife')),
+    poolDps: FX.poolDps(L('isoHalfLife')),
+    poolSeconds: FX.poolSeconds(L('isoHalfLife')),
+    auraRadius: FX.auraRadius(L('isoAura')),
+    auraDps: plow.id === 'isotope' ? FX.auraDps(L('isoAura')) : 0,
+    chainBlast: plow.id === 'isotope' ? FX.chainBlast(L('isoChain')) : 0,
+    maxSpeed: FX.maxSpeed(L('engine')) * plow.speedMult,
+    accel: FX.accel(L('engine')) * plow.accelMult,
+    turnRate: FX.turnRate(L('engine')),
+    bladeWidth: FX.bladeWidth(L('blade')),
+    collectRate: FX.collectRate(L('compactor')),
+    maxBallRadius: FX.maxBallRadius(L('hopper')),
+    damageMult: FX.damageMult(L('packedIce')) * plow.slamMult,
+    ramDamage: FX.ramDamage(L('ramSpikes')),
+    maxHp: FX.maxHp(L('armor')) * plow.hpMult,
+    damageTaken: FX.damageTaken(L('plating')),
+    ironHide: FX.ironHide(L('bruteHide')),
+    repairFraction: FX.repairFraction(L('repairKit')),
+    hpRegen: FX.hpRegen(L('repairKit')),
+    dashCooldown: cooldown(FX.dashCooldown(L('nitro')), cd),
+    dashPower: FX.dashPower(L('nitro')) * plow.dashPowerMult,
+    whirlRadius: FX.whirlRadius(L('whirl')),
+    whirlDamage: FX.whirlDamage(L('whirl')),
+    whirlCooldown: cooldown(FX.whirlCooldown(L('whirl')), cd),
+    snowRegen: FX.snowRegen(L('snowMachine')),
+    magnetRadius: FX.magnetRadius(L('magnet')),
+    shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,
+    lifesteal: FX.lifesteal(L('salvage')),
+    secondWindCd: FX.secondWindCd(L('secondWind')),
+    hitCapBonus: FX.hitCapBonus(L('wreckingBall')),
+    killRecharge: FX.killRecharge(L('adrenaline')),
+    lastStand: FX.lastStand(L('lastStand')),
+    shardFrac: FX.shardFrac(L('classicShatter')),
+    shardReach: FX.shardReach(L('classicShatter')),
+    reserveFrac: FX.reserveFrac(L('classicReserve')),
+    comboStep: FX.comboStep(L('classicCombo')),
+    flameRange: FX.flameRange(L('inferno')),
+    flameDps: fire ? FX.flameDps(L('inferno')) : 0,
+    // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.
+    flameCooldown: cooldown(FX.flameCooldown(L('inferno')), cd),
+    cooldownMult: cd,
+    frostCore: L('frostCore') > 0,
+    avalancheCore: L('avalancheCore') > 0,
+  };
 }
