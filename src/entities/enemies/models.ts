@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ENEMIES, type EnemyType } from '../../config/enemies';
+import { makeShadowProxy } from '../../render/shadowProxy';
 
 /* Procedural toy-robot bot models. Every model faces local +Z, ground at y = 0.
  * Each type is built ONCE as a template (static parts merged per material, animated parts in their own
@@ -160,18 +161,86 @@ function sub(parent: THREE.Object3D, role: string, p: V3, data?: Record<string, 
   return { g, b: new Part(g) };
 }
 
-function wheel(parent: THREE.Object3D, x: number, y: number, z: number, r: number, w: number, hub: THREE.Material, tire = M.rubber()): void {
-  const { b } = sub(parent, 'wheel', [x, y, z], { r });
-  const side = x >= 0 ? 1 : -1;
-  b.add(G.cyl(14), tire, [0, 0, 0], [r, w, r], [0, 0, PI / 2]);
-  b.add(G.cyl(10), hub, [side * w * 0.5, 0, 0], [r * 0.58, 0.05, r * 0.58], [0, 0, PI / 2]);
-  b.add(G.box(), M.black(), [side * (w * 0.5 + 0.03), 0, 0], [0.05, r * 1.15, r * 0.2]);
-  b.add(G.box(), M.black(), [side * (w * 0.5 + 0.03), 0, 0], [0.05, r * 0.2, r * 1.15]);
-  b.flush();
+/** Collects a template's wheels; flush() emits one InstancedMesh per wheel part (tire, hub, cross bars) for every
+ *  wheel size / material set, so a bot draws its 4-12 wheels in 3 calls. The parts of a set share one instance
+ *  matrix buffer: rest position (plus an exact half-turn about Y for left wheels, so their hub faces out without
+ *  mirroring) and the axle spin written by rollWheels(). */
+class Wheels {
+  private sets = new Map<string, { r: number; w: number; hub: THREE.Material; tire: THREE.Material; spots: number[] }>();
+  add(x: number, y: number, z: number, r: number, w: number, hub: THREE.Material, tire = M.rubber()): void {
+    const key = `${r}|${w}|${hub.uuid}|${tire.uuid}`;
+    let s = this.sets.get(key);
+    if (!s) this.sets.set(key, (s = { r, w, hub, tire, spots: [] }));
+    s.spots.push(x, y, z, x >= 0 ? 1 : -1);
+  }
+  flush(root: THREE.Object3D): void {
+    for (const { r, w, hub, tire, spots } of this.sets.values()) {
+      // one right-hand (+X) wheel at its axle origin, merged per material like any static Part
+      const proto = new THREE.Group();
+      const b = new Part(proto);
+      b.add(G.cyl(14), tire, [0, 0, 0], [r, w, r], [0, 0, PI / 2]);
+      b.add(G.cyl(10), hub, [w * 0.5, 0, 0], [r * 0.58, 0.05, r * 0.58], [0, 0, PI / 2]);
+      b.add(G.box(), M.black(), [w * 0.5 + 0.03, 0, 0], [0.05, r * 1.15, r * 0.2]);
+      b.add(G.box(), M.black(), [w * 0.5 + 0.03, 0, 0], [0.05, r * 0.2, r * 1.15]);
+      b.flush();
+      const n = spots.length / 4;
+      const set = new THREE.Group();
+      set.userData.role = 'wheels';
+      set.userData.r = r;
+      set.userData.spots = spots;
+      const matrix = new THREE.InstancedBufferAttribute(new Float32Array(n * 16), 16);
+      matrix.setUsage(THREE.DynamicDrawUsage);
+      writeWheels(matrix, spots, 0);
+      // spinning about the axle keeps every point within `reach` of its wheel's origin, so the sphere never changes
+      let reach = 0;
+      for (const c of proto.children) {
+        const g = (c as THREE.Mesh).geometry;
+        g.computeBoundingSphere();
+        reach = Math.max(reach, g.boundingSphere!.center.length() + g.boundingSphere!.radius);
+      }
+      const box = new THREE.Box3();
+      for (let i = 0; i < n; i++) box.expandByPoint(_p.set(spots[i * 4], spots[i * 4 + 1], spots[i * 4 + 2]));
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      sphere.radius += reach;
+      // the three parts cast through one depth-only proxy that spins with them (same instance buffer)
+      const proxies = makeShadowProxy(proto, proto);
+      for (const src of [...(proto.children as THREE.Mesh[]), ...proxies]) {
+        const im = new THREE.InstancedMesh(src.geometry, src.material, n);
+        im.name = src.name;
+        im.instanceMatrix = matrix;
+        im.castShadow = src.castShadow;
+        im.boundingSphere = sphere.clone();
+        set.add(im);
+      }
+      root.add(set);
+    }
+    this.sets.clear();
+  }
+}
+
+/** Instance matrices of a wheel set spun to `angle` (the same compose as a wheel group with rotation.x = angle). */
+function writeWheels(attr: THREE.InstancedBufferAttribute, spots: readonly number[], angle: number): void {
+  _q.setFromEuler(_e.set(angle, 0, 0));
+  const a = attr.array as Float32Array;
+  for (let i = 0, n = spots.length / 4; i < n; i++) {
+    _m.compose(_p.set(spots[i * 4], spots[i * 4 + 1], spots[i * 4 + 2]), _q, _s.set(1, 1, 1));
+    if (spots[i * 4 + 3] < 0) {
+      // half-turn about Y: negate the X and Z basis columns
+      const e = _m.elements;
+      e[0] = -e[0];
+      e[1] = -e[1];
+      e[2] = -e[2];
+      e[8] = -e[8];
+      e[9] = -e[9];
+      e[10] = -e[10];
+    }
+    _m.toArray(a, i * 16);
+  }
+  attr.needsUpdate = true;
 }
 
 /** Two tank treads (static belts + cleats) with rolling road wheels on their outer faces. */
-function treads(base: Part, parent: THREE.Object3D, x: number, len: number, h: number, w: number, nWheels: number, hub: THREE.Material): void {
+function treads(base: Part, wheels: Wheels, x: number, len: number, h: number, w: number, nWheels: number, hub: THREE.Material): void {
   for (const sx of [-1, 1]) {
     base.add(G.box(), M.rubber(), [sx * x, h / 2, 0], [w, h, len]);
     base.add(G.cyl(10), M.rubber(), [sx * x, h / 2, len / 2], [h / 2, w, h / 2], [0, 0, PI / 2]);
@@ -181,7 +250,7 @@ function treads(base: Part, parent: THREE.Object3D, x: number, len: number, h: n
     const wr = h * 0.34;
     for (let j = 0; j < nWheels; j++) {
       const z = -len / 2 + h * 0.3 + ((len - h * 0.6) * (j + 0.5)) / nWheels;
-      wheel(parent, sx * (x + w / 2 + 0.05), h * 0.48, z, wr, 0.1, hub, M.steel());
+      wheels.add(sx * (x + w / 2 + 0.05), h * 0.48, z, wr, 0.1, hub, M.steel());
     }
   }
 }
@@ -208,7 +277,9 @@ function scrapper(): Tpl {
   const root = new THREE.Group();
   const base = new Part(root);
   const stacks: number[] = [];
-  treads(base, root, 0.56, 1.45, 0.42, 0.34, 3, accent(t));
+  const wheels = new Wheels();
+  treads(base, wheels, 0.56, 1.45, 0.42, 0.34, 3, accent(t));
+  wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
   b.add(G.wedge(0.42), paint(t), [0, 0.66, -0.05], [0.86, 0.5, 1.35]);
   b.add(G.box(), M.dark(), [0, 0.42, -0.05], [0.8, 0.12, 1.3]);
@@ -236,7 +307,9 @@ function brute(): Tpl {
   const root = new THREE.Group();
   const base = new Part(root);
   const stacks: number[] = [];
-  treads(base, root, 0.98, 2.4, 0.72, 0.52, 4, accent(t));
+  const wheels = new Wheels();
+  treads(base, wheels, 0.98, 2.4, 0.72, 0.52, 4, accent(t));
+  wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
   b.add(G.box(), paint(t), [0, 1.05, -0.25], [1.5, 0.75, 1.9]);
   b.add(G.wedge(0.3), paint(t), [0, 1.52, 0.25], [1.36, 0.36, 0.95]);
@@ -334,7 +407,9 @@ function bulldoza(): Tpl {
   const root = new THREE.Group();
   const base = new Part(root);
   const stacks: number[] = [];
-  treads(base, root, 1.6, 3.7, 1.05, 0.85, 5, M.hazLight());
+  const wheels = new Wheels();
+  treads(base, wheels, 1.6, 3.7, 1.05, 0.85, 5, M.hazLight());
+  wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
   const P = paint(t);
   b.add(G.box(), P, [0, 1.55, -0.35], [2.4, 1.2, 3.1]);
@@ -384,7 +459,9 @@ function frostbyte(): Tpl {
   const root = new THREE.Group();
   const stacks: number[] = [];
   const P = paint(t);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheel(root, sx * 1.15, 0.56, sz * 1.0 - 0.2, 0.56, 0.46, accent(t));
+  const wheels = new Wheels();
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 1.15, 0.56, sz * 1.0 - 0.2, 0.56, 0.46, accent(t));
+  wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
   b.add(G.box(), P, [0, 1.05, -0.2], [1.75, 0.7, 3.0]);
   b.add(G.box(), M.dark(), [0, 0.7, -0.2], [1.6, 0.16, 2.9]);
@@ -425,7 +502,9 @@ function grinder(): Tpl {
   const root = new THREE.Group();
   const base = new Part(root);
   const stacks: number[] = [];
-  treads(base, root, 1.85, 4.2, 1.35, 1.0, 5, accent(t));
+  const wheels = new Wheels();
+  treads(base, wheels, 1.85, 4.2, 1.35, 1.0, 5, accent(t));
+  wheels.flush(root);
   const { g: body, b } = sub(root, 'body', [0, 0, 0]);
   const P = paint(t);
   b.add(G.box(), P, [0, 2.0, -0.55], [2.7, 1.6, 3.4]);
@@ -471,7 +550,9 @@ function twin(t: 'slush' | 'sleet'): Tpl {
   const A = accent(t);
   const eyeC = t === 'slush' ? 0xfff09a : 0xbff4ff;
   const glowC = t === 'slush' ? 0xff3030 : 0x40a8ff;
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheel(root, sx * 1.3, 0.64, sz * 0.95, 0.64, 0.5, A);
+  const wheels = new Wheels();
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 1.3, 0.64, sz * 0.95, 0.64, 0.5, A);
+  wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
   b.add(G.wedge(0.36), P, [0, 1.05, 0.05], [2.0, 0.85, 3.1]);
   b.add(G.box(), M.dark(), [0, 0.62, 0], [1.9, 0.16, 3.0]);
@@ -515,7 +596,9 @@ function omega(): Tpl {
   const root = new THREE.Group();
   const base = new Part(root);
   const stacks: number[] = [];
-  treads(base, root, 2.35, 5.4, 1.6, 1.2, 6, M.hazLight());
+  const wheels = new Wheels();
+  treads(base, wheels, 2.35, 5.4, 1.6, 1.2, 6, M.hazLight());
+  wheels.flush(root);
   for (const sx of [-1, 1]) base.add(G.box(), M.chrome(), [sx * 2.35, 1.7, 0], [1.3, 0.12, 5.2]);
   const { g: body } = sub(root, 'body', [0, 0, 0]);
   // lift pivot at the rear so the whole hull can rear up for the ground pound
@@ -590,11 +673,22 @@ const BUILDERS: Record<EnemyType, () => Tpl> = {
   omega,
   rival: scrapper, // Brawl rivals use their own models (src/brawl); placeholder for exhaustiveness
 };
+/** One depth-only shadow proxy per rigid group of the template (root base, body, lift, saw rings, auger, ball):
+ *  the per-material meshes stop casting and the group's shadow is a single draw. Clones share the proxy
+ *  geometry; wheel sets already carry their own instanced proxy. */
+function proxyShadows(o: THREE.Object3D): void {
+  const casters = o.children.filter((c) => (c as THREE.Mesh).isMesh && !(c as THREE.InstancedMesh).isInstancedMesh && c.castShadow);
+  const groups = o.children.filter((c) => !(c as THREE.Mesh).isMesh && c.userData.role !== 'wheels');
+  if (casters.length > 1) for (const p of makeShadowProxy(casters, o)) o.add(p);
+  for (const g of groups) proxyShadows(g);
+}
+
 const TEMPLATES = new Map<EnemyType, Tpl>();
 function template(t: EnemyType): Tpl {
   let tpl = TEMPLATES.get(t);
   if (!tpl) {
     tpl = BUILDERS[t]();
+    proxyShadows(tpl.root);
     TEMPLATES.set(t, tpl);
   }
   return tpl;
@@ -606,8 +700,7 @@ export interface Rig {
   root: THREE.Group;
   body: THREE.Object3D;
   lift: THREE.Object3D | null;
-  wheels: THREE.Object3D[];
-  wheelR: number[];
+  wheels: WheelSet[];
   spinY: THREE.Object3D[];
   spinZ: THREE.Object3D[];
   paint: THREE.MeshStandardMaterial[];
@@ -625,37 +718,108 @@ export interface Rig {
   front: number;
   crust: THREE.Mesh;
   stars: THREE.Group;
-  /** Billboard HP bar (minions only), added to the scene separately. */
-  bar: THREE.Group | null;
-  barFg: THREE.Mesh | null;
+  /** Minions show a billboard HP bar (drawn by HpBars) at barPos while barShow. */
+  bar: boolean;
+  barShow: boolean;
+  barPos: THREE.Vector3;
+  barFill: number;
   owned: THREE.Material[];
+  /** Cloned InstancedMeshes (their instance buffers are per rig). */
+  instanced: THREE.InstancedMesh[];
+}
+
+/** One instanced wheel set of a rig: every part shares `matrix`, all wheels spin by the same `angle`. */
+export interface WheelSet {
+  matrix: THREE.InstancedBufferAttribute;
+  spots: number[];
+  r: number;
+  angle: number;
 }
 
 const BAR_W = 1.3;
-let _barGeoBg: THREE.PlaneGeometry | null = null;
-let _barGeoFg: THREE.PlaneGeometry | null = null;
-let _barMatBg: THREE.MeshBasicMaterial | null = null;
-let _barMatFg: THREE.MeshBasicMaterial | null = null;
-let _barMatFgBoss: THREE.MeshBasicMaterial | null = null;
+const _fgLocal = new THREE.Matrix4();
+const _barM = new THREE.Matrix4();
 
-function makeBar(): { g: THREE.Group; fg: THREE.Mesh } {
-  if (!_barGeoBg) {
-    _barGeoBg = new THREE.PlaneGeometry(BAR_W + 0.08, 0.2);
-    _barGeoFg = new THREE.PlaneGeometry(1, 0.13);
-    _barGeoFg.translate(0.5, 0, 0);
-    _barMatBg = new THREE.MeshBasicMaterial({ color: 0x14161c, transparent: true, opacity: 0.8, depthWrite: false });
-    _barMatFg = new THREE.MeshBasicMaterial({ color: 0xff4a3a, depthWrite: false, toneMapped: false });
-    _barMatFgBoss = _barMatFg;
+/** Every minion HP bar in two InstancedMeshes (background + fill), billboarded per bar. The fill keeps its opaque
+ *  pass at renderOrder 11 and the translucent background renderOrder 10, exactly like the old per-bot meshes. */
+export class HpBars {
+  private bg!: THREE.InstancedMesh;
+  private fg!: THREE.InstancedMesh;
+  private readonly geoBg = new THREE.PlaneGeometry(BAR_W + 0.08, 0.2);
+  private readonly geoFg = new THREE.PlaneGeometry(1, 0.13).translate(0.5, 0, 0);
+  private readonly matBg = new THREE.MeshBasicMaterial({ color: 0x14161c, transparent: true, opacity: 0.8, depthWrite: false });
+  private readonly matFg = new THREE.MeshBasicMaterial({ color: 0xff4a3a, depthWrite: false, toneMapped: false });
+  private n = 0;
+
+  constructor(private readonly parent: THREE.Object3D) {
+    this.alloc(32);
   }
-  const g = new THREE.Group();
-  const bg = new THREE.Mesh(_barGeoBg, _barMatBg!);
-  const fg = new THREE.Mesh(_barGeoFg!, _barMatFgBoss!);
-  fg.position.set(-BAR_W / 2, 0, 0.01);
-  bg.renderOrder = 10;
-  fg.renderOrder = 11;
-  g.add(bg, fg);
-  g.visible = false;
-  return { g, fg };
+
+  private alloc(cap: number): void {
+    const make = (g: THREE.BufferGeometry, m: THREE.Material, order: number) => {
+      const im = new THREE.InstancedMesh(g, m, cap);
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      im.renderOrder = order;
+      im.frustumCulled = false;
+      im.count = 0;
+      im.visible = false;
+      this.parent.add(im);
+      return im;
+    };
+    const old = this.bg ? [this.bg, this.fg] : [];
+    this.bg = make(this.geoBg, this.matBg, 10);
+    this.fg = make(this.geoFg, this.matFg, 11);
+    for (let i = 0; i < old.length; i++) {
+      (i === 0 ? this.bg : this.fg).instanceMatrix.array.set(old[i].instanceMatrix.array);
+      old[i].removeFromParent();
+      old[i].dispose();
+    }
+  }
+
+  /** Start a new frame of bars. */
+  begin(): void {
+    this.n = 0;
+  }
+
+  /** One bar centred at `p`, facing `q` (the camera), filled to `fill` (0..1). */
+  add(p: THREE.Vector3, q: THREE.Quaternion, fill: number): void {
+    const cap = this.bg.instanceMatrix.count;
+    if (this.n >= cap) this.alloc(cap * 2);
+    _barM.compose(p, q, _s.set(1, 1, 1));
+    _barM.toArray(this.bg.instanceMatrix.array, this.n * 16);
+    _fgLocal.compose(_p.set(-BAR_W / 2, 0, 0.01), _q.identity(), _s.set(Math.max(0.001, BAR_W * fill), 1, 1));
+    _barM.multiply(_fgLocal).toArray(this.fg.instanceMatrix.array, this.n * 16);
+    this.n++;
+  }
+
+  /** Upload this frame's bars. */
+  end(): void {
+    for (const im of [this.bg, this.fg]) {
+      im.count = this.n;
+      im.visible = this.n > 0;
+      if (this.n > 0) im.instanceMatrix.needsUpdate = true;
+    }
+  }
+}
+
+const STAR_GEOS = new Map<EnemyType, THREE.BufferGeometry>();
+function starGeometry(type: EnemyType): THREE.BufferGeometry {
+  let g = STAR_GEOS.get(type);
+  if (!g) {
+    const def = ENEMIES[type];
+    const n = def.isBoss ? 6 : 4;
+    const sr = Math.max(0.5, def.radius * 0.6);
+    const ss = def.isBoss ? 0.26 : 0.15;
+    const parts: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      _m.compose(_p.set(Math.sin(a) * sr, Math.sin(a * 2) * 0.12, Math.cos(a) * sr), _q.identity(), _s.set(ss, ss * 1.3, ss * 0.5));
+      parts.push(G.oct().clone().applyMatrix4(_m));
+    }
+    g = mergeGeometries(parts, false)!;
+    STAR_GEOS.set(type, g);
+  }
+  return g;
 }
 
 export function createRig(type: EnemyType): Rig {
@@ -667,7 +831,6 @@ export function createRig(type: EnemyType): Rig {
     body: root,
     lift: null,
     wheels: [],
-    wheelR: [],
     spinY: [],
     spinZ: [],
     paint: [],
@@ -685,13 +848,17 @@ export function createRig(type: EnemyType): Rig {
     front: tpl.front,
     crust: null as unknown as THREE.Mesh,
     stars: null as unknown as THREE.Group,
-    bar: null,
-    barFg: null,
+    bar: !def.isBoss,
+    barShow: false,
+    barPos: new THREE.Vector3(),
+    barFill: 1,
     owned: [],
+    instanced: [],
   };
   const map = new Map<THREE.Material, THREE.MeshStandardMaterial>();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
+    if ((o as THREE.InstancedMesh).isInstancedMesh) rig.instanced.push(o as THREE.InstancedMesh);
     if (mesh.isMesh) {
       const m = mesh.material as THREE.MeshStandardMaterial;
       const role = m.userData.inst as InstRole | undefined;
@@ -723,10 +890,13 @@ export function createRig(type: EnemyType): Rig {
       case 'lift':
         rig.lift = o;
         break;
-      case 'wheel':
-        rig.wheels.push(o);
-        rig.wheelR.push(o.userData.r as number);
+      case 'wheels': {
+        // clone() gave every part its own copy of the instance buffer: share one again
+        const parts = o.children as THREE.InstancedMesh[];
+        for (const im of parts) im.instanceMatrix = parts[0].instanceMatrix;
+        rig.wheels.push({ matrix: parts[0].instanceMatrix, spots: o.userData.spots as number[], r: o.userData.r as number, angle: 0 });
         break;
+      }
       case 'spinY':
         rig.spinY.push(o);
         break;
@@ -751,34 +921,30 @@ export function createRig(type: EnemyType): Rig {
   root.add(crust);
   rig.crust = crust;
 
-  // Dizzy stars (visible while stunned / dizzy).
+  // Dizzy stars (visible while stunned / dizzy): one merged ring per type.
   const stars = new THREE.Group();
-  const n = def.isBoss ? 6 : 4;
-  const sr = Math.max(0.5, def.radius * 0.6);
-  const ss = def.isBoss ? 0.26 : 0.15;
-  for (let i = 0; i < n; i++) {
-    const s = new THREE.Mesh(G.oct(), M.star());
-    const a = (i / n) * Math.PI * 2;
-    s.position.set(Math.sin(a) * sr, Math.sin(a * 2) * 0.12, Math.cos(a) * sr);
-    s.scale.set(ss, ss * 1.3, ss * 0.5);
-    stars.add(s);
-  }
+  stars.add(new THREE.Mesh(starGeometry(type), M.star()));
   stars.position.y = tpl.height + 0.35;
   stars.visible = false;
   root.add(stars);
   rig.stars = stars;
-
-  if (!def.isBoss) {
-    const { g, fg } = makeBar();
-    rig.bar = g;
-    rig.barFg = fg;
-  }
   return rig;
+}
+
+/** Spin every wheel of the rig about its axle by `roll` metres of travel. */
+export function rollWheels(rig: Rig, roll: number): void {
+  if (roll === 0) return;
+  for (const w of rig.wheels) {
+    w.angle += roll / w.r;
+    writeWheels(w.matrix, w.spots, w.angle);
+  }
 }
 
 export function disposeRig(rig: Rig): void {
   for (const m of rig.owned) m.dispose();
   rig.owned.length = 0;
+  for (const im of rig.instanced) im.dispose();
+  rig.instanced.length = 0;
 }
 
 /** Shared geometry for debris chunks. */

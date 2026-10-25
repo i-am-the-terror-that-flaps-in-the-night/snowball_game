@@ -3,7 +3,7 @@ import type { DamageOpts, EnemyHandle, EnemyManagerAPI, GameContext, SoundName }
 import { ARENA, ENEMY_GATES, GATE_WIDTH, PLOW_MASS } from '../core/types';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import { Bot, Vuln, type Host } from './enemies/Bot';
-import { createRig, debrisGeometry, debrisMaterials, disposeRig } from './enemies/models';
+import { HpBars, createRig, debrisGeometry, debrisMaterials, disposeRig, rollWheels } from './enemies/models';
 import { DecalPool } from './enemies/decals';
 import { MINION_AI, aroundAngle, clamp, initAI, orbit, resetAI, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
@@ -29,7 +29,10 @@ const _ec = new THREE.Color();
 const _v = new THREE.Vector3();
 
 interface Debris {
-  mesh: THREE.Mesh;
+  /** Transform only (not in the scene): drawn as an instance of the batch for its geometry + material. */
+  obj: THREE.Object3D;
+  geo: THREE.BufferGeometry;
+  mat: THREE.Material;
   vx: number;
   vy: number;
   vz: number;
@@ -51,6 +54,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private bossList: Bot[] = [];
   private decals: DecalPool;
   private debris: Debris[] = [];
+  /** One pooled InstancedMesh per debris geometry + material, refilled from the active chunks (syncDebris). */
+  private debrisBatches = new Map<string, THREE.InstancedMesh>();
+  private bars: HpBars;
+  /** Camera orientation the HP bars were last billboarded to. */
+  private barQ = new THREE.Quaternion();
   private attackers = 0;
   private thieves = 0;
   private nextTokenT = 0;
@@ -71,6 +79,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   constructor(ctx: GameContext) {
     this.ctx = ctx;
     this.decals = new DecalPool(ctx.scene);
+    this.bars = new HpBars(ctx.scene);
   }
 
   /* ------------------------------------------------------------------ API */
@@ -111,7 +120,6 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     rig.root.position.copy(e.position);
     rig.root.rotation.y = e.heading;
     ctx.scene.add(rig.root);
-    if (rig.bar) ctx.scene.add(rig.bar);
     this.list.push(e);
     this.aliveN++;
     if (gi >= 0) ctx.world?.openGate(gi);
@@ -243,11 +251,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.list.length = 0;
     this.aliveN = 0;
     this.bossList.length = 0;
+    this.syncBars();
     this.decals.clear();
-    for (const d of this.debris) {
-      d.active = false;
-      d.mesh.visible = false;
-    }
+    for (const d of this.debris) d.active = false;
+    this.syncDebris();
     this.attackers = 0;
     this.thieves = 0;
     this.nextTokenT = 0;
@@ -284,10 +291,12 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     this.separate();
     this.plowContact();
+    this.barQ.copy(ctx.camera.quaternion);
     for (let i = 0; i < this.list.length; i++) {
       const e = this.list[i];
       if (e.alive) this.render(e, dt);
     }
+    this.syncBars();
     this.updateDebris(dt);
     this.decals.update(dt, this.depthFn);
 
@@ -792,8 +801,19 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.clearTele(e);
     const scene = this.ctx.scene;
     scene.remove(e.rig.root);
-    if (e.rig.bar) scene.remove(e.rig.bar);
     disposeRig(e.rig);
+    if (e.rig.barShow) {
+      e.rig.barShow = false;
+      this.syncBars();
+    }
+  }
+
+  /** Rebuild the HP bar batch from every live minion's last bar state. */
+  private syncBars(): void {
+    const bars = this.bars;
+    bars.begin();
+    for (const e of this.list) if (e.alive && e.rig.barShow) bars.add(e.rig.barPos, this.barQ, e.rig.barFill);
+    bars.end();
   }
 
   /* ------------------------------------------------------------------ rendering */
@@ -831,7 +851,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (rig.lift) rig.lift.rotation.x = -e.rear * 0.42;
 
     const roll = e.speed * dt;
-    for (let i = 0; i < rig.wheels.length; i++) rig.wheels[i].rotation.x += roll / rig.wheelR[i];
+    rollWheels(rig, roll);
     for (const o of rig.spinY) o.rotation.y += e.sawRate * dt * ((o.userData.dir as number) ?? 1);
     for (const o of rig.spinZ) o.rotation.z += e.augerRate * dt;
 
@@ -902,13 +922,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
 
     // minion HP bar
-    if (rig.bar && rig.barFg) {
-      const show = e.hp < e.maxHp;
-      rig.bar.visible = show;
-      if (show) {
-        rig.bar.position.set(p.x, e.groundY + rig.height + (e.type === 'thief' ? 0.95 : 0.5), p.z);
-        rig.bar.quaternion.copy(this.ctx.camera.quaternion);
-        rig.barFg.scale.x = Math.max(0.001, 1.3 * (e.hp / e.maxHp));
+    if (rig.bar) {
+      rig.barShow = e.hp < e.maxHp;
+      if (rig.barShow) {
+        rig.barPos.set(p.x, e.groundY + rig.height + (e.type === 'thief' ? 0.95 : 0.5), p.z);
+        rig.barFill = e.hp / e.maxHp;
       }
     }
 
@@ -948,17 +966,17 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const pow = e.isBoss ? 1.6 : 1;
     for (let i = 0; i < n; i++) {
       const d = this.acquireDebris();
-      if (!d) return;
-      d.mesh.geometry = debrisGeometry(i);
-      d.mesh.material = mats[i % mats.length];
+      if (!d) break;
+      d.geo = debrisGeometry(i);
+      d.mat = mats[i % mats.length];
       const s = e.radius * (0.16 + Math.random() * 0.22);
       d.sx = s * (0.6 + Math.random());
       d.sy = s * (0.4 + Math.random() * 0.6);
       d.sz = s * (0.6 + Math.random());
-      d.mesh.scale.set(d.sx, d.sy, d.sz);
+      d.obj.scale.set(d.sx, d.sy, d.sz);
       const a = Math.random() * Math.PI * 2;
       const rr = Math.random() * e.radius * 0.8;
-      d.mesh.position.set(p.x + Math.sin(a) * rr, e.groundY + 0.3 + Math.random() * h * 0.7, p.z + Math.cos(a) * rr);
+      d.obj.position.set(p.x + Math.sin(a) * rr, e.groundY + 0.3 + Math.random() * h * 0.7, p.z + Math.cos(a) * rr);
       const sp = (3 + Math.random() * 6) * pow;
       d.vx = Math.sin(a) * sp + e.vx * 0.3;
       d.vz = Math.cos(a) * sp + e.vz * 0.3;
@@ -967,19 +985,15 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       d.ry = (Math.random() - 0.5) * 14;
       d.rz = (Math.random() - 0.5) * 14;
       d.life = 1.6 + Math.random() * 1.4;
-      d.mesh.visible = true;
       d.active = true;
     }
+    this.syncDebris();
   }
 
   private acquireDebris(): Debris | null {
     for (const d of this.debris) if (!d.active) return d;
     if (this.debris.length >= MAX_DEBRIS) return null;
-    const mesh = new THREE.Mesh(debrisGeometry(0), debrisMaterials('scrapper')[0]);
-    mesh.castShadow = true;
-    mesh.visible = false;
-    this.ctx.scene.add(mesh);
-    const d: Debris = { mesh, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, life: 0, sx: 1, sy: 1, sz: 1, active: false };
+    const d: Debris = { obj: new THREE.Object3D(), geo: debrisGeometry(0), mat: debrisMaterials('scrapper')[0], vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, life: 0, sx: 1, sy: 1, sz: 1, active: false };
     this.debris.push(d);
     return d;
   }
@@ -987,11 +1001,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private updateDebris(dt: number): void {
     for (const d of this.debris) {
       if (!d.active) continue;
-      const m = d.mesh;
+      const m = d.obj;
       d.life -= dt;
       if (d.life <= 0) {
         d.active = false;
-        m.visible = false;
         continue;
       }
       d.vy -= 22 * dt;
@@ -1015,6 +1028,34 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         const k = d.life / 0.5;
         m.scale.set(d.sx * k, d.sy * k, d.sz * k);
       }
+    }
+    this.syncDebris();
+  }
+
+  /** Write every active chunk's transform into its batch; empty batches are hidden, the rest get a fresh bounding
+   *  sphere so both passes still frustum-cull them. */
+  private syncDebris(): void {
+    for (const b of this.debrisBatches.values()) b.count = 0;
+    for (const d of this.debris) {
+      if (!d.active) continue;
+      const key = d.geo.uuid + d.mat.uuid;
+      let b = this.debrisBatches.get(key);
+      if (!b) {
+        b = new THREE.InstancedMesh(d.geo, d.mat, MAX_DEBRIS);
+        b.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        b.castShadow = true;
+        b.count = 0;
+        this.ctx.scene.add(b);
+        this.debrisBatches.set(key, b);
+      }
+      d.obj.updateMatrix();
+      b.setMatrixAt(b.count++, d.obj.matrix);
+    }
+    for (const b of this.debrisBatches.values()) {
+      b.visible = b.count > 0;
+      if (!b.visible) continue;
+      b.instanceMatrix.needsUpdate = true;
+      b.computeBoundingSphere();
     }
   }
 }
