@@ -102,7 +102,7 @@ whirl and your plow's F ability — by up to -60%, and no ability ever recharges
 (hotter, faster fire), Shatter Slam (slams throw ice shards at bots around the impact), Snow Reserve (keep part of
 your ball after a slam) and Slam Combo (back-to-back slams hit harder, stacking up to 3 times) — or the
 electric **VOLT-9** (faster, more fragile) with its own upgrade line — Chain Lightning, Tesla Field, Thunderclap
-and Battery Shield — or the armored **BRUTUS** (+35% HP, +20% damage, bigger blade; sluggish to accelerate) with a free Ground Pound on F (AoE damage ring, short knockback, stun) and its own line —
+and Battery Shield — or the armored **BRUTUS** (+35% HP, +20% damage, bigger blade; sluggish to accelerate) with a free Ground Pound on F (a 5 m leap you can't be hit during, then an AoE damage ring, short knockback, stun) and its own line —
 Ground Pound, Iron Hide (less damage taken the faster you're going), Momentum (rams and dash strikes scale with
 speed) and Buzzsaws (spinning saws on the blade ends that shred every bot in front of and beside you) — or the
 radioactive **ISOTOPE** ☢️ (+10% HP, +5% speed; bots it irradiates glow green and take +15% damage from you) with a

@@ -43,6 +43,10 @@ const CLAP_HEAT_DECAY = 2.5;
 const POUND_HOP_SECONDS = 0.85;
 const POUND_HOP_HEIGHT = 5;
 const POUND_RIM_FRAC = 0.6;
+/** The full leap telegraphs the slam, so it pays for it: untouchable while airborne, and the drop from height
+ *  hits harder and wider. */
+const POUND_LEAP_DMG = 1.3;
+const POUND_LEAP_RADIUS = 1.2;
 /** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
  *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
 const RAD_VULN = 1.15;
@@ -471,7 +475,7 @@ export class Combat implements CombatAPI {
   private poundImpact(plow: PlowAPI): void {
     const ctx = this.ctx;
     const st = this.b.stats;
-    const R = st.poundRadius;
+    const R = st.poundRadius * POUND_LEAP_RADIUS;
     const px = plow.position.x;
     const pz = plow.position.z;
     // Snow shockwave: stacked rings, a central blast and snow sprays thrown out along the rim.
@@ -508,7 +512,7 @@ export class Combat implements CombatAPI {
       }
       const fall = 1 - (1 - POUND_RIM_FRAC) * Math.min(1, d / R);
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.poundDamage * st.damageMult * fall * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.poundDamage * POUND_LEAP_DMG * st.damageMult * fall * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3(dx * st.poundKnock * fall, 0, dz * st.poundKnock * fall),
         stunSeconds: st.poundStun,
@@ -652,7 +656,8 @@ export class Combat implements CombatAPI {
     const ctx = this.ctx;
     const plow = this.b.plow;
     const stats = this.b.stats;
-    if (!plow || plow.dead || amount <= 0 || plow.invulnerable || this.guardT > 0) return 0;
+    // Mid Ground Pound leap: out of reach until the slam lands.
+    if (!plow || plow.dead || amount <= 0 || plow.invulnerable || this.guardT > 0 || this.poundT >= 0) return 0;
 
     // Direction plow -> attacker.
     let dx = fromX - plow.position.x;
