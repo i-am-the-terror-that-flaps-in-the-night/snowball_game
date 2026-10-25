@@ -6,7 +6,8 @@
 //   each scene N times and report the best timing; images must match on every run), --profile (print the top
 //   self-time functions of each scene's measurement loop from the V8 CPU profiler).
 //   Env: PROBE_GPU=0 -> SwiftShader instead of the Metal GPU, PROBE_DPR (default 2), PROBE_DEBUG=1 (raw timing samples
-//   in metrics.json), PORT -> Vite port.
+//   in metrics.json), PORT -> Vite port, PROBE_UUID_RNG=1 -> three's UUIDs use their own RNG stream (see probeInit;
+//   baseline and compare must use the same setting).
 //
 // Vite serves process.cwd(), so run it from the worktree you want to measure. Headless Chrome at 1920x1080 @ DPR 2
 // (canvas 3840x2160), shadows on (fresh save = HIGH quality), ?debug save (all arenas unlocked).
@@ -65,12 +66,13 @@ const dir = pos[1] || '/tmp/render-baseline';
 const outDir = cmd === 'baseline' ? dir : opt('out', join('/tmp/render-compare', basename(process.cwd())));
 const runs = Math.max(1, Number(opt('runs', '1')) || 1);
 const gpu = process.env.PROBE_GPU !== '0';
+const uuidRng = process.env.PROBE_UUID_RNG === '1';
 const TOL_DELTA = 8;
 const TOL_FRAC = 0.0001;
 
 /* ------------------------------------------------------------------ page side (runs before the game loads) */
 
-function probeInit() {
+function probeInit(opts = {}) {
   const realNow = performance.now.bind(performance);
   // Virtual clock: frozen unless the probe advances it (nothing in a scene needs it to move).
   let vt = 1000;
@@ -90,10 +92,21 @@ function probeInit() {
   // Seeded Math.random (mulberry32), reseeded at the start of every scene.
   let s = 0x2f6b1d3a;
   let calls = 0;
+  // PROBE_UUID_RNG=1: three's generateUUID() (run by every new Object3D / material / geometry / texture) draws from
+  // its own uncounted stream, so an optimisation that creates fewer objects keeps the gameplay RNG sequence.
+  let us = 0x1b873593;
+  const uuidCall = () => {
+    const lim = Error.stackTraceLimit;
+    Error.stackTraceLimit = 3; // uuidCall, Math.random, its caller
+    const st = new Error().stack;
+    Error.stackTraceLimit = lim;
+    return st.includes('generateUUID');
+  };
   Math.random = () => {
-    calls++;
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    let x;
+    if (opts.uuidRng && uuidCall()) x = us = (us + 0x6d2b79f5) | 0;
+    else (calls++, (x = s = (s + 0x6d2b79f5) | 0));
+    let t = Math.imul(x ^ (x >>> 15), 1 | x);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
@@ -293,6 +306,7 @@ function probeInit() {
       game.renderer.setAnimationLoop(null);
       document.getElementById('ui').style.display = 'none';
       s = 0x2f6b1d3a;
+      us = 0x1b873593;
       calls = 0;
       SCENES[name]();
       return fingerprint();
@@ -448,6 +462,10 @@ if (cmd === 'compare') {
     process.exit(2);
   }
   base = JSON.parse(readFileSync(mf, 'utf8'));
+  if (!!base.uuidRng !== uuidRng) {
+    console.error(`baseline ${dir} was made with PROBE_UUID_RNG=${base.uuidRng ? 1 : 0}; compare with the same setting`);
+    process.exit(2);
+  }
 } else if (existsSync(join(dir, 'metrics.json')) && !opt('force', false)) {
   console.error(`${dir} already holds a baseline; pass --force to overwrite it (or pick another dir)`);
   process.exit(2);
@@ -489,7 +507,7 @@ function printProfile(name, prof) {
 
 async function runScene(name) {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: Number(process.env.PROBE_DPR) || 2 });
-  await context.addInitScript(probeInit);
+  await context.addInitScript(probeInit, { uuidRng });
   const page = await context.newPage();
   const errors = [];
   page.on('console', (m) => {
@@ -576,7 +594,7 @@ if (cmd === 'baseline') {
     scenes[r.name] = { fingerprint: r.fingerprint, metrics: r.metrics, errors: r.errors };
     if (!r.metrics || r.errors.length) failed = true;
   }
-  const meta = { created: new Date().toISOString(), git: sha, cwd: process.cwd(), renderer: rendererName, gpu, viewport: '1920x1080@2', scenes };
+  const meta = { created: new Date().toISOString(), git: sha, cwd: process.cwd(), renderer: rendererName, gpu, viewport: '1920x1080@2', uuidRng, scenes };
   writeFileSync(join(dir, 'metrics.json'), JSON.stringify(meta, null, 1));
   const txt = `render-probe baseline  git ${sha}  ${rendererName}\n${fmtMetrics(results)}\n`;
   writeFileSync(join(dir, 'metrics.txt'), txt);

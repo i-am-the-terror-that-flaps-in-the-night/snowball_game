@@ -39,7 +39,7 @@ import {
   type BrawlDifficultyDef,
 } from '../config/brawl';
 import { FX, UPGRADES, type UpgradeId } from '../config/upgrades';
-import { BLADE_W, BLADE_Z, RIVAL_KINDS, createCocoa, createRivalRig, getDarkMaterial, getDebrisGeometry, type RivalRig } from './models';
+import { BLADE_W, BLADE_Z, RIVAL_KINDS, createCocoa, createRivalBalls, createRivalRig, getDebrisDarkMaterial, getDebrisGeometry, instancedDepthMaterial, type RivalRig } from './models';
 import { NameTag, SpeechBubble } from './tags';
 import { PLOWS, type PlowKind } from '../config/plows';
 import { Lightning } from '../fx/Lightning';
@@ -103,6 +103,9 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _cam = new THREE.Vector3();
+const _e = new THREE.Euler();
+const _q = new THREE.Quaternion();
+const _m = new THREE.Matrix4();
 const EMPTY: readonly EnemyHandle[] = [];
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -188,6 +191,9 @@ class Rival implements EnemyHandle {
   vz = 0;
   ballVol = 0;
   ballSpin = 0;
+  /** Held ball as last animated: shown + its root-space matrix (drawn by BrawlManager.balls). */
+  ballOn = false;
+  readonly ballLocal = new THREE.Matrix4();
   wheelSpin = 0;
   lean = 0;
 
@@ -263,14 +269,24 @@ interface Cocoa {
   t: number;
 }
 
-interface Debris {
-  mesh: THREE.Mesh;
+interface DebrisChunk {
+  pos: THREE.Vector3;
+  rot: THREE.Euler;
+  scale: number;
   vx: number;
   vy: number;
   vz: number;
   rx: number;
   rz: number;
   life: number;
+}
+
+/** One kill's chunks of one material (the rival's paint as it was at the kill, or dark metal), one instanced draw. */
+interface Debris {
+  mesh: THREE.InstancedMesh;
+  /** The paint clone (owned, disposed with the batch); null for the shared dark material. */
+  mat: THREE.MeshStandardMaterial | null;
+  chunks: DebrisChunk[];
 }
 
 export class BrawlManager implements BrawlAPI {
@@ -296,6 +312,8 @@ export class BrawlManager implements BrawlAPI {
   private cocoas: Cocoa[] = [];
   private cocoaT = 0;
   private debris: Debris[] = [];
+  /** Every rival's held snowball (one instanced draw); rebuilt by syncBalls. */
+  private balls: THREE.InstancedMesh | null = null;
   private queryOut: EnemyHandle[] = [];
   private hudObj: BrawlHud;
   private board: BrawlEntry[] = [];
@@ -487,11 +505,12 @@ export class BrawlManager implements BrawlAPI {
     this.board.length = 0;
     for (const c of this.cocoas) this.group.remove(c.root);
     this.cocoas.length = 0;
-    for (const d of this.debris) {
-      this.group.remove(d.mesh);
-      (d.mesh.material as THREE.Material).dispose();
-    }
+    for (const d of this.debris) this.disposeDebris(d);
     this.debris.length = 0;
+    if (this.balls) {
+      this.balls.count = 0;
+      this.balls.visible = false;
+    }
     this.lightning.clear();
     this.started = false;
     this.active = false;
@@ -544,6 +563,7 @@ export class BrawlManager implements BrawlAPI {
     this.updateCocoa(dt, fighting);
     this.updateDebris(dt);
     for (const r of this.rivals) this.animate(r, dt);
+    this.syncBalls();
     this.lightning.update(dt);
   }
 
@@ -1493,6 +1513,7 @@ export class BrawlManager implements BrawlAPI {
     r.rig.root.visible = false;
     r.tag.sprite.visible = false;
     r.bubble.hide();
+    this.syncBalls();
     if (r.ballVol > 0) ctx.snow.addSnow(r.position.x, r.position.z, 2.5, r.ballVol * 0.5);
     r.ballVol = 0;
     const x = r.position.x;
@@ -1506,17 +1527,24 @@ export class BrawlManager implements BrawlAPI {
       ctx.fx.ring(_v, 5, 0xffb060);
       const k = this.hear(x, z);
       if (k > 0.1) ctx.fx.shake(0.15 + 0.5 * k);
-      // Debris chunks in the rival's paint + dark metal.
-      for (let i = 0; i < 7; i++) {
-        const mat = i % 2 === 0 ? r.rig.paint.clone() : getDarkMaterial().clone();
-        const mesh = new THREE.Mesh(getDebrisGeometry(), mat);
-        mesh.position.set(x + (Math.random() - 0.5) * 1.5, 1 + Math.random(), z + (Math.random() - 0.5) * 1.5);
+      // Debris chunks in the rival's paint (frozen as it was at the kill) + dark metal: one batch per material.
+      const paintMat = r.rig.paint.clone();
+      const batches: Debris[] = [paintMat, getDebrisDarkMaterial()].map((mat, k) => {
+        const mesh = new THREE.InstancedMesh(getDebrisGeometry(), mat, 4 - k);
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         mesh.castShadow = true;
+        mesh.customDepthMaterial = instancedDepthMaterial();
         this.group.add(mesh);
+        return { mesh, mat: k === 0 ? paintMat : null, chunks: [] };
+      });
+      for (let i = 0; i < 7; i++) {
+        const pos = new THREE.Vector3(x + (Math.random() - 0.5) * 1.5, 1 + Math.random(), z + (Math.random() - 0.5) * 1.5);
         const a = Math.random() * Math.PI * 2;
         const s = 4 + Math.random() * 6;
-        this.debris.push({ mesh, vx: Math.sin(a) * s, vy: 6 + Math.random() * 6, vz: Math.cos(a) * s, rx: (Math.random() - 0.5) * 14, rz: (Math.random() - 0.5) * 14, life: 2.4 + Math.random() });
+        batches[i % 2].chunks.push({ pos, rot: new THREE.Euler(), scale: 1, vx: Math.sin(a) * s, vy: 6 + Math.random() * 6, vz: Math.cos(a) * s, rx: (Math.random() - 0.5) * 14, rz: (Math.random() - 0.5) * 14, life: 2.4 + Math.random() });
       }
+      for (const b of batches) this.writeDebris(b);
+      this.debris.push(...batches);
     }
     this.sfx('explosion', x, z, 0.9);
   }
@@ -1840,29 +1868,50 @@ export class BrawlManager implements BrawlAPI {
 
   private updateDebris(dt: number): void {
     for (let i = this.debris.length - 1; i >= 0; i--) {
-      const d = this.debris[i];
-      d.life -= dt;
-      d.vy -= 22 * dt;
-      d.mesh.position.x += d.vx * dt;
-      d.mesh.position.y += d.vy * dt;
-      d.mesh.position.z += d.vz * dt;
-      if (d.mesh.position.y < 0.15) {
-        d.mesh.position.y = 0.15;
-        d.vy = Math.abs(d.vy) * 0.3;
-        d.vx *= 0.6;
-        d.vz *= 0.6;
-        d.rx *= 0.6;
-        d.rz *= 0.6;
+      const b = this.debris[i];
+      for (let j = b.chunks.length - 1; j >= 0; j--) {
+        const d = b.chunks[j];
+        d.life -= dt;
+        d.vy -= 22 * dt;
+        d.pos.x += d.vx * dt;
+        d.pos.y += d.vy * dt;
+        d.pos.z += d.vz * dt;
+        if (d.pos.y < 0.15) {
+          d.pos.y = 0.15;
+          d.vy = Math.abs(d.vy) * 0.3;
+          d.vx *= 0.6;
+          d.vz *= 0.6;
+          d.rx *= 0.6;
+          d.rz *= 0.6;
+        }
+        d.rot.x += d.rx * dt;
+        d.rot.z += d.rz * dt;
+        if (d.life < 0.5) d.scale = Math.max(0.01, d.life / 0.5);
+        if (d.life <= 0) b.chunks.splice(j, 1);
       }
-      d.mesh.rotation.x += d.rx * dt;
-      d.mesh.rotation.z += d.rz * dt;
-      if (d.life < 0.5) d.mesh.scale.setScalar(Math.max(0.01, d.life / 0.5));
-      if (d.life <= 0) {
-        this.group.remove(d.mesh);
-        (d.mesh.material as THREE.Material).dispose();
+      if (b.chunks.length) this.writeDebris(b);
+      else {
+        this.disposeDebris(b);
         this.debris.splice(i, 1);
       }
     }
+  }
+
+  /** Upload a debris batch's live chunks (same transform maths as a plain mesh's position / rotation / scale). */
+  private writeDebris(b: Debris): void {
+    for (let j = 0; j < b.chunks.length; j++) {
+      const d = b.chunks[j];
+      b.mesh.setMatrixAt(j, _m.compose(d.pos, _q.setFromEuler(d.rot), _v.setScalar(d.scale)));
+    }
+    b.mesh.count = b.chunks.length;
+    b.mesh.instanceMatrix.needsUpdate = true;
+    b.mesh.computeBoundingSphere();
+  }
+
+  private disposeDebris(b: Debris): void {
+    this.group.remove(b.mesh);
+    b.mesh.dispose();
+    b.mat?.dispose();
   }
 
   /* ================================================================== visuals */
@@ -1896,15 +1945,15 @@ export class BrawlManager implements BrawlAPI {
     rig.body.rotation.x += (slamK - rig.body.rotation.x) * Math.min(1, dt * 18);
     // Wheels.
     r.wheelSpin += r.speed * dt;
-    for (let i = 0; i < rig.wheels.length; i++) rig.wheels[i].rotation.x = r.wheelSpin / rig.wheelR[i];
-    // Held ball.
+    rig.setWheelSpin(r.wheelSpin);
+    // Held ball (in front of the blade, root space; drawn by syncBalls).
     const br = r.ballR;
-    rig.ball.visible = br > 0.15;
-    if (rig.ball.visible) {
-      rig.ball.scale.setScalar(br);
-      rig.ball.position.set(0, br - r.position.y + 0.02, BLADE_Z + br);
+    r.ballOn = br > 0.15;
+    if (r.ballOn) {
       r.ballSpin += (r.speed * dt) / Math.max(0.2, br);
-      rig.ball.rotation.x = r.ballSpin;
+      _e.set(r.ballSpin, 0, 0);
+      _v.set(0, br - r.position.y + 0.02, BLADE_Z + br);
+      r.ballLocal.compose(_v, _q.setFromEuler(_e), _v2.setScalar(br));
     }
     // Glow: slam wind-up / bounty.
     const bounty = r.f.entry.streak >= 5;
@@ -1934,6 +1983,32 @@ export class BrawlManager implements BrawlAPI {
     r.tag.set(r.hp / r.maxHp, r.f.entry.streak, r.protectT > 0);
     r.tag.place(r.position.x, r.position.y + top, r.position.z, _cam);
     if (r.bubble.t > 0) r.bubble.place(r.position.x, r.position.y + top + 2.4, r.position.z, _cam);
+  }
+
+  /** Pack the held balls of every shown rival into the instanced ball mesh. Runs after animate, and again when a
+   *  wreck hides a rival later in the frame (combat damage), so it always matches the rivals' visibility. */
+  private syncBalls(): void {
+    if (!this.balls || this.balls.instanceMatrix.count < this.rivals.length) {
+      if (this.balls) {
+        this.group.remove(this.balls);
+        this.balls.dispose();
+      }
+      this.balls = createRivalBalls(Math.max(8, this.rivals.length));
+      this.group.add(this.balls);
+    }
+    const balls = this.balls;
+    let n = 0;
+    for (const r of this.rivals) {
+      if (!r.alive || !r.ballOn || !r.rig.root.visible) continue;
+      r.rig.root.updateMatrix();
+      balls.setMatrixAt(n++, _m.multiplyMatrices(r.rig.root.matrix, r.ballLocal));
+    }
+    balls.count = n;
+    balls.visible = n > 0;
+    if (n > 0) {
+      balls.instanceMatrix.needsUpdate = true;
+      balls.computeBoundingSphere();
+    }
   }
 
   /** VOLT-9 rival: pulsing coils, idle arcs between them, and the Thunderclap telegraph (growing ground ring +

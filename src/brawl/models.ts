@@ -3,6 +3,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { getSnowballGeometry, getSnowballMaterial } from '../entities/snowballMesh';
 import type { PlowKind } from '../config/plows';
 import { PLOW_WHEEL_POS, PLOW_WHEEL_R, buildBruteParts, buildVoltParts, cleatZ } from '../entities/plowModels';
+import { makeShadowProxy, type ShadowProxy } from '../render/shadowProxy';
+import { Palette, paletteEligible } from '../render/palette';
+import { bakeGeometry, mergeBaked } from '../render/mergeStatic';
 
 /* Procedural rival snowplow vehicles for Brawl mode. All face local +Z, ground at y = 0.
  * Static parts of each kind are merged per material ONCE (cached); instances share those geometries and
@@ -39,6 +42,44 @@ function shared(key: MatKey): THREE.MeshStandardMaterial {
   return m;
 }
 
+/* Static looks (every shared material, no per-rival state) collapse into palette materials (src/render/palette.ts):
+ * one draw per shading mode instead of one per material. The instanced wheels get their own palette so no
+ * material is drawn both instanced and plain (that would switch its program on every rival). */
+const PALETTES = new Map<string, Palette>();
+function palette(use: 'body' | 'wheel', flatShading: boolean): Palette {
+  const key = `${use}|${flatShading}`;
+  let p = PALETTES.get(key);
+  if (!p) PALETTES.set(key, (p = new Palette({ flatShading })));
+  return p;
+}
+
+/** Material.id (creation order; not in the typings). */
+const matId = (m: THREE.Material) => (m as unknown as { id: number }).id;
+
+/** Merge static parts (each with its own eligible material) into palette geometries, one per shading mode. */
+function paletteParts(list: { geo: THREE.BufferGeometry; mat: THREE.MeshStandardMaterial }[]): { geo: THREE.BufferGeometry; mat: THREE.Material }[] {
+  const by = new Map<Palette, THREE.BufferGeometry[]>();
+  // In material-id order: the order the separate draws had, so coincident depths resolve the same way.
+  for (const { geo, mat } of [...list].sort((a, b) => matId(a.mat) - matId(b.mat))) {
+    const pal = palette('body', mat.flatShading);
+    let a = by.get(pal);
+    if (!a) by.set(pal, (a = []));
+    a.push(pal.apply(bakeGeometry(geo, _ident, ['position', 'normal']), mat));
+    geo.dispose();
+  }
+  const out: { geo: THREE.BufferGeometry; mat: THREE.Material }[] = [];
+  for (const [pal, geos] of by) for (const geo of mergeBaked(geos, pal.material)) out.push({ geo, mat: pal.material });
+  return out;
+}
+
+let instDepth: THREE.MeshDepthMaterial | null = null;
+/** Depth material for instanced casters: the same as the renderer's default one, but kept apart so the shadow
+ *  pass doesn't switch the default's program between instanced and plain casters on every rival. */
+export function instancedDepthMaterial(): THREE.MeshDepthMaterial {
+  if (!instDepth) instDepth = new THREE.MeshDepthMaterial();
+  return instDepth;
+}
+
 /* ------------------------------------------------------------------ geometry helpers */
 
 const _m = new THREE.Matrix4();
@@ -46,6 +87,7 @@ const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
 const _s = new THREE.Vector3(1, 1, 1);
+const _ident = new THREE.Matrix4();
 
 function place(g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): THREE.BufferGeometry {
   _e.set(rx, ry, rz);
@@ -69,11 +111,14 @@ interface WheelSpec {
 }
 
 interface KindTemplate {
-  parts: { geo: THREE.BufferGeometry; key: MatKey }[];
+  /** Merged per material; `mat` is set for palette parts (key unused there). */
+  parts: { geo: THREE.BufferGeometry; key: MatKey; mat?: THREE.Material }[];
   wheels: WheelSpec[];
   /** Top of the vehicle (tags float above). */
   height: number;
   beacon: [number, number, number];
+  /** Depth-only caster for every static body part (built with the first rig, cloned per rig). */
+  shadow?: ShadowProxy[];
 }
 
 const TEMPLATES = new Map<RivalKind, KindTemplate>();
@@ -90,7 +135,12 @@ function wheelGeo(r: number, w: number): THREE.BufferGeometry {
   hubs.push(box(w + 0.06, r * 1.5, r * 0.18, 0, 0, 0));
   hubs.push(box(w + 0.06, r * 0.18, r * 1.5, 0, 0, 0));
   const hub = mergeGeometries(hubs)!;
-  g = mergeGeometries([tire, hub], true)!;
+  // Black tire + steel hub on the wheel palette: one draw.
+  const pal = palette('wheel', true);
+  g = mergeGeometries([pal.apply(tire, shared('black')), pal.apply(hub, shared('steel'))])!;
+  tire.dispose();
+  hub.dispose();
+  for (const x of hubs) x.dispose();
   WHEEL_GEOS.set(key, g);
   return g;
 }
@@ -261,12 +311,17 @@ function buildTemplate(kind: RivalKind): KindTemplate {
     a.push(p.geo);
   }
   const merged: KindTemplate['parts'] = [];
+  const statics: { geo: THREE.BufferGeometry; mat: THREE.MeshStandardMaterial }[] = [];
   for (const [key, list] of byKey) {
     const g = mergeGeometries(list)!;
-    g.computeBoundingSphere();
-    merged.push({ geo: g, key });
     for (const x of list) x.dispose();
+    if (key !== 'paint' && key !== 'blade' && paletteEligible(shared(key), { side: THREE.FrontSide, flatShading: shared(key).flatShading })) statics.push({ geo: g, mat: shared(key) });
+    else {
+      g.computeBoundingSphere();
+      merged.push({ geo: g, key });
+    }
   }
+  for (const p of paletteParts(statics)) merged.push({ geo: p.geo, key: 'dark', mat: p.mat });
   return { parts: merged, wheels, height, beacon };
 }
 
@@ -295,6 +350,7 @@ interface PlowTemplate {
   cleatSpan: number;
   cleatGeo: THREE.BufferGeometry | null;
   cleatMat: THREE.Material | null;
+  shadow?: ShadowProxy[];
 }
 const PLOW_TEMPLATES = new Map<PlowKind, PlowTemplate>();
 
@@ -372,6 +428,16 @@ function buildPlowTemplate(kind: 'volt' | 'brute'): PlowTemplate {
     g.computeBoundingSphere();
     parts.push({ geo: g, slot: key === 'blade' ? 'blade' : null, mat: shared(key), shadow: true });
   }
+  // Every static look without a per-rival slot goes onto the palettes.
+  const statics: { geo: THREE.BufferGeometry; mat: THREE.MeshStandardMaterial }[] = [];
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if (p.slot === null && p.shadow && paletteEligible(p.mat, { side: THREE.FrontSide, flatShading: (p.mat as THREE.MeshStandardMaterial).flatShading })) {
+      statics.unshift({ geo: p.geo, mat: p.mat as THREE.MeshStandardMaterial });
+      parts.splice(i, 1);
+    }
+  }
+  for (const p of paletteParts(statics)) parts.push({ geo: p.geo, slot: null, mat: p.mat, shadow: true });
   const wheels: WheelSpec[] =
     kind === 'volt'
       ? PLOW_WHEEL_POS.map(([x, z]) => ({ x: x * PM_SCALE, y: PLOW_WHEEL_R * PM_SCALE, z: z * PM_SCALE + PM_Z, r: PLOW_WHEEL_R * PM_SCALE, w: 0.42 * PM_SCALE }))
@@ -397,9 +463,8 @@ export interface RivalRig {
   root: THREE.Group;
   /** Holds the vehicle; rotated for whirl spins / tilts. */
   body: THREE.Group;
-  wheels: THREE.Mesh[];
-  wheelR: number[];
-  ball: THREE.Mesh;
+  /** Roll every wheel to `spin` (m travelled; each wheel turns spin / r about its axle). */
+  setWheelSpin(spin: number): void;
   tornado: THREE.Mesh;
   /** Ground glow under the rival (slam wind-up / bounty). */
   glow: THREE.Mesh;
@@ -435,6 +500,7 @@ export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 
   const coilTops: THREE.Object3D[] = [];
   let coilMat: THREE.MeshStandardMaterial | null = null;
   let cleatMesh: THREE.InstancedMesh | null = null;
+  const parts: THREE.Mesh[] = [];
   if (pt) {
     if (plow === 'volt') coilMat = new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x2fb8ff, emissiveIntensity: 1.5, roughness: 0.3, metalness: 0.4 });
     for (const p of pt.parts) {
@@ -442,6 +508,7 @@ export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 
       const mesh = new THREE.Mesh(p.geo, m);
       mesh.castShadow = p.shadow;
       body.add(mesh);
+      parts.push(mesh);
     }
     for (const v of pt.coilTops) {
       const o = new THREE.Object3D();
@@ -457,12 +524,18 @@ export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 
     }
   } else {
     for (const p of (t as KindTemplate).parts) {
-      const m = p.key === 'paint' ? paint : p.key === 'blade' ? blade : shared(p.key);
+      const m = p.mat ?? (p.key === 'paint' ? paint : p.key === 'blade' ? blade : shared(p.key));
       const mesh = new THREE.Mesh(p.geo, m);
       mesh.castShadow = true;
       body.add(mesh);
+      parts.push(mesh);
     }
   }
+  // The body parts only move with the body, so their shadow is one depth draw (the per-material meshes stop
+  // casting; the proxy geometry is shared by every rig of this template). Wheels and the ball cast themselves.
+  if (!t.shadow) t.shadow = makeShadowProxy(parts, body);
+  else for (const m of parts) m.castShadow = false;
+  for (const sp of t.shadow) body.add(sp.clone());
   const setTrackPhase = (phase: number) => {
     if (!cleatMesh || !pt) return;
     for (let i = 0; i < pt.cleats.length; i++) {
@@ -473,26 +546,39 @@ export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 
     cleatMesh.instanceMatrix.needsUpdate = true;
   };
   setTrackPhase(0);
-  const wheels: THREE.Mesh[] = [];
-  const wheelR: number[] = [];
-  const wheelMats = [shared('black'), shared('steel')];
+  // Wheels: one InstancedMesh per wheel size, rolled by setWheelSpin.
+  const wheelSets: { mesh: THREE.InstancedMesh; specs: WheelSpec[] }[] = [];
   for (const w of t.wheels) {
-    const mesh = new THREE.Mesh(wheelGeo(w.r, w.w), wheelMats);
-    mesh.position.set(w.x, w.y, w.z);
-    mesh.castShadow = true;
-    body.add(mesh);
-    wheels.push(mesh);
-    wheelR.push(w.r);
+    let set = wheelSets.find((ws) => ws.specs[0].r === w.r && ws.specs[0].w === w.w);
+    if (!set) wheelSets.push((set = { mesh: null!, specs: [] }));
+    set.specs.push(w);
   }
+  for (const ws of wheelSets) {
+    ws.mesh = new THREE.InstancedMesh(wheelGeo(ws.specs[0].r, ws.specs[0].w), palette('wheel', true).material, ws.specs.length);
+    ws.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    ws.mesh.castShadow = true;
+    ws.mesh.customDepthMaterial = instancedDepthMaterial();
+    body.add(ws.mesh);
+  }
+  const setWheelSpin = (spin: number) => {
+    for (const ws of wheelSets) {
+      for (let i = 0; i < ws.specs.length; i++) {
+        const w = ws.specs[i];
+        _e.set(spin / w.r, 0, 0);
+        _q.setFromEuler(_e);
+        _p.set(w.x, w.y, w.z);
+        ws.mesh.setMatrixAt(i, _cm.compose(_p, _q, _s));
+      }
+      ws.mesh.instanceMatrix.needsUpdate = true;
+    }
+  };
+  setWheelSpin(0);
+  // Each wheel only turns about its own centre, so the instance bounds never change.
+  for (const ws of wheelSets) ws.mesh.computeBoundingSphere();
   if (!beaconGeo) beaconGeo = new THREE.CylinderGeometry(0.13, 0.16, 0.2, 10);
   const bm = new THREE.Mesh(beaconGeo, beacon);
   bm.position.set(t.beacon[0], t.beacon[1], t.beacon[2]);
   body.add(bm);
-
-  const ball = new THREE.Mesh(getSnowballGeometry(), getSnowballMaterial());
-  ball.castShadow = true;
-  ball.visible = false;
-  root.add(ball);
 
   if (!tornadoGeo) {
     tornadoGeo = new THREE.CylinderGeometry(4.2, 1.4, 3.4, 18, 3, true);
@@ -516,9 +602,7 @@ export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 
   return {
     root,
     body,
-    wheels,
-    wheelR,
-    ball,
+    setWheelSpin,
     tornado,
     glow,
     glowMat,
@@ -537,8 +621,27 @@ export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 
       glowMat.dispose();
       coilMat?.dispose();
       cleatMesh?.dispose();
+      for (const ws of wheelSets) ws.mesh.dispose();
     },
   };
+}
+
+/* ------------------------------------------------------------------ held snowballs */
+
+let ballMat: THREE.MeshStandardMaterial | null = null;
+
+/** Every rival's held snowball in one InstancedMesh (BrawlManager writes one root-space matrix per visible ball).
+ *  Same look as the shared snowball, with its own material so the player's plain ball mesh never flips the
+ *  shared material's program between instanced and plain. */
+export function createRivalBalls(capacity: number): THREE.InstancedMesh {
+  if (!ballMat) ballMat = getSnowballMaterial().clone();
+  const balls = new THREE.InstancedMesh(getSnowballGeometry(), ballMat, capacity);
+  balls.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  balls.castShadow = true;
+  balls.customDepthMaterial = instancedDepthMaterial();
+  balls.count = 0;
+  balls.visible = false;
+  return balls;
 }
 
 /* ------------------------------------------------------------------ debris + cocoa */
@@ -548,13 +651,17 @@ export function getDebrisGeometry(): THREE.BufferGeometry {
   if (!debrisGeo) debrisGeo = new THREE.BoxGeometry(0.45, 0.3, 0.55);
   return debrisGeo;
 }
-export function getDarkMaterial(): THREE.MeshStandardMaterial {
-  return shared('dark');
+let debrisDark: THREE.MeshStandardMaterial | null = null;
+/** Dark-metal debris look (shared dark, as its own material: debris chunks are instanced). Shared — do not dispose. */
+export function getDebrisDarkMaterial(): THREE.MeshStandardMaterial {
+  if (!debrisDark) debrisDark = shared('dark').clone();
+  return debrisDark;
 }
 
 let cocoaParts: { geo: THREE.BufferGeometry; mat: THREE.Material }[] | null = null;
 let cocoaHaloGeo: THREE.BufferGeometry | null = null;
 let cocoaHaloMat: THREE.MeshBasicMaterial | null = null;
+let cocoaShadow: ShadowProxy[] | null = null;
 
 /** Glowing hot cocoa mug (heals). Shared geometry/materials. Returns { root, spin, halo }. */
 export function createCocoa(): { root: THREE.Group; spin: THREE.Group; halo: THREE.Mesh } {
@@ -584,15 +691,23 @@ export function createCocoa(): { root: THREE.Group; spin: THREE.Group; halo: THR
     cocoaHaloGeo = new THREE.RingGeometry(0.7, 1.4, 28);
     cocoaHaloGeo.rotateX(-Math.PI / 2);
     cocoaHaloMat = new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    // A flat ring: one pass draws exactly what the back + front passes would (no extra draw / program switch).
+    cocoaHaloMat.forceSinglePass = true;
   }
   const root = new THREE.Group();
   const spin = new THREE.Group();
   root.add(spin);
+  const parts: THREE.Mesh[] = [];
   for (const p of cocoaParts) {
     const m = new THREE.Mesh(p.geo, p.mat);
     m.castShadow = true;
     spin.add(m);
+    parts.push(m);
   }
+  // The mug parts cast as one depth-only proxy (geometry shared by every mug).
+  if (!cocoaShadow) cocoaShadow = makeShadowProxy(parts, spin);
+  else for (const m of parts) m.castShadow = false;
+  for (const sp of cocoaShadow) spin.add(sp.clone());
   spin.scale.setScalar(1.3);
   const halo = new THREE.Mesh(cocoaHaloGeo!, cocoaHaloMat!);
   halo.position.y = 0.08;
