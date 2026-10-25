@@ -1874,7 +1874,7 @@ export class Plow implements PlowAPI {
     if (this.kind === 'isotope') {
       const ready = this.ctx.combat?.flameReady ?? 1;
       const flick = ready < 1 ? 0.5 + 0.5 * Math.sin(this.time * 25) : 0.5 + 0.5 * Math.sin(this.time * 3);
-      this.coreMat.emissiveIntensity = 0.45 + flick * (ready < 1 ? 0.25 : 0.45);
+      this.coreMat.emissiveIntensity = 1.1 + flick * (ready < 1 ? 0.3 : 0.9);
       this.beaconLight.intensity = 2.5 + flick * 3;
     }
     if (this.kind === 'volt') {
