@@ -258,6 +258,45 @@ describe('save export / import', () => {
     expect('vitality' in p.data.upgrades).toBe(false);
   });
 
+  it('round-trips meta progression fields (cosmetics, stars, hard clears, achievements, lifetime, daily)', () => {
+    const p = new Progression();
+    p.data.cosmetics = { owned: ['paint.frost'], equipped: { paint: 'paint.frost' } };
+    p.data.challenges = { yard: ['yard.untouchable', 'yard.speed'] };
+    p.data.hardCleared = { yard: true };
+    p.data.achievements = { firstBlood: 1 };
+    p.data.lifetime = { slams: 42, playTime: 3600 };
+    p.data.dailyBest = { '2026-10-25': 7 };
+    const code = p.exportSave();
+    const q = new Progression();
+    expect(q.importSave(code).ok).toBe(true);
+    expect(q.data.cosmetics).toEqual(p.data.cosmetics);
+    expect(q.data.challenges).toEqual(p.data.challenges);
+    expect(q.data.hardCleared).toEqual({ yard: true });
+    expect(q.data.achievements).toEqual({ firstBlood: 1 });
+    expect(q.data.lifetime).toEqual({ slams: 42, playTime: 3600 });
+    expect(q.data.dailyBest).toEqual({ '2026-10-25': 7 });
+  });
+
+  it('drops malformed meta progression fields on import', () => {
+    const p = new Progression();
+    const bad = {
+      version: 1, coins: 10, upgrades: {}, unlockedZones: 1, zones: {},
+      cosmetics: { owned: ['ok', 5, null, 'ok'], equipped: { paint: 7, trail: 'trail.fire' } },
+      challenges: { yard: 'nope', junkyard: ['a', 3] },
+      hardCleared: { yard: 'yes', bowl: true },
+      achievements: { a: 5, b: 'x', c: -2 },
+      lifetime: { slams: NaN, kills: 12.7 },
+      dailyBest: { d: 1e9 },
+    };
+    expect(p.importSave(JSON.stringify(bad)).ok).toBe(true);
+    expect(p.data.cosmetics).toEqual({ owned: ['ok'], equipped: { trail: 'trail.fire' } });
+    expect(p.data.challenges).toEqual({ yard: [], junkyard: ['a'] });
+    expect(p.data.hardCleared).toEqual({ bowl: true });
+    expect(p.data.achievements).toEqual({ a: 1, c: 0 });
+    expect(p.data.lifetime).toEqual({ kills: 12 });
+    expect(p.data.dailyBest).toEqual({ d: 9999 });
+  });
+
   it('falls back to a fresh save on corrupted storage', () => {
     store.set(SAVE_KEY, '{not json');
     const p = new Progression();

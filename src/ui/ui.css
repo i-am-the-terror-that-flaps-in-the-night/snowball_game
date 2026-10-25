@@ -269,7 +269,9 @@
 }
 .ss-tagline { margin: 14px 0 16px; font-weight: 700; font-size: 16px; color: var(--ink-soft); font-style: italic; }
 .ss-menu-coins { margin-bottom: 20px; }
-.ss-menu-btns { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.ss-menu-btns { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+/* Secondary menu rows (modes, shops, info, settings): compact so the whole menu fits a 720px-tall window. */
+.ss-menu-row > .ss-btn { font-size: 15px; padding: 11px 12px; border-radius: 16px; }
 .ss-menu-btns > .ss-btn { width: 100%; }
 .ss-menu-row { display: flex; gap: 12px; }
 .ss-menu-row > .ss-btn { flex: 1; }
@@ -1078,10 +1080,15 @@
   .ss-bc-row { gap: 8px; }
 }
 @media (max-height: 760px) {
-  .ss-menu-panel { padding: 26px 30px 20px; }
-  .ss-title-a { font-size: 44px; }
-  .ss-title-b { font-size: 60px; }
-  .ss-menu-btns { gap: 10px; }
+  .ss-menu-panel { padding: 20px 30px 16px; }
+  .ss-title-a { font-size: 40px; }
+  .ss-title-b { font-size: 54px; }
+  .ss-tagline { margin: 8px 0 10px; }
+  .ss-menu-coins { margin-bottom: 12px; }
+  .ss-menu-btns { gap: 8px; }
+  .ss-menu-btns > .ss-big { font-size: 21px; padding: 13px 30px; }
+  .ss-menu-row > .ss-btn { padding: 9px 12px; }
+  .ss-menu-stats { margin-top: 12px; }
   .ss-zone { min-height: 300px; }
 }
 @media (prefers-reduced-motion: reduce) {
