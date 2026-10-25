@@ -22,7 +22,8 @@ import { renderDailyResult, renderDailyShopTag } from './DailyResult';
 import {
   HARD, earnedIds, hardCleared, hardReward, hardUnlocked, lastChallengeReport, maxStars, starReward, zoneChallenges, zoneStars,
 } from '../meta/challenges';
-import { totalStars } from '../meta/progress';
+import { achievementCount, totalStars } from '../meta/progress';
+import { ACHIEVEMENTS } from '../config/achievements';
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
 
@@ -413,7 +414,8 @@ export class UI implements UIAPI {
     const bm = p.data.brawlMatches ?? 0;
     this.menuStats.textContent =
       `🏆 Arenas cleared ${cleared}/${ZONES.length}  ·  🤖 ${fmt(p.data.totalKills)} bots scrapped` +
-      (bm > 0 ? `  ·  🥇 Brawl wins ${fmt(bw)}/${fmt(bm)}` : '');
+      (bm > 0 ? `  ·  🥇 Brawl wins ${fmt(bw)}/${fmt(bm)}` : '') +
+      `  ·  🏅\u00a0${achievementCount(p)}/${ACHIEVEMENTS.length}`;
     const sb = survivalBest(p);
     this.survivalBtn.innerHTML = survivalUnlocked(p)
       ? `♾ SURVIVAL${sb > 0 ? ` <small>best wave ${sb}</small>` : ''}`

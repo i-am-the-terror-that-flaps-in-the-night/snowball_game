@@ -1,0 +1,94 @@
+/* ------------------------------------------------------------ trophies overlay (achievements + stats) */
+.ss-trophies { z-index: 45; }
+.ss-tro-panel { width: min(1100px, 100%); height: min(860px, 100%); padding-bottom: 20px; }
+
+/* header: X / Y unlocked + progress bar */
+.ss-tro-summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px 16px; margin: 6px 4px 12px; }
+.ss-tro-count { font-family: var(--display); font-weight: 900; font-size: 18px; color: var(--ink-soft); white-space: nowrap; }
+.ss-tro-count b { font-size: 28px; color: var(--orange-dark); }
+.ss-tro-count span { font-size: 12px; letter-spacing: 0.1em; margin-left: 4px; }
+.ss-tro-bar, .ss-tro-pbar { position: relative; height: 14px; border-radius: 999px; overflow: hidden; background: rgba(120, 160, 200, 0.22); box-shadow: inset 0 1px 3px rgba(40, 80, 120, 0.25); }
+.ss-tro-bar > i, .ss-tro-pbar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; background: linear-gradient(180deg, #ffe680, var(--gold) 55%, #f0a500); box-shadow: 0 0 10px rgba(255, 190, 40, 0.6); transition: width 0.5s ease; }
+.ss-tro-coins { font-size: 13px; font-weight: 800; color: var(--ink-soft); white-space: nowrap; }
+.ss-tro-badge { background: var(--gold); color: #7a4a00; box-shadow: 0 2px 0 #d39a00; }
+
+.ss-tro-body { flex: 1; min-height: 0; overflow-y: auto; margin-top: 12px; padding: 4px 8px 10px 2px; scrollbar-width: thin; scrollbar-color: rgba(80, 140, 200, 0.5) transparent; }
+.ss-tro-cat { margin-bottom: 18px; }
+.ss-tro-cat-count { order: 2; margin-left: 8px; padding: 1px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.7); font-size: 12px; letter-spacing: 0.04em; color: var(--ink-soft); }
+.ss-tro-cat .ss-cat-title::after { order: 1; }
+
+/* achievement cards */
+.ss-tro-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.ss-tro-card {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(232, 243, 252, 0.7));
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 3px 0 rgba(120, 175, 220, 0.45), 0 6px 12px rgba(30, 80, 140, 0.08);
+  outline: none;
+}
+.ss-tro-card:focus-visible, .ss-tro-sec:focus-visible { outline: 4px solid rgba(255, 200, 60, 0.95); outline-offset: 2px; }
+.ss-tro-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 25px;
+  background: linear-gradient(160deg, #eef3f8, #cfdbe6);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.8), 0 3px 0 #a9b8c6;
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+.ss-tro-info { min-width: 0; }
+.ss-tro-name { font-family: var(--display); font-weight: 900; font-size: 15px; color: var(--ink-soft); }
+.ss-tro-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.3; margin-top: 2px; }
+.ss-tro-prog { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ss-tro-pbar { flex: 1; height: 8px; }
+.ss-tro-pbar > i { background: linear-gradient(180deg, #8fd0ff, #3fa7f0); box-shadow: 0 0 6px rgba(63, 167, 240, 0.5); }
+.ss-tro-pval { font-size: 11.5px; font-weight: 900; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ss-tro-reward { align-self: start; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 900; color: #8a6a20; background: rgba(255, 233, 166, 0.55); white-space: nowrap; }
+.ss-tro-card.secret .ss-tro-name { letter-spacing: 0.2em; }
+
+/* unlocked: gold card, full-color icon */
+.ss-tro-card.got { background: linear-gradient(180deg, rgba(255, 252, 235, 0.97), rgba(255, 238, 192, 0.9)); border-color: #fff6d6; box-shadow: 0 3px 0 #e8b93a, 0 8px 16px rgba(200, 140, 0, 0.16); }
+.ss-tro-card.got .ss-tro-icon { filter: none; opacity: 1; background: linear-gradient(160deg, #fff4c2, #ffd45c); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.85), 0 3px 0 #d39a00; }
+.ss-tro-card.got .ss-tro-name { color: var(--ink); }
+.ss-tro-card.got .ss-tro-desc { color: #6d5a2c; }
+.ss-tro-card.got .ss-tro-reward { color: #fff; background: linear-gradient(180deg, #6ee69a, #2fb85f); box-shadow: 0 2px 0 #1d7a40; }
+
+/* stats page */
+.ss-tro-pane-stats:not(.hidden) { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 14px; align-items: start; }
+.ss-tro-sec {
+  padding: 12px 14px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: inset 0 0 0 1.5px rgba(150, 200, 240, 0.45);
+  outline: none;
+}
+.ss-tro-sec .ss-cat-title { margin-top: 0; }
+.ss-tro-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 8px; }
+.ss-tro-stat { padding: 9px 6px 8px; border-radius: 14px; text-align: center; background: rgba(255, 255, 255, 0.75); box-shadow: inset 0 2px 0 #fff, 0 3px 0 rgba(120, 175, 220, 0.45); }
+.ss-tro-stat-icon { font-size: 18px; line-height: 1; }
+.ss-tro-stat-val { font-family: var(--display); font-weight: 900; font-size: 19px; margin-top: 3px; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ss-tro-stat-label { font-size: 10.5px; font-weight: 800; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+
+.ss-tro-stat-sub { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
+
+.ss-tro-foot { margin-top: 14px; }
+
+@media (max-width: 760px) {
+  .ss-tro-panel { padding: 22px 16px 18px; }
+  .ss-tro-summary { grid-template-columns: auto 1fr; }
+  .ss-tro-coins { grid-column: 1 / -1; text-align: center; }
+  .ss-tro-grid { grid-template-columns: 1fr; }
+  .ss-tro-pane-stats:not(.hidden) { grid-template-columns: 1fr; }
+  .ss-tro-stats { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+  .ss-tro-stat-val { font-size: 16px; }
+  .ss-tro-foot .ss-foot-hint { display: none; }
+  .ss-tro-tabs .ss-tab-label { display: inline; }
+}
