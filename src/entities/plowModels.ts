@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { FxAPI } from '../core/types';
 import type { PlowKind } from '../config/plows';
 import type { DecalStyle, TrailDef } from '../config/cosmetics';
+import { mergeStatic } from '../render/mergeStatic';
 
 /* Starter-plow silhouettes shared by the player's Plow and Brawl rival rigs (src/brawl/models.ts).
  * Model layout (local, facing +Z, ground at y = 0) matches the player plow: chassis at y ~0.62, wheels at
@@ -29,6 +30,33 @@ export function hazardTexture(): THREE.CanvasTexture {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/* Every three.js object draws a UUID from Math.random, and gameplay / scenery randomness shares that stream (the
+ * render probe seeds it). The merge passes allocate extra geometries and meshes, so they run on a private stream, and
+ * parts the old one-mesh-per-part build made but the merged build doesn't are paid for with skipUuids(). */
+let rngState = 0x5eed9a3b;
+function privateRandom(): number {
+  rngState = (rngState + 0x6d2b79f5) | 0;
+  let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+/** Run `fn` without consuming the global Math.random stream. */
+export function offStream<T>(fn: () => T): T {
+  const random = Math.random;
+  Math.random = privateRandom;
+  try {
+    return fn();
+  } finally {
+    Math.random = random;
+  }
+}
+
+/** Advance Math.random as `n` three.js object constructions would (4 draws per UUID). */
+export function skipUuids(n: number): void {
+  for (let i = 0; i < n * 4; i++) Math.random();
 }
 
 /** Wheel radius / track layout of the shared chassis. */
@@ -309,12 +337,14 @@ export function buildBuzzsaw(): Buzzsaw {
   }
   // Teeth: glowing raked wedges around the rim.
   const TEETH = 20;
+  const teeth: THREE.Mesh[] = [];
   for (let i = 0; i < TEETH; i++) {
     const a = (i / TEETH) * Math.PI * 2;
     const t = new THREE.Mesh(k.toothGeo, k.tooth);
     t.position.set(Math.cos(a) * (R - 0.04), 0, Math.sin(a) * (R - 0.04));
     t.rotation.y = -a - 0.35;
     rotor.add(t);
+    teeth.push(t);
   }
   // Spin blur: a faint glowing ring just past the teeth.
   const blur = new THREE.Mesh(new THREE.RingGeometry(R * 0.8, R + 0.24, 40), k.blur);
@@ -338,6 +368,12 @@ export function buildBuzzsaw(): Buzzsaw {
   arm.position.set(-0.42, 0.12, -0.25);
   arm.rotation.y = 0.5;
   group.add(arm);
+  // Static sub-parts share draws: the two faces inside the rotor, the hub + arm on the mount. (The teeth stay
+  // separate: their flat sides are coplanar with the disc faces, and merging them would flip that depth tie.)
+  offStream(() => {
+    mergeStatic(rotor, { keep: teeth });
+    mergeStatic(group, { keep: [rotor] });
+  });
   return { group, rotor, halo };
 }
 
@@ -648,6 +684,8 @@ export function buildDecals(kind: PlowKind, style: DecalStyle, mat: THREE.MeshSt
       group.add(holder);
     }
   }
+  // All spots share `mat`: one draw (the emptied holders are dropped).
+  if (offStream(() => mergeStatic(group)).meshes.length) for (const h of group.children.filter((o) => !(o as THREE.Mesh).isMesh)) group.remove(h);
   return group;
 }
 
