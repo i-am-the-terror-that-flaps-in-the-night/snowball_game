@@ -88,14 +88,24 @@ function probeInit() {
   window.requestAnimationFrame = (cb) => (rafQ.set(++rafId, cb), rafId);
   window.cancelAnimationFrame = (id) => void rafQ.delete(id);
   // Seeded Math.random (mulberry32), reseeded at the start of every scene.
+  // three.js draws every uuid (Object3D / Material / BufferGeometry / Texture) from Math.random. Those calls get their
+  // own stream and are not counted, so building fewer (merged) objects doesn't shift the gameplay RNG.
   let s = 0x2f6b1d3a;
+  let su = 0x51ed270b;
   let calls = 0;
-  Math.random = () => {
-    calls++;
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+  const mb32 = (x) => {
+    let t = Math.imul(x ^ (x >>> 15), 1 | x);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  Math.random = () => {
+    const lim = Error.stackTraceLimit;
+    Error.stackTraceLimit = 2;
+    const stack = new Error().stack;
+    Error.stackTraceLimit = lim;
+    if (stack.includes('generateUUID')) return mb32((su = (su + 0x6d2b79f5) | 0));
+    calls++;
+    return mb32((s = (s + 0x6d2b79f5) | 0));
   };
 
   const r3 = (v) => Math.round(v * 1000) / 1000;
@@ -293,6 +303,7 @@ function probeInit() {
       game.renderer.setAnimationLoop(null);
       document.getElementById('ui').style.display = 'none';
       s = 0x2f6b1d3a;
+      su = 0x51ed270b;
       calls = 0;
       SCENES[name]();
       return fingerprint();
