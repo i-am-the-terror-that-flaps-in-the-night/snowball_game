@@ -16,7 +16,7 @@ import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
 import {
   buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
-  FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR, offStream, skipUuids, PLOW_WHEEL_POS,
+  FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS,
 } from './plowModels';
 import type { CosmeticSlot } from '../config/cosmetics';
 import { bakeGeometry, mergeBaked, mergeStatic } from '../render/mergeStatic';
@@ -390,11 +390,9 @@ export class Plow implements PlowAPI {
     this.beaconSpinner.add(reflector);
     // Static bodywork: one mesh per material + shadow flags. The pop-off parts stay separate.
     // Shadows: one depth-only proxy for the whole body (chassis included), one for the stack + cap (it pops off).
-    offStream(() => {
-      mergeStatic(cp, { keep: [stack, mirrorL, mirrorR, this.beacon] });
-      cp.add(...makeShadowProxy(cp, cp, { keep: [stack, mirrorL, mirrorR, this.beacon] }));
-      stack.add(...makeShadowProxy(stack, stack));
-    });
+    mergeStatic(cp, { keep: [stack, mirrorL, mirrorR, this.beacon] });
+    cp.add(...makeShadowProxy(cp, cp, { keep: [stack, mirrorL, mirrorR, this.beacon] }));
+    stack.add(...makeShadowProxy(stack, stack));
     this.body.add(cp);
 
     // Dash / wreck flame (out of the stack on the Classic; moved per plow in setKind).
@@ -408,18 +406,15 @@ export class Plow implements PlowAPI {
     const volt = buildVoltParts({ paint: this.paintMat, coil: this.coilMat });
     this.voltParts = volt.group;
     // The coil top spheres merge with the rest of the coil material; empty markers keep the arc endpoints.
-    this.coilTops = offStream(() => {
-      add(chassisGeo, darkMat, 0, 0.62, 0.05, this.voltParts);
-      const tops = volt.coilTops.map((top) => {
-        const o = new THREE.Object3D();
-        o.position.copy(top.position);
-        top.parent!.add(o);
-        return o;
-      });
-      mergeStatic(this.voltParts);
-      this.voltParts.add(...makeShadowProxy(this.voltParts, this.voltParts));
-      return tops;
+    add(chassisGeo, darkMat, 0, 0.62, 0.05, this.voltParts);
+    this.coilTops = volt.coilTops.map((top) => {
+      const o = new THREE.Object3D();
+      o.position.copy(top.position);
+      top.parent!.add(o);
+      return o;
     });
+    mergeStatic(this.voltParts);
+    this.voltParts.add(...makeShadowProxy(this.voltParts, this.voltParts));
     this.underglowMat = volt.underglowMat;
     this.voltParts.visible = false;
     this.body.add(this.voltParts);
@@ -431,19 +426,17 @@ export class Plow implements PlowAPI {
     this.cleatSpan = brute.cleatSpan;
     // Cleats -> one InstancedMesh (own copy of the iron material, so the merged iron parts never switch to the
     // instanced program and back every frame). Stack caps move up to the group so the stacks merge too.
-    offStream(() => {
-      const bp = this.bruteParts;
-      add(chassisGeo, darkMat, 0, 0.62, 0.05, bp);
-      const c0 = this.cleats[0].mesh;
-      this.cleatMesh = new THREE.InstancedMesh(c0.geometry, (c0.material as THREE.Material).clone(), this.cleats.length);
-      this.cleatMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      this.cleatMesh.frustumCulled = false;
-      for (const c of this.cleats) c.mesh.removeFromParent();
-      for (const o of [...bp.children]) if ((o as THREE.Mesh).isMesh) for (const ch of [...o.children]) bp.attach(ch);
-      mergeStatic(bp);
-      bp.add(...makeShadowProxy(bp, bp));
-      bp.add(this.cleatMesh);
-    });
+    const bp = this.bruteParts;
+    add(chassisGeo, darkMat, 0, 0.62, 0.05, bp);
+    const c0 = this.cleats[0].mesh;
+    this.cleatMesh = new THREE.InstancedMesh(c0.geometry, (c0.material as THREE.Material).clone(), this.cleats.length);
+    this.cleatMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.cleatMesh.frustumCulled = false;
+    for (const c of this.cleats) c.mesh.removeFromParent();
+    for (const o of [...bp.children]) if ((o as THREE.Mesh).isMesh) for (const ch of [...o.children]) bp.attach(ch);
+    mergeStatic(bp);
+    bp.add(...makeShadowProxy(bp, bp));
+    bp.add(this.cleatMesh);
     this.setCleats(0);
     this.bruteParts.visible = false;
     this.body.add(this.bruteParts);
@@ -459,39 +452,36 @@ export class Plow implements PlowAPI {
     const hubGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.44, 8);
     hubGeo.rotateZ(Math.PI / 2);
     const treadGeo = new THREE.BoxGeometry(0.44, 0.1, 0.16);
-    skipUuids(4 * 9); // the four wheel groups (group + tire + hub + 6 treads) this replaces
-    offStream(() => {
-      const treads: THREE.BufferGeometry[] = [];
-      for (let i = 0; i < 6; i++) {
-        const tr = new THREE.Object3D();
-        const a = (i / 6) * Math.PI * 2;
-        tr.position.set(0, Math.sin(a) * WHEEL_R, Math.cos(a) * WHEEL_R);
-        tr.rotation.x = -a;
-        tr.updateMatrix();
-        treads.push(bakeGeometry(treadGeo, tr.matrix));
-      }
-      const treadsGeo = mergeBaked(treads, rubberMat)[0];
-      const matrices = new THREE.InstancedBufferAttribute(new Float32Array(4 * 16), 16);
-      matrices.setUsage(THREE.DynamicDrawUsage);
-      for (const [geo, mat, cast] of [[tireGeo, rubberMat, true], [treadsGeo, rubberMat, false], [hubGeo, hubMat, false]] as const) {
-        const m = new THREE.InstancedMesh(geo, mat, 4);
-        m.instanceMatrix = matrices;
-        m.castShadow = cast;
-        this.body.add(m);
-        this.wheelMeshes.push(m);
-      }
-      for (const i of [0, 3]) {
-        const w = new THREE.Group();
-        w.position.set(PLOW_WHEEL_POS[i][0], WHEEL_R, PLOW_WHEEL_POS[i][1]);
-        w.rotation.order = 'YXZ';
-        const t = new THREE.Mesh(tireGeo, rubberMat);
-        t.castShadow = true;
-        w.add(t, new THREE.Mesh(hubGeo, hubMat), new THREE.Mesh(treadsGeo, rubberMat));
-        w.visible = false;
-        this.body.add(w);
-        this.wheelDebris.push(w);
-      }
-    });
+    const treads: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 6; i++) {
+      const tr = new THREE.Object3D();
+      const a = (i / 6) * Math.PI * 2;
+      tr.position.set(0, Math.sin(a) * WHEEL_R, Math.cos(a) * WHEEL_R);
+      tr.rotation.x = -a;
+      tr.updateMatrix();
+      treads.push(bakeGeometry(treadGeo, tr.matrix));
+    }
+    const treadsGeo = mergeBaked(treads, rubberMat)[0];
+    const matrices = new THREE.InstancedBufferAttribute(new Float32Array(4 * 16), 16);
+    matrices.setUsage(THREE.DynamicDrawUsage);
+    for (const [geo, mat, cast] of [[tireGeo, rubberMat, true], [treadsGeo, rubberMat, false], [hubGeo, hubMat, false]] as const) {
+      const m = new THREE.InstancedMesh(geo, mat, 4);
+      m.instanceMatrix = matrices;
+      m.castShadow = cast;
+      this.body.add(m);
+      this.wheelMeshes.push(m);
+    }
+    for (const i of [0, 3]) {
+      const w = new THREE.Group();
+      w.position.set(PLOW_WHEEL_POS[i][0], WHEEL_R, PLOW_WHEEL_POS[i][1]);
+      w.rotation.order = 'YXZ';
+      const t = new THREE.Mesh(tireGeo, rubberMat);
+      t.castShadow = true;
+      w.add(t, new THREE.Mesh(hubGeo, hubMat), new THREE.Mesh(treadsGeo, rubberMat));
+      w.visible = false;
+      this.body.add(w);
+      this.wheelDebris.push(w);
+    }
     this.writeWheels();
     // Spin and steer turn each wheel about its centre, so these spheres never go stale.
     for (const m of this.wheelMeshes) m.computeBoundingSphere();
@@ -519,13 +509,12 @@ export class Plow implements PlowAPI {
       bandGeo.translate(0, 0.72, R - 0.05);
       this.bruteBlade.add(new THREE.Mesh(bandGeo, bandMat));
     }
-    offStream(() => mergeStatic(this.bruteBlade));
+    mergeStatic(this.bruteBlade);
     this.bruteBlade.visible = false;
     this.bladeSheet.add(this.bruteBlade);
     // Blade-side hazard caps (rebuilt at the blade ends in setBladeWidth). They used to be two meshes.
     this.capGeo = new THREE.BoxGeometry(0.08, 1.2, 0.5);
-    skipUuids(2);
-    this.bladeCaps = offStream(() => new THREE.Mesh(new THREE.BufferGeometry(), redMat));
+    this.bladeCaps = new THREE.Mesh(new THREE.BufferGeometry(), redMat);
     this.bladeCaps.castShadow = true;
     this.bladeGroup.add(this.bladeCaps);
     // BRUTUS Buzzsaws (shown only with the upgrade; repositioned in setBladeWidth).
@@ -547,7 +536,7 @@ export class Plow implements PlowAPI {
     ram.position.set(0, 1.0, -0.3);
     this.bladeGroup.add(ram);
     // The two arms share a draw; the sheet, caps and saws move with the blade width.
-    this.bladeArms = offStream(() => mergeStatic(this.bladeGroup, { keep: [this.bladeSheet, this.bladeCaps, ...this.saws.map((s) => s.group)] })).meshes[0];
+    this.bladeArms = mergeStatic(this.bladeGroup, { keep: [this.bladeSheet, this.bladeCaps, ...this.saws.map((s) => s.group)] }).meshes[0];
     this.bladeGroup.position.set(0, 0, BLADE_Z - 0.1);
     this.body.add(this.bladeGroup);
 
@@ -956,16 +945,16 @@ export class Plow implements PlowAPI {
     this.bladeSheet.scale.x = w;
     if (w !== this.capsWidth) {
       this.capsWidth = w;
-      const parts = offStream(() => [-w / 2, w / 2].map((x) => bakeGeometry(this.capGeo, _m.makeTranslation(x, 0.7, 0.1))));
+      const parts = [-w / 2, w / 2].map((x) => bakeGeometry(this.capGeo, _m.makeTranslation(x, 0.7, 0.1)));
       this.bladeCaps.geometry.dispose();
-      this.bladeCaps.geometry = offStream(() => mergeBaked(parts, this.bladeCaps.material as THREE.Material))[0];
+      this.bladeCaps.geometry = mergeBaked(parts, this.bladeCaps.material as THREE.Material)[0];
       // The caps + arms cast through one proxy (the sheet keeps its own: it is double-sided and scales with w).
       this.bladeCaps.castShadow = this.bladeArms.castShadow = true;
       if (this.bladeProxy) {
         this.bladeProxy.removeFromParent();
         this.bladeProxy.geometry.dispose();
       }
-      this.bladeProxy = offStream(() => makeShadowProxy([this.bladeCaps, this.bladeArms], this.bladeGroup))[0];
+      this.bladeProxy = makeShadowProxy([this.bladeCaps, this.bladeArms], this.bladeGroup)[0];
       this.bladeGroup.add(this.bladeProxy);
     }
     // Mounted high (~1.3 m world) so the flat saws ride above the snow and the berms the blade pushes aside.
