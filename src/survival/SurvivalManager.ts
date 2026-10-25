@@ -4,13 +4,22 @@ import type { RoundDef, SpawnGroup } from '../config/zones';
 import { ZONES } from '../config/zones';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import type { PlayerStats } from '../core/types';
-import type { DailySpec } from '../meta/daily';
+import { cooldown } from '../config/upgrades';
+import {
+  DAILY_COIN_MULT, dailyBest, dailyModifier, mulberry32, recordDaily, setActiveDaily,
+  type DailyModifierId, type DailySpec,
+} from '../meta/daily';
 
 /* SURVIVAL: endless post-campaign mode in one arena. Each wave is generated into a one-round ZoneDef
  * (zone.rounds[0]) so the regular WaveDirector / EnemyManager run it unchanged; per-wave scaling is
  * written onto that zone (enemyHpMult for bot hp incl. summons, coinMult for kill coins, enemyDmgMult
  * for bot hits on the plow). Every BOSS_EVERY-th wave is a boss wave cycling through the campaign bosses.
- * Game owns the flow (countdown -> playing -> cleared -> breather countdown ...). */
+ * Game owns the flow (countdown -> playing -> cleared -> breather countdown ...).
+ *
+ * DAILY: reset(spec) turns the run into the day's Daily (meta/daily.ts): wave generation draws from a
+ * seeded rng instead of Math.random (same day = same lineup), the day's modifier tweaks the zone, the wave
+ * mix or the player's stats (adjustStats), and the best wave goes to save.dailyBest instead of
+ * survivalBestWave. Every reset rebuilds the zone from the base arena, so nothing leaks between runs. */
 
 /** Every Nth wave is a boss wave. */
 export const BOSS_EVERY = 5;
@@ -47,7 +56,7 @@ export const waveDmgMult = (w: number) => 1 + 0.05 * (w - 1);
 /** Kill-coin multiplier for wave w. */
 export const waveCoinMult = (w: number) => 1 + 0.06 * (w - 1);
 /** Bonus coins for clearing wave w (boss waves pay triple). */
-export const waveClearBonus = (w: number) => Math.round((10 + 6 * w) * (w % BOSS_EVERY === 0 ? 3 : 1));
+export const waveClearBonus = (w: number, bossEvery = BOSS_EVERY) => Math.round((10 + 6 * w) * (w % bossEvery === 0 ? 3 : 1));
 
 /** Coins for the between-wave shop's one-off Full Repair after clearing wave w. */
 export const fullRepairCost = (w: number) => Math.round(30 + 12 * w);
@@ -61,6 +70,56 @@ export function survivalBest(p: Progression): number {
   return p.data.survivalBestWave ?? 0;
 }
 
+/** What a Daily modifier does to the run's bots and arena (NEUTRAL = normal Survival). */
+interface ModEffect {
+  /** Multipliers on the per-wave bot hp / bot damage / kill + wave coins. */
+  hp: number;
+  dmg: number;
+  coins: number;
+  /** Minion spawn budget multiplier and bot cap per wave. */
+  budget: number;
+  maxBots: number;
+  bossEvery: number;
+  /** Extra pool weight per minion type, and minion types allowed from wave 1. */
+  weights: Partial<Record<EnemyType, number>>;
+  early: EnemyType[];
+  /** Zone overrides (snow, fog, sky). */
+  zone: Partial<ZoneDef>;
+}
+
+const NEUTRAL: ModEffect = { hp: 1, dmg: 1, coins: 1, budget: 1, maxBots: MAX_WAVE_BOTS, bossEvery: BOSS_EVERY, weights: {}, early: [], zone: {} };
+
+/** Bot / arena side of each Daily modifier (the player side lives in adjustStats). */
+function modEffect(id: DailyModifierId | null, base: ZoneDef): ModEffect {
+  switch (id) {
+    case 'deepSnow':
+      return { ...NEUTRAL, zone: { snowDepth: base.snowDepth * 1.9, snowRegenMult: base.snowRegenMult * 2.5, snowfall: 0.5 } };
+    case 'swarm':
+      return { ...NEUTRAL, hp: 0.6, coins: 0.7, budget: 1.8, maxBots: 34 };
+    case 'thiefNight':
+      return { ...NEUTRAL, weights: { thief: 4 }, early: ['thief'] };
+    case 'bossRush':
+      return { ...NEUTRAL, bossEvery: 3 };
+    case 'whiteout':
+      return {
+        ...NEUTRAL,
+        zone: { fogNear: 14, fogFar: 62, snowfall: 1, fogColor: 0xe4ecf2, skyTop: 0x9fb0bd, skyBottom: 0xe8eef2, sunIntensity: base.sunIntensity * 0.7 },
+      };
+    case 'heavyHitters':
+      return { ...NEUTRAL, dmg: 1.4, coins: 1.5 };
+    default:
+      return NEUTRAL;
+  }
+}
+
+/** Glass Cannon: player damage x1.5, max HP x0.6. Overclocked: cooldowns x0.7 (still floored at MIN_COOLDOWN). */
+export const GLASS_DMG = 1.5;
+export const GLASS_HP = 0.6;
+export const OVERCLOCK_CD = 0.7;
+
+/** Zone fields Environment.setZone reads; a change needs a world re-dress. */
+const VISUAL_KEYS = ['fogNear', 'fogFar', 'fogColor', 'skyTop', 'skyBottom', 'sunIntensity', 'snowfall'] as const;
+
 export class SurvivalManager {
   private ctx: GameContext;
   /** The survival arena: Frozen Foundry scenery, rounds/multipliers rewritten every wave. */
@@ -69,13 +128,20 @@ export class SurvivalManager {
   wave = 0;
   /** Waves fully cleared this run. */
   cleared = 0;
-  /** Best wave at the start of this run (for "NEW BEST" checks). */
+  /** Today's Daily spec while this run is the Daily (seeded waves + modifier), else null. */
+  daily: DailySpec | null = null;
+  /** Best wave at the start of this run (for "NEW BEST" checks): that day's Daily best on a Daily run. */
   private prevBest = 0;
+  /** Wave-generation rng: seeded on the Daily, Math.random otherwise. */
+  private rng: () => number = Math.random;
+  private fx: ModEffect = NEUTRAL;
+  /** Pristine survival arena; every reset copies it back onto `zone` before applying a modifier. */
+  private readonly base: ZoneDef;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
     const base = ZONES[2];
-    this.zone = {
+    this.base = {
       ...base,
       id: 'survival',
       name: `Survival · ${base.name}`,
@@ -87,41 +153,91 @@ export class SurvivalManager {
       coinMult: 1,
       enemyDmgMult: 1,
     };
+    this.zone = { ...this.base, rounds: [{ groups: [] }] };
   }
 
-  /** Fresh run. */
-  /** Today's Daily spec while this run is the Daily (seeded waves + modifier), else null. */
-  daily: DailySpec | null = null;
-
-  /** Daily modifiers that touch the player (e.g. glass cannon). Called by Game after every computeStats. */
+  /** Daily modifiers that touch the player (Glass Cannon, Overclocked). Called by Game after every computeStats. */
   adjustStats(stats: PlayerStats): void {
-    void stats;
+    const id = this.daily?.modifierId;
+    if (id === 'glassCannon') {
+      stats.maxHp *= GLASS_HP;
+      stats.damageMult *= GLASS_DMG;
+      stats.ramDamage *= GLASS_DMG;
+      stats.whirlDamage *= GLASS_DMG;
+      stats.flameDps *= GLASS_DMG;
+      stats.clapDamage *= GLASS_DMG;
+      stats.poundDamage *= GLASS_DMG;
+      stats.fieldDps *= GLASS_DMG;
+      stats.sawDps *= GLASS_DMG;
+    } else if (id === 'overclocked') {
+      // The listed cooldowns already include Overclock; the slam cooldown reads cooldownMult in Plow.
+      stats.dashCooldown = cooldown(stats.dashCooldown, OVERCLOCK_CD);
+      stats.whirlCooldown = cooldown(stats.whirlCooldown, OVERCLOCK_CD);
+      stats.flameCooldown = cooldown(stats.flameCooldown, OVERCLOCK_CD);
+      stats.clapCooldown = cooldown(stats.clapCooldown, OVERCLOCK_CD);
+      stats.poundCooldown = cooldown(stats.poundCooldown, OVERCLOCK_CD);
+      stats.cooldownMult *= OVERCLOCK_CD;
+    }
   }
 
+  /** Fresh run; `daily` makes it that day's Daily. */
   reset(daily: DailySpec | null = null): void {
+    const { ctx } = this;
     this.daily = daily;
+    setActiveDaily(daily);
     this.wave = 0;
     this.cleared = 0;
-    this.prevBest = survivalBest(this.ctx.progression);
+    this.rng = daily ? mulberry32(daily.seed) : Math.random;
+    const mod = daily ? dailyModifier(daily) : null;
+    this.fx = modEffect(mod?.id ?? null, this.base);
+    this.prevBest = daily ? dailyBest(ctx.progression, daily.key) : survivalBest(ctx.progression);
+
+    // Rebuild the zone from the base arena, then layer the modifier on top.
+    const z = this.zone;
+    const before = VISUAL_KEYS.map((k) => z[k]);
+    Object.assign(z, this.base, { rounds: [{ groups: [] }] }, this.fx.zone);
+    if (mod) {
+      z.name = `DAILY · ${mod.name}`;
+      z.tagline = mod.desc;
+    }
+    // Game's setMode only re-dresses the world on a mode change (with the previous run's values), so a
+    // fog / sky / snowfall change has to be pushed here.
+    if (ctx.zone === z && VISUAL_KEYS.some((k, i) => z[k] !== before[i])) ctx.world?.setZone(z);
+    if (mod) ctx.ui?.toast(`${mod.icon} ${mod.name}: ${mod.desc}`, 'info');
+  }
+
+  /** Big start-of-run toast: 'SURVIVAL', or 'DAILY · DEEP SNOW'. */
+  get title(): string {
+    return this.daily ? `DAILY · ${dailyModifier(this.daily).name.toUpperCase()}` : 'SURVIVAL';
+  }
+
+  /** Waves per boss (Boss Rush shortens it). */
+  get bossEvery(): number {
+    return this.fx.bossEvery;
   }
 
   get isBossWave(): boolean {
-    return this.wave > 0 && this.wave % BOSS_EVERY === 0;
+    return this.wave > 0 && this.wave % this.bossEvery === 0;
   }
 
   /** Boss lineup of the current wave (empty on minion waves). */
   get boss(): { types: EnemyType[]; name: string } | null {
     if (!this.isBossWave) return null;
-    return BOSS_CYCLE[(this.wave / BOSS_EVERY - 1) % BOSS_CYCLE.length];
+    return BOSS_CYCLE[(this.wave / this.bossEvery - 1) % BOSS_CYCLE.length];
+  }
+
+  /** Coin multiplier on top of the wave scaling: the Daily bonus times the modifier's. */
+  get coinBonus(): number {
+    return this.daily ? DAILY_COIN_MULT * this.fx.coins : 1;
   }
 
   /** Advance to the next wave: generate its round and apply scaling. Returns the breather length. */
   nextWave(): number {
     const w = ++this.wave;
     const z = this.zone;
-    z.enemyHpMult = waveHpMult(w);
-    z.enemyDmgMult = waveDmgMult(w);
-    z.coinMult = waveCoinMult(w);
+    z.enemyHpMult = waveHpMult(w) * this.fx.hp;
+    z.enemyDmgMult = waveDmgMult(w) * this.fx.dmg;
+    z.coinMult = waveCoinMult(w) * this.coinBonus;
     const round: RoundDef = this.isBossWave ? this.bossRound(w) : this.minionRound(w);
     z.rounds[0] = round;
     z.bossName = this.boss?.name ?? '';
@@ -133,27 +249,33 @@ export class SurvivalManager {
   waveCleared(): number {
     const { ctx } = this;
     this.cleared = this.wave;
-    const bonus = waveClearBonus(this.wave);
+    const bonus = Math.round(waveClearBonus(this.wave, this.bossEvery) * this.coinBonus);
     ctx.progression.addCoins(bonus);
     const plow = ctx.plow;
     plow.hp = Math.min(plow.maxHp, plow.hp + ctx.stats.repairFraction * WAVE_REPAIR * plow.maxHp);
     return bonus;
   }
 
-  /** Run over: persist the best wave + kills. Returns true on a new record. */
+  /** Run over: persist the best wave (that day's Daily best on a Daily run, else the Survival best; never
+   *  both) + kills. Returns true on a new record for that best. */
   finish(kills: number): boolean {
     const p = this.ctx.progression;
-    const newBest = this.wave > this.prevBest;
-    if (newBest) p.data.survivalBestWave = this.wave;
+    let newBest: boolean;
+    if (this.daily) newBest = recordDaily(p, this.daily.key, this.wave);
+    else {
+      newBest = this.wave > this.prevBest;
+      if (newBest) p.data.survivalBestWave = this.wave;
+    }
     p.data.totalKills += kills;
-    p.save();
+    p.commit();
     return newBest;
   }
 
   /** Lineup name of wave w if it's a boss wave (for the between-wave shop's preview), else null. */
   bossNameFor(w: number): string | null {
-    if (w <= 0 || w % BOSS_EVERY !== 0) return null;
-    return BOSS_CYCLE[(w / BOSS_EVERY - 1) % BOSS_CYCLE.length].name;
+    const every = this.bossEvery;
+    if (w <= 0 || w % every !== 0) return null;
+    return BOSS_CYCLE[(w / every - 1) % BOSS_CYCLE.length].name;
   }
 
   get best(): number {
@@ -168,8 +290,14 @@ export class SurvivalManager {
 
   /** Budget-based mix of the unlocked minion types; faster spawn pacing as waves climb. */
   private minionRound(w: number): RoundDef {
-    let budget = 3 + w * 2.2;
-    const pool = MINIONS.filter((m) => w >= m.from);
+    const fx = this.fx;
+    let budget = (3 + w * 2.2) * fx.budget;
+    // Weighted pool: each unlocked type once, plus the modifier's extra weight (Thief Night stacks thieves).
+    const pool: typeof MINIONS = [];
+    for (const m of MINIONS) {
+      if (w < m.from && !fx.early.includes(m.type)) continue;
+      for (let i = 0; i <= (fx.weights[m.type] ?? 0); i++) pool.push(m);
+    }
     const counts = new Map<EnemyType, number>();
     let n = 0;
     // Always lead with a couple of scrappers so every wave opens with something to hit.
@@ -177,8 +305,8 @@ export class SurvivalManager {
     counts.set('scrapper', lead);
     budget -= lead;
     n += lead;
-    while (budget >= 1 && n < MAX_WAVE_BOTS) {
-      const m = pool[Math.floor(Math.random() * pool.length)];
+    while (budget >= 1 && n < fx.maxBots) {
+      const m = pool[Math.floor(this.rng() * pool.length)];
       if (m.cost > budget) {
         budget -= 0.5; // can't afford it: burn a bit so the loop always ends
         continue;
@@ -187,7 +315,7 @@ export class SurvivalManager {
       budget -= m.cost;
       n++;
     }
-    const pace = Math.max(0.55, 2.4 - w * 0.08);
+    const pace = Math.max(0.55, 2.4 - w * 0.08) / Math.sqrt(fx.budget);
     const groups: SpawnGroup[] = [];
     let delay = 0;
     for (const [type, count] of counts) {
@@ -202,7 +330,7 @@ export class SurvivalManager {
   private bossRound(w: number): RoundDef {
     const b = this.boss!;
     const groups: SpawnGroup[] = b.types.map((type, i) => ({ type, count: 1, delay: 1 + i * 0.5, interval: 1 }));
-    const lap = Math.floor((w / BOSS_EVERY - 1) / BOSS_CYCLE.length);
+    const lap = Math.floor((w / this.bossEvery - 1) / BOSS_CYCLE.length);
     if (lap > 0) {
       groups.push({ type: 'scrapper', count: 2 + lap * 2, delay: 6, interval: 1.5 });
       if (lap > 1) groups.push({ type: 'spinner', count: lap, delay: 12, interval: 3 });
