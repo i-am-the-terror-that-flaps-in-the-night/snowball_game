@@ -1198,6 +1198,10 @@ export class Plow implements PlowAPI {
           _b.y = 0.6;
           ctx.fx.burst(_a, { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 });
           ctx.fx.burst(_b, { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 });
+          if (Math.random() < dt * 30) {
+            ctx.fx.smoke(_a, { count: 1, color: 0xe2ecf8, size: 0.45, grow: 3.4, life: 0.8, speed: 2.5, up: 1.5, rise: -1, drag: 2.4, spread: 0.3, opacity: 0.5 });
+            ctx.fx.smoke(_b, { count: 1, color: 0xe2ecf8, size: 0.45, grow: 3.4, life: 0.8, speed: 2.5, up: 1.5, rise: -1, drag: 2.4, spread: 0.3, opacity: 0.5 });
+          }
         }
         if (plowIntensity > 0.02) {
           _a.y = snow.getDepth(_a.x, _a.z) + 0.3;
@@ -1273,6 +1277,8 @@ export class Plow implements PlowAPI {
     this.getForward(_fwd);
     _c.set(this.position.x - _fwd.x * REAR_Z, 0.5, this.position.z - _fwd.z * REAR_Z);
     ctx.fx.burst(_c, { color: 0xffffff, count: 30, speed: 8, size: 0.26, gravity: 14, life: 0.7 });
+    _dir.set(-_fwd.x * 6, 0.6, -_fwd.z * 6);
+    ctx.fx.smoke(_c, { count: 12, color: 0xe2ecf8, size: 0.5, grow: 3.4, life: 1.1, speed: 3, up: 1.2, rise: -0.8, drag: 2.2, spread: 0.8, opacity: 0.6, dir: _dir });
     _c.y = 0.05;
     ctx.fx.ring(_c, 2.6, 0xffb060);
     this.exhaustWorld(_c);
@@ -1534,8 +1540,10 @@ export class Plow implements PlowAPI {
     ctx.fx.burst(_c, { color: 0xffd23a, count: 24, speed: 13, size: 0.1, gravity: 22, life: 0.5 });
     ctx.fx.burst(_c, { color: 0x26262b, count: 30, speed: 4, size: 0.6, gravity: -3, life: 1.8 });
     ctx.fx.burst(_c, { color: 0x8c96a4, count: 14, speed: 8, size: 0.2, gravity: 22, life: 1.0 });
+    ctx.fx.fireball(_c, 1.3);
     _c.y = 0;
     ctx.fx.ring(_c, 5, 0xff7a1a);
+    ctx.fx.scorch(_c, 3);
 
     // Wheels 0 and 3 fly off: their stand-ins take over the pose and the instances go away.
     this.wheelDebris.forEach((w, k) => {

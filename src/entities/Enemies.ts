@@ -43,6 +43,8 @@ interface Debris {
   sx: number;
   sy: number;
   sz: number;
+  /** Trails smoke while airborne (every other chunk). */
+  smoke: boolean;
   active: boolean;
 }
 
@@ -768,8 +770,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     fx.burst(_v, { color: 0xffffff, count: Math.round(22 * big), speed: 6 * Math.sqrt(big), size: 0.3 * big, gravity: 12, life: 1.0 });
     fx.burst(_v, { color: 0xffa23a, count: Math.round(14 * big), speed: 10 * Math.sqrt(big), size: 0.1, gravity: 16, life: 0.45 });
     fx.burst(_v, { color: 0x3a3a40, count: Math.round(8 * big), speed: 3, size: 0.4 * big, gravity: -3, life: 1.2 });
+    fx.fireball(_v, (0.6 + e.radius * 0.4) * big);
     _v.y = e.groundY + 0.1;
     fx.ring(_v, e.radius * 2.5, 0xffd27a);
+    fx.scorch(_v, (1.2 + e.radius * 1.1) * big);
+    fx.smolder(_v, { scale: (0.6 + e.radius * 0.35) * big, seconds: e.isBoss ? 3 : 2.5 });
     if (e.isBoss) {
       fx.ring(_v, e.radius * 4.5, def.color);
       _v.y = e.groundY + h * 0.8;
@@ -985,6 +990,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       d.ry = (Math.random() - 0.5) * 14;
       d.rz = (Math.random() - 0.5) * 14;
       d.life = 1.6 + Math.random() * 1.4;
+      d.smoke = (i & 1) === 0;
       d.active = true;
     }
     this.syncDebris();
@@ -993,7 +999,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private acquireDebris(): Debris | null {
     for (const d of this.debris) if (!d.active) return d;
     if (this.debris.length >= MAX_DEBRIS) return null;
-    const d: Debris = { obj: new THREE.Object3D(), geo: debrisGeometry(0), mat: debrisMaterials('scrapper')[0], vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, life: 0, sx: 1, sy: 1, sz: 1, active: false };
+    const d: Debris = { obj: new THREE.Object3D(), geo: debrisGeometry(0), mat: debrisMaterials('scrapper')[0], vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, life: 0, sx: 1, sy: 1, sz: 1, smoke: false, active: false };
     this.debris.push(d);
     return d;
   }
@@ -1024,6 +1030,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       m.rotation.x += d.rx * dt;
       m.rotation.y += d.ry * dt;
       m.rotation.z += d.rz * dt;
+      // Burning chunks trail smoke while they fly.
+      if (d.smoke && d.life > 0.9 && Math.random() < dt * 9) {
+        this.ctx.fx.smoke(m.position, { count: 1, color: 0x2a2a2e, size: 0.22 + d.sx * 0.3, grow: 3, life: 0.9, speed: 0.3, up: 0.4, rise: 0.8, drag: 1.5, spread: 0, opacity: 0.55 });
+      }
       if (d.life < 0.5) {
         const k = d.life / 0.5;
         m.scale.set(d.sx * k, d.sy * k, d.sz * k);
