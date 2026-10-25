@@ -14,7 +14,12 @@ import type { Combat } from './Combat';
 import { getSnowballGeometry, getSnowballMaterial } from './snowballMesh';
 import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
-import { buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R } from './plowModels';
+import {
+  buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
+  FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR,
+} from './plowModels';
+import type { CosmeticSlot } from '../config/cosmetics';
+import { cosmeticsState, resolveLook, type EquippedLook } from '../meta/cosmetics';
 
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
 const BLADE_Z = 2.35;
@@ -58,6 +63,10 @@ const INPUT_BUFFER = 0.2;
 const MAX_GHOSTS = 8;
 const MAX_STREAKS = 40;
 const STREAK_LIFE = 0.24;
+/** Cosmetic trail: seconds between puffs while cruising / dashing, and the speed it starts at. */
+const TRAIL_EVERY = 0.07;
+const TRAIL_EVERY_DASH = 0.025;
+const TRAIL_MIN_SPEED = 2.5;
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -281,6 +290,16 @@ export class Plow implements PlowAPI {
   private plowSmooth = 0;
   private time = 0;
   private wreckT = 0;
+  // ---- Paint Shop cosmetics (meta/cosmetics.ts): equipped look, overridden per slot while the shop previews an item.
+  private look!: EquippedLook;
+  private lookKey = '';
+  private decalKey = '';
+  private preview: Partial<Record<CosmeticSlot, string>> = {};
+  private decals: THREE.Group | null = null;
+  private decalMat = new THREE.MeshStandardMaterial({
+    roughness: 0.5, metalness: 0.1, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+  });
+  private trailT = 0;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -544,6 +563,9 @@ export class Plow implements PlowAPI {
 
     ctx.scene.add(this.object);
     this.applyStats(ctx.stats);
+    // Paint Shop look: applied now and re-checked on every save change (buy / equip / import / reset).
+    this.syncLook(true);
+    ctx.progression.onChange(() => this.syncLook());
     this.reset();
   }
 
@@ -681,6 +703,7 @@ export class Plow implements PlowAPI {
     this.body.visible = true;
     this.paintMat.color.copy(this.paintBase);
     this.bedMat.color.copy(this.bedBase);
+    this.decalMat.color.setRGB(1, 1, 1);
     this.paintMat.emissiveIntensity = 0;
     this.bedMat.emissiveIntensity = 0;
     this.headMat.emissiveIntensity = 1.6;
@@ -709,10 +732,8 @@ export class Plow implements PlowAPI {
     this.kind = kind;
     const volt = kind === 'volt';
     const brute = kind === 'brute';
-    this.paintBase.setHex(volt ? 0x1f5fe0 : brute ? 0x7d8794 : 0xff7a1a);
-    this.bedBase.setHex(volt ? 0x18213a : brute ? 0x4a525d : 0xffb21f);
-    this.paintMat.color.copy(this.paintBase);
-    this.bedMat.color.copy(this.bedBase);
+    // Body paint + decals follow the Paint Shop look (factory colours unless a paint is equipped).
+    this.syncLook(true);
     this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : 0xffd23a);
     this.steelMat.emissive.setHex(volt ? 0x1a8cff : 0x000000);
     this.steelMat.emissiveIntensity = volt ? 0.6 : 0;
@@ -739,6 +760,91 @@ export class Plow implements PlowAPI {
     this.engineTip.set(0, brute ? 2.0 : 1.6, brute ? -1.0 : 1.7);
     this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : 2.8, volt ? 0 : brute ? 1.4 : 0.8);
     this.applyBladeScale();
+  }
+
+  /* ------------------------------------------------------------------ cosmetics */
+
+  /** Re-read the equipped Paint Shop look (+ any shop preview) and repaint / re-decal if it changed. Player plow
+   *  only: Brawl rivals and campaign bots build their own materials. */
+  private syncLook(force = false): void {
+    const look = resolveLook({ ...cosmeticsState(this.ctx.progression).equipped, ...this.preview });
+    const key = `${this.kind}|${look.paint.id}|${look.decal.id}|${look.trail.id}`;
+    if (!force && key === this.lookKey) return;
+    this.lookKey = key;
+    this.look = look;
+    // Paint: body panels everywhere, the Classic's dump bed as trim. Accents (VOLT glow, BRUTUS hazard stripes,
+    // blade, hubs) keep their own materials.
+    const f = FACTORY_PAINT[this.kind];
+    const p = look.paint;
+    this.paintBase.setHex(p.body ?? f.body);
+    this.bedBase.setHex(p.trim ?? f.trim);
+    this.paintMat.metalness = p.metalness ?? 0.15;
+    this.paintMat.roughness = p.roughness ?? 0.45;
+    this.bedMat.metalness = p.metalness ?? 0.1;
+    this.bedMat.roughness = p.roughness ?? 0.5;
+    if (!this._dead) {
+      this.paintMat.color.copy(this.paintBase);
+      this.bedMat.color.copy(this.bedBase);
+    }
+    // Decal: rebuilt only when the style or the plow body changes.
+    const decalKey = `${this.kind}|${look.decal.style ?? ''}`;
+    if (decalKey !== this.decalKey) {
+      this.decalKey = decalKey;
+      if (this.decals) {
+        this.body.remove(this.decals);
+        const geos = new Set<THREE.BufferGeometry>();
+        this.decals.traverse((o) => o instanceof THREE.Mesh && geos.add(o.geometry));
+        for (const g of geos) g.dispose();
+        this.decals = null;
+      }
+      if (look.decal.style) {
+        this.decals = buildDecals(this.kind, look.decal.style, this.decalMat);
+        this.body.add(this.decals);
+      }
+    }
+  }
+
+  /** Paint Shop: try an item on (null = back to the equipped one for that slot). */
+  previewCosmetic(slot: CosmeticSlot, id: string | null): void {
+    if (id) this.preview[slot] = id;
+    else delete this.preview[slot];
+    this.syncLook();
+  }
+
+  clearPreview(): void {
+    this.preview = {};
+    this.syncLook();
+  }
+
+  /** Paint Shop backdrop: turn the parked plow on the spot to `yaw` (rad, relative to its heading); `trail` also
+   *  runs its cosmetic trail as if cruising. */
+  showcase(yaw: number, dt: number, trail: boolean): void {
+    this.object.rotation.set(0, this.heading + yaw, 0);
+    this.time += dt;
+    if (trail) this.emitTrail(dt, false);
+  }
+
+  /** Back to the parked pose after the Paint Shop closes. */
+  endShowcase(): void {
+    this.object.rotation.set(0, this.heading, 0);
+  }
+
+  /** Cosmetic trail puffs from both rear corners (throttled; denser while dashing). */
+  private emitTrail(dt: number, dash: boolean): void {
+    const trail = this.look.trail;
+    if (!trail.style) return;
+    this.trailT -= dt;
+    if (this.trailT > 0) return;
+    this.trailT = dash ? TRAIL_EVERY_DASH : TRAIL_EVERY;
+    const r = TRAIL_REAR[this.kind];
+    const yaw = this.object.rotation.y;
+    const s = Math.sin(yaw);
+    const c = Math.cos(yaw);
+    for (const sx of [-1, 1]) {
+      const x = r.x * sx;
+      _c.set(this.position.x + x * c + r.z * s, this.position.y + r.y, this.position.z - x * s + r.z * c);
+      emitTrail(this.ctx.fx, trail, _c, dash, this.time + (sx > 0 ? 0.15 : 0));
+    }
   }
 
   /** BRUTUS gets a taller, deeper blade (re-applied after a reset, since the wreck pops restore part scales). */
@@ -949,6 +1055,7 @@ export class Plow implements PlowAPI {
 
     // ---- visuals
     this.updateVisuals(dt, turn, throttle);
+    if (this.dashT > 0 || Math.abs(this.speed) > TRAIL_MIN_SPEED) this.emitTrail(dt, this.dashT > 0);
   }
 
   /* ------------------------------------------------------------------ abilities */
@@ -1319,6 +1426,7 @@ export class Plow implements PlowAPI {
     const ch = Math.min(1, this.wreckT * 2.5) * 0.8;
     this.paintMat.color.lerpColors(this.paintBase, this.charColor, ch);
     this.bedMat.color.lerpColors(this.bedBase, this.charColor, ch * 0.85);
+    this.decalMat.color.setScalar(1 - ch * 0.85);
     this.flash = Math.max(0, this.flash - dt * 3);
     this.paintMat.emissiveIntensity = this.flash * 1.4 + 0.25 * (0.5 + 0.5 * Math.sin(this.time * 23));
     this.bedMat.emissiveIntensity = this.flash * 1.4;
