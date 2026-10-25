@@ -41,9 +41,11 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 
 ## Modes
 
-- **Campaign** — five walled arenas. Each is a few rounds of bot minions (scrappers, brute dozers, buzzsaws,
+- **Campaign** — six walled arenas. Each is a few rounds of bot minions (scrappers, brute dozers, buzzsaws,
   snow thieves) and then a bot boss with telegraphed attacks: BULLDOZA, FROSTBYTE, THE GRINDER, SLUSH & SLEET,
-  and MEGAPLOW Ω. Beating a boss unlocks the next arena. Every arena has **3 challenge stars** and, once cleared,
+  MEGAPLOW Ω and, at the Golden Tower Plaza rally, THE DONALD (a gold-and-white caricature plow in a red cap:
+  it builds snow-brick walls you smash with slams or dashes, deports you to the far edge with a tractor beam,
+  rallies a ring of red-cap bots at its podium, and goes GOLD PLATED at half HP). Beating a boss unlocks the next arena. Every arena has **3 challenge stars** and, once cleared,
   a **Hard mode** (see Meta progression).
 - **Snowdome Brawl** — a 180 m free-for-all against 8 named rival plows that hunt everyone, including each other.
   Kill streaks multiply your coins (×1.5 → ×4), shutting down a streak pays a bounty, and placement pays a bonus.
@@ -66,13 +68,13 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 
 ## Meta progression
 
-- **Challenge stars** — 3 per arena (15 total): slam kills, ball size, clear times, combos, damage limits,
+- **Challenge stars** — 3 per arena (18 total): slam kills, ball size, clear times, combos, damage limits,
   boss-fight speed and a few plow-specific goals. They're judged on any winning run (normal or Hard), shown on
-  the arena cards and the results screen, and each new star pays a one-time bonus (+75 to +600 by arena).
+  the arena cards and the results screen, and each new star pays a one-time bonus (+75 to +800 by arena).
 - **Hard mode** — opens once an arena is cleared: ×1.8 bot HP, ×1.5 bot damage, ~35% more minions, same boss,
   ×1.75 coins. The first Hard clear pays 2.5× the arena's clear reward (repeats 0.6×) and earns a 💀 badge on
   its card. Hard clears never change unlocks.
-- **🏆 Trophies** — 47 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Garage & loot) paying
+- **🏆 Trophies** — 49 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Garage & loot) paying
   25–500 coins each, plus a lifetime STATS page. Unlocks are re-checked from the save, so old saves and imports
   get credit for what they've already done. Tutorial fights don't count.
 - **🎨 Paint Shop** — 8 paints, 5 decals, 5 exhaust trails, 6 blade skins, 5 slam horns and 5 kill effects for your plow (all three starter plows), 150–2000
@@ -132,6 +134,7 @@ node scripts/smoke.mjs                 # campaign smoke test + screenshots
 node scripts/combat-probe.mjs          # slam / ram / boss numbers
 node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
 node scripts/meta-probe.mjs            # Paint Shop, Trophies, stars + Hard mode, Daily run + results screens
+node scripts/donald-probe.mjs          # arena 6 + THE DONALD: every attack, phase 2, model / stage / crowd shots
 node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
 ```
 

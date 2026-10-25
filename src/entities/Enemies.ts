@@ -7,6 +7,7 @@ import { HpBars, createRig, debrisGeometry, debrisMaterials, disposeRig, rollWhe
 import { DecalPool } from './enemies/decals';
 import { MINION_AI, aroundAngle, clamp, initAI, orbit, resetAI, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
+import { donaldProps } from './enemies/donaldProps';
 import type { KillSource } from '../core/events';
 
 /* EnemyManager: owns every bot (minions + bosses) of Snowplow Showdown.
@@ -22,7 +23,7 @@ import type { KillSource } from '../core/events';
 const FLASH_T = 0.12;
 const ICE = new THREE.Color(0x8fd0ff);
 const MAX_DEBRIS = 180;
-const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff };
+const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff, donald: 0xffc400 };
 
 const _c = new THREE.Color();
 const _ec = new THREE.Color();
@@ -191,7 +192,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     let vm = 1;
     if (e.stun > 0) vm = Math.max(vm, e.stunMult);
     if (e.vulnT > 0 && e.vuln !== Vuln.None) vm = Math.max(vm, e.vulnMult);
-    dmg *= vm;
+    dmg *= vm * e.dmgTakenMult;
 
     if (opts?.freezeSeconds && opts.freezeSeconds > 0) e.freeze = Math.max(e.freeze, opts.freezeSeconds);
     // Applied after the damage multiplier so the stunning hit itself gets no stun bonus; bosses shrug off half.
@@ -213,6 +214,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     e.hp -= dmg;
     e.flash = FLASH_T;
+    if (e.reflect > 0) e.reflectPool += dmg * e.reflect;
 
     const fx = ctx.fx;
     if (deflect && fx) {
@@ -253,6 +255,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.bossList.length = 0;
     this.syncBars();
     this.decals.clear();
+    donaldProps.clear(this.ctx);
     for (const d of this.debris) d.active = false;
     this.syncDebris();
     this.attackers = 0;
@@ -298,6 +301,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     this.syncBars();
     this.updateDebris(dt);
+    donaldProps.update(this, dt);
     this.decals.update(dt, this.depthFn);
 
     // compact
@@ -424,7 +428,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (!this.plowAlive) return 0;
     const combat = this.ctx.combat;
     if (!combat) return 0;
-    return combat.hitPlow(dmg * (this.ctx.zone.enemyDmgMult ?? 1), opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, {
+    return combat.hitPlow(dmg * e.dmgOutMult * (this.ctx.zone.enemyDmgMult ?? 1), opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, {
       knockback: opts?.knockback,
       unblockable: opts?.unblockable,
     });
@@ -522,6 +526,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       e.taunt = 0;
       const ai = e.isBoss ? BOSS_AI[e.type] : MINION_AI[e.type];
       ai?.(this, e, dt);
+      e.desSpeed *= e.spdMult;
     }
     e.wallHit = false;
 
@@ -543,6 +548,25 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.kvx *= kd;
     e.kvz *= kd;
     this.clampPos(e, true);
+    if (!e.entering && e.type !== 'donald') this.pushOutObstacles(e);
+  }
+
+  /** Solid circle obstacles (THE DONALD's walls / podium; empty in most arenas): push the bot out. */
+  private pushOutObstacles(e: Bot): void {
+    const obs = this.ctx.world?.obstacles;
+    if (!obs || obs.length === 0) return;
+    const p = e.position;
+    for (let i = 0; i < obs.length; i++) {
+      const o = obs[i];
+      const dx = p.x - o.x;
+      const dz = p.z - o.z;
+      const min = o.r + e.radius;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= min * min) continue;
+      const d = Math.sqrt(d2) || 1e-3;
+      p.x = o.x + (dx / d) * min;
+      p.z = o.z + (dz / d) * min;
+    }
   }
 
   private clampPos(e: Bot, detect: boolean): void {

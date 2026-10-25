@@ -183,6 +183,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     id, name, icon, reward, desc: `Scrap ${bossName(type)}.`, category: 'bosses', goal: 1, value: (p) => life(p, lifeBoss(type)),
   })),
   { id: 'boss_twins', name: 'Sibling Rivalry', desc: 'Scrap both SLUSH and SLEET.', icon: '☯️', category: 'bosses', goal: 1, reward: 150, value: (p) => Math.min(life(p, lifeBoss('slush')), life(p, lifeBoss('sleet'))) },
+  { id: 'boss_donald', name: "You're Fired!", desc: `Scrap ${bossName('donald')} at Golden Tower Plaza.`, icon: '🍊', category: 'bosses', goal: 1, reward: 300, value: (p) => life(p, lifeBoss('donald')) },
+  { id: 'hard_donald', name: 'Hard Deal', desc: `Clear ${ZONES[5].name} on Hard.`, icon: '🏛️', category: 'campaign', goal: 1, reward: 400, value: (p) => (p.data.hardCleared?.[ZONES[5].id] === true ? 1 : 0) },
   { id: 'boss_omega', name: 'Ω-mega Ouch', desc: `Scrap ${bossName('omega')}, the final machine.`, icon: '💀', category: 'bosses', goal: 1, reward: 250, value: (p) => life(p, lifeBoss('omega')) },
   { id: 'boss_25', name: 'Boss Rush', desc: 'Scrap 25 bosses.', icon: '👑', category: 'bosses', goal: 25, reward: 300, value: (p) => life(p, LIFE.bossKills) },
 

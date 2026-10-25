@@ -89,6 +89,14 @@ export class Bot implements EnemyHandle {
   flash = 0;
   ramCd = 0;
   blockFxT = 0;
+  /** Multiplier on damage taken (THE DONALD's RALLY: 0.4). */
+  dmgTakenMult = 1;
+  /** Fraction of damage taken that is reflected at the plow (GOLD PLATED); queued in reflectPool. */
+  reflect = 0;
+  reflectPool = 0;
+  /** Buffs (RALLY minions): multipliers on outgoing hit damage and desired speed. */
+  dmgOutMult = 1;
+  spdMult = 1;
 
   // --- type specific
   ballVol = 0;

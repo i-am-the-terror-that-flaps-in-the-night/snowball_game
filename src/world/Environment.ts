@@ -5,6 +5,7 @@ import { StaticBatch } from '../render/mergeStatic';
 import { makeShadowProxy } from '../render/shadowProxy';
 import type { ShadowProxy } from '../render/shadowProxy';
 import { ARENA, ENEMY_GATES, GATE_WIDTH } from '../core/types';
+import { getBackdropTex, getBuntingTex, getCarpetTex, getSignAtlas, getUsFlagTex, RALLY_SIGNS, signPlane } from './rallyTextures';
 
 type Theme = ZoneDef['theme'];
 
@@ -65,6 +66,11 @@ const STYLES: Record<Theme, Style> = {
     block: 0xab9cdc, blockAlt: 0x9282cc, trim: 0x2b2440, accents: [0xd24dff, 0x6ff3ff, 0xff7ad9], gate: 0xd24dff,
     stand: 0x3c3453, standAlt: 0x2b2541, tire: 0x1c1a22, lamp: 0xf2dcff, spot: 2000, glow: 0.8, rock: 0x4b4058, mountain: 0x3d3150,
   },
+  // Golden Tower Plaza — THE DONALD's rally: white + gold, red / white / blue, warm stage lights
+  rally: {
+    block: 0xf6f1e4, blockAlt: 0xe9dfc8, trim: 0xc9a227, accents: [0xc8102e, 0x1f3b8c, 0xffffff, 0xf2c033], gate: 0xffc233,
+    stand: 0xf3efe6, standAlt: 0xc8102e, tire: 0x222429, lamp: 0xffd9a0, spot: 2600, glow: 0.85, rock: 0x8a7a66, mountain: 0x9c8d80,
+  },
   // THE SNOWDOME — colossal free-for-all stadium
   brawl: {
     block: 0x3a4a78, blockAlt: 0x2f3d68, trim: 0x1d2236, accents: [0xff3d7f, 0x22d3ff, 0xffd23a, 0x7cff5a], gate: 0xff3d7f,
@@ -112,6 +118,15 @@ const SPONSORS: [string, string, string][] = [
 /** Omega Summit's core tower (north-west, clear of the jumbotron sightline). */
 const CORE_X = -34;
 const CORE_Z = -92;
+
+/** Golden Tower Plaza: the rally stage spans |x| < STAGE_HALF behind the north wall (over the boss gate's tunnel),
+ *  deck at STAGE_Y; the gold tower looms far to the north-east. */
+const STAGE_HALF = 13;
+const STAGE_Y = 4.75;
+const STAGE_Z0 = -32.3;
+const STAGE_Z1 = -41.4;
+const GOLD_TOWER_X = 38;
+const GOLD_TOWER_Z = -150;
 
 type SideKey = 'n' | 's' | 'w' | 'e';
 interface Side {
@@ -341,6 +356,19 @@ function getChevronTex(): THREE.Texture {
 
 const hexCss = (hex: number) => '#' + hex.toString(16).padStart(6, '0');
 
+/** A w x h flag plane with a baked ripple; hoist edge at x = 0, hanging below y = 0.4 + h / 2 ... centred on y = 0.4. */
+function wavyFlag(w: number, h: number): THREE.BufferGeometry {
+  const g = new THREE.PlaneGeometry(w, h, 10, 1).translate(w / 2, 0.4, 0);
+  const p = g.getAttribute('position');
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    p.setZ(i, Math.sin(x * 4.2) * 0.09 * (x / w));
+    p.setY(i, p.getY(i) - (x / w) * 0.08);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
 /* ---------------------------------------------------------------- environment */
 
 interface GateState {
@@ -415,6 +443,12 @@ export class Environment implements WorldAPI {
   private spinners: { obj: THREE.Object3D; speed: number }[] = [];
   private puffs: { mesh: THREE.InstancedMesh; stacks: { x: number; y: number; z: number; r: number }[]; per: number } | null = null;
   private bobTime = { value: 0 };
+  /** Crowd bob height (the rally crowd cheers harder). */
+  private bobAmp = { value: 0.2 };
+  /** Golden Tower Plaza's red carpet, re-draped over the snow every frame. */
+  /** `nv` = vertex count. */
+  private carpet: { mesh: THREE.Mesh; pos: THREE.BufferAttribute; nv: number } | null = null;
+  private signMat: THREE.MeshStandardMaterial | null = null;
   private dummy = new THREE.Object3D();
   private tmpV = new THREE.Vector3();
   private tmpV2 = new THREE.Vector3();
@@ -610,6 +644,8 @@ export class Environment implements WorldAPI {
     this.spinners.length = 0;
     this.puffs = null;
     this.ticker = null;
+    this.carpet = null;
+    this.signMat = null;
   }
 
   /* ------------------------------------------------------------------ helpers */
@@ -694,13 +730,15 @@ export class Environment implements WorldAPI {
   /** Makes a material bob its vertices up and down per instance (crowds), driven by the shared bobTime uniform. */
   private bobify<T extends THREE.Material>(mat: T): T {
     const u = this.bobTime;
+    const amp = this.bobAmp;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uBobTime = u;
+      shader.uniforms.uBobAmp = amp;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uBobTime;\nattribute float aPhase;')
+        .replace('#include <common>', '#include <common>\nuniform float uBobTime;\nuniform float uBobAmp;\nattribute float aPhase;')
         .replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\ntransformed.y += abs(sin(uBobTime * (3.2 + fract(aPhase) * 2.6) + aPhase)) * 0.2;',
+          '#include <begin_vertex>\ntransformed.y += abs(sin(uBobTime * (3.2 + fract(aPhase) * 2.6) + aPhase)) * uBobAmp;',
         );
     };
     mat.customProgramCacheKey = () => 'crowd-bob';
@@ -728,14 +766,17 @@ export class Environment implements WorldAPI {
     if (!crowd) return;
     const { items, bodyMat, eyeMat } = crowd;
     const white = 0xffffff;
+    const rally = this.zone.theme === 'rally';
     const body = merge([
       colored(new THREE.BoxGeometry(0.46, 0.4, 0.36).translate(0, 0.22, 0), white),
       colored(new THREE.BoxGeometry(0.4, 0.32, 0.34).translate(0, 0.6, 0), white),
       colored(new THREE.BoxGeometry(0.34, 0.13, 0.02).translate(0, 0.62, 0.175), 0x1a1f2b),
-      colored(new THREE.BoxGeometry(0.04, 0.16, 0.04).translate(0, 0.84, 0), 0x50555e),
-      colored(new THREE.BoxGeometry(0.1, 0.1, 0.1).translate(0, 0.95, 0), white),
-      colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(0.4).translate(0.31, 0.56, 0), white),
-      colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(-0.4).translate(-0.31, 0.56, 0), white),
+      ...(rally
+        ? []
+        : [colored(new THREE.BoxGeometry(0.04, 0.16, 0.04).translate(0, 0.84, 0), 0x50555e), colored(new THREE.BoxGeometry(0.1, 0.1, 0.1).translate(0, 0.95, 0), white)]),
+      // rally crowd: both arms up, cheering
+      colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(rally ? 2.6 : 0.4).translate(0.31, rally ? 0.86 : 0.56, 0), white),
+      colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(rally ? -2.6 : -0.4).translate(-0.31, rally ? 0.86 : 0.56, 0), white),
     ]);
     const eyes = merge([
       new THREE.BoxGeometry(0.08, 0.06, 0.02).translate(0.08, 0.625, 0.19),
@@ -752,11 +793,26 @@ export class Environment implements WorldAPI {
     eyes.setAttribute('aPhase', attr);
     this.inst(body, bodyMat, items);
     this.inst(eyes, eyeMat, items.map((i) => ({ ...i, color: undefined })));
+    if (rally) {
+      // red rally caps (crown + brim) on most heads, a few white / navy
+      const cap = merge([
+        new THREE.CylinderGeometry(0.17, 0.215, 0.15, 10).translate(0, 0.83, -0.01),
+        new THREE.BoxGeometry(0.36, 0.035, 0.2).translate(0, 0.77, 0.24),
+      ]);
+      cap.setAttribute('aPhase', attr);
+      const capMat = this.bobify(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.65, flatShading: true }));
+      const rnd = this.rnd;
+      this.inst(cap, capMat, items.map((i) => {
+        const r = rnd();
+        return { ...i, color: r < 0.86 ? 0xc8102e : r < 0.95 ? 0xffffff : 0x1f3b8c };
+      }));
+    }
   }
 
   private crowdColor(): number {
     const pal = this.style.accents;
     const r = this.rnd();
+    if (this.zone.theme === 'rally') return r < 0.38 ? 0xc8102e : r < 0.7 ? 0xf4f4f0 : r < 0.92 ? 0x1f3b8c : 0xf2c033;
     if (r < 0.55) return pal[(this.rnd() * pal.length) | 0];
     const greys = [0x9aa4b0, 0x6a7380, 0xd8dde3, 0x3a4250];
     return greys[(this.rnd() * greys.length) | 0];
@@ -786,11 +842,13 @@ export class Environment implements WorldAPI {
       return;
     }
 
+    const rally = zone.theme === 'rally';
+    this.bobAmp.value = rally ? 0.42 : 0.2;
     this.buildWalls(G, snowMat);
     this.buildGates(G, snowMat);
-    this.buildStands(G);
+    this.buildStands(G, rally ? STAGE_HALF + 0.6 : 0);
     this.buildTowers();
-    this.buildJumbotron(zone);
+    if (!rally) this.buildJumbotron(zone);
     this.buildSouthDressing(G);
     this.buildMountains(zone);
     this.buildDrifts(G, snowMat);
@@ -800,6 +858,7 @@ export class Environment implements WorldAPI {
     else if (theme === 'pines') this.buildJunkyard(G);
     else if (theme === 'lake') this.buildFoundry(G);
     else if (theme === 'blizzard') this.buildBowl(zone);
+    else if (theme === 'rally') this.buildRally(G);
     else this.buildSummit(G, snowMat);
     this.finishDecor();
   }
@@ -877,7 +936,7 @@ export class Environment implements WorldAPI {
           caps.push({ x, y: bh - 0.06, z, ry: side.yaw, sx: (L - 0.14) * 0.5, sy: 0.2 + rnd() * 0.1, sz: WALL_T * 0.52 });
           const [bx, bz] = side.map(sc, WALL_IN - 0.035);
           bands.push({ x: bx, y: h - 0.62, z: bz, ry: side.yaw, sx: L - 0.1, sy: 1, sz: 1 });
-          if (side.key !== 's' && bi % 2 === 1) {
+          if (side.key !== 's' && bi % 2 === 1 && this.zone.theme !== 'rally') {
             const [fx, fz] = side.map(sc, WALL_IN - 0.09);
             banners.push({ x: fx, y: h - 1.22, z: fz, ry: side.yaw, sx: 1, sy: 1, sz: 1, color: st.accents[(bi >> 1) % st.accents.length] });
           }
@@ -906,7 +965,7 @@ export class Environment implements WorldAPI {
     // block caps + corner caps: same hemisphere, material and flags -> one draw
     const cornerCaps = cornerItems.map((c) => ({ ...c, y: c.sy - 0.05, sx: WALL_C * 0.55, sy: 0.4, sz: WALL_C * 0.55 }));
     this.inst(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, [...caps, ...cornerCaps]);
-    const hazardMat = this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false });
+    const hazardMat = this.zone.theme === 'rally' ? this.std(0xe8b423, { roughness: 0.35, metalness: 0.35, emissive: 0x4a3000, emissiveIntensity: 0.35 }) : this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false });
     this.inst(new THREE.BoxGeometry(1, 0.38, 0.07).translate(0, 0.19, 0), hazardMat, bands);
     const trimMat = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
     this.inst(new THREE.BoxGeometry(0.36, 1, 0.4).translate(0, 0.5, 0), trimMat, posts, true);
@@ -1050,7 +1109,10 @@ export class Environment implements WorldAPI {
 
   /* ---------- spectator stands ---------- */
 
-  private buildStands(G: number): void {
+  /** `skipN` > 0 leaves |x| < skipN of the north side free (Golden Tower Plaza's stage). */
+  private buildStands(G: number, skipN = 0): void {
+    const rally = this.zone.theme === 'rally';
+    const signs: { x: number; y: number; z: number; ry: number; i: number }[] = [];
     const st = this.style;
     const rnd = this.rnd;
     const tiers: Item[] = [];
@@ -1064,7 +1126,9 @@ export class Environment implements WorldAPI {
     for (const side of SIDES) {
       if (side.key === 's') continue;
       const range = side.key === 'n' ? [ARENA.minX - 1, ARENA.maxX + 1] : [ARENA.minZ - 1, ARENA.maxZ + 1];
-      const runs = subtract(range[0], range[1], gapsFor(side.key, GATE_HALF + 2.2));
+      const gaps = gapsFor(side.key, GATE_HALF + 2.2);
+      if (side.key === 'n' && skipN > 0) gaps.push([-skipN, skipN]);
+      const runs = subtract(range[0], range[1], gaps);
       for (const [a, b] of runs) {
         const len = b - a;
         const sc = (a + b) / 2;
@@ -1077,10 +1141,11 @@ export class Environment implements WorldAPI {
           const [sx, sz] = side.map(sc, STAND_N0 + k * ROW_D + 0.3);
           seats.push({ x: sx, y: top, z: sz, ry: side.yaw, sx: len, sy: 1, sz: 1, color: accent });
           for (let s = a + 0.5; s < b - 0.4; s += 0.85) {
-            if (rnd() > 0.74) continue;
+            if (rnd() > (rally ? 0.93 : 0.74)) continue;
             const [cx, cz] = side.map(s + (rnd() - 0.5) * 0.2, STAND_N0 + k * ROW_D + 0.72);
             const sc2 = 0.85 + rnd() * 0.25;
             crowd.push({ x: cx, y: top, z: cz, ry: side.yaw + (rnd() - 0.5) * 0.5, sx: sc2, sy: sc2, sz: sc2, color: this.crowdColor() });
+            if (rally && k % 2 === 1 && rnd() < 0.2) signs.push({ x: cx, y: top + 1.25, z: cz, ry: side.yaw + (rnd() - 0.5) * 0.25, i: (rnd() * RALLY_SIGNS.length) | 0 });
           }
         }
         const topH = G + 0.25 + ROWS * ROW_RISE;
@@ -1101,12 +1166,18 @@ export class Environment implements WorldAPI {
     this.inst(unitBox(), this.std(st.trim, { metalness: 0.4, roughness: 0.55 }), backs, true);
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.5, emissive: 0x222222 }), boards, false, true);
     this.inst(new THREE.CylinderGeometry(0.05, 0.05, 3, 6).translate(0, 1.5, 0), this.std(0xcfd5dc, { metalness: 0.6, roughness: 0.4 }), poles);
-    const flagShape = new THREE.Shape();
-    flagShape.moveTo(0, 0);
-    flagShape.lineTo(1.3, -0.3);
-    flagShape.lineTo(0, -0.7);
-    flagShape.closePath();
-    this.inst(new THREE.ShapeGeometry(flagShape).translate(0.05, 0.4, 0), this.std(0xffffff, { side: THREE.DoubleSide, roughness: 0.7 }), flags);
+    if (rally) {
+      // US-style flags on every pole
+      this.inst(wavyFlag(1.6, 0.85).translate(0.05, 0.0, 0), this.std(0xffffff, { map: getUsFlagTex(), side: THREE.DoubleSide, roughness: 0.75, flatShading: false }), flags.map((f) => ({ ...f, color: undefined })));
+      this.bakeSigns(signs, 1.25, 0.5, true);
+    } else {
+      const flagShape = new THREE.Shape();
+      flagShape.moveTo(0, 0);
+      flagShape.lineTo(1.3, -0.3);
+      flagShape.lineTo(0, -0.7);
+      flagShape.closePath();
+      this.inst(new THREE.ShapeGeometry(flagShape).translate(0.05, 0.4, 0), this.std(0xffffff, { side: THREE.DoubleSide, roughness: 0.7 }), flags);
+    }
     this.addCrowd(crowd);
   }
 
@@ -1578,6 +1649,250 @@ export class Environment implements WorldAPI {
     // wind-swept snow fence posts
     const posts: Item[] = this.scatter(30, 48, 56).map((p) => ({ x: p.x, y: 0, z: p.z, ry: rnd() * 6, sx: 1, sy: 1, sz: 1 }));
     this.inst(new THREE.BoxGeometry(0.12, 1.8, 0.12).translate(0, 0.9, 0), this.emissive(0xff5a2a, 0.8, { speed: 4 }), posts);
+  }
+
+  /* ---------- theme: Golden Tower Plaza (THE DONALD's rally) ---------- */
+
+  /** One shared material for every crowd sign and wall banner (the slogan atlas). */
+  private signMaterial(): THREE.MeshStandardMaterial {
+    return (this.signMat ??= this.std(0xffffff, { map: getSignAtlas(), roughness: 0.7, side: THREE.DoubleSide, flatShading: false, emissive: 0xffffff, emissiveMap: getSignAtlas(), emissiveIntensity: 0.18 }));
+  }
+
+  /** Bake slogan planes (w x h) into the zone batch; `sticks` adds a handle under each (crowd signs). */
+  private bakeSigns(signs: { x: number; y: number; z: number; ry: number; i: number }[], w: number, h: number, sticks: boolean): void {
+    if (signs.length === 0) return;
+    const mat = this.signMaterial();
+    const geos = new Map<number, THREE.BufferGeometry>();
+    const stick = new THREE.BoxGeometry(0.05, 0.75, 0.05).translate(0, -h / 2 - 0.3, -0.02);
+    const stickMat = this.std(0xd8c9a8, { roughness: 0.8 });
+    for (const sg of signs) {
+      let g = geos.get(sg.i);
+      if (!g) geos.set(sg.i, (g = signPlane(w, h, sg.i)));
+      const m = this.itemMatrix({ x: sg.x, y: sg.y, z: sg.z, ry: sg.ry, rx: -0.12, sx: 1, sy: 1, sz: 1 });
+      this.bake(g, m, mat);
+      if (sticks) this.bake(stick, m, stickMat);
+    }
+    for (const g of geos.values()) g.dispose();
+    stick.dispose();
+  }
+
+  private buildRally(G: number): void {
+    const rnd = this.rnd;
+    const st = this.style;
+    const navy = this.std(0x1f3b8c, { roughness: 0.6 });
+    const gold = this.std(0xe8b423, { roughness: 0.35, metalness: 0.35, emissive: 0x4a3000, emissiveIntensity: 0.35 });
+    const white = this.std(0xf6f3ea, { roughness: 0.6 });
+    const M = new THREE.Matrix4();
+    const box = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material, cast = true) =>
+      this.bake(new THREE.BoxGeometry(w, h, d), M.makeTranslation(x, y, z), mat, cast, cast);
+    const W = STAGE_HALF * 2;
+    const zMid = (STAGE_Z0 + STAGE_Z1) / 2;
+    const depth = STAGE_Z0 - STAGE_Z1;
+
+    // ---- THE STAGE (behind the north wall, over the boss gate's tunnel)
+    const open = GATE_HALF + 0.9;
+    for (const sx of [-1, 1]) box(STAGE_HALF - open, STAGE_Y, 0.4, sx * (open + (STAGE_HALF - open) / 2), STAGE_Y / 2, STAGE_Z0, navy);
+    box(open * 2, 0.55, 0.4, 0, STAGE_Y - 0.28, STAGE_Z0, navy);
+    box(W, 0.35, depth, 0, STAGE_Y - 0.175, zMid, white);
+    box(W + 0.2, 0.2, 0.3, 0, STAGE_Y, STAGE_Z0 + 0.05, gold, false);
+    // bunting along the stage front
+    const bunting = this.std(0xffffff, { map: getBuntingTex(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75, flatShading: false });
+    const swag = (len: number, h: number, per: number) => {
+      const g = new THREE.PlaneGeometry(len, h).translate(0, -h / 2, 0);
+      const uv = g.getAttribute('uv');
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * Math.max(1, Math.round(len / per)));
+      return g;
+    };
+    this.bake(swag(W, 1.3, 2.9), M.makeTranslation(0, STAGE_Y - 0.12, STAGE_Z0 + 0.24), bunting);
+    // red carpet up the stage to the podium
+    const carpetMat = this.std(0xffffff, { map: getCarpetTex(), roughness: 0.9, flatShading: false });
+    const deckCarpet = new THREE.PlaneGeometry(3, depth - 0.6).rotateX(-Math.PI / 2);
+    const duv = deckCarpet.getAttribute('uv');
+    for (let i = 0; i < duv.count; i++) duv.setY(i, duv.getY(i) * 3);
+    this.bake(deckCarpet, M.makeTranslation(0, STAGE_Y + 0.012, zMid), carpetMat, false, true);
+    // the podium: navy lectern, gold top + seal, red / white band, two microphones
+    const pz = STAGE_Z0 - 2.2;
+    box(1.7, 1.6, 0.9, 0, STAGE_Y + 0.8, pz, navy);
+    box(1.95, 0.14, 1.1, 0, STAGE_Y + 1.66, pz - 0.03, gold);
+    box(1.72, 0.2, 0.04, 0, STAGE_Y + 0.42, pz + 0.46, this.std(0xc8102e, { roughness: 0.6 }), false);
+    box(1.72, 0.1, 0.045, 0, STAGE_Y + 0.58, pz + 0.46, white, false);
+    this.bake(new THREE.CylinderGeometry(0.4, 0.4, 0.06, 24).rotateX(Math.PI / 2), M.makeTranslation(0, STAGE_Y + 1.08, pz + 0.47), gold);
+    for (const sx of [-1, 1]) {
+      this.bake(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 6).rotateX(0.5), M.makeTranslation(sx * 0.22, STAGE_Y + 1.98, pz + 0.18), this.std(0x15161a));
+      this.bake(new THREE.SphereGeometry(0.08, 8, 6), M.makeTranslation(sx * 0.22, STAGE_Y + 2.3, pz + 0.34), this.std(0x15161a));
+    }
+    // backdrop: navy wall + the giant gold "THE DONALD" banner, gold posts at both ends
+    const bw = W + 5;
+    const bh = (bw * 820) / 2048;
+    const by = STAGE_Y + 0.6 + bh / 2;
+    box(bw + 1, bh + 1.2, 0.5, 0, by, STAGE_Z1 - 0.35, navy);
+    const bdTex = getBackdropTex();
+    const bdMat = new THREE.MeshStandardMaterial({ map: bdTex, emissive: 0xffffff, emissiveMap: bdTex, emissiveIntensity: 0.32, roughness: 0.6 });
+    this.bake(new THREE.PlaneGeometry(bw, bh), M.makeTranslation(0, by, STAGE_Z1 - 0.08), bdMat);
+    const postH = by + bh / 2 + 1.6;
+    for (const sx of [-1, 1]) {
+      box(1.1, postH, 1.1, sx * (bw / 2 + 1.0), postH / 2, STAGE_Z1 - 0.35, gold);
+      this.bake(new THREE.SphereGeometry(0.75, 12, 8), M.makeTranslation(sx * (bw / 2 + 1.0), postH + 0.6, STAGE_Z1 - 0.35), gold);
+    }
+
+    // ---- flags: a row along the back of the stage, giant ones on the backdrop posts
+    const flagMat = this.std(0xffffff, { map: getUsFlagTex(), side: THREE.DoubleSide, roughness: 0.75, flatShading: false });
+    const flagItems: Item[] = [];
+    const poleItems: Item[] = [];
+    for (let i = 0; i < 9; i++) {
+      const x = -STAGE_HALF + 1.2 + (i * (W - 2.4)) / 8;
+      if (Math.abs(x) < 2.6) continue; // keep the podium sightline clear
+      const z = STAGE_Z1 + 1.0;
+      poleItems.push({ x, y: STAGE_Y, z, ry: 0, sx: 1, sy: 1.9, sz: 1 });
+      flagItems.push({ x, y: STAGE_Y + 5.1, z, ry: (rnd() - 0.5) * 0.5, sx: 1.25, sy: 1.25, sz: 1.25 });
+    }
+    for (const sx of [-1, 1]) flagItems.push({ x: sx * (bw / 2 + 1.0), y: postH - 2.2, z: STAGE_Z1 + 0.4, ry: sx < 0 ? 0.1 : Math.PI - 0.1, sx: 3.2, sy: 3.2, sz: 3.2 });
+    // flags lining the south (camera-side) dressing too
+    for (let i = 0; i < 9; i++) {
+      const x = ARENA.minX + 3 + i * ((ARENA.maxX - ARENA.minX - 6) / 8);
+      const z = ARENA.maxZ + WALL_C + 0.8;
+      poleItems.push({ x, y: G - 0.2, z, ry: 0, sx: 1, sy: 1.5, sz: 1 });
+      flagItems.push({ x, y: G - 0.2 + 3.9, z, ry: Math.PI + (rnd() - 0.5) * 0.5, sx: 1.1, sy: 1.1, sz: 1.1 });
+    }
+    this.inst(wavyFlag(1.6, 0.85), flagMat, flagItems);
+    this.inst(new THREE.CylinderGeometry(0.05, 0.05, 3, 6).translate(0, 1.5, 0), gold, poleItems);
+
+    // ---- warm stage lights: gold truss towers with lamp heads, glows and soft light cones onto the podium
+    const lamp = new THREE.MeshBasicMaterial({ color: st.lamp, toneMapped: false });
+    const coneMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    for (const sx of [-1, 1]) {
+      const tx = sx * (STAGE_HALF - 0.6);
+      const tz = STAGE_Z0 - 0.7;
+      const th = 8.5;
+      for (const ox of [-0.3, 0.3]) for (const oz of [-0.3, 0.3]) box(0.12, th, 0.12, tx + ox, STAGE_Y + th / 2, tz + oz, gold, false);
+      for (let y = 1; y < th; y += 1.4) box(0.7, 0.08, 0.7, tx, STAGE_Y + y, tz, gold, false);
+      const hy = STAGE_Y + th + 0.3;
+      box(1.0, 0.6, 0.6, tx, hy, tz, this.std(0x2a2a30, { metalness: 0.5 }));
+      this.bake(new THREE.PlaneGeometry(0.8, 0.45), M.makeTranslation(tx, hy, tz + 0.31), lamp);
+      this.glowSprite(st.lamp, 0.85, 4.5, tx, hy, tz + 0.6, 2.2);
+      // light cone from the lamp to the podium
+      const dx = 0 - tx;
+      const dy = STAGE_Y + 1 - hy;
+      const dz = pz - tz;
+      const len = Math.hypot(dx, dy, dz);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(2.0, len, 20, 1, true).translate(0, -len / 2, 0), coneMat);
+      cone.position.set(tx, hy, tz);
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(dx, dy, dz).normalize());
+      cone.renderOrder = 6;
+      this.add(cone);
+    }
+    this.pulses.push({ mat: coneMat, base: 0.1, speed: 1.7, phase: 0 });
+
+    // ---- red / white / blue bunting along every wall, slogan banners on the inner faces
+    for (const side of SIDES) {
+      const runs = subtract(side.s0, side.s1, gapsFor(side.key, GATE_HALF + PILLAR_W));
+      const h = side.key === 's' ? 0.45 : 0.6;
+      for (const [a, b] of runs) {
+        const len = b - a;
+        if (len < 1.5) continue;
+        const [x, z] = side.map((a + b) / 2, WALL_IN - 0.14);
+        this.bake(swag(len, h, 2.6), this.itemMatrix({ x, y: side.h - 0.02, z, ry: side.yaw, sx: 1, sy: 1, sz: 1 }), bunting);
+      }
+    }
+    const banners: { x: number; y: number; z: number; ry: number; i: number }[] = [];
+    let bi = 0;
+    for (const side of SIDES) {
+      if (side.key === 's') continue;
+      const spots = side.key === 'n' ? [-20, 20] : [-23, 6, 20];
+      for (const sc of spots) {
+        const [x, z] = side.map(sc, WALL_IN - 0.12);
+        banners.push({ x, y: 1.32, z, ry: side.yaw, i: bi++ });
+      }
+    }
+    this.bakeSigns(banners, 4.6, 1.15, false);
+
+    // ---- the red carpet up the middle of the arena (draped over the snow every frame)
+    this.buildCarpet();
+
+    // ---- THE GOLD TOWER, far to the north-east, plus a cream skyline (fog-free so it looms on the horizon)
+    const towerGold = this.std(new THREE.Color(0xd9a520).lerp(new THREE.Color(this.zone.fogColor), 0.15).getHex(), { roughness: 0.4, metalness: 0.2, emissive: 0x3a2400, emissiveIntensity: 0.6, fog: false });
+    const tM = (x: number, y: number, z: number) => M.makeTranslation(GOLD_TOWER_X + x, y, GOLD_TOWER_Z + z);
+    this.bake(new THREE.BoxGeometry(30, 12, 30).translate(0, 6, 0), tM(0, 0, 0), towerGold);
+    this.bake(new THREE.BoxGeometry(18, 80, 18).translate(0, 40, 0), tM(0, 12, 0), towerGold);
+    this.bake(new THREE.BoxGeometry(13, 18, 13).translate(0, 9, 0), tM(0, 92, 0), towerGold);
+    this.bake(new THREE.BoxGeometry(8, 10, 8).translate(0, 5, 0), tM(0, 110, 0), towerGold);
+    this.bake(new THREE.ConeGeometry(2.5, 16, 8).translate(0, 8, 0), tM(0, 120, 0), towerGold);
+    const winMat = this.emissive(0xffe4a0, 1.3, { speed: 0.7 });
+    winMat.fog = false;
+    const bands: Item[] = [];
+    for (let y = 16; y < 90; y += 4.2) bands.push({ x: GOLD_TOWER_X, y, z: GOLD_TOWER_Z, ry: 0, sx: 18.2, sy: 0.9, sz: 18.2 });
+    for (let y = 95; y < 108; y += 4) bands.push({ x: GOLD_TOWER_X, y, z: GOLD_TOWER_Z, ry: 0, sx: 13.2, sy: 0.8, sz: 13.2 });
+    this.inst(new THREE.BoxGeometry(1, 1, 1), winMat, bands);
+    this.glowSprite(0xffd257, 0.9, 30, GOLD_TOWER_X, 128, GOLD_TOWER_Z, 1.2).material.fog = false;
+    const cream = this.std(new THREE.Color(0xf1e6cf).lerp(new THREE.Color(this.zone.fogColor), 0.35).getHex(), { roughness: 0.7, fog: false });
+    const blocks: Item[] = [];
+    const goldBands: Item[] = [];
+    for (const p of this.scatter(14, 80, 125, true)) {
+      if (p.z > 30 && Math.abs(p.x) < 60) continue;
+      if (Math.hypot(p.x - GOLD_TOWER_X, p.z - GOLD_TOWER_Z) < 30) continue;
+      const w = 10 + rnd() * 12;
+      const d = 10 + rnd() * 12;
+      const h = 14 + rnd() * 30;
+      const ry = Math.atan2(-p.x, -p.z);
+      blocks.push({ x: p.x, y: 0, z: p.z, ry, sx: w, sy: h, sz: d });
+      goldBands.push({ x: p.x, y: h - 1.2, z: p.z, ry, sx: w + 0.2, sy: 0.8, sz: d + 0.2 });
+    }
+    this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), cream, blocks);
+    this.inst(new THREE.BoxGeometry(1, 1, 1), this.emissive(0xf2c033, 0.8), goldBands);
+  }
+
+  /** The arena's red carpet: a 3 m strip from the south wall to the boss gate, re-draped over the snow. */
+  private buildCarpet(): void {
+    // 3 columns x 121 rows (~0.5 m, the snow grid's scale) so plowed bumps don't poke through
+    const nv = 121;
+    const nu = 3;
+    const pos = new THREE.BufferAttribute(new Float32Array(nv * nu * 3), 3);
+    pos.setUsage(THREE.DynamicDrawUsage);
+    const uv = new Float32Array(nv * nu * 2);
+    const nrm = new Float32Array(nv * nu * 3);
+    const idx: number[] = [];
+    const z0 = ARENA.maxZ - 0.3;
+    const z1 = ARENA.minZ + 0.3;
+    for (let v = 0; v < nv; v++) {
+      const z = z0 + ((z1 - z0) * v) / (nv - 1);
+      for (let u = 0; u < nu; u++) {
+        const i = v * nu + u;
+        pos.setXYZ(i, -1.5 + (3 * u) / (nu - 1), 0, z);
+        uv[i * 2] = u / (nu - 1);
+        uv[i * 2 + 1] = (z0 - z) / 3;
+        nrm[i * 3 + 1] = 1;
+      }
+      if (v < nv - 1)
+        for (let u = 0; u < nu - 1; u++) {
+          const a = v * nu + u;
+          idx.push(a, a + 1, a + nu, a + 1, a + nu + 1, a + nu);
+        }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', pos);
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    geo.setIndex(idx);
+    const mat = new THREE.MeshStandardMaterial({ map: getCarpetTex(), roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    mesh.receiveShadow = true;
+    mesh.renderOrder = 1;
+    this.add(mesh);
+    this.carpet = { mesh, pos, nv: nv * nu };
+    this.drapeCarpet();
+  }
+
+  private drapeCarpet(): void {
+    const c = this.carpet!;
+    const snow = this.ctx.snow;
+    const a = c.pos.array as Float32Array;
+    for (let i = 0; i < c.nv; i++) {
+      const x = a[i * 3];
+      const z = a[i * 3 + 2];
+      a[i * 3 + 1] = (snow ? snow.getDepth(x, z) : 0) + 0.06;
+    }
+    c.pos.needsUpdate = true;
   }
 
   /* ---------- theme: Omega Summit (factory at the top of the world) ---------- */
@@ -2201,6 +2516,7 @@ export class Environment implements WorldAPI {
     const cam = this.ctx.camera.position;
     this.sky.position.copy(cam);
     this.bobTime.value = t;
+    if (this.carpet) this.drapeCarpet();
 
     // sun shadow camera follows the player (snapped to shadow-map texels to avoid shimmering)
     const plow = this.ctx.plow;

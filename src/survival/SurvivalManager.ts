@@ -47,6 +47,7 @@ const BOSS_CYCLE: { types: EnemyType[]; name: string }[] = [
   { types: ['grinder'], name: 'THE GRINDER' },
   { types: ['slush', 'sleet'], name: 'SLUSH & SLEET' },
   { types: ['omega'], name: 'MEGAPLOW Ω' },
+  { types: ['donald'], name: 'THE DONALD' },
 ];
 
 /** Named special waves: one roughly every other wave between bosses (see specialFor), each with its own

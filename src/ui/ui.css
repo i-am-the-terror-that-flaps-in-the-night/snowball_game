@@ -311,8 +311,8 @@
 .ss-step-text b { font-family: var(--display); font-size: 16px; color: var(--ink); }
 
 /* ------------------------------------------------------------ zone select */
-.ss-zones { width: min(1180px, 100%); }
-.ss-zone-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 18px; }
+.ss-zones { width: min(1360px, 100%); }
+.ss-zone-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-top: 18px; }
 .ss-zone {
   appearance: none;
   border: 3px solid rgba(255, 255, 255, 0.9);
@@ -380,10 +380,10 @@
 .ss-zone.cleared { border-color: #9df0bd; }
 .ss-zone-boss {
   position: relative;
-  margin: 12px 12px 10px;
+  margin: 12px 10px 10px;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
   padding: 7px 10px 7px 7px;
   border-radius: 14px;
   background: linear-gradient(100deg, rgba(18, 4, 10, 0.86), rgba(48, 6, 16, 0.78));
@@ -405,8 +405,8 @@
 }
 .ss-zone-boss-badge {
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -416,7 +416,7 @@
 }
 .ss-zone-boss-text { min-width: 0; display: flex; flex-direction: column; }
 .ss-zone-boss-text small { font-size: 9.5px; font-weight: 900; letter-spacing: 0.18em; color: #ff8a98; }
-.ss-zone-boss-text b { font-family: var(--display); font-weight: 900; font-size: 15px; letter-spacing: 0.04em; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 22px; }
+.ss-zone-boss-text b { font-family: var(--display); font-weight: 900; font-size: 14px; letter-spacing: 0.03em; line-height: 1.05; padding-right: 18px; }
 .ss-zone.locked { cursor: not-allowed; filter: saturate(0.25) brightness(0.92); }
 .ss-zone-lock {
   position: absolute;
