@@ -325,6 +325,7 @@ export class Combat implements CombatAPI {
       this.lightning.bolt(_p, _q, { life: 0.25, width: 0.22, jag: 1.1 });
     }
     ctx.fx.shake(0.8);
+    ctx.impact.hit('clap', _q.set(px, 1, pz));
     ctx.audio.play('thunder');
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
@@ -419,6 +420,7 @@ export class Combat implements CombatAPI {
       ctx.fx.burst(_q, { color: 0xffffff, count: 6, speed: 6, size: 0.24, gravity: 16, life: 0.55 });
     }
     ctx.fx.shake(0.9);
+    ctx.impact.hit('pound', _q.set(px, 0.5, pz));
     ctx.audio.play('thud');
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
@@ -688,6 +690,7 @@ export class Combat implements CombatAPI {
         fx.burst(_p, { color: 0x8c96a4, count: 5 + Math.round(Math.min(8, final * 0.3)), speed: 4.5, size: 0.17, gravity: 20, life: 0.7 });
       }
       fx.shake(THREE.MathUtils.clamp(0.15 + final * 0.016, 0.15, 0.6));
+      ctx.impact.playerHit(final, fromX, fromZ);
       audio.play('plowHit', { volume: Math.min(1, (blocked > 0 ? 0.35 : 0.55) + final * 0.02), pitch: THREE.MathUtils.clamp(1.15 - final * 0.01, 0.75, 1.15) });
       _q.set(plow.position.x, 2.8, plow.position.z);
       fx.floatText(_q, `-${Math.round(final)}`, '#ff5a4a', 0.8 + Math.min(0.6, final * 0.015));
@@ -888,6 +891,7 @@ export class Combat implements CombatAPI {
     fx.ring(_p, zone, freeze ? 0x9fe6ff : 0xffffff);
     if (avalanche) fx.ring(_p, zone * 1.25, 0xcfe0ff);
     fx.shake(0.25 + 0.25 * r);
+    ctx.impact.hit('slam', _p, r, { stop: count > 0 });
     // Paint Shop horn: layered over a softer snow whumpf.
     const horn = equippedLook(ctx.progression).horn.sound;
     const slamVol = Math.min(1, 0.7 + 0.2 * r);
@@ -1199,6 +1203,7 @@ export class Combat implements CombatAPI {
     _q.set(px, 2.2, pz);
     ctx.fx.burst(_q, { color: 0x3dff1a, count: 30, speed: 4, size: 0.5, gravity: -5, life: 1.2 });
     ctx.fx.shake(0.7);
+    ctx.impact.hit('meltdown', _q.set(px, 1, pz));
     ctx.audio.play('thud', { pitch: 0.7 });
     ctx.audio.play('zap', { volume: 0.6, pitch: 0.5 });
     const hits = this.collect(px, pz, R);
@@ -1260,6 +1265,7 @@ export class Combat implements CombatAPI {
     ctx.fx.burst(_q, { color: 0xffe9a0, count: 50, speed: 9, size: 1.1, gravity: -1.5, life: 2 });
     ctx.fx.burst(_q, { color: 0x7dff4a, count: 40, speed: 12, size: 0.8, gravity: -0.5, life: 2.2 });
     ctx.fx.shake(1.8);
+    ctx.impact.hit('nuke', _q.set(px, 2, pz));
     ctx.audio.play('explosion');
     ctx.audio.play('thud', { pitch: 0.45 });
     ctx.audio.play('boss', { volume: 0.6, pitch: 0.6 });

@@ -15,12 +15,14 @@ export interface Settings {
   /** Camera shake multiplier, 0..1. */
   shake: number;
   quality: Quality;
+  /** Photosensitivity: dims screen flashes, the damage vignette and impact lights. */
+  reduceFlash: boolean;
   /** Rebound primary key per action (KeyboardEvent.code). Missing = default. */
   keys: Partial<Record<Action, string>>;
 }
 
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', keys: {} };
+  return { master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, keys: {} };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -44,6 +46,7 @@ function load(): Settings {
       sfx: clamp01(p.sfx, d.sfx),
       shake: clamp01(p.shake, d.shake),
       quality: p.quality === 'low' ? 'low' : 'high',
+      reduceFlash: p.reduceFlash === true,
       keys,
     };
   } catch {

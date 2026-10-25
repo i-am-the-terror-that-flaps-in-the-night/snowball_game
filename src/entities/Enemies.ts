@@ -776,10 +776,12 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       fx.burst(_v, { color: def.accent, count: 50, speed: 14, size: 0.2, gravity: 14, life: 1.3 });
       fx.burst(_v, { color: 0xffe14a, count: 40, speed: 9, size: 0.14, gravity: 6, life: 1.4 });
       fx.shake(1.4);
+      ctx.impact.hit('bossKill', _v, 1, { stop: false });
       this.sfx('explosion', 1, 0.8, 0);
       this.sfx('bossDefeated', 1, 1, 0);
     } else {
       fx.shake(clamp(0.12 + e.radius * 0.12, 0.15, 0.45));
+      ctx.impact.hit('wreck', _v.set(p.x, e.groundY + h * 0.5, p.z), 0.6 + e.radius * 0.3);
       this.sfx('kill', 0.9, 1.15 - e.radius * 0.15, 0.03);
     }
 

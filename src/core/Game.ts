@@ -19,6 +19,7 @@ import { SurvivalManager, fullRepairCost, survivalUnlocked } from '../survival/S
 import { Pickups } from '../fx/Pickups';
 import { Fx } from '../fx/Fx';
 import { CameraRig } from '../fx/CameraRig';
+import { Impact } from '../fx/impact';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
@@ -125,6 +126,7 @@ export class Game {
     ctx.audio.muted = progression.data.muted;
     applyAllSettings(ctx);
     ctx.cameraRig = new CameraRig(ctx);
+    ctx.impact = new Impact(ctx);
     ctx.fx = new Fx(ctx);
     ctx.world = new Environment(ctx);
     ctx.snow = new SnowField(ctx);
@@ -190,6 +192,11 @@ export class Game {
     renderer.setAnimationLoop((t) => this.frame(t));
   }
 
+  /** Hit-stop / slow-mo + impact visuals. Probes can turn the time scale off with `__game.impact.enabled = false`. */
+  get impact(): GameContext['impact'] {
+    return this.ctx.impact;
+  }
+
   /* ------------------------------------------------------------------ flow */
 
   /** Switch arena size, enemy manager and venue between the campaign and Brawl mode. */
@@ -229,6 +236,7 @@ export class Game {
     ctx.combat.clear();
     ctx.pickups.clear();
     ctx.waves.clear();
+    ctx.impact.clear();
   }
 
   private newRun(): RunTally {
@@ -621,6 +629,8 @@ export class Game {
       if (kill.style) emitKillFx(this.ctx, kill, enemy.position);
       this.run.kills++;
       this.run.killsBy[source ?? 'other']++;
+      // Final-kill slow-mo: a boss, or the kill that clears a campaign round / Survival wave.
+      if (this.mode !== 'brawl' && this.state === 'playing' && (enemy.isBoss || this.ctx.waves.done)) this.ctx.impact.slowMo();
     });
     events.on('plowDamaged', ({ amount }) => (this.run.damage += amount));
     events.on('coinCollected', ({ amount }) => (this.run.coins += amount));
@@ -665,9 +675,11 @@ export class Game {
     const { ctx, state } = this;
     const active = state === 'playing' || state === 'countdown' || state === 'wrecked' || state === 'tutorial';
 
+    // Hit-stop / final-kill slow-mo (fx/impact.ts). Countdowns and the wreck timer below stay on real `dt`.
+    const timeScale = active ? ctx.impact.step(dt) : 1;
     if (active) {
       // Slow-motion while the wreck animation plays.
-      const simDt = state === 'wrecked' ? dt * 0.35 : dt;
+      const simDt = (state === 'wrecked' ? dt * 0.35 : dt) * timeScale;
       ctx.time += simDt;
       ctx.plow.update(simDt);
       ctx.snow.update(simDt);
@@ -694,7 +706,8 @@ export class Game {
         if (n !== this.lastCountdownInt && n > 0 && n <= 3) ctx.audio.play('countdown');
         this.lastCountdownInt = n;
         if (this.countdown <= 0) this.startRound();
-      } else if (ctx.waves.done) {
+      } else if (ctx.waves.done && !ctx.impact.holding) {
+        // The clearing kill's slow-mo plays out before the shop / next wave.
         this.roundCleared();
       }
 
@@ -705,7 +718,8 @@ export class Game {
       if (this.state !== 'menu') this.updateHud();
     }
 
-    ctx.fx.update(dt);
+    ctx.fx.update(dt * timeScale);
+    ctx.impact.update(dt);
     ctx.world.update(dt);
     ctx.cameraRig.update(dt);
     ctx.input.endFrame();
@@ -714,14 +728,18 @@ export class Game {
   private tickBrawl(dt: number): void {
     const { ctx } = this;
     const counting = this.state === 'brawlCountdown';
-    ctx.time += dt;
-    ctx.plow.update(dt);
-    ctx.snow.update(dt);
-    ctx.enemies.update(dt);
-    ctx.combat.update(dt);
-    ctx.pickups.update(dt);
+    // Hit-stop scales the sim; the countdown and the match clock stay on real time.
+    const timeScale = ctx.impact.step(dt);
+    const simDt = dt * timeScale;
+    ctx.time += simDt;
+    ctx.plow.update(simDt);
+    ctx.snow.update(simDt);
+    ctx.enemies.update(simDt);
+    ctx.brawl.tickClock(dt - simDt);
+    ctx.combat.update(simDt);
+    ctx.pickups.update(simDt);
     if (this.comboT > 0) {
-      this.comboT -= dt;
+      this.comboT -= simDt;
       if (this.comboT <= 0) this.combo = 0;
     }
     if (counting) {
@@ -743,7 +761,8 @@ export class Game {
       ctx.audio.setEngine(ctx.plow.dead ? 0 : ctx.input.throttle, speedFrac);
       this.updateHud();
     }
-    ctx.fx.update(dt);
+    ctx.fx.update(simDt);
+    ctx.impact.update(dt);
     ctx.world.update(dt);
     ctx.cameraRig.update(dt);
     ctx.input.endFrame();

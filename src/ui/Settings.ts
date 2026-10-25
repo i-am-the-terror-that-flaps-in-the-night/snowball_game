@@ -33,6 +33,7 @@ export class SettingsMenu {
   private panel: HTMLElement;
   private keyBtns = new Map<Action, HTMLButtonElement>();
   private qualityBtns = new Map<Quality, HTMLButtonElement>();
+  private flashBtns = new Map<boolean, HTMLButtonElement>();
   private sliders: { input: HTMLInputElement; val: HTMLElement; get: () => number }[] = [];
   private padStatus!: HTMLElement;
   private keyMsg!: HTMLElement;
@@ -149,6 +150,17 @@ export class SettingsMenu {
       }, seg));
     }
 
+    const fRow = el('div', 'ss-set-row', undefined, vid);
+    el('span', 'ss-set-label', 'Flashes', fRow);
+    const fSeg = el('div', 'ss-set-seg', undefined, fRow);
+    for (const [on, label] of [[false, 'FULL'], [true, 'REDUCED']] as [boolean, string][]) {
+      this.flashBtns.set(on, this.btn(label, 'ss-ice ss-small', () => {
+        settings.reduceFlash = on;
+        saveSettings();
+        this.refresh();
+      }, fSeg));
+    }
+
     const ctl = this.section('🎮 Controls');
     el('div', 'ss-set-note', 'Click a key, then press the new one. Arrow keys, right Shift and Esc keep working as alternates.', ctl);
     const grid = el('div', 'ss-set-keys', undefined, ctl);
@@ -192,6 +204,7 @@ export class SettingsMenu {
       s.val.textContent = `${v}%`;
     }
     for (const [q, b] of this.qualityBtns) b.classList.toggle('ss-set-on', settings.quality === q);
+    for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
     for (const a of ACTIONS) {
       const b = this.keyBtns.get(a.id)!;
       const keys = this.ctx.input.keysFor(a.id);

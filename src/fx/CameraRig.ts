@@ -20,6 +20,14 @@ const MENU_HEIGHT = 26;
 const DASH_FOV_KICK = 12;
 const DASH_FOV_SECONDS = 0.7;
 const MAX_TRAUMA = 2;
+/** Impact kick: critically damped spring (rad/s) — peaks ~1/KICK_W s after the hit, then settles. */
+const KICK_W = 16;
+/** Kick offset cap (m) and the share of it that also lifts the camera. */
+const KICK_MAX = 1.6;
+const KICK_LIFT = 0.25;
+/** Impact FOV punch: seconds and cap (degrees). */
+const PUNCH_SECONDS = 0.32;
+const PUNCH_MAX = 10;
 
 function damp(k: number, dt: number): number {
   return 1 - Math.exp(-k * dt);
@@ -61,6 +69,12 @@ export class CameraRig implements CameraRigAPI {
   private dashBlend = 0;
   private stopT = 0;
   private lastKick = 0;
+  /** Impact kick spring: offset (m) + velocity, world space. */
+  private kickOff = new THREE.Vector3();
+  private kickVel = new THREE.Vector3();
+  private punchT = 0;
+  private punchAmt = 0;
+  private tmpAim = new THREE.Vector3();
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -74,6 +88,9 @@ export class CameraRig implements CameraRigAPI {
       if (plow) this.heading = plow.heading;
     }
     this.kickT = 0;
+    this.kickOff.set(0, 0, 0);
+    this.kickVel.set(0, 0, 0);
+    this.punchT = 0;
   }
 
   snap(): void {
@@ -89,6 +106,26 @@ export class CameraRig implements CameraRigAPI {
   addShake(intensity: number): void {
     // Scaled by the settings-menu "Screen shake" slider (0 = off).
     this.trauma = Math.min(MAX_TRAUMA, this.trauma + intensity * settings.shake);
+  }
+
+  kick(dx: number, dz: number, amount: number): void {
+    const a = amount * settings.shake;
+    if (a <= 0.001) return;
+    // Impulse that makes the critically damped spring peak at ~`a` metres.
+    const v = a * KICK_W * Math.E;
+    this.kickVel.x += dx * v;
+    this.kickVel.z += dz * v;
+    this.kickVel.y += a * KICK_LIFT * KICK_W * Math.E;
+  }
+
+  punchFov(degrees: number): void {
+    const d = THREE.MathUtils.clamp(degrees * settings.shake, -PUNCH_MAX, PUNCH_MAX);
+    if (Math.abs(d) < 0.05) return;
+    // A bigger punch overrides a smaller one still playing.
+    const cur = this.punchT > 0 ? this.punchAmt * (this.punchT / PUNCH_SECONDS) : 0;
+    if (Math.abs(d) < Math.abs(cur)) return;
+    this.punchAmt = d;
+    this.punchT = PUNCH_SECONDS;
   }
 
   /** Freeze the follow (not the shake) for `seconds` — impact hit-stop. */
@@ -137,6 +174,7 @@ export class CameraRig implements CameraRigAPI {
 
   update(dt: number): void {
     this.t += dt;
+    this.updateKick(dt);
     const plowD = this.ctx.plow;
     const dashingNow = this.mode === 'follow' && !!plowD && plowD.dashing;
     this.dashBlend += ((dashingNow ? 1 : 0) - this.dashBlend) * damp(dashingNow ? 10 : 2.5, dt);
@@ -186,10 +224,32 @@ export class CameraRig implements CameraRigAPI {
     this.apply(kick);
   }
 
+  private updateKick(dt: number): void {
+    // Critically damped spring back to 0: x'' = -w^2 x - 2w x'.
+    const w = KICK_W;
+    const h = Math.min(dt, 1 / 30);
+    const o = this.kickOff;
+    const v = this.kickVel;
+    v.x += (-w * w * o.x - 2 * w * v.x) * h;
+    v.y += (-w * w * o.y - 2 * w * v.y) * h;
+    v.z += (-w * w * o.z - 2 * w * v.z) * h;
+    o.addScaledVector(v, h);
+    if (o.lengthSq() > KICK_MAX * KICK_MAX) o.setLength(KICK_MAX);
+    if (o.lengthSq() < 1e-8 && v.lengthSq() < 1e-6) {
+      o.set(0, 0, 0);
+      v.set(0, 0, 0);
+    }
+    if (this.punchT > 0) this.punchT = Math.max(0, this.punchT - dt);
+  }
+
   private apply(fovKick = 0): void {
     const cam = this.ctx.camera;
     cam.position.copy(this.pos);
-    cam.lookAt(this.look);
+    if (this.mode === 'follow') {
+      cam.position.add(this.kickOff);
+      // The aim follows part of the shove, so the frame itself jolts (not just the parallax).
+      cam.lookAt(this.tmpAim.copy(this.look).addScaledVector(this.kickOff, 0.4));
+    } else cam.lookAt(this.look);
     const s = Math.pow(Math.min(this.trauma, MAX_TRAUMA), 1.5);
     if (s > 0.0005) {
       const tt = this.t * 24;
@@ -199,7 +259,13 @@ export class CameraRig implements CameraRigAPI {
       cam.rotateZ(noise(tt, 4.2) * s * 0.05);
       cam.rotateX(noise(tt, 9.1) * s * 0.025);
     }
-    const fov = this.fov + fovKick;
+    let punch = 0;
+    if (this.punchT > 0) {
+      const u = 1 - this.punchT / PUNCH_SECONDS; // 0 -> 1
+      // Snap in over the first 12%, ease back out.
+      punch = this.punchAmt * (u < 0.12 ? u / 0.12 : (1 - (u - 0.12) / 0.88) ** 2);
+    }
+    const fov = this.fov + fovKick + punch;
     if (Math.abs(cam.fov - fov) > 0.01) {
       cam.fov = fov;
       cam.updateProjectionMatrix();

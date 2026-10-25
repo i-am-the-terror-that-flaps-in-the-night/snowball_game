@@ -1161,3 +1161,46 @@
 .ss-sv-repair:disabled { opacity: 0.45; cursor: default; }
 .ss-sv-end { font-size: 15px; padding: 8px 14px; margin-left: auto; }
 .ss-sv-special { font-size: 14px; font-weight: 700; color: #b8560f; margin: -2px 0 6px; }
+
+/* ------------------------------------------------------------ impact flash + damage vignette (fx/impact.ts) */
+/* Sits between the canvas (#app) and the HUD (#ui, z 30); opacity is driven by element.animate(). */
+.impact-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
+}
+.impact-flash,
+.impact-vig {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  will-change: opacity;
+}
+.impact-flash {
+  background: radial-gradient(ellipse at 50% 55%, #ffffff 0%, rgba(255, 255, 250, 0.95) 45%, rgba(235, 255, 225, 0.85) 100%);
+}
+.impact-vig {
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 30, 20, 0) 42%, rgba(220, 20, 20, 0.35) 70%, rgba(150, 0, 0, 0.75) 100%);
+}
+/* Chromatic split: a red fringe nudged left and a cyan one nudged right, screened over the edge vignette. */
+.impact-vig::before,
+.impact-vig::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  mix-blend-mode: screen;
+}
+.impact-vig::before {
+  transform: translateX(-7px);
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 0, 40, 0) 55%, rgba(255, 0, 40, 0.28) 85%, rgba(255, 0, 40, 0.45) 100%);
+}
+.impact-vig::after {
+  transform: translateX(7px);
+  background: radial-gradient(ellipse at 50% 50%, rgba(0, 220, 255, 0) 55%, rgba(0, 220, 255, 0.2) 85%, rgba(0, 220, 255, 0.32) 100%);
+}
+.impact-vig.impact-vig-calm::before,
+.impact-vig.impact-vig-calm::after {
+  display: none;
+}

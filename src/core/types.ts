@@ -374,7 +374,38 @@ export interface CameraRigAPI {
   /** Jump to the target pose immediately (after reset/respawn). */
   snap(): void;
   addShake(intensity: number): void;
+  /** Directional impact kick: shove the camera `amount` m along the horizontal unit (dx, dz) and let it spring back.
+   *  Scaled by the settings shake slider. */
+  kick(dx: number, dz: number, amount: number): void;
+  /** Short impact FOV punch in degrees (negative = zoom in), separate from the dash kick. Scaled by the shake slider. */
+  punchFov(degrees: number): void;
   update(dt: number): void;
+}
+
+/** Impact feel kinds (see fx/impact.ts for the per-kind light colour, hit-stop and camera numbers). */
+export type ImpactKind = 'slam' | 'wreck' | 'kill' | 'bossHit' | 'bossKill' | 'pound' | 'clap' | 'meltdown' | 'nuke' | 'player';
+
+export interface ImpactOpts {
+  /** false = light + camera only, no hit-stop (rival-vs-rival effects, slams that hit nothing). */
+  stop?: boolean;
+  /** 0..1 extra camera-kick attenuation (e.g. Brawl hearing falloff). */
+  falloff?: number;
+}
+
+/** Hit-stop / slow-mo time scale, impact lights, camera punches and the flash / damage-vignette overlay. */
+export interface ImpactAPI {
+  /** false disables the hit-stop / slow-mo time scale (visuals still play). */
+  enabled: boolean;
+  /** True while a hit-stop or slow-mo plays (the round-clear waits for it). */
+  readonly holding: boolean;
+  hit(kind: ImpactKind, pos: THREE.Vector3, strength?: number, opts?: ImpactOpts): void;
+  /** The player lost `damage` HP to an attacker at (fromX, fromZ). */
+  playerHit(damage: number, fromX: number, fromZ: number): void;
+  slowMo(seconds?: number): void;
+  /** Returns this tick's sim time scale and advances the timers by real seconds. */
+  step(realDt: number): number;
+  update(dt: number): void;
+  clear(): void;
 }
 
 export type SoundName =
@@ -520,6 +551,8 @@ export interface BrawlAPI extends EnemyManagerAPI {
   /** True once the timer hits 0 or someone reaches the kill target. */
   readonly over: boolean;
   readonly result: BrawlResult | null;
+  /** Run the match clock by `seconds` of real time the sim skipped (hit-stop / slow-mo keep the timer real-time). */
+  tickClock(seconds: number): void;
   /** Live HUD data. May reuse objects between calls — consume immediately. */
   hud(): BrawlHud;
 }
@@ -632,6 +665,7 @@ export interface GameContext {
   pickups: PickupsAPI;
   fx: FxAPI;
   cameraRig: CameraRigAPI;
+  impact: ImpactAPI;
   audio: AudioAPI;
   ui: UIAPI;
   /** Seconds of game time elapsed (pauses with the game). */

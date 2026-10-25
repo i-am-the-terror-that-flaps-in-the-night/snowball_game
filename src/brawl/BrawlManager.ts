@@ -524,6 +524,13 @@ export class BrawlManager implements BrawlAPI {
 
   /* ================================================================== update */
 
+  tickClock(seconds: number): void {
+    if (this.started && this.active && !this._over && seconds > 0) {
+      this.timeLeft -= seconds;
+      if (this.timeLeft <= 0) this.endMatch();
+    }
+  }
+
   update(dt: number): void {
     if (!this.started) return;
     const ctx = this.ctx;
@@ -1199,6 +1206,7 @@ export class BrawlManager implements BrawlAPI {
       ctx.fx.burst(_v, { color: 0x9fe8ff, count: 30, speed: 12, size: 0.1, gravity: 8, life: 0.5 });
       const k = this.hear(px, pz);
       if (k > 0.1) ctx.fx.shake(0.15 + 0.45 * k);
+      ctx.impact.hit('clap', _v.set(px, 1, pz), 0.8, { stop: false, falloff: k * 0.6 });
     }
     this.sfx('thunder', px, pz, 1);
     for (const f of this.fighters) {
@@ -1250,6 +1258,7 @@ export class BrawlManager implements BrawlAPI {
       }
       const k = this.hear(px, pz);
       if (k > 0.1) ctx.fx.shake(0.2 + 0.5 * k);
+      ctx.impact.hit('pound', _v.set(px, 0.5, pz), 0.8, { stop: false, falloff: k * 0.6 });
     }
     this.sfx('thud', px, pz, 1);
     for (const f of this.fighters) {
@@ -1331,6 +1340,7 @@ export class BrawlManager implements BrawlAPI {
       ctx.fx.ring(_v, zone + 0.6, 0xffffff);
       const k = this.hear(cx, cz);
       if (k > 0.2) ctx.fx.shake(0.12 + 0.3 * br * k);
+      ctx.impact.hit('slam', _v, br * 0.8, { stop: false, falloff: k * 0.5 });
     }
     this.sfx('slam', cx, cz, 0.9, clamp(1.2 - br * 0.25, 0.7, 1.2));
   }
@@ -1527,6 +1537,7 @@ export class BrawlManager implements BrawlAPI {
       ctx.fx.ring(_v, 5, 0xffb060);
       const k = this.hear(x, z);
       if (k > 0.1) ctx.fx.shake(0.15 + 0.5 * k);
+      ctx.impact.hit('wreck', _v.set(x, 1.2, z), 1, { stop: false, falloff: k });
       // Debris chunks in the rival's paint (frozen as it was at the kill) + dark metal: one batch per material.
       const paintMat = r.rig.paint.clone();
       const batches: Debris[] = [paintMat, getDebrisDarkMaterial()].map((mat, k) => {

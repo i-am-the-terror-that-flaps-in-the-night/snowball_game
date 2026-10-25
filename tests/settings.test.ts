@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('settings', () => {
   it('defaults when nothing is stored', async () => {
-    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', keys: {} });
+    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, keys: {} });
   });
 
   it('defaults on corrupted storage', async () => {
@@ -28,6 +28,11 @@ describe('settings', () => {
     expect(s.shake).toBe(0.5);
     expect(s.quality).toBe('high');
     expect(s.keys).toEqual({});
+  });
+
+  it('loads reduceFlash only when it is literally true', async () => {
+    expect((await loadWith(JSON.stringify({ reduceFlash: true }))).reduceFlash).toBe(true);
+    expect((await loadWith(JSON.stringify({ reduceFlash: 'yes' }))).reduceFlash).toBe(false);
   });
 
   it('keeps valid bindings and low quality', async () => {
