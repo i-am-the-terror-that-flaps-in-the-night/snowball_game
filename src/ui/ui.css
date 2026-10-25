@@ -526,6 +526,7 @@
 .ss-tab-line[data-plow='classic'] { --acc: #ff8a1a; }
 .ss-tab-line[data-plow='volt'] { --acc: #2fb8ff; }
 .ss-tab-line[data-plow='brute'] { --acc: #e0a800; }
+.ss-tab-line[data-plow='isotope'] { --acc: #4fd61c; }
 .ss-tab-icon { font-size: 18px; line-height: 1; }
 .ss-tab-label { white-space: nowrap; }
 .ss-tab-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #ff8a1f; color: #fff; font-size: 12px; line-height: 20px; letter-spacing: 0; box-shadow: 0 2px 0 rgba(150, 70, 0, 0.35); }
@@ -538,6 +539,7 @@
 .ss-cat-pilot .ss-card { --acc: #b05cf0; }
 .ss-cat-volt .ss-card { --acc: #2fb8ff; }
 .ss-cat-brute .ss-card { --acc: #e0a800; }
+.ss-cat-isotope .ss-card { --acc: #4fd61c; }
 .ss-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
 .ss-card {
   display: grid;
@@ -1100,7 +1102,7 @@
 }
 
 /* ---- Starter plow picker (Garage) */
-.ss-plow-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 4px 0 10px; }
+.ss-plow-pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 10px; }
 .ss-plow-pick.hidden { display: none; }
 .ss-plow-card { position: relative; display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; border-radius: 16px; cursor: pointer; font: inherit; color: #1b2b40;
   background: linear-gradient(160deg, rgba(255,255,255,0.85), rgba(225,238,252,0.75)); border: 2px solid rgba(255,255,255,0.9); box-shadow: 0 3px 0 rgba(40,80,120,0.25); transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s; }
@@ -1110,6 +1112,9 @@
 .ss-plow-volt { --acc: #2fb8ff; background: linear-gradient(160deg, rgba(225,244,255,0.92), rgba(170,214,255,0.8)); }
 .ss-plow-volt.on { animation: ss-volt-glow 1.6s ease-in-out infinite; }
 @keyframes ss-volt-glow { 50% { box-shadow: 0 0 0 3px rgba(47,184,255,0.6), 0 0 22px rgba(47,184,255,0.7), 0 3px 0 rgba(40,80,120,0.25); } }
+.ss-plow-isotope { --acc: #4fd61c; background: radial-gradient(circle at 70% 30%, rgba(125,255,74,0.35), transparent 60%), linear-gradient(160deg, rgba(250,246,214,0.94), rgba(222,214,140,0.85)); }
+.ss-plow-isotope.on { animation: ss-iso-glow 1.4s ease-in-out infinite; }
+@keyframes ss-iso-glow { 50% { box-shadow: 0 0 0 3px rgba(79,214,28,0.6), 0 0 22px rgba(93,255,58,0.75), 0 3px 0 rgba(60,90,30,0.25); } }
 .ss-plow-brute { --acc: #e0a800; background: repeating-linear-gradient(135deg, rgba(255,194,26,0.22) 0 10px, rgba(40,44,52,0.1) 10px 20px), linear-gradient(160deg, rgba(236,238,242,0.94), rgba(196,202,212,0.85)); }
 .ss-plow-icon { font-size: 28px; line-height: 1; }
 .ss-plow-name { font-weight: 900; font-size: 16px; letter-spacing: 0.04em; }
@@ -1120,7 +1125,9 @@
 .ss-cat-classic .ss-cat-title { color: #e06a00; }
 .ss-cat-volt .ss-cat-title { color: #1a8cff; }
 .ss-cat-brute .ss-cat-title { color: #c08a00; }
+.ss-cat-isotope .ss-cat-title { color: #2f9a10; }
 .ss-ab-pound { --ac: #ffc21a; }
+.ss-ab-melt { --ac: #5dff3a; }
 /* ---- HUD: VOLT-9 Thunderclap icon + Battery Shield bar */
 .ss-ab-zap { --ac: #4fd0ff; }
 .ss-batt { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
@@ -1129,6 +1136,14 @@
 .ss-batt-bar { position: relative; flex: 1; height: 10px; border-radius: 5px; background: rgba(0, 15, 35, 0.6); border: 1.5px solid rgba(160, 225, 255, 0.85); overflow: hidden; }
 .ss-batt-fill { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, #2fb8ff, #bff0ff); box-shadow: 0 0 8px #2fb8ff; transition: transform 0.15s; }
 .ss-batt.empty .ss-batt-bar { border-color: rgba(255, 120, 120, 0.8); }
+.ss-crit .ss-batt-bar { border-color: rgba(160, 255, 120, 0.85); background: rgba(10, 30, 0, 0.6); }
+.ss-crit .ss-batt-fill { background: linear-gradient(90deg, #2f9a10, #b8ff6a); box-shadow: 0 0 8px #5dff3a; }
+.ss-crit-tag { display: none; font-size: 11px; font-weight: 900; color: #eaff6a; text-shadow: 0 0 6px #5dff3a, 0 1px 2px #000; white-space: nowrap; }
+.ss-crit.full .ss-crit-tag { display: inline; animation: ss-crit-pulse 0.6s ease-in-out infinite; }
+.ss-crit.full .ss-batt-fill { background: linear-gradient(90deg, #eaff6a, #fff); }
+@keyframes ss-crit-pulse { 50% { opacity: 0.45; } }
+.ss-ab-nuke { --ac: #eaff6a; animation: ss-nuke-glow 0.6s ease-in-out infinite; }
+@keyframes ss-nuke-glow { 50% { filter: drop-shadow(0 0 12px #9dff5a) brightness(1.25); } }
 /* Thunderclap Overload meter: perched above the F icon; heat bar + the next clap's self-damage. */
 .ss-heat { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; }
 .ss-heat.hidden { display: none; }

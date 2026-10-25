@@ -38,9 +38,13 @@ export type UpgradeId =
   | 'brutePound'
   | 'bruteHide'
   | 'bruteMomentum'
-  | 'bruteSaws';
+  | 'bruteSaws'
+  | 'isoMeltdown'
+  | 'isoHalfLife'
+  | 'isoAura'
+  | 'isoChain';
 
-export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'special';
+export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'isotope' | 'special';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -170,6 +174,20 @@ export const FX = {
    *  (x your damage mult). BRUTUS's answer to the Tesla Field: hits harder, but only in front and to the sides. */
   sawRadius: (L: number) => (L <= 0 ? 0 : 4.6 + 0.5 * soft(L, 5)),
   sawDps: (L: number) => (L <= 0 ? 0 : 40 + 20 * grow(L - 1, 4)),
+  // ---- ISOTOPE line
+  /** Meltdown (F on ISOTOPE, free at level 0): blast radius, blast damage (x your damage mult), recharge. */
+  meltRadius: (L: number) => 7.5 + 0.6 * soft(L, 5),
+  meltDamage: (L: number) => 110 + 40 * grow(L, 5),
+  meltCooldown: (L: number) => 4 + 3 * Math.exp(-L / 4),
+  /** Half-Life: the fallout pool Meltdown leaves behind — radius, damage per second, seconds it lasts. */
+  poolRadius: (L: number) => 4.5 + 0.4 * soft(L, 5),
+  poolDps: (L: number) => 22 + 12 * grow(L, 5),
+  poolSeconds: (L: number) => 4 + 0.8 * soft(L, 5),
+  /** Rad Aura: passive radiation around the plow — reach (m) and damage per second (0 = not owned). */
+  auraRadius: (L: number) => (L <= 0 ? 0 : 4 + 0.45 * soft(L, 5)),
+  auraDps: (L: number) => (L <= 0 ? 0 : 8 + 5 * grow(L - 1, 4)),
+  /** Chain Reaction: irradiated bots explode on death — damage (x your damage mult) in CHAIN_RADIUS (0 = not owned). */
+  chainBlast: (L: number) => (L <= 0 ? 0 : 35 + 18 * grow(L - 1, 4)),
 };
 
 const owned = (l: number) => (l ? 'Installed' : 'Locked');
@@ -207,6 +225,10 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'brutePound', name: 'Ground Pound', icon: '💥', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'F: hop and slam down, a shockwave that damages, stuns and hurls back bots around you.', details: 'Free on BRUTUS. Upgrades make it wider, harder-hitting and faster to recharge.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.poundDamage(l))} dmg, ${f1(FX.poundRadius(l))} m, ${f1(FX.poundCooldown(l))}s` },
   { id: 'bruteHide', name: 'Iron Hide', icon: '🪖', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Take less damage the faster you are going.', details: 'Full effect from 70% of top speed (dashing counts); parked, you keep 40% of it. Stacks with Reinforced Frame.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `-${Math.round((1 - FX.ironHide(l)) * 100)}% damage at speed` : 'Locked') },
   { id: 'bruteMomentum', name: 'Momentum', icon: '☄️', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Rams and dash strikes hit harder the faster you are going.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round(FX.momentum(l) * 1000)}% ram dmg at 10 m/s` : 'Locked') },
+  { id: 'isoMeltdown', name: 'Meltdown', icon: '☢️', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'F: vent the reactor. A toxic blast around you that leaves a glowing fallout pool behind.', details: 'Free on ISOTOPE. Bots caught in the blast or the pool get irradiated (they glow and take +15% damage from you). Radiation damage you deal fills Critical Mass (☢ bar under your HP); when it is full, F drops a NUKE instead: a 1.5s fuse, then a huge blast and a giant fallout pool. The nuke hits 4× as hard as Meltdown, so upgrades boost it too.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.meltDamage(l))} dmg, ${f1(FX.meltRadius(l))} m, ${f1(FX.meltCooldown(l))}s` },
+  { id: 'isoHalfLife', name: 'Half-Life', icon: '🧪', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Meltdown fallout pools are wider, burn hotter and linger longer.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.poolDps(l))} dps, ${f1(FX.poolRadius(l))} m, ${f1(FX.poolSeconds(l))}s` },
+  { id: 'isoAura', name: 'Rad Aura', icon: '🟢', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Your reactor leaks: a radiation aura that hurts and irradiates every bot near you.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.auraDps(l))} dps, ${f1(FX.auraRadius(l))} m` : 'Locked') },
+  { id: 'isoChain', name: 'Chain Reaction', icon: '💚', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Irradiated bots explode when wrecked, hurting and irradiating the bots around them.', details: 'Explosions can set off more explosions.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.chainBlast(l))} blast dmg` : 'Locked') },
   { id: 'bruteSaws', name: 'Buzzsaws', icon: '🪚', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Spinning saws on your blade ends shred bots in front of you and to the sides.', details: 'Speed and fury (damage you deal and take) spin them up, growing glowing halos that stretch their reach.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.sawDps(l))} dps, ${f1(FX.sawRadius(l))} m` : 'Locked') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },

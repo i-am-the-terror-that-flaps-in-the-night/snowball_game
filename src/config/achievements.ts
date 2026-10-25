@@ -207,6 +207,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'win_classic', name: 'Old Faithful', desc: 'Clear an arena with the Classic Plow.', icon: '🚜', category: 'plows', goal: 1, reward: 50, value: (p) => life(p, lifeWinsPlow('classic')) },
   { id: 'win_volt', name: "It's Electric", desc: 'Clear an arena with VOLT-9.', icon: '⚡', category: 'plows', goal: 1, reward: 75, value: (p) => life(p, lifeWinsPlow('volt')) },
   { id: 'win_brute', name: 'Rhino Charge', desc: 'Clear an arena with BRUTUS.', icon: '🦏', category: 'plows', goal: 1, reward: 75, value: (p) => life(p, lifeWinsPlow('brute')) },
+  { id: 'win_isotope', name: 'Critical Mass', desc: 'Clear an arena with ISOTOPE.', icon: '☢️', category: 'plows', goal: 1, reward: 75, value: (p) => life(p, lifeWinsPlow('isotope')) },
   { id: 'zap_10', name: 'Shocking Behavior', desc: 'Scrap 10 Brawl rivals with lightning.', icon: '🌩️', category: 'plows', goal: 10, reward: 100, value: (p) => life(p, LIFE.brawlKillsZap) },
   { id: 'pound_10', name: 'Ground Control', desc: 'Scrap 10 Brawl rivals with Ground Pound.', icon: '🔨', category: 'plows', goal: 10, reward: 100, value: (p) => life(p, LIFE.brawlKillsPound) },
 

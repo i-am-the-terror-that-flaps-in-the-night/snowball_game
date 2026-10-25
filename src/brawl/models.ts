@@ -486,7 +486,8 @@ export interface RivalRig {
 /** A rival vehicle. `plow` 'volt' / 'brute' wear the matching starter-plow silhouette instead of the `kind`
  *  vehicle body; every body keeps the rival's own paint color. */
 export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 'classic'): RivalRig {
-  const pt = plow === 'classic' ? null : plowTemplate(plow);
+  // Rivals never roll ISOTOPE (player-only plow).
+  const pt = plow === 'classic' || plow === 'isotope' ? null : plowTemplate(plow);
   const t = pt ?? template(kind);
   const col = new THREE.Color(color);
   const paint = new THREE.MeshStandardMaterial({ color: col, roughness: 0.42, metalness: 0.2, flatShading: true });

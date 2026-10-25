@@ -56,6 +56,28 @@ describe('computeStats', () => {
     expect(b.flameDps).toBe(0);
     expect(b.clapDamage).toBe(0);
     expect(b.poundDamage).toBe(FX.poundDamage(0));
+    const i = progWith({}, 'isotope').computeStats();
+    expect(i.flameDps).toBe(0);
+    expect(i.clapDamage).toBe(0);
+    expect(i.poundDamage).toBe(0);
+    expect(i.meltDamage).toBe(FX.meltDamage(0));
+    for (const o of [c, v, b]) expect(o.meltDamage).toBe(0);
+  });
+
+  it('ISOTOPE line only counts on ISOTOPE; aura and chain start locked', () => {
+    const base = progWith({}, 'isotope').computeStats();
+    expect(base.auraDps).toBe(0);
+    expect(base.chainBlast).toBe(0);
+    const ups = allAt(5);
+    const i = progWith(ups, 'isotope').computeStats();
+    expect(i.meltDamage).toBe(FX.meltDamage(5));
+    expect(i.poolDps).toBe(FX.poolDps(5));
+    expect(i.auraDps).toBe(FX.auraDps(5));
+    expect(i.chainBlast).toBe(FX.chainBlast(5));
+    const c = progWith(ups, 'classic').computeStats();
+    expect(c.meltDamage).toBe(0);
+    expect(c.auraDps).toBe(0);
+    expect(c.chainBlast).toBe(0);
   });
 
   it('plowOnly upgrades only count while driving their plow', () => {

@@ -15,7 +15,7 @@ import { getSnowballGeometry, getSnowballMaterial } from './snowballMesh';
 import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
 import {
-  buildBruteParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
+  buildBruteParts, buildIsotopeParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
   FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS, bladeTexture,
 } from './plowModels';
 import type { CosmeticSlot } from '../config/cosmetics';
@@ -252,6 +252,9 @@ export class Plow implements PlowAPI {
   private kind: PlowKind = 'classic';
   private classicParts = new THREE.Group();
   private bruteParts!: THREE.Group;
+  /** ISOTOPE: hazmat hull + reactor; the core's glow pulses (faster while Meltdown recharges). */
+  private isoParts!: THREE.Group;
+  private coreMat!: THREE.MeshStandardMaterial;
   private cleats: Cleat[] = [];
   /** All BRUTUS track cleats as instances (matrices follow cleatZ). */
   private cleatMesh!: THREE.InstancedMesh;
@@ -444,6 +447,16 @@ export class Plow implements PlowAPI {
     this.setCleats(0);
     this.bruteParts.visible = false;
     this.body.add(this.bruteParts);
+
+    /* ---- ISOTOPE: lead-lined reactor hauler — hazmat hull, caged glowing core, coolant tanks, trefoils. ---- */
+    const iso = buildIsotopeParts({ paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat });
+    this.isoParts = iso.group;
+    this.coreMat = iso.coreMat;
+    add(chassisGeo, darkMat, 0, 0.62, 0.05, this.isoParts);
+    mergeStatic(this.isoParts);
+    this.isoParts.add(...makeShadowProxy(this.isoParts, this.isoParts));
+    this.isoParts.visible = false;
+    this.body.add(this.isoParts);
 
     // Beacon light (colour/intensity per plow in update).
     this.beaconLight = new THREE.PointLight(0xffa020, 0, 7, 2);
@@ -809,14 +822,17 @@ export class Plow implements PlowAPI {
     this.kind = kind;
     const volt = kind === 'volt';
     const brute = kind === 'brute';
+    const iso = kind === 'isotope';
     // Body paint + decals follow the Paint Shop look (factory colours unless a paint is equipped).
     this.syncLook(true);
-    this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : 0xffd23a);
-    this.steelMat.emissive.setHex(volt ? 0x1a8cff : 0x000000);
-    this.steelMat.emissiveIntensity = volt ? 0.6 : 0;
-    this.beaconMat.color.setHex(volt ? 0x7fdcff : 0xffb000);
-    this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : 0xff9a00);
-    this.classicParts.visible = !volt && !brute;
+    this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : iso ? 0x9ad63a : 0xffd23a);
+    this.steelMat.emissive.setHex(volt ? 0x1a8cff : iso ? 0x2f8a10 : 0x000000);
+    this.steelMat.emissiveIntensity = volt ? 0.6 : iso ? 0.35 : 0;
+    this.beaconMat.color.setHex(volt ? 0x7fdcff : iso ? 0x7dff4a : 0xffb000);
+    this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : iso ? 0x3dff1a : 0xff9a00);
+    this.flameMat.color.setHex(iso ? 0x7dff4a : 0xff8a1a);
+    this.classicParts.visible = kind === 'classic';
+    this.isoParts.visible = iso;
     this.voltParts.visible = volt;
     this.bruteParts.visible = brute;
     this.bruteBlade.visible = brute;
@@ -829,13 +845,16 @@ export class Plow implements PlowAPI {
     } else if (brute) {
       this.exhaustTip.set(0.55, 3.1, -1.45);
       this.flame.rotation.set(0, 0, 0);
+    } else if (iso) {
+      this.exhaustTip.set(0.55, 2.38, 0.12);
+      this.flame.rotation.set(0, 0, 0);
     } else {
       this.exhaustTip.set(-0.72, 2.55, 0.05);
       this.flame.rotation.set(0, 0, 0);
     }
     this.flame.position.copy(this.exhaustTip);
     this.engineTip.set(0, brute ? 2.0 : 1.6, brute ? -1.0 : 1.7);
-    this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : 2.8, volt ? 0 : brute ? 1.4 : 0.8);
+    this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : iso ? 2.1 : 2.8, volt ? 0 : brute ? 1.4 : iso ? -1.0 : 0.8);
     this.applyBladeScale();
   }
 
@@ -864,7 +883,7 @@ export class Plow implements PlowAPI {
       this.paintMat.envMap = this.bedMat.envMap = env;
       this.paintMat.needsUpdate = this.bedMat.needsUpdate = true;
     }
-    const fh = this.kind === 'volt' ? 0x7fdcff : this.kind === 'brute' ? 0xffc21a : 0xffd23a;
+    const fh = this.kind === 'volt' ? 0x7fdcff : this.kind === 'brute' ? 0xffc21a : this.kind === 'isotope' ? 0x7dff4a : 0xffd23a;
     this.hubMat.color.setHex(p.accent ?? fh);
     if (!this._dead) {
       this.paintMat.color.copy(this.paintBase);
@@ -1748,6 +1767,7 @@ export class Plow implements PlowAPI {
     g.group.rotation.set(0, this.heading + this.spinAngle, 0);
     if (this.kind === 'volt') g.mat.color.setHSL(0.54 + Math.random() * 0.03, 1, 0.6);
     else if (this.kind === 'brute') g.mat.color.setHSL(0.13 + Math.random() * 0.02, 1, 0.5);
+    else if (this.kind === 'isotope') g.mat.color.setHSL(0.3 + Math.random() * 0.03, 1, 0.55);
     else g.mat.color.setHSL(0.07 + Math.random() * 0.03, 1, 0.55);
   }
 
@@ -1841,7 +1861,14 @@ export class Plow implements PlowAPI {
     const pf = lowHp ? 0.5 + 0.5 * Math.sin(this.time * 22) : pulse;
     this.beaconMat.emissiveIntensity = 0.6 + pf * 2.2;
     this.beaconLight.intensity = 2 + pf * 8;
-    this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : 0xffa020);
+    this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : this.kind === 'isotope' ? 0x5dff3a : 0xffa020);
+    // ISOTOPE: the reactor core breathes; it flickers hot while Meltdown recharges.
+    if (this.kind === 'isotope') {
+      const ready = this.ctx.combat?.flameReady ?? 1;
+      const flick = ready < 1 ? 0.5 + 0.5 * Math.sin(this.time * 25) : 0.5 + 0.5 * Math.sin(this.time * 3);
+      this.coreMat.emissiveIntensity = 0.45 + flick * (ready < 1 ? 0.25 : 0.45);
+      this.beaconLight.intensity = 2.5 + flick * 3;
+    }
     if (this.kind === 'volt') {
       this.beaconLight.intensity = 3 + pf * 3;
       this.underglowMat.opacity = 0.28 + 0.12 * Math.sin(this.time * 6) + (this.dashT > 0 ? 0.3 : 0);

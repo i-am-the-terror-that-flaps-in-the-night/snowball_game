@@ -389,7 +389,7 @@ export class StyleShop {
         // Decals sit on your current paint.
         c.swatch.style.setProperty('--body', css(look.paint.body ?? factory.body));
       } else if (d.slot === 'blade' && !d.style) {
-        c.swatch.style.setProperty('--blade', css(p.plow === 'volt' ? 0x9fe8ff : p.plow === 'brute' ? 0x7a828e : 0xffd23a));
+        c.swatch.style.setProperty('--blade', css(p.plow === 'volt' ? 0x9fe8ff : p.plow === 'brute' ? 0x7a828e : p.plow === 'isotope' ? 0x9ad63a : 0xffd23a));
       }
     }
     for (const [s, t] of this.tabBtns) {

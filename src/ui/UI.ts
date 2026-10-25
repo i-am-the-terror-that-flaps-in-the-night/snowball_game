@@ -55,7 +55,7 @@ const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; gr
   { id: 'ball', label: 'Snowball', icon: '⚪', blurb: 'Your weapon and your shield: pack it faster, bigger and harder.', groups: [{ cat: 'ball' }, { cat: 'special', title: 'One-time cores' }] },
   { id: 'defense', label: 'Defense', icon: '🛡️', blurb: 'Hit points, armor and repairs.', groups: [{ cat: 'defense' }, { cat: 'utility', title: 'Utility' }] },
   { id: 'pilot', label: 'Pilot', icon: '🧑‍✈️', blurb: "Pilot perks work on every plow, and Brawl bots can't copy them.", groups: [{ cat: 'pilot' }] },
-  { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }] },
+  { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }] },
 ];
 
 const ENEMY_ICON: Record<EnemyType, string> = {
@@ -242,7 +242,7 @@ export class UI implements UIAPI {
     coins: HTMLElement; coinBox: HTMLElement;
     combo: HTMLElement; comboN: HTMLElement;
     hpBox: HTMLElement; hpNum: HTMLElement; hpFill: HTMLElement; hpChip: HTMLElement;
-    batt: HTMLElement; battFill: HTMLElement;
+    batt: HTMLElement; battFill: HTMLElement; crit: HTMLElement; critFill: HTMLElement;
     gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
     slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
     dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement;
@@ -254,7 +254,7 @@ export class UI implements UIAPI {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, fKind: '', batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false,
+    dash: -1, whirl: -2, flame: -2, fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false,
   };
   private hintTimer = 0;
 
@@ -1368,6 +1368,11 @@ export class UI implements UIAPI {
     el('span', 'ss-batt-label', '🔋', H.batt);
     const bb = el('div', 'ss-batt-bar', undefined, H.batt);
     H.battFill = el('div', 'ss-batt-fill', undefined, bb);
+    H.crit = el('div', 'ss-batt ss-crit hidden', undefined, bl);
+    el('span', 'ss-batt-label', '☢', H.crit);
+    const cb = el('div', 'ss-batt-bar', undefined, H.crit);
+    H.critFill = el('div', 'ss-batt-fill', undefined, cb);
+    el('span', 'ss-crit-tag', 'NUKE READY · F', H.crit);
 
     // bottom-center: abilities + snowball gauge
     const bc = el('div', 'ss-hud-bc', undefined, hud);
@@ -1874,12 +1879,29 @@ export class UI implements UIAPI {
     // F icon follows the plow: Inferno fire (Classic), Thunderclap (VOLT-9) or Ground Pound (BRUTUS).
     if (s.fAbility !== L.fKind) {
       L.fKind = s.fAbility;
+      L.crit = -2; // re-apply the NUKE label below
       const zap = s.fAbility === 'zap';
       const pound = s.fAbility === 'pound';
-      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : '🔥';
-      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : 'FIRE';
+      const melt = s.fAbility === 'meltdown';
+      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : '🔥';
+      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : 'FIRE';
+      H.flame.classList.toggle('ss-ab-melt', melt);
       H.flame.classList.toggle('ss-ab-zap', zap);
       H.flame.classList.toggle('ss-ab-pound', pound);
+    }
+    // ISOTOPE Critical Mass: full = the next F is a NUKE (the F icon says so too).
+    const cm = s.critMass === undefined || s.critMass < 0 ? -1 : Math.round(clamp01(s.critMass) * 100) / 100;
+    if (cm !== L.crit) {
+      H.crit.classList.toggle('hidden', cm < 0);
+      if (cm >= 0) H.critFill.style.transform = `scaleX(${cm})`;
+      const full = cm >= 1;
+      H.crit.classList.toggle('full', full);
+      if (s.fAbility === 'meltdown') {
+        H.flame.querySelector('.ss-ab-icon')!.textContent = '☢️';
+        H.flame.querySelector('.ss-ab-name')!.textContent = full ? 'NUKE' : 'MELT';
+        H.flame.classList.toggle('ss-ab-nuke', full);
+      }
+      L.crit = cm;
     }
     // Battery Shield (VOLT-9).
     const bt = s.shield < 0 ? -1 : Math.round(clamp01(s.shield) * 100) / 100;

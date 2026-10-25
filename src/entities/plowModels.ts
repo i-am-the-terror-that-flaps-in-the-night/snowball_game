@@ -263,6 +263,107 @@ export function buildVoltParts(m: VoltPartsMats): VoltParts {
   return { group: vp, coilTops, underglowMat };
 }
 
+/* ------------------------------------------------------------------ ISOTOPE */
+
+export interface IsotopePartsMats {
+  paint: THREE.Material;
+  /** Lead armor plates (the Paint Shop trim colour). */
+  trim: THREE.Material;
+  dark: THREE.Material;
+  glass: THREE.Material;
+  chrome: THREE.Material;
+}
+
+export interface IsotopeParts {
+  group: THREE.Group;
+  /** The reactor core's glowing material (Plow pulses it). */
+  coreMat: THREE.MeshStandardMaterial;
+}
+
+let trefoilTex: THREE.CanvasTexture | null = null;
+/** Black radiation trefoil on hazmat yellow. */
+function trefoilTexture(): THREE.CanvasTexture {
+  if (trefoilTex) return trefoilTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#f2d21b';
+  g.beginPath();
+  g.arc(64, 64, 62, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#141414';
+  for (let i = 0; i < 3; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI * 2) / 3;
+    g.beginPath();
+    g.moveTo(64 + Math.cos(a - 0.52) * 16, 64 + Math.sin(a - 0.52) * 16);
+    g.arc(64, 64, 54, a - 0.52, a + 0.52);
+    g.arc(64, 64, 16, a + 0.52, a - 0.52, true);
+    g.fill();
+  }
+  g.beginPath();
+  g.arc(64, 64, 10, 0, Math.PI * 2);
+  g.fill();
+  trefoilTex = new THREE.CanvasTexture(c);
+  trefoilTex.colorSpace = THREE.SRGBColorSpace;
+  return trefoilTex;
+}
+
+/** ISOTOPE: a squat hazmat hauler — lead-plated hull, short cab, a caged glowing reactor core on the back with
+ *  coolant tanks, a vent stack and radiation trefoils. Rides on the shared chassis + wheels. */
+export function buildIsotopeParts(m: IsotopePartsMats): IsotopeParts {
+  const ip = new THREE.Group();
+  const coreMat = new THREE.MeshStandardMaterial({ color: 0x2fd60a, emissive: 0x2cff00, emissiveIntensity: 0.6, roughness: 0.3 });
+  const signMat = new THREE.MeshStandardMaterial({ map: trefoilTexture(), roughness: 0.5, transparent: false, alphaTest: 0.5 });
+  const hazardTex = hazardTexture();
+  hazardTex.repeat.set(4, 1);
+  const hazardMat = new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.55, metalness: 0.2 });
+  // Hull + nose.
+  add(new THREE.BoxGeometry(2.0, 0.72, 2.9), m.paint, 0, 1.16, -0.4, ip);
+  add(new THREE.BoxGeometry(1.84, 0.52, 0.95), m.paint, 0, 1.06, 1.55, ip);
+  add(new THREE.BoxGeometry(2.06, 0.16, 3.0), m.dark, 0, 0.82, -0.4, ip);
+  // Lead armor plates on the flanks + a hazard band across the tail.
+  for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.1, 0.46, 2.5), m.trim, sx * 1.04, 1.16, -0.45, ip);
+  add(new THREE.BoxGeometry(2.02, 0.22, 0.06), hazardMat, 0, 1.3, -1.87, ip, false);
+  add(new THREE.BoxGeometry(0.28, 0.16, 0.06), m.dark, -0.76, 1.0, -1.88, ip, false);
+  add(new THREE.BoxGeometry(0.28, 0.16, 0.06), m.dark, 0.76, 1.0, -1.88, ip, false);
+  // Cab.
+  add(new THREE.BoxGeometry(1.62, 0.78, 1.05), m.paint, 0, 1.9, 0.82, ip);
+  add(new THREE.BoxGeometry(1.7, 0.1, 1.12), m.trim, 0, 2.33, 0.82, ip);
+  const ws = add(new THREE.BoxGeometry(1.42, 0.46, 0.06), m.glass, 0, 1.95, 1.36, ip, false);
+  ws.rotation.x = -0.18;
+  for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.06, 0.42, 0.72), m.glass, sx * 0.82, 1.95, 0.85, ip, false);
+  // Reactor: glowing core in a cage of dark bars, base ring and cap.
+  add(new THREE.CylinderGeometry(0.42, 0.42, 0.86, 16), coreMat, 0, 1.97, -1.0, ip, false);
+  add(new THREE.CylinderGeometry(0.58, 0.62, 0.16, 16), m.dark, 0, 1.56, -1.0, ip);
+  add(new THREE.CylinderGeometry(0.56, 0.5, 0.14, 16), m.dark, 0, 2.44, -1.0, ip);
+  add(new THREE.CylinderGeometry(0.2, 0.26, 0.16, 10), m.chrome, 0, 2.58, -1.0, ip);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    add(new THREE.BoxGeometry(0.07, 0.86, 0.07), m.dark, Math.sin(a) * 0.5, 1.99, -1.0 + Math.cos(a) * 0.5, ip);
+  }
+  // Coolant tanks along the deck + a vent stack behind the cab.
+  for (const sx of [-1, 1]) {
+    const tank = add(new THREE.CylinderGeometry(0.17, 0.17, 1.5, 12), m.chrome, sx * 0.78, 1.68, -0.95, ip);
+    tank.rotation.x = Math.PI / 2;
+    add(new THREE.BoxGeometry(0.42, 0.08, 0.1), m.dark, sx * 0.78, 1.53, -0.55, ip);
+    add(new THREE.BoxGeometry(0.42, 0.08, 0.1), m.dark, sx * 0.78, 1.53, -1.35, ip);
+  }
+  add(new THREE.CylinderGeometry(0.11, 0.13, 0.7, 10), m.dark, 0.55, 2.0, 0.12, ip);
+  // Wheel arches.
+  for (const [x, z] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const) {
+    add(new THREE.BoxGeometry(0.5, 0.1, 1.1), m.dark, x, 0.48 * 2 + 0.08, z, ip);
+  }
+  // Trefoil signs on the armor plates and the tail.
+  const sign = new THREE.PlaneGeometry(0.5, 0.5);
+  for (const sx of [-1, 1]) {
+    const d = add(sign, signMat, sx * 1.1, 1.16, -0.45, ip, false);
+    d.rotation.y = (sx * Math.PI) / 2;
+  }
+  const tail = add(sign, signMat, 0, 1.62, -1.91, ip, false);
+  tail.rotation.y = Math.PI;
+  return { group: ip, coreMat };
+}
+
 /* ------------------------------------------------------------------ BRUTUS */
 
 export interface BrutePartsMats {
@@ -502,6 +603,7 @@ export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: numb
   classic: { body: 0xff7a1a, trim: 0xffb21f },
   volt: { body: 0x1f5fe0, trim: 0x18213a },
   brute: { body: 0x7d8794, trim: 0x4a525d },
+  isotope: { body: 0xe8cf1f, trim: 0x3a4038 },
 };
 
 const INK = '#16181c';
@@ -751,6 +853,12 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
     { face: 'rear', at: [0, 1.38, -1.95], size: [1.75, 0.95], tags: ['emblem'], emblem: 0.85 },
     { face: 'rear', at: [0, 1.84, -1.95], size: [1.75, 0.18], tags: ['band'] },
   ],
+  isotope: [
+    { face: 'top', at: [0, 2.38, 0.82], size: [1.12, 1.7], tags: ['stripe', 'emblem', 'band'], emblem: 1.0 }, // cab roof
+    { face: 'top', at: [0, 1.32, 1.55], size: [0.95, 1.84], tags: ['stripe', 'flame', 'emblem'], emblem: 0.8 }, // nose
+    { face: 'side', at: [1.0, 1.45, -0.45], size: [2.7, 0.14], tags: ['band', 'stripe', 'flame'] }, // hull flank
+    { face: 'side', at: [0.81, 1.62, 0.82], size: [1.0, 0.3], tags: ['flame', 'band', 'stripe'] }, // cab flank
+  ],
 };
 
 /** Gap between a decal and the panel under it (plus polygon offset) so it never z-fights. */
@@ -813,6 +921,7 @@ export const TRAIL_REAR: Readonly<Record<PlowKind, { x: number; y: number; z: nu
   classic: { x: 0.8, y: 0.9, z: -2.15 },
   volt: { x: 0.75, y: 0.85, z: -2.1 },
   brute: { x: 1.1, y: 0.8, z: -2.3 },
+  isotope: { x: 0.8, y: 0.85, z: -2.05 },
 };
 
 const _trailCol = new THREE.Color();

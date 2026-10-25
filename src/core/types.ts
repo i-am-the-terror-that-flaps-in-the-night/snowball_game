@@ -124,7 +124,17 @@ export interface PlayerStats {
   flameDps: number;
   flameCooldown: number;
   /** Which starter plow is being driven (config/plows.ts). */
-  plowKind: 'classic' | 'volt' | 'brute';
+  plowKind: 'classic' | 'volt' | 'brute' | 'isotope';
+  /** ISOTOPE line (meltDamage 0 on other plows): Meltdown blast, its fallout pool, the Rad Aura and Chain Reaction. */
+  meltRadius: number;
+  meltDamage: number;
+  meltCooldown: number;
+  poolRadius: number;
+  poolDps: number;
+  poolSeconds: number;
+  auraRadius: number;
+  auraDps: number;
+  chainBlast: number;
   /** VOLT-9 line (all 0 unless driving VOLT-9 with the upgrade): chain lightning arcs + share of the hit. */
   chainCount: number;
   chainFrac: number;
@@ -264,6 +274,8 @@ export interface CombatAPI {
   readonly flameReady: number;
   /** Battery Shield fraction 0..1, or -1 when not owned. */
   readonly shieldFrac: number;
+  /** ISOTOPE Critical Mass 0..1 (1 = the next F is a NUKE), or -1 on other plows. */
+  readonly critMass: number;
   /** Thunderclap Overload heat right now (+1 per clap, bleeds off over time; 0 = cool), or -1 when not on VOLT-9. */
   readonly overloadHeat: number;
   /** Self-damage the NEXT Thunderclap would deal at the current heat (capped so it leaves 1 HP); 0 off VOLT-9. */
@@ -419,9 +431,11 @@ export interface HudState {
   /** 0..1 F-ability recharge (Inferno or Thunderclap), or -1 when not owned. */
   flameReady: number;
   /** What F does right now (icon). */
-  fAbility: 'fire' | 'zap' | 'pound';
+  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown';
   /** Battery Shield 0..1, or -1 when not owned. */
   shield: number;
+  /** ISOTOPE Critical Mass 0..1 (1 = NUKE ready), or -1 on other plows. */
+  critMass?: number;
   /** Thunderclap Overload heat (CombatAPI.overloadHeat; -1 = hidden) and the next clap's predicted self-damage. */
   overload?: number;
   overloadCost?: number;

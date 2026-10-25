@@ -40,6 +40,22 @@ const CLAP_HEAT_DECAY = 2.5;
 const POUND_HOP_SECONDS = 0.36;
 const POUND_HOP_HEIGHT = 1.5;
 const POUND_RIM_FRAC = 0.6;
+/** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
+ *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
+const RAD_VULN = 1.15;
+const RAD_SECONDS = 3;
+const POOL_TICK = 0.3;
+const MAX_POOLS = 4;
+const CHAIN_RADIUS = 4;
+/** NUKE (ISOTOPE): Critical Mass fills from radiation damage dealt (this much fills it); the next F arms a
+ *  warhead that detonates after NUKE_FUSE seconds — NUKE_DMG_MULT x Meltdown damage across NUKE_RADIUS, falling
+ *  off to NUKE_RIM_FRAC at the edge, plus a giant fallout pool. */
+const NUKE_CHARGE_DMG = 900;
+const NUKE_FUSE = 1.5;
+const NUKE_RADIUS = 18;
+const NUKE_DMG_MULT = 4;
+const NUKE_RIM_FRAC = 0.35;
+const NUKE_KNOCK = 26;
 /** Momentum (BRUTUS) only counts closing speed up to this many m/s. */
 const MOMENTUM_SPEED_CAP = 20;
 /** Buzzsaw halos (BRUTUS): a full halo stretches the saw reach by this share. */
@@ -116,6 +132,19 @@ export class Combat implements CombatAPI {
   private stormStrikes = 0;
   private stormStrikeT = 0;
   private stormTickT = 0;
+  // ISOTOPE state: Meltdown recharge, fallout pools (pooled glowing discs), irradiated bots, queued chain blasts.
+  private meltCharge = 1;
+  private pools: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; t: number; life: number; tickT: number }[] = [];
+  private rads = new Map<EnemyHandle, number>();
+  private radFxT = 0;
+  private auraT = 0;
+  private chainQueue: { x: number; z: number }[] = [];
+  private critCharge = 0;
+  /** Armed warhead: seconds to detonation (-1 = none) and where it was dropped. */
+  private nukeT = -1;
+  private nukeX = 0;
+  private nukeZ = 0;
+  private nukeBeepT = 0;
   /** BRUTUS Ground Pound: recharge 0..1 and the hop timer (-1 = grounded). */
   private poundCharge = 1;
   private poundT = -1;
@@ -124,6 +153,20 @@ export class Combat implements CombatAPI {
     this.ctx = ctx;
     this.flameCone = new FlameCone(ctx.scene);
     this.lightning = new Lightning(ctx.scene);
+    const poolGeo = new THREE.CircleGeometry(1, 32);
+    poolGeo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < MAX_POOLS; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0x5dff3a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+      const mesh = new THREE.Mesh(poolGeo, mat);
+      mesh.visible = false;
+      mesh.renderOrder = 2;
+      ctx.scene.add(mesh);
+      this.pools.push({ mesh, mat, x: 0, z: 0, r: 1, t: 0, life: 1, tickT: 0 });
+    }
+  }
+
+  get critMass(): number {
+    return this.ctx.stats.meltDamage > 0 ? this.critCharge : -1;
   }
 
   get shieldFrac(): number {
@@ -525,7 +568,7 @@ export class Combat implements CombatAPI {
 
   /** Multiplier on the player's hits against `e`: burning bots take BURN_VULN x, and Last Stand adds its bonus. */
   private hitMult(e: EnemyHandle): number {
-    return (this.burns.has(e) ? BURN_VULN : 1) * this.lastStandMult();
+    return (this.burns.has(e) ? BURN_VULN : 1) * (this.rads.has(e) ? RAD_VULN : 1) * this.lastStandMult();
   }
 
   /** Last Stand (pilot perk): 1 + bonus while the plow is under LAST_STAND_HP, else 1. */
@@ -984,6 +1027,7 @@ export class Combat implements CombatAPI {
     if (dealt > 0) plow.feedSawFury(dealt, 0);
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.chainLightning(target, dealt, heal);
     if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
+    if (killed && target && st.chainBlast > 0 && this.rads.has(target)) this.chainQueue.push({ x: target.position.x, z: target.position.z });
     if (killed && st.killRecharge > 0) {
       // Plow keeps its cooldown charges private; refund them through a narrow duck-typed view.
       const p = plow as unknown as { dashCharge: number; whirlCharge: number };
@@ -996,6 +1040,7 @@ export class Combat implements CombatAPI {
     const st = this.ctx.stats;
     if (st.plowKind === 'volt') return st.clapDamage > 0 ? this.clapCharge : -1;
     if (st.plowKind === 'brute') return st.poundDamage > 0 ? (this.poundT >= 0 ? 0 : this.poundCharge) : -1;
+    if (st.plowKind === 'isotope') return st.meltDamage > 0 ? this.meltCharge : -1;
     return st.flameDps > 0 ? this.flameCharge : -1;
   }
 
@@ -1113,6 +1158,253 @@ export class Combat implements CombatAPI {
     }
   }
 
+  /* ------------------------------------------------------------------ ISOTOPE */
+
+  /** Dose a bot: (re)start its radiation timer. */
+  private irradiate(e: EnemyHandle): void {
+    if (e.alive) this.rads.set(e, RAD_SECONDS);
+  }
+
+  /** Radiation damage to one bot (player credit, irradiates it). */
+  private radHit(e: EnemyHandle, amount: number, heal = false): void {
+    if (!e.alive) return;
+    this.irradiate(e);
+    const hp0 = e.hp;
+    const killed = this.ctx.enemies.damage(e, amount * this.ctx.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+    const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+    if (this.nukeT < 0) this.critCharge = Math.min(1, this.critCharge + dealt / NUKE_CHARGE_DMG);
+    this.onPlayerHit(dealt, killed, e, false, heal);
+  }
+
+  /** Meltdown (F on ISOTOPE): a toxic blast around the plow that leaves a fallout pool behind. */
+  private updateMeltdown(dt: number): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    const plow = ctx.plow;
+    if (st.meltDamage <= 0 || !plow || plow.dead) return;
+    if (this.meltCharge < 1) this.meltCharge = Math.min(1, this.meltCharge + (st.meltCooldown > 0 ? dt / st.meltCooldown : 1));
+    if (this.nukeT >= 0) return this.updateNuke(dt);
+    if (!ctx.input.wasPressed('KeyF')) return;
+    if (this.critCharge >= 1) return this.armNuke(plow);
+    if (this.meltCharge < 1) {
+      ctx.audio.play('error');
+      return;
+    }
+    this.meltCharge = 0;
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    const R = st.meltRadius;
+    _q.set(px, 0.15, pz);
+    ctx.fx.ring(_q, R * 0.5, 0xb8ff6a);
+    ctx.fx.ring(_q, R, 0x5dff3a);
+    ctx.fx.ring(_q, R * 1.1, 0x1f8a10);
+    ctx.fx.burst(_q, { color: 0x7dff4a, count: 50, speed: 13, size: 0.3, gravity: -2, life: 0.8 });
+    ctx.fx.burst(_q, { color: 0xeaff6a, count: 24, speed: 7, size: 0.2, gravity: -6, life: 0.9 });
+    _q.set(px, 2.2, pz);
+    ctx.fx.burst(_q, { color: 0x3dff1a, count: 30, speed: 4, size: 0.5, gravity: -5, life: 1.2 });
+    ctx.fx.shake(0.7);
+    ctx.audio.play('thud', { pitch: 0.7 });
+    ctx.audio.play('zap', { volume: 0.6, pitch: 0.5 });
+    const hits = this.collect(px, pz, R);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const d = Math.hypot(e.position.x - px, e.position.z - pz);
+      const fall = 1 - 0.4 * Math.min(1, d / R);
+      const hp0 = e.hp;
+      this.radHit(e, st.meltDamage * fall, true);
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      _q.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
+      if (dealt > 0) ctx.fx.floatText(_q, `☢${Math.round(dealt)}`, '#9dff5a', 1.1);
+    }
+    this.targets.length = 0;
+    // Fallout pool: reuse a free disc, else the oldest.
+    let pl = this.pools.find((x) => x.t <= 0);
+    if (!pl) pl = this.pools.reduce((a, b) => (a.t < b.t ? a : b));
+    pl.x = px;
+    pl.z = pz;
+    pl.r = st.poolRadius;
+    pl.life = pl.t = st.poolSeconds;
+    pl.tickT = 0;
+    // The blast melts the snow, so the pool sits on bare ground.
+    ctx.snow.melt(px, pz, pl.r, 1);
+    pl.mesh.position.set(px, 0.06, pz);
+    pl.mesh.scale.setScalar(pl.r);
+    pl.mesh.visible = true;
+  }
+
+  /** Critical Mass full + F: drop a warhead where the plow stands. Siren, a shrinking target ring, then boom. */
+  private armNuke(plow: PlowAPI): void {
+    const ctx = this.ctx;
+    this.critCharge = 0;
+    this.nukeT = NUKE_FUSE;
+    this.nukeBeepT = 0;
+    this.nukeX = plow.position.x;
+    this.nukeZ = plow.position.z;
+    ctx.audio.play('boss');
+    ctx.ui.toast('☢ NUKE INCOMING!', 'big');
+  }
+
+  private updateNuke(dt: number): void {
+    const ctx = this.ctx;
+    this.nukeT -= dt;
+    this.nukeBeepT -= dt;
+    if (this.nukeBeepT <= 0) {
+      // Beeps speed up as the fuse burns down; the target ring closes in.
+      const u = Math.max(0, this.nukeT / NUKE_FUSE);
+      this.nukeBeepT = 0.12 + 0.3 * u;
+      _q.set(this.nukeX, 0.2, this.nukeZ);
+      ctx.fx.ring(_q, NUKE_RADIUS * (0.25 + 0.75 * u), 0xff3b2f);
+      ctx.fx.ring(_q, 1.2, 0xffe14a);
+      ctx.audio.play('error', { volume: 0.5, pitch: 1.6 + (1 - u) * 0.8 });
+    }
+    if (this.nukeT <= 0) {
+      this.nukeT = -1;
+      this.detonate();
+    }
+  }
+
+  private detonate(): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    const px = this.nukeX;
+    const pz = this.nukeZ;
+    const R = NUKE_RADIUS;
+    // Flash, shockwave rings, a rising stem and a mushroom cap.
+    _q.set(px, 0.2, pz);
+    ctx.fx.ring(_q, R * 0.3, 0xffffff);
+    ctx.fx.ring(_q, R * 0.65, 0xfff3a0);
+    ctx.fx.ring(_q, R, 0x7dff4a);
+    ctx.fx.ring(_q, R * 1.15, 0xff8a1a);
+    ctx.fx.burst(_q, { color: 0xffffff, count: 60, speed: 26, size: 0.4, gravity: 4, life: 0.6 });
+    ctx.fx.burst(_q, { color: 0xffb02e, count: 50, speed: 18, size: 0.5, gravity: 2, life: 0.9 });
+    for (let i = 0; i < 7; i++) {
+      _q.set(px, 1 + i * 1.6, pz);
+      ctx.fx.burst(_q, { color: i < 3 ? 0xffd24a : 0x9aa06a, count: 14, speed: 2.5, size: 0.9, gravity: -4 - i, life: 1.6 });
+    }
+    _q.set(px, 12, pz);
+    ctx.fx.burst(_q, { color: 0xffe9a0, count: 50, speed: 9, size: 1.1, gravity: -1.5, life: 2 });
+    ctx.fx.burst(_q, { color: 0x7dff4a, count: 40, speed: 12, size: 0.8, gravity: -0.5, life: 2.2 });
+    ctx.fx.shake(1.8);
+    ctx.audio.play('explosion');
+    ctx.audio.play('thud', { pitch: 0.45 });
+    ctx.audio.play('boss', { volume: 0.6, pitch: 0.6 });
+    ctx.snow.melt(px, pz, R * 0.6, 1);
+    const hits = this.collect(px, pz, R);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      let dx = e.position.x - px;
+      let dz = e.position.z - pz;
+      const d = Math.hypot(dx, dz) || 1;
+      dx /= d;
+      dz /= d;
+      const fall = 1 - (1 - NUKE_RIM_FRAC) * Math.min(1, d / R);
+      this.irradiate(e);
+      const hp0 = e.hp;
+      const killed = ctx.enemies.damage(e, st.meltDamage * NUKE_DMG_MULT * fall * st.damageMult * this.hitMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3(dx * NUKE_KNOCK * fall, 0, dz * NUKE_KNOCK * fall),
+        fromX: px,
+        fromZ: pz,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e, false);
+      _q.set(e.position.x, e.position.y + e.radius + 1.4, e.position.z);
+      if (dealt > 0) ctx.fx.floatText(_q, `☢${Math.round(dealt)}`, '#eaff6a', 1.4);
+    }
+    this.targets.length = 0;
+    // A huge fallout pool that lingers.
+    let pl = this.pools.find((x) => x.t <= 0);
+    if (!pl) pl = this.pools.reduce((a, b) => (a.t < b.t ? a : b));
+    pl.x = px;
+    pl.z = pz;
+    pl.r = R * 0.55;
+    pl.life = pl.t = st.poolSeconds * 2;
+    pl.tickT = 0;
+    pl.mesh.position.set(px, 0.06, pz);
+    pl.mesh.scale.setScalar(pl.r);
+    pl.mesh.visible = true;
+  }
+
+  /** Fallout pools: glow, bubble and dose every bot standing in them. */
+  private updatePools(dt: number): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    for (const pl of this.pools) {
+      if (pl.t <= 0) continue;
+      pl.t -= dt;
+      if (pl.t <= 0) {
+        pl.mesh.visible = false;
+        continue;
+      }
+      const fade = Math.min(1, pl.t / 0.8, (pl.life - pl.t) / 0.25 + 0.2);
+      pl.mat.opacity = (0.32 + 0.08 * Math.sin(ctx.time * 6 + pl.x)) * fade;
+      pl.tickT -= dt;
+      if (pl.tickT > 0) continue;
+      pl.tickT = POOL_TICK;
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * pl.r;
+      _q.set(pl.x + Math.sin(a) * rr, 0.3, pl.z + Math.cos(a) * rr);
+      ctx.fx.burst(_q, { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gravity: -3, life: 0.7 });
+      if (st.poolDps <= 0 || st.meltDamage <= 0) continue;
+      const hits = ctx.enemies.query(pl.x, pl.z, pl.r, this.chainBuf);
+      for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.poolDps * POOL_TICK);
+    }
+  }
+
+  /** Rad Aura (ISOTOPE): passive radiation that doses every bot near the plow. */
+  private updateAura(dt: number): void {
+    const ctx = this.ctx;
+    const st = ctx.stats;
+    const plow = ctx.plow;
+    if (st.auraDps <= 0 || !plow || plow.dead) return;
+    this.auraT -= dt;
+    if (this.auraT > 0) return;
+    const TICK = 0.4;
+    this.auraT = TICK;
+    const R = st.auraRadius;
+    for (let i = 0; i < 3; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const rr = R * (0.4 + Math.random() * 0.6);
+      _q.set(plow.position.x + Math.sin(a) * rr, 0.4, plow.position.z + Math.cos(a) * rr);
+      ctx.fx.burst(_q, { color: 0x5dff3a, count: 1, speed: 0.6, size: 0.18, gravity: -2.5, life: 0.6 });
+    }
+    const hits = ctx.enemies.query(plow.position.x, plow.position.z, R, this.chainBuf);
+    for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.auraDps * TICK);
+  }
+
+  /** Radiation timers + the green glow over irradiated bots; Chain Reaction blasts from irradiated wrecks. */
+  private updateRads(dt: number): void {
+    const ctx = this.ctx;
+    this.radFxT -= dt;
+    const glow = this.radFxT <= 0;
+    if (glow) this.radFxT = 0.25;
+    for (const [e, t] of this.rads) {
+      const left = t - dt;
+      if (left <= 0 || !e.alive) {
+        this.rads.delete(e);
+        continue;
+      }
+      this.rads.set(e, left);
+      if (glow) {
+        _q.set(e.position.x + (Math.random() - 0.5) * e.radius, e.position.y + e.radius * 1.3, e.position.z + (Math.random() - 0.5) * e.radius);
+        ctx.fx.burst(_q, { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.16, gravity: -3, life: 0.5 });
+      }
+    }
+    const st = ctx.stats;
+    const queued = this.chainQueue.splice(0, this.chainQueue.length);
+    for (const c of queued) {
+      _q.set(c.x, 0.6, c.z);
+      ctx.fx.ring(_q, CHAIN_RADIUS, 0x7dff4a);
+      ctx.fx.burst(_q, { color: 0x9dff5a, count: 22, speed: 9, size: 0.26, gravity: 2, life: 0.55 });
+      ctx.audio.play('thud', { volume: 0.5, pitch: 1.3 });
+      if (st.chainBlast <= 0) continue;
+      const hits = ctx.enemies.query(c.x, c.z, CHAIN_RADIUS, this.chainBuf);
+      for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.chainBlast);
+    }
+  }
+
   clear(): void {
     this.flameCone.hide();
     this.lightning.clear();
@@ -1129,6 +1421,15 @@ export class Combat implements CombatAPI {
     this.flameT = 0;
     this.flameCharge = 1;
     this.burns.clear();
+    this.meltCharge = 1;
+    this.critCharge = 0;
+    this.nukeT = -1;
+    this.rads.clear();
+    this.chainQueue.length = 0;
+    for (const pl of this.pools) {
+      pl.t = 0;
+      pl.mesh.visible = false;
+    }
     this.guardT = 0;
     this.secondWindReadyAt = 0;
     this.iframe = 0;
@@ -1146,6 +1447,10 @@ export class Combat implements CombatAPI {
     this.updateStorm(dt);
     this.updateField(dt);
     this.updateSaws(dt);
+    this.updateMeltdown(dt);
+    this.updatePools(dt);
+    this.updateAura(dt);
+    this.updateRads(dt);
     this.updateShield(dt);
     this.lightning.update(dt);
     if (this.iframe > 0) {

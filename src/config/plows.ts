@@ -1,7 +1,7 @@
 /** Starter plows. Picked in the Garage; all are free. Each multiplies the shared garage stats and has its own
  *  exclusive upgrade line (Classic: the 'classic' category, Inferno fire on F; VOLT-9: the 'volt' category, Thunderclap on F;
- *  BRUTUS: the 'brute' category, Ground Pound on F). */
-export type PlowKind = 'classic' | 'volt' | 'brute';
+ *  BRUTUS: the 'brute' category, Ground Pound on F; ISOTOPE: the 'isotope' category, Meltdown on F). */
+export type PlowKind = 'classic' | 'volt' | 'brute' | 'isotope';
 
 export interface PlowDef {
   id: PlowKind;
@@ -16,7 +16,7 @@ export interface PlowDef {
   dashPowerMult: number;
   slamMult: number;
   /** What F does with this plow. */
-  fAbility: 'fire' | 'zap' | 'pound';
+  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown';
 }
 
 export const PLOWS: Record<PlowKind, PlowDef> = {
@@ -58,5 +58,18 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     dashPowerMult: 0.9,
     slamMult: 1.2,
     fAbility: 'pound',
+  },
+  isotope: {
+    id: 'isotope',
+    name: 'ISOTOPE',
+    icon: '☢️',
+    tagline: 'Lead-lined reactor hauler. Everything it touches glows, and then it falls apart.',
+    traits: ['Irradiated bots take +15% damage', '+5% speed, +10% HP', 'F: Meltdown blast + fallout pool (free)', 'Radiation damage builds Critical Mass: full = NUKE on F'],
+    hpMult: 1.1,
+    speedMult: 1.05,
+    accelMult: 1,
+    dashPowerMult: 1,
+    slamMult: 1,
+    fAbility: 'meltdown',
   },
 };
