@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import type { FxAPI } from '../core/types';
+import type { PlowKind } from '../config/plows';
+import type { DecalStyle, TrailDef } from '../config/cosmetics';
 
 /* Starter-plow silhouettes shared by the player's Plow and Brawl rival rigs (src/brawl/models.ts).
  * Model layout (local, facing +Z, ground at y = 0) matches the player plow: chassis at y ~0.62, wheels at
@@ -336,4 +339,350 @@ export function buildBuzzsaw(): Buzzsaw {
   arm.rotation.y = 0.5;
   group.add(arm);
   return { group, rotor, halo };
+}
+
+/* ------------------------------------------------------------------ Paint Shop cosmetics (player plow only) */
+
+/** Factory paint per starter plow: body panels + the Classic's dump bed (trim). The 'stock' paint keeps these. */
+export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: number }>> = {
+  classic: { body: 0xff7a1a, trim: 0xffb21f },
+  volt: { body: 0x1f5fe0, trim: 0x18213a },
+  brute: { body: 0x7d8794, trim: 0x4a525d },
+};
+
+const INK = '#16181c';
+
+/** Canvas size per decal style (u = along the plow, v = across / up). */
+const DECAL_CANVAS: Record<DecalStyle, [number, number]> = {
+  stripes: [256, 128],
+  flames: [256, 96],
+  snowflake: [128, 128],
+  checker: [64, 32],
+  skull: [128, 128],
+};
+
+/** Draw a decal onto a 2D canvas of any size (also used for the Paint Shop swatches). Transparent background. */
+export function drawDecal(g: CanvasRenderingContext2D, style: DecalStyle, w: number, h: number): void {
+  g.save();
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  if (style === 'stripes') {
+    // Twin white stripes with a dark keyline, running the full length.
+    for (const v of [0.27, 0.58]) {
+      g.fillStyle = INK;
+      g.fillRect(0, h * v - 3, w, h * 0.15 + 6);
+      g.fillStyle = '#f6f8fb';
+      g.fillRect(0, h * v, w, h * 0.15);
+    }
+  } else if (style === 'checker') {
+    const n = 4;
+    const s = w / n;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < 2; j++) {
+        g.fillStyle = (i + j) % 2 ? '#f4f6f8' : INK;
+        g.fillRect(i * s, j * (h / 2), s, h / 2);
+      }
+    }
+  } else if (style === 'flames') {
+    // Tongues licking back from the front edge (u = 0): dark outline pass, then a hot gradient, then a yellow core.
+    const tongues: [number, number, number, number][] = [
+      // centre v, half width, length, tip curl (fractions of h / w)
+      [0.22, 0.16, 0.62, -0.1],
+      [0.42, 0.2, 0.95, 0.05],
+      [0.62, 0.18, 0.78, 0.08],
+      [0.8, 0.14, 0.5, 0.1],
+    ];
+    const shape = (cv: number, hw: number, len: number, curl: number, k: number) => {
+      const cy = cv * h;
+      const half = hw * h * k;
+      const L = len * w * (0.35 + 0.65 * k);
+      const tip = cy + curl * h;
+      g.beginPath();
+      g.moveTo(-4, cy - half);
+      g.bezierCurveTo(L * 0.35, cy - half, L * 0.65, tip - half * 0.5, L, tip);
+      g.bezierCurveTo(L * 0.7, tip + half * 0.4, L * 0.4, cy + half, -4, cy + half);
+      g.closePath();
+    };
+    g.strokeStyle = INK;
+    g.lineWidth = Math.max(3, h * 0.07);
+    for (const t of tongues) {
+      shape(...t, 1);
+      g.stroke();
+    }
+    const grad = g.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, '#ffd23a');
+    grad.addColorStop(0.45, '#ff7a1a');
+    grad.addColorStop(1, '#e8283a');
+    g.fillStyle = grad;
+    for (const t of tongues) {
+      shape(...t, 1);
+      g.fill();
+    }
+    g.fillStyle = '#ffe680';
+    for (const t of tongues) {
+      shape(...t, 0.45);
+      g.fill();
+    }
+  } else if (style === 'snowflake') {
+    const cx = w / 2;
+    const cy = h / 2;
+    const r = Math.min(w, h) * 0.44;
+    const arms = () => {
+      g.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        g.moveTo(cx, cy);
+        g.lineTo(cx + ca * r, cy + sa * r);
+        for (const [f, l] of [[0.5, 0.3], [0.78, 0.2]]) {
+          const bx = cx + ca * r * f;
+          const by = cy + sa * r * f;
+          for (const s of [-1, 1]) {
+            const b = a + s * 0.8;
+            g.moveTo(bx, by);
+            g.lineTo(bx + Math.cos(b) * r * l, by + Math.sin(b) * r * l);
+          }
+        }
+      }
+    };
+    arms();
+    g.strokeStyle = '#1d4f82';
+    g.lineWidth = r * 0.24;
+    g.stroke();
+    arms();
+    g.strokeStyle = '#eaf7ff';
+    g.lineWidth = r * 0.12;
+    g.stroke();
+    g.beginPath();
+    g.arc(cx, cy, r * 0.14, 0, Math.PI * 2);
+    g.fillStyle = '#8fdcff';
+    g.fill();
+  } else if (style === 'skull') {
+    const s = Math.min(w, h) / 128;
+    g.translate((w - 128 * s) / 2, (h - 128 * s) / 2);
+    g.scale(s, s);
+    // Crossbones behind the skull.
+    const bones = () => {
+      g.beginPath();
+      g.moveTo(22, 30);
+      g.lineTo(106, 104);
+      g.moveTo(106, 30);
+      g.lineTo(22, 104);
+    };
+    const knobs = (r: number) => {
+      g.beginPath();
+      for (const [x, y] of [[22, 30], [106, 30], [22, 104], [106, 104]]) {
+        // Two knuckles per bone end, offset across the bone.
+        const ox = x < 64 ? -1 : 1;
+        const oy = y < 64 ? 1 : -1;
+        for (const o of [-1, 1]) {
+          const kx = x + o * 6 * oy;
+          const ky = y + o * 6 * ox;
+          g.moveTo(kx + r, ky);
+          g.arc(kx, ky, r, 0, Math.PI * 2);
+        }
+      }
+    };
+    g.strokeStyle = INK;
+    g.lineWidth = 20;
+    bones();
+    g.stroke();
+    g.fillStyle = INK;
+    knobs(10);
+    g.fill();
+    g.strokeStyle = '#f4f1e8';
+    g.lineWidth = 11;
+    bones();
+    g.stroke();
+    g.fillStyle = '#f4f1e8';
+    knobs(6);
+    g.fill();
+    // Skull: cranium + jaw, dark eyes, nose and teeth.
+    const head = () => {
+      g.beginPath();
+      g.arc(64, 54, 32, Math.PI * 0.8, Math.PI * 2.2);
+      g.lineTo(82, 88);
+      g.lineTo(46, 88);
+      g.closePath();
+    };
+    head();
+    g.lineWidth = 7;
+    g.strokeStyle = INK;
+    g.stroke();
+    g.fillStyle = '#f4f1e8';
+    g.fill();
+    g.fillStyle = INK;
+    for (const x of [51, 77]) {
+      g.beginPath();
+      g.ellipse(x, 56, 9, 10, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.beginPath();
+    g.moveTo(64, 66);
+    g.lineTo(59, 75);
+    g.lineTo(69, 75);
+    g.closePath();
+    g.fill();
+    g.fillRect(50, 79, 28, 3);
+    for (const x of [55, 62, 69, 76]) g.fillRect(x - 1, 79, 2, 9);
+  }
+  g.restore();
+}
+
+const decalTex = new Map<DecalStyle, THREE.CanvasTexture>();
+/** Cached decal texture per style (repeat-wrapped so the checker bands can tile). */
+function getDecalTexture(style: DecalStyle): THREE.CanvasTexture {
+  let t = decalTex.get(style);
+  if (t) return t;
+  const [w, h] = DECAL_CANVAS[style];
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  drawDecal(c.getContext('2d')!, style, w, h);
+  t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  decalTex.set(style, t);
+  return t;
+}
+
+/** Where a decal style goes on a plow: stripes run along top surfaces, flames down the flanks, emblems sit on a few
+ *  big panels, checker bands wrap the sides and rear. */
+type DecalTag = 'stripe' | 'flame' | 'emblem' | 'band';
+const DECAL_TAG: Record<DecalStyle, DecalTag> = { stripes: 'stripe', flames: 'flame', snowflake: 'emblem', checker: 'band', skull: 'emblem' };
+
+interface DecalSpot {
+  /** 'top' faces +Y (size = length along Z, width along X); 'side' faces +X and is mirrored to -X (length, height);
+   *  'rear' faces -Z (width, height). */
+  face: 'top' | 'side' | 'rear';
+  at: readonly [number, number, number];
+  size: readonly [number, number];
+  tags: readonly DecalTag[];
+  /** Emblem size (m) on this spot; default 90% of the shorter side. */
+  emblem?: number;
+  /** Also place a copy mirrored at -x (top spots off the centreline). */
+  pair?: boolean;
+  /** Surface pitch (rad about X), e.g. VOLT-9's sloped nose. */
+  tilt?: number;
+}
+
+/** Decal spots on each starter plow's bodywork (model-local coordinates; see the builders above + Plow.ts). */
+const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
+  classic: [
+    { face: 'top', at: [0, 1.53, 1.78], size: [0.85, 1.85], tags: ['stripe'] }, // hood
+    { face: 'top', at: [0, 2.28, 0.72], size: [1.45, 2.08], tags: ['stripe'] }, // cab roof
+    { face: 'top', at: [0, 1.88, -0.95], size: [2.2, 2.2], tags: ['stripe', 'emblem'], emblem: 1.3 }, // bed lid
+    { face: 'side', at: [1.05, 1.47, -0.95], size: [2.0, 0.58], tags: ['flame', 'emblem'], emblem: 0.52 }, // bed flank
+    { face: 'side', at: [1.05, 1.64, -0.95], size: [2.06, 0.2], tags: ['band'] },
+    { face: 'side', at: [0.925, 1.31, 1.78], size: [0.83, 0.4], tags: ['flame', 'band'] }, // hood flank
+    { face: 'rear', at: [0, 1.45, -2.0], size: [2.1, 0.62], tags: ['emblem'], emblem: 0.56 },
+    { face: 'rear', at: [0, 1.66, -2.0], size: [2.1, 0.2], tags: ['band'] },
+  ],
+  volt: [
+    { face: 'top', at: [0, 1.157, 1.532], size: [1.5, 1.9], tags: ['stripe'], tilt: 0.2 }, // sloped nose
+    { face: 'top', at: [0, 1.087, 1.875], size: [0.72, 1.9], tags: ['emblem'], emblem: 0.66, tilt: 0.2 },
+    { face: 'top', at: [0, 1.27, -1.5], size: [0.9, 1.95], tags: ['stripe'] }, // rear deck
+    { face: 'top', at: [0, 1.78, -1.8], size: [0.45, 2.1], tags: ['stripe', 'emblem'], emblem: 0.42 }, // wing
+    { face: 'side', at: [0.975, 1.165, -0.45], size: [2.9, 0.2], tags: ['flame', 'band'] },
+    { face: 'rear', at: [0, 0.93, -1.95], size: [1.95, 0.26], tags: ['band'] },
+  ],
+  brute: [
+    { face: 'top', at: [0, 2.26, 0.65], size: [1.1, 1.5], tags: ['stripe', 'emblem'], emblem: 0.95 }, // cab roof
+    { face: 'top', at: [0, 1.275, 1.75], size: [0.8, 1.75], tags: ['stripe'] }, // front deck
+    { face: 'top', at: [0, 2.012, -1.0], size: [1.9, 1.75], tags: ['stripe'] }, // over the engine vents
+    { face: 'top', at: [1.12, 1.06, 0.1], size: [4.0, 0.7], tags: ['flame'], pair: true }, // track guards
+    { face: 'side', at: [0.875, 1.78, -1.0], size: [1.85, 0.3], tags: ['band'] }, // engine flank
+    { face: 'rear', at: [0, 1.38, -1.95], size: [1.75, 0.95], tags: ['emblem'], emblem: 0.85 },
+    { face: 'rear', at: [0, 1.84, -1.95], size: [1.75, 0.18], tags: ['band'] },
+  ],
+};
+
+/** Gap between a decal and the panel under it (plus polygon offset) so it never z-fights. */
+const DECAL_LIFT = 0.012;
+
+/** Build `style`'s decal meshes for `kind`, all sharing `mat` (whose map is set here). Returns a Group to parent
+ *  under the plow body (dispose its geometries when replacing it). */
+export function buildDecals(kind: PlowKind, style: DecalStyle, mat: THREE.MeshStandardMaterial): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'decals';
+  mat.map = getDecalTexture(style);
+  mat.needsUpdate = true;
+  const tag = DECAL_TAG[style];
+  const [cw, ch] = DECAL_CANVAS[style];
+  for (const spot of DECAL_SPOTS[kind]) {
+    if (!spot.tags.includes(tag)) continue;
+    const emblem = tag === 'emblem';
+    const [a, b] = spot.size;
+    const w = emblem ? (spot.emblem ?? Math.min(a, b) * 0.9) : a;
+    const h = emblem ? w : b;
+    const geo = new THREE.PlaneGeometry(w, h);
+    if (tag === 'band') {
+      // Tile the checker along the length so the squares stay square.
+      const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+      const reps = Math.max(1, Math.round((w / h) * (ch / cw)));
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * reps);
+    }
+    const copies = spot.face === 'side' || spot.pair ? [1, -1] : [1];
+    for (const sx of copies) {
+      const holder = new THREE.Group();
+      holder.position.set(spot.at[0] * sx, spot.at[1], spot.at[2]);
+      holder.rotation.x = spot.tilt ?? 0;
+      const m = new THREE.Mesh(geo, mat);
+      m.receiveShadow = true;
+      if (spot.face === 'top') {
+        // Long decals: u runs front -> back. Emblems: upright when seen from the chase camera behind the plow.
+        m.rotation.set(-Math.PI / 2, 0, emblem ? Math.PI : Math.PI / 2);
+        m.position.y = DECAL_LIFT;
+      } else if (spot.face === 'side') {
+        // u runs front -> back on both flanks (the -X copy is mirrored so flames still lick backwards).
+        m.rotation.y = (Math.PI / 2) * sx;
+        m.position.x = DECAL_LIFT * sx;
+        if (sx < 0) m.scale.x = -1;
+      } else {
+        m.rotation.y = Math.PI;
+        m.position.z = -DECAL_LIFT;
+      }
+      holder.add(m);
+      group.add(holder);
+    }
+  }
+  return group;
+}
+
+/** Trail emitters (model-local): the two rear corners, low down. */
+export const TRAIL_REAR: Readonly<Record<PlowKind, { x: number; y: number; z: number }>> = {
+  classic: { x: 0.8, y: 0.9, z: -2.15 },
+  volt: { x: 0.75, y: 0.85, z: -2.1 },
+  brute: { x: 1.1, y: 0.8, z: -2.3 },
+};
+
+const _trailCol = new THREE.Color();
+const pick = (colors: readonly number[]) => colors[(Math.random() * colors.length) | 0] ?? 0xffffff;
+
+/** One trail puff at `at` (world). Called a few dozen times a second while driving; `dash` makes it denser and
+ *  livelier. `t` (seconds) drives the rainbow's hue cycle. */
+export function emitTrail(fx: FxAPI, trail: TrailDef, at: THREE.Vector3, dash: boolean, t: number): void {
+  const c = trail.colors;
+  switch (trail.style) {
+    case 'ice':
+      fx.burst(at, { color: pick(c), count: dash ? 3 : 1, speed: dash ? 2.4 : 1.1, size: 0.11, gravity: 2, life: 0.9 });
+      break;
+    case 'fire':
+      fx.burst(at, { color: pick(c), count: dash ? 3 : 1, speed: dash ? 2.2 : 1.3, size: dash ? 0.3 : 0.22, gravity: -6, life: dash ? 0.55 : 0.4 });
+      break;
+    case 'spark':
+      fx.burst(at, { color: pick(c), count: dash ? 4 : 2, speed: dash ? 8 : 5, size: 0.06, gravity: 14, life: 0.24 });
+      break;
+    case 'confetti':
+      fx.burst(at, { color: pick(c), count: dash ? 3 : 1, speed: dash ? 4.5 : 3, size: 0.12, gravity: 6, life: 1.1 });
+      break;
+    case 'rainbow':
+      _trailCol.setHSL((t * 0.45) % 1, 0.9, 0.58);
+      fx.burst(at, { color: _trailCol.getHex(), count: dash ? 4 : 2, speed: dash ? 1 : 0.4, size: dash ? 0.2 : 0.15, gravity: 0.3, life: 0.9 });
+      break;
+    default:
+      break;
+  }
 }
