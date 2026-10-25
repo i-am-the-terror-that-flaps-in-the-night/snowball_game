@@ -388,7 +388,7 @@ export async function hostPeer(code: string | null): Promise<HostRoom> {
   const { Peer } = await loadPeer();
   for (let attempt = 0; attempt < 4; attempt++) {
     const c = code && attempt === 0 ? code : makeRoomCode();
-    const peer = new Peer(PEER_PREFIX + c, { config: ICE, debug: 1 });
+    const peer = new Peer(PEER_PREFIX + c, { config: ICE, debug: 0 });
     const ok = await new Promise<NetError | null>((resolve) => {
       const t = setTimeout(() => resolve(new NetError('network', "Timed out reaching the PeerJS matchmaking server. Check your connection and try again.")), 12000);
       peer.once('open', () => {
@@ -465,7 +465,7 @@ function peerRoom(peer: PeerT, code: string): HostRoom {
 
 export async function joinPeer(code: string, timeoutMs = 20000): Promise<Transport> {
   const { Peer } = await loadPeer();
-  const peer = new Peer({ config: ICE, debug: 1 });
+  const peer = new Peer({ config: ICE, debug: 0 });
   try {
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => reject(new NetError('network', 'Timed out reaching the PeerJS matchmaking server. Check your connection and try again.')), 12000);

@@ -1,5 +1,6 @@
 import { PLOW_MASS, type DamageOpts, type EnemyHandle, type EnemyManagerAPI, type EnemyType, type PlayerStats } from '../core/types';
 import { BRAWL_HIT_CAP, brawlHit } from '../config/brawl';
+import { DUEL_DAMAGE_SCALE } from '../config/duel';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
 
@@ -49,11 +50,16 @@ export interface DuelHit {
   stop: number;
 }
 
+/** Ability damage diminishing returns: once this share of the victim's max HP landed recently, further ability hits
+ *  do half; the memory decays with this time constant (s). */
+const ABILITY_BURST_FRAC = 0.2;
+const ABILITY_BURST_SECONDS = 1.5;
 /** Scale from a bot-style knockback impulse to the plow push Combat.hitPlow applies. */
 const KNOCK_SCALE = 0.7;
 
 /**
- * The "enemy manager" a duel pilot's Combat attacks: just the opponent's plow. Damage takes the Brawl hit cap
+ * The "enemy manager" a duel pilot's Combat attacks: just the opponent's plow. Damage is scaled by DUEL_DAMAGE_SCALE,
+ * then takes the Brawl hit cap
  * (BRAWL_HIT_CAP + the attacker's Wrecking Ball, as in Brawl) so nothing one-shots, then goes through the VICTIM's
  * Combat.hitPlow, which applies their ball shield, dash / whirl reductions, armour, Iron Hide, Last Stand,
  * Battery Shield, Second Wind and i-frames — the same path bots use against the player.
@@ -64,6 +70,8 @@ export class OpponentTarget implements EnemyManagerAPI {
   enabled = false;
   onHit: ((h: DuelHit) => void) | null = null;
   private out: EnemyHandle[] = [];
+  /** Recent F-ability / passive ('other') damage on this victim, decaying (see ABILITY_BURST_*). */
+  private burst = 0;
   private hit: DuelHit = { final: 0, source: 'other', fromX: 0, fromZ: 0, kx: 0, kz: 0, stop: 0 };
 
   constructor(
@@ -91,7 +99,12 @@ export class OpponentTarget implements EnemyManagerAPI {
   damage(enemy: EnemyHandle, amount: number, opts?: DamageOpts): boolean {
     const victim = this.handle.plow;
     if (!this.enabled || enemy !== this.handle || victim.dead || !(amount > 0)) return false;
-    const raw = brawlHit(amount, victim.maxHp, BRAWL_HIT_CAP + this.attackerStats().hitCapBonus);
+    let scaled = amount * DUEL_DAMAGE_SCALE;
+    // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
+    // human target: repeated ability damage in a short window has diminishing returns.
+    const other = !opts?.source || opts.source === 'other';
+    if (other) scaled /= 1 + this.burst / (ABILITY_BURST_FRAC * victim.maxHp);
+    const raw = brawlHit(scaled, victim.maxHp, BRAWL_HIT_CAP + this.attackerStats().hitCapBonus);
     // Direction: along the knockback if there is one, else away from the attacker.
     const k = opts?.knockback;
     const kmag = k ? Math.hypot(k.x, k.z) : 0;
@@ -112,6 +125,7 @@ export class OpponentTarget implements EnemyManagerAPI {
     const kb = kmag > 0.1 ? kmag * KNOCK_SCALE : 2;
     const hp0 = victim.hp;
     const final = this.victimCombat().hitPlow(raw, fromX, fromZ, { knockback: kb, unblockable: opts?.source === 'whirl' });
+    if (other) this.burst += final;
     let stop = 0;
     if (final > 0 && !victim.dead) {
       // Ground Pound stuns and Thunderclap / Frost Core shocks freeze a plow briefly (bots get the full stun).
@@ -146,8 +160,14 @@ export class OpponentTarget implements EnemyManagerAPI {
     /* nothing to despawn */
   }
 
-  update(): void {
-    /* the duel moves the plows itself */
+  /** Decay the ability-burst meter (call every sim frame). */
+  update(dt = 0): void {
+    if (this.burst > 0) this.burst *= Math.exp(-dt / ABILITY_BURST_SECONDS);
+  }
+
+  /** New round: forget recent damage. */
+  reset(): void {
+    this.burst = 0;
   }
 }
 

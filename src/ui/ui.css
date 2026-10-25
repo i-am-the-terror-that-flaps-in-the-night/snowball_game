@@ -1204,3 +1204,14 @@
 .impact-vig.impact-vig-calm::after {
   display: none;
 }
+
+/* Online duel: DuelUI's top bar replaces the arena / coin / snow panels. */
+.ss-hud.duel .ss-hud-tl,
+.ss-hud.duel .ss-hud-tr,
+.ss-hud.duel .ss-hud-br,
+.ss-hud.duel .ss-combo,
+.ss-hud.duel .ss-hint { display: none !important; }
+.ss-btn.ss-buy.ss-bonus-buy { box-shadow: 0 0 0 2px #ffd34a inset; }
+/* Duel garage: leave room at the top for DuelUI's timer / READY strip. */
+.ss-duel-garage-screen { padding-top: 96px; }
+.ss-duel-garage-screen .ss-shop { height: min(860px, 100%); }

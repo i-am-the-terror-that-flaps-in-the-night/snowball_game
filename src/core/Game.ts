@@ -31,11 +31,16 @@ import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
 import type { GameEvents, KillSource } from './events';
+import { DuelManager, type DuelRole } from '../duel/DuelManager';
+import { NO_TARGETS } from '../duel/opponent';
+import { DUEL_ZONE } from '../config/duel';
+import { hostRoom, joinRoom, type HostRoom, type LocalLinkOpts, type Transport, type TransportKind } from '../net/transport';
+import { ROOM_CODE_LEN, cleanRoomCode } from '../ui/DuelUI';
 
 type State =
   | 'menu' | 'countdown' | 'playing' | 'shop' | 'paused' | 'wrecked' | 'gameover' | 'victory'
-  | 'brawlCountdown' | 'brawl' | 'brawlOver' | 'tutorial';
-type Mode = 'campaign' | 'brawl' | 'survival';
+  | 'brawlCountdown' | 'brawl' | 'brawlOver' | 'tutorial' | 'duel';
+type Mode = 'campaign' | 'brawl' | 'survival' | 'duel';
 /** States where a DOM menu has focus (gamepad drives it via synthetic key events). */
 const MENU_STATES = new Set<State>(['menu', 'shop', 'paused', 'gameover', 'victory', 'brawlOver']);
 
@@ -90,6 +95,15 @@ export class Game {
   private brawlDifficulty: BrawlDifficulty = 'pro';
   private survival: SurvivalManager;
   private tutorial: Tutorial;
+  private ui: UI;
+  /** Online 1v1 duel (idle outside it). */
+  readonly duel: DuelManager;
+  private duelRoom: HostRoom | null = null;
+  /** Bumped whenever the lobby closes, so a late connect / host result is ignored. */
+  private duelAttempt = 0;
+  /** ?duel=local -> BroadcastChannel (same browser); otherwise PeerJS. &lag= / &jitter= / &loss= simulate a network. */
+  private duelKind: TransportKind = 'peer';
+  private duelLink: LocalLinkOpts = {};
 
   constructor(container: HTMLElement, uiRoot: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -154,8 +168,26 @@ export class Game {
         this.refreshStats();
       },
       onToggleMute: () => this.toggleMute(),
+      onOpenDuel: () => this.openDuelLobby(),
     };
-    ctx.ui = new UI(ctx, uiRoot, handlers);
+    ctx.ui = this.ui = new UI(ctx, uiRoot, handlers);
+    const qs = new URLSearchParams(location.search);
+    if (qs.get('duel') === 'local') this.duelKind = 'local';
+    const num = (k: string) => (qs.has(k) ? Math.max(0, Number(qs.get(k)) || 0) : undefined);
+    this.duelLink = { lag: num('lag'), jitter: num('jitter'), loss: num('loss') };
+    this.duel = new DuelManager(ctx, {
+      ui: this.ui.duel,
+      exit: (message) => {
+        this.toMenu();
+        if (message) {
+          this.openDuelLobby();
+          this.ui.duel.setStatus(message, 'error');
+          ctx.audio.play('error');
+        }
+      },
+      openGarage: (wallet, info) => this.ui.showDuelGarage(wallet, info),
+      closeGarage: () => this.ui.hideDuelGarage(),
+    });
     this.tutorial = new Tutorial(ctx, uiRoot, (next) => (next === 'arena' ? this.startRun(0) : this.toMenu()));
     // Meta progression: both only listen to ctx.events (runFinished etc.).
     new ChallengeTracker(ctx);
@@ -175,6 +207,32 @@ export class Game {
     ctx.plow.reset();
 
     window.addEventListener('resize', () => this.onResize());
+    // Closing / reloading the tab mid-duel tells the opponent right away.
+    window.addEventListener('pagehide', () => this.duel.end());
+    // An online duel keeps simulating in a background tab (no animation frames there): best effort, since browsers
+    // may throttle timers in hidden tabs. Catch-up is sub-stepped and capped at 1 s per wake-up.
+    let bgTimer = 0;
+    let bgLast = 0;
+    document.addEventListener('visibilitychange', () => {
+      clearInterval(bgTimer);
+      bgTimer = 0;
+      if (!document.hidden || this.state !== 'duel') return;
+      bgLast = performance.now();
+      bgTimer = window.setInterval(() => {
+        if (this.state !== 'duel' || !document.hidden) {
+          clearInterval(bgTimer);
+          return;
+        }
+        const now = performance.now();
+        let acc = Math.min(1, (now - bgLast) / 1000);
+        bgLast = now;
+        while (acc > 1e-4) {
+          const step = Math.min(0.05, acc);
+          this.tick(step);
+          acc -= step;
+        }
+      }, 33);
+    });
     const unlock = () => ctx.audio.unlock();
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -193,6 +251,11 @@ export class Game {
     renderer.setAnimationLoop((t) => this.frame(t));
   }
 
+  /** Headless probes: stop / restart the render loop (tick() still advances the sim). */
+  setLoop(on: boolean): void {
+    this.renderer.setAnimationLoop(on ? (t) => this.frame(t) : null);
+  }
+
   /** Hit-stop / slow-mo + impact visuals. Probes can turn the time scale off with `__game.impact.enabled = false`. */
   get impact(): GameContext['impact'] {
     return this.ctx.impact;
@@ -208,8 +271,8 @@ export class Game {
     this.mode = mode;
     setBrawlPerf(ctx, mode === 'brawl');
     setArenaHalfSize(mode === 'brawl' ? BRAWL_ARENA_HALF : CAMPAIGN_ARENA_HALF);
-    ctx.enemies = mode === 'brawl' ? ctx.brawl : this.campaignEnemies;
-    ctx.zone = mode === 'brawl' ? BRAWL_ZONE : mode === 'survival' ? this.survival.zone : ZONES[0];
+    ctx.enemies = mode === 'brawl' ? ctx.brawl : mode === 'duel' ? NO_TARGETS : this.campaignEnemies;
+    ctx.zone = mode === 'brawl' ? BRAWL_ZONE : mode === 'survival' ? this.survival.zone : mode === 'duel' ? DUEL_ZONE : ZONES[0];
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
@@ -217,7 +280,11 @@ export class Game {
 
   private toMenu(): void {
     const { ctx } = this;
+    if (this.duel.active) this.duel.end();
+    this.closeDuelLobby();
+    this.ui.setDuelHud(false);
     this.setMode('campaign');
+    this.refreshStats();
     this.state = 'menu';
     this.tutorial.stop();
     this.clearArena();
@@ -590,6 +657,7 @@ export class Game {
   }
 
   private togglePause(): void {
+    if (this.state === 'duel') return this.toggleDuelMenu();
     if (this.state === 'playing' || this.state === 'countdown' || this.state === 'brawl' || this.state === 'brawlCountdown' || this.state === 'tutorial') {
       this.pausedFrom = this.state;
       this.state = 'paused';
@@ -602,6 +670,10 @@ export class Game {
   }
 
   private resume(): void {
+    if (this.state === 'duel') {
+      if (this.duel.menuOpen) this.toggleDuelMenu();
+      return;
+    }
     if (this.state !== 'paused') return;
     this.state = this.pausedFrom;
     this.ctx.ui.hideOverlays();
@@ -660,7 +732,7 @@ export class Game {
     const dt = Math.min(this.timer.getDelta(), 0.05);
     // Gamepad: menus get synthetic arrow/Enter/Esc keys; Start toggles pause (not under the settings overlay).
     const input = this.ctx.input;
-    input.menuNav = MENU_STATES.has(this.state) || settingsUi.open;
+    input.menuNav = MENU_STATES.has(this.state) || settingsUi.open || this.ui.duel.lobbyOpen || (this.state === 'duel' && this.duelMenuUp());
     input.poll();
     if (input.padPause && !settingsUi.open) this.togglePause();
     this.tick(dt);
@@ -669,6 +741,10 @@ export class Game {
 
   /** Advance the simulation by dt seconds without rendering (also used by headless playtests). */
   tick(dt: number): void {
+    if (this.state === 'duel') {
+      this.tickDuel(dt);
+      return;
+    }
     if (this.state === 'brawl' || this.state === 'brawlCountdown') {
       this.tickBrawl(dt);
       return;
@@ -769,6 +845,146 @@ export class Game {
     ctx.input.endFrame();
   }
 
+  /* ------------------------------------------------------------------ online duel */
+
+  /** Main menu DUEL: the HOST / JOIN lobby. */
+  openDuelLobby(): void {
+    const ui = this.ui.duel;
+    this.duelAttempt++;
+    ui.openLobby({
+      onHost: () => void this.hostDuel(),
+      onJoin: (code) => void this.joinDuel(code),
+      onCancel: () => {
+        this.ctx.audio.play('click');
+        this.closeDuelLobby();
+      },
+    });
+    if (this.duelKind === 'local') ui.setStatus('LOCAL test mode (?duel=local): both players in this browser.', 'info');
+  }
+
+  private closeDuelLobby(): void {
+    this.duelAttempt++;
+    this.duelRoom?.cancel();
+    this.duelRoom = null;
+    this.ui.duel.closeLobby();
+  }
+
+  /** Open a room and wait for a guest. Resolves with the room code (null on failure). */
+  async hostDuel(): Promise<string | null> {
+    const ui = this.ui.duel;
+    const attempt = this.duelAttempt;
+    this.duelRoom?.cancel();
+    this.duelRoom = null;
+    ui.setStatus(this.duelKind === 'local' ? 'Opening a local room…' : 'Opening a room on the PeerJS server…');
+    try {
+      const room = await hostRoom(this.duelKind, null, this.duelLink);
+      if (attempt !== this.duelAttempt) {
+        room.cancel();
+        return null;
+      }
+      this.duelRoom = room;
+      ui.showHosting(room.code);
+      ui.setStatus(this.duelKind === 'local' ? 'Local room: open this page in another tab with ?duel=local and JOIN.' : 'Room open. Send the code to your friend.', 'ok');
+      room.waitForGuest().then(
+        (t) => {
+          if (attempt === this.duelAttempt) this.beginDuel(t, 'host', room.code);
+          else t.close();
+        },
+        (e: Error & { code?: string }) => {
+          if (e.code !== 'cancelled' && attempt === this.duelAttempt) ui.setStatus(e.message, 'error');
+        },
+      );
+      return room.code;
+    } catch (e) {
+      if (attempt === this.duelAttempt) ui.setStatus((e as Error).message, 'error');
+      return null;
+    }
+  }
+
+  /** Join a room by code. */
+  async joinDuel(raw: string): Promise<boolean> {
+    const ui = this.ui.duel;
+    const code = cleanRoomCode(raw);
+    if (code.length !== ROOM_CODE_LEN) {
+      ui.setStatus(`Room codes are ${ROOM_CODE_LEN} letters.`, 'error');
+      return false;
+    }
+    const attempt = this.duelAttempt;
+    ui.setStatus(`Connecting to ${code}…`);
+    try {
+      const t = await joinRoom(this.duelKind, code, this.duelLink);
+      if (attempt !== this.duelAttempt) {
+        t.close();
+        return false;
+      }
+      this.beginDuel(t, 'guest', code);
+      return true;
+    } catch (e) {
+      if (attempt === this.duelAttempt) ui.setStatus((e as Error).message, 'error');
+      return false;
+    }
+  }
+
+  private beginDuel(t: Transport, role: DuelRole, code: string): void {
+    const { ctx } = this;
+    this.duelRoom = null;
+    this.duelAttempt++;
+    this.ui.duel.closeLobby();
+    this.tutorial.stop();
+    this.setMode('duel');
+    this.run = this.newRun();
+    this.combo = 0;
+    this.state = 'duel';
+    ctx.ui.hideOverlays();
+    ctx.ui.setHudVisible(true);
+    this.ui.setDuelHud(true);
+    ctx.cameraRig.setMode('menu');
+    ctx.audio.setMusic(true);
+    ctx.input.clear();
+    this.duel.begin(t, role, code);
+    // No toast: it would sit on the duel garage strip's READY button. The garage itself says we're connected.
+    ctx.audio.play('buy');
+  }
+
+  /** A DOM menu has focus in the duel (the gamepad then drives it as arrow keys). */
+  private duelMenuUp(): boolean {
+    const p = this.duel.phase;
+    return this.duel.menuOpen || p === 'lobby' || p === 'garage' || p === 'results';
+  }
+
+  /** Pause in a duel: a menu over the RUNNING match (online: nothing freezes). */
+  private toggleDuelMenu(): void {
+    const d = this.duel;
+    if (!d.menuOpen) {
+      if (d.phase === 'lobby' || d.phase === 'garage' || d.phase === 'results') return;
+      d.menuOpen = true;
+      this.ctx.ui.showPause(true);
+    } else {
+      d.menuOpen = false;
+      this.ctx.ui.hideOverlays();
+      this.ctx.input.clear();
+    }
+  }
+
+  private tickDuel(dt: number): void {
+    const { ctx } = this;
+    // Impact visuals only: an online match never hit-stops.
+    ctx.impact.step(dt);
+    ctx.time += dt;
+    this.duel.update(dt);
+    if (this.state === 'duel') {
+      const fight = this.duel.phase === 'fight' && !this.duel.menuOpen;
+      const speedFrac = Math.min(1, Math.abs(ctx.plow.speed) / Math.max(1, ctx.stats.maxSpeed));
+      ctx.audio.setEngine(fight && !ctx.plow.dead ? ctx.input.throttle : 0, speedFrac);
+      this.updateHud();
+    }
+    ctx.fx.update(dt);
+    ctx.impact.update(dt);
+    ctx.world.update(dt);
+    ctx.cameraRig.update(dt);
+    ctx.input.endFrame();
+  }
+
   private blankHud(): HudState {
     return {
       zoneName: '', round: 1, totalRounds: 1, bossRound: false, enemiesRemaining: 0, plowHp: 1, plowMaxHp: 1,
@@ -800,7 +1016,7 @@ export class Game {
     hud.bosses = ctx.enemies.bosses.map((b) => ({ name: ENEMIES[b.type].name, title: ENEMIES[b.type].title, hp: b.hp, maxHp: b.maxHp }));
     hud.combo = this.combo;
     const counting = this.state === 'countdown' || this.state === 'brawlCountdown';
-    hud.countdown = counting ? Math.max(0, this.countdown) : 0;
+    hud.countdown = counting ? Math.max(0, this.countdown) : this.state === 'duel' ? this.duel.countdown : 0;
     hud.brawl = this.mode === 'brawl' ? ctx.brawl.hud() : null;
     hud.survival = this.mode === 'survival' ? this.survival.hud() : null;
     hud.hideRound = this.state === 'tutorial' || (this.state === 'paused' && this.pausedFrom === 'tutorial');

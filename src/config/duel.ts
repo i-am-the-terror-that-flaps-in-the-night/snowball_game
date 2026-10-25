@@ -1,4 +1,5 @@
 import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from './upgrades';
+import { ZONES, type ZoneDef } from './zones';
 
 /* ------------------------------------------------------------------------------------------------
  * Online DUEL tuning: 1v1, best of 3 rounds in a campaign-size arena.
@@ -6,13 +7,17 @@ import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from './upgr
  * garage gets CATCH-UP coins to spend on duel-only (temporary) upgrade levels first.
  * ---------------------------------------------------------------------------------------------- */
 
+/** The duel arena: Frostbite Yard's layout and size, no bots, no coins. */
+export const DUEL_ZONE: ZoneDef = { ...ZONES[0], id: 'duel', name: 'DUEL · Frostbite Yard', tagline: 'One on one.', bossName: '', rounds: [{ groups: [] }], coinMult: 0, clearReward: 0 };
+
 /** Rounds needed to win the match (best of 3). */
 export const DUEL_ROUNDS_TO_WIN = 2;
 /** Hard stop if rounds keep ending in draws. */
 export const DUEL_MAX_ROUNDS = 5;
 /** Round length (s); at 0 the higher HP% wins the round. */
 export const DUEL_ROUND_SECONDS = 90;
-export const DUEL_COUNTDOWN = 3;
+/** Pre-round countdown (s): the ROUND banner, then 3-2-1. */
+export const DUEL_COUNTDOWN = 4;
 /** Wreck animation before the round result. */
 export const DUEL_ROUND_END_DELAY = 1.8;
 /** Seconds on the round-result card before the next round. */
@@ -20,6 +25,9 @@ export const DUEL_BETWEEN_ROUNDS = 3;
 /** Pre-match DUEL GARAGE (s): first match / every rematch. */
 export const DUEL_GARAGE_SECONDS = 45;
 export const DUEL_REMATCH_GARAGE_SECONDS = 30;
+/** Every player-vs-player hit is scaled by this before the Brawl hit cap (brawlHit). Bot-tuned kits (Thunderclap
+ *  storms, Inferno burn, saw / aura ticks) shred a single human target, so PvP runs at a fraction of PvE damage. */
+export const DUEL_DAMAGE_SCALE = 0.6;
 /** HP% within this of each other at time-out = a draw round (nobody scores). */
 export const DUEL_DRAW_EPS = 0.005;
 /** Both players use this snow regrowth (m/s) instead of their Snow Machine: the field is shared. */

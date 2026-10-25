@@ -677,6 +677,8 @@ export interface UIHandlers {
   onRetry(): void;
   onResetSave(): void;
   onToggleMute(): void;
+  /** Main menu DUEL button: open the online 1v1 lobby. */
+  onOpenDuel?(): void;
 }
 
 export interface UIAPI {
@@ -688,7 +690,8 @@ export interface UIAPI {
   showShop(nextRound: number, totalRounds: number, onContinue: () => void): void;
   /** Survival between-wave shop: Garage upgrades + an optional one-off Full Repair. Calls onContinue on NEXT WAVE. */
   showSurvivalShop(opts: SurvivalShopOpts): void;
-  showPause(): void;
+  /** `duel`: the online duel's pause menu (the match keeps running; QUIT leaves the duel). */
+  showPause(duel?: boolean): void;
   showGameOver(summary: RunSummary): void;
   showVictory(summary: RunSummary): void;
   hideOverlays(): void;

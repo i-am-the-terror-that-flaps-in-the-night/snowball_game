@@ -8,6 +8,8 @@ import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/con
 import { Progression, computeStatsFor } from '../src/core/Progression';
 import { DuelWallet } from '../src/duel/DuelWallet';
 import { ROOM_ALPHABET, makeRoomCode, normalizeRoomCode } from '../src/net/transport';
+import { ROOM_CODE_CHARS, cleanRoomCode } from '../src/ui/DuelUI';
+import { SnapBuffer } from '../src/duel/plumbing';
 
 const SAVE_KEY = 'snowplow-showdown-save-v2';
 let store: Map<string, string>;
@@ -265,5 +267,40 @@ describe('room codes', () => {
     expect(normalizeRoomCode(' ac-dEf ')).toBe('ACDEF');
     expect(normalizeRoomCode('ACDE')).toBeNull();
     expect(normalizeRoomCode('ACDEO')).toBeNull();
+  });
+  it('every generated code survives the lobby input filter unchanged (host and join agree)', () => {
+    for (const ch of ROOM_ALPHABET) expect(ROOM_CODE_CHARS.includes(ch)).toBe(true);
+    for (let i = 0; i < 200; i++) {
+      const c = makeRoomCode();
+      expect(cleanRoomCode(c.toLowerCase())).toBe(c);
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ guest interpolation */
+
+describe('SnapBuffer (opponent interpolation)', () => {
+  it('lerps between bracketing snapshots, the short way round for headings, never blends discrete flags', () => {
+    const b = new SnapBuffer();
+    const a = new Float32Array(2 * NET_PLOW_LEN);
+    const c = new Float32Array(2 * NET_PLOW_LEN);
+    a[NP.heading] = Math.PI - 0.1;
+    a[NP.whirlT] = -1;
+    c[NP.x] = 10;
+    c[NP.heading] = -Math.PI + 0.1;
+    c[NP.dead] = 1;
+    c[NP.whirlT] = 0.05;
+    b.push(1, a);
+    b.push(2, c);
+    b.push(1.5, a); // late / reordered: ignored
+    const out = new Float32Array(NET_PLOW_LEN);
+    expect(b.sample(1.25, 0, out)).toBe(true);
+    expect(out[NP.x]).toBeCloseTo(2.5);
+    expect(Math.abs(Math.atan2(Math.sin(out[NP.heading] - Math.PI), Math.cos(out[NP.heading] - Math.PI)))).toBeLessThan(0.06);
+    expect(out[NP.dead]).toBe(0);
+    expect(out[NP.whirlT]).toBe(-1);
+    b.sample(9, 0, out);
+    expect(out[NP.x]).toBeCloseTo(10);
+    expect(out[NP.dead]).toBe(1);
   });
 });

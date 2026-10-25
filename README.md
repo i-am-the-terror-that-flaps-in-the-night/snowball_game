@@ -63,6 +63,16 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
   everyone on that date, plus one of 8 modifiers (Deep Snow, Whiteout, Swarm, Thief Night, Boss Rush, Heavy
   Hitters, Glass Cannon, Overclocked) that rotate so none repeats two days running. Pays ×1.25 coins. Your best
   wave for each day is saved separately from normal Survival, and the game-over screen shows the last 7 days.
+- **🤺 Duel** (online 1v1) — a quick best-of-3 against a friend in a Frostbite Yard-size arena, no bots. **HOST** shows a
+  5-letter room code (copy button); your friend types it under **JOIN**. Spawns face each other, a countdown starts each
+  round, and a round ends on a wreck or after 90 s (higher HP% wins). Each player brings their **own garage** and Paint
+  Shop look (pilot perks included). Before the match both get a 45 s **DUEL GARAGE** (30 s before a rematch): the
+  weaker garage gets **catch-up coins** = the gap in garage power (coins spent on upgrades + coins on hand, capped at
+  50,000), spent first on duel-only levels that never touch the save; after that you can buy permanent upgrades with
+  your own coins. Hits use the Brawl hit cap at 60% of PvE damage, so nothing one-shots. Pausing opens the menu but
+  the match keeps running; leaving ends it for both. REMATCH needs both players. Duels pay no coins.
+  Networking: PeerJS (WebRTC data channels, the free public PeerJS signalling server, Google STUN). Add `?duel=local`
+  to duel between two tabs of one browser instead (BroadcastChannel; `&lag=80&jitter=30&loss=0.05` fakes a bad link).
 - **Tutorial** — a 7-step guided Training Yard (drive, snowball, slam, dash, whirlwind, your plow's F ability,
   ball-shield). Runs once on a fresh save; replay it from **🎓 TUTORIAL** on the main menu, Esc skips.
 
@@ -113,6 +123,8 @@ src/config    Tuning data: upgrades (FX curves), plows, campaign bots + arenas, 
 src/entities  Player plow, melee combat resolution, campaign bots/bosses + round director
 src/brawl     Brawl mode: rival AI, VOLT-9 + BRUTUS rivals, streaks/coins, respawns, rival models, name tags
 src/survival  Survival mode: endless wave generator + scaling (seeded for the Daily run)
+src/duel      Online Duel: match flow + host-authoritative netcode (DuelManager), opponent adapter, duel garage wallet
+src/net       Duel wire protocol (binary snapshots / input / snow patches) and the PeerJS + BroadcastChannel transports
 src/meta      Meta progression: challenge stars + Hard mode, achievements + lifetime stats, Daily run, cosmetics
 src/world     Deformable snow field, arenas / Snowdome environment
 src/fx        Particles, camera rig, coin pickups
@@ -136,6 +148,9 @@ node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, das
 node scripts/meta-probe.mjs            # Paint Shop, Trophies, stars + Hard mode, Daily run + results screens
 node scripts/donald-probe.mjs          # arena 6 + THE DONALD: every attack, phase 2, model / stage / crowd shots
 node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
+node scripts/duel-probe.mjs /tmp/duel-probe  # Duel: two pages over BroadcastChannel — lobby, catch-up garage, best of 3,
+                                             # rematch, NUKE / Inferno, pause, leave, a lagged real-time fight
+node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real PeerJS cloud server (needs internet)
 ```
 
 The original base-defense prototype this game grew out of is kept at the `base-defense-v1` git tag

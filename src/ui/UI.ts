@@ -24,6 +24,8 @@ import {
 } from '../meta/challenges';
 import { achievementCount, totalStars } from '../meta/progress';
 import { ACHIEVEMENTS } from '../config/achievements';
+import { DuelUI } from './DuelUI';
+import type { DuelWallet, ShopWallet } from '../duel/DuelWallet';
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
 
@@ -222,6 +224,13 @@ export class UI implements UIAPI {
   private survivalShop: SurvivalShopOpts | null = null;
   private repairBtn: HTMLButtonElement | null = null;
   private garageBack: 'menu' | 'quit' = 'menu';
+  /** Pre-duel DUEL GARAGE: the wallet that pays (bonus first, then real coins); null = the save. */
+  private duelWallet: DuelWallet | null = null;
+  private duelWalletOff: (() => void) | null = null;
+  /** Online duel overlays (lobby, garage strip, HUD, banners, result). */
+  readonly duel: DuelUI;
+  private pauseSub!: HTMLElement;
+  private pauseQuit!: HTMLButtonElement;
 
   // result
   private resultPanel!: HTMLElement;
@@ -288,6 +297,7 @@ export class UI implements UIAPI {
       onSaveChanged: () => this.refreshMute(),
       onClose: () => this.refreshKeys(),
     });
+    this.duel = new DuelUI(this.rootEl);
     this.styleShop = new StyleShop(ctx, this.rootEl);
     this.trophies = new Trophies(ctx, this.rootEl);
     this.refreshKeys();
@@ -438,7 +448,7 @@ export class UI implements UIAPI {
         e.preventDefault();
         this.sfx('click');
         this.showMainMenu();
-      } else if (name === 'garage' && !this.shopContinue) {
+      } else if (name === 'garage' && !this.shopContinue && !this.duelWallet) {
         e.preventDefault();
         this.shopBack.click();
       }
@@ -513,6 +523,7 @@ export class UI implements UIAPI {
     this.btn('⚙ SETTINGS', 'ss-ice', () => this.settings.open(), misc, null);
     this.btn('🎓 TUTORIAL', 'ss-ice', () => this.handlers.onStartTutorial?.(), misc);
     const row = el('div', 'ss-menu-row', undefined, btns);
+    this.btn('🤺 DUEL <small>online 1v1</small>', 'ss-hot ss-duel-menu', () => this.handlers.onOpenDuel?.(), row);
     const mute = this.btn('', 'ss-ice ss-small', () => {
       this.handlers.onToggleMute();
       this.refreshMute();
@@ -784,9 +795,14 @@ export class UI implements UIAPI {
     this.refreshTabs();
   }
 
+  /** Who the Garage buys through: the save, or the duel garage's wallet. */
+  private get shop(): ShopWallet {
+    return this.duelWallet ?? this.ctx.progression;
+  }
+
   /** Tab labels, affordable-upgrade badges and the info line under the tabs. */
   private refreshTabs(): void {
-    const p = this.ctx.progression;
+    const p = this.shop;
     const plow = PLOWS[p.plow];
     const line = this.tabBtns.get('line');
     if (line) {
@@ -846,7 +862,7 @@ export class UI implements UIAPI {
   }
 
   private onBuy(def: UpgradeDef, card: HTMLElement): void {
-    const p = this.ctx.progression;
+    const p = this.shop;
     if (p.isMaxed(def.id) || !p.canBuy(def.id)) {
       this.sfx('error');
       restart(card, 'shake');
@@ -859,7 +875,9 @@ export class UI implements UIAPI {
   }
 
   private refreshCards(): void {
-    const p = this.ctx.progression;
+    const p = this.shop;
+    const dw = this.duelWallet;
+    if (dw) this.shopCoins.textContent = fmt(dw.coins);
     this.refreshRepair();
     const plow = p.plow;
     for (const [id, card] of this.plowCards) card.classList.toggle('on', id === plow);
@@ -879,7 +897,11 @@ export class UI implements UIAPI {
       c.root.classList.toggle('inactive', !!c.def.plowOnly && c.def.plowOnly !== plow);
       c.root.classList.toggle('poor', !maxed && !afford);
       c.root.classList.toggle('afford', afford);
-      c.buy.innerHTML = maxed ? (c.def.maxLevel === 1 ? '✓ OWNED' : '★ MAXED') : `<span class="ss-coin sm"></span>${fmt(p.cost(c.def.id))}`;
+      // Duel garage: catch-up coins pay first (gift icon), then your own coins.
+      const bonus = !!dw && !maxed && dw.paysWithBonus(c.def.id);
+      c.buy.classList.toggle('ss-bonus-buy', bonus);
+      c.buy.innerHTML = maxed ? (c.def.maxLevel === 1 ? '✓ OWNED' : '★ MAXED') : `${bonus ? '🎁' : '<span class="ss-coin sm"></span>'}${fmt(p.cost(c.def.id))}`;
+      c.buy.title = bonus ? 'Paid with catch-up coins: this level is for this duel only.' : '';
       c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
     }
     this.refreshTabs();
@@ -987,7 +1009,7 @@ export class UI implements UIAPI {
     const s = this.screen('pause', 'ss-center ss-dim');
     const panel = el('div', 'ss-panel ss-glass ss-pause ss-icicles', undefined, s);
     el('h2', 'ss-h2', 'PAUSED', panel);
-    el('div', 'ss-sub', 'The bots are politely idling their engines.', panel);
+    this.pauseSub = el('div', 'ss-sub', 'The bots are politely idling their engines.', panel);
     const btns = el('div', 'ss-stack', undefined, panel);
     this.btn('▶ RESUME', 'ss-primary ss-big', () => this.handlers.onResume(), btns).dataset.primary = '1';
     const mute = this.btn('', 'ss-ice', () => {
@@ -996,7 +1018,7 @@ export class UI implements UIAPI {
     }, btns);
     this.muteBtns.push(mute);
     this.btn('⚙ SETTINGS', 'ss-ice', () => this.settings.open(), btns, null);
-    this.btn('⏏ QUIT TO MENU', 'ss-ice ss-danger', () => this.handlers.onQuitToMenu(), btns);
+    this.pauseQuit = this.btn('⏏ QUIT TO MENU', 'ss-ice ss-danger', () => this.handlers.onQuitToMenu(), btns);
     this.controlsList(panel).classList.add('compact');
     this.refreshMute();
   }
@@ -1686,9 +1708,52 @@ export class UI implements UIAPI {
     this.show('bresult');
   }
 
-  showPause(): void {
+  showPause(duel = false): void {
     this.refreshMute();
+    // Online duel: the match keeps running behind the menu.
+    this.pauseSub.textContent = duel ? 'Online duel: the match is still running! Your plow is idling.' : 'The bots are politely idling their engines.';
+    this.pauseQuit.innerHTML = duel ? '⏏ LEAVE DUEL' : '⏏ QUIT TO MENU';
     this.show('pause');
+  }
+
+  /** Pre-match DUEL GARAGE: the normal Garage, buying through `wallet` (catch-up coins first). DuelUI's strip on top
+   *  has the timer, the garage numbers and READY, so the Garage's own BACK / FIGHT footer is hidden. */
+  showDuelGarage(wallet: DuelWallet, info: { ownPower: number; oppPower: number; bonus: number }): void {
+    this.duelWalletOff?.();
+    this.duelWallet = wallet;
+    this.duelWalletOff = wallet.onChange(() => this.refreshCards());
+    this.shopContinue = null;
+    this.survivalShop = null;
+    this.repairBtn = null;
+    this.shopTitle.textContent = 'DUEL GARAGE';
+    this.shopSub.textContent =
+      `Opponent garage: ${fmt(info.oppPower)} · Yours: ${fmt(info.ownPower)} · Catch-up: +${fmt(info.bonus)}. ` +
+      (info.bonus > 0 ? 'Catch-up coins buy duel-only levels first; then your own coins buy permanent upgrades.' : 'Your own coins buy permanent upgrades as usual.');
+    this.shopPreview.classList.add('hidden');
+    this.plowPick.classList.add('hidden');
+    this.shopBack.classList.add('hidden');
+    this.shopStart.classList.add('hidden');
+    this.shopHint.classList.add('hidden');
+    delete this.shopStart.dataset.primary;
+    delete this.shopBack.dataset.primary;
+    this.screens.garage.classList.add('ss-duel-garage-screen');
+    this.refreshCards();
+    this.show('garage');
+  }
+
+  hideDuelGarage(): void {
+    if (!this.duelWallet) return;
+    this.screens.garage.classList.remove('ss-duel-garage-screen');
+    this.duelWalletOff?.();
+    this.duelWalletOff = null;
+    this.duelWallet = null;
+    if (this.current === 'garage') this.hideOverlays();
+    this.refreshProgress();
+  }
+
+  /** Duel HUD mode: the campaign arena / coin / snow panels make way for DuelUI's top bar. */
+  setDuelHud(on: boolean): void {
+    this.hud.classList.toggle('duel', on);
   }
 
   showGameOver(summary: RunSummary): void {
