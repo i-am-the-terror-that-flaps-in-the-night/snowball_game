@@ -83,6 +83,8 @@ export class SnowField implements SnowFieldAPI {
   private attrs: THREE.BufferAttribute[] = [];
   private mesh: THREE.Mesh;
   private material: THREE.MeshStandardMaterial;
+  /** Brawl's cheaper snow: Lambert shading, no glitter (it's the competitive mode, frame rate first). */
+  private fastMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
   private outer: THREE.Mesh;
   private outerMat: THREE.MeshStandardMaterial;
   private lut = new Float32Array(LUT_SIZE * 3);
@@ -229,6 +231,7 @@ export class SnowField implements SnowFieldAPI {
   /* ------------------------------------------------------------------ setup */
 
   reset(zone: ZoneDef): void {
+    this.mesh.material = zone.theme === 'brawl' ? this.fastMaterial : this.material;
     const want = snowFieldSize();
     if (Math.abs(want - this.fieldSize) > 1e-6 || !this.geometry) this.build(want);
     const { V, CELL, HALF, INV_CELL, N } = this;

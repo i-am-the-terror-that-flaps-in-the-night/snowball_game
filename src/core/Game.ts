@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
 import { Progression } from './Progression';
-import { applyAllSettings, settingsUi } from './settings';
+import { applyAllSettings, setBrawlPerf, settingsUi } from './settings';
 import { BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, GameContext, HudState, RunSummary, UIHandlers } from './types';
 import { BRAWL_ZONE, ZONES } from '../config/zones';
@@ -193,6 +193,7 @@ export class Game {
     if (mode === this.mode) return;
     this.clearArena();
     this.mode = mode;
+    setBrawlPerf(ctx, mode === 'brawl');
     setArenaHalfSize(mode === 'brawl' ? BRAWL_ARENA_HALF : CAMPAIGN_ARENA_HALF);
     ctx.enemies = mode === 'brawl' ? ctx.brawl : this.campaignEnemies;
     ctx.zone = mode === 'brawl' ? BRAWL_ZONE : mode === 'survival' ? this.survival.zone : ZONES[0];

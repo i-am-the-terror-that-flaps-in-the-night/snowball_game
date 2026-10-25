@@ -74,12 +74,23 @@ export function applyBindings(ctx: GameContext): void {
 }
 
 let appliedQuality: Quality | null = null;
+let brawlPerf = false;
 
-/** Low = 1x pixel ratio and no shadow maps; High = up to 2x and PCF shadows. */
+/** Brawl is the competitive mode: cap the pixel ratio at 1.5 there (campaign / Survival keep up to 2x). */
+export function setBrawlPerf(ctx: GameContext, on: boolean): void {
+  if (on === brawlPerf) return;
+  brawlPerf = on;
+  if (settings.quality === 'high') {
+    ctx.renderer.setPixelRatio(Math.min(window.devicePixelRatio, on ? 1.5 : 2));
+    ctx.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+/** Low = 1x pixel ratio and no shadow maps; High = up to 2x (1.5x in Brawl) and PCF shadows. */
 export function applyQuality(ctx: GameContext): void {
   const r = ctx.renderer;
   const high = settings.quality === 'high';
-  r.setPixelRatio(high ? Math.min(window.devicePixelRatio, 2) : 1);
+  r.setPixelRatio(high ? Math.min(window.devicePixelRatio, brawlPerf ? 1.5 : 2) : 1);
   r.setSize(window.innerWidth, window.innerHeight);
   if (appliedQuality !== null && appliedQuality !== settings.quality) {
     // Shadow-map on/off changes shader programs: force every material to recompile.

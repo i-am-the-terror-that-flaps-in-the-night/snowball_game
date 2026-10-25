@@ -35,7 +35,7 @@ and tutorial cards follow your bindings.
 ## Settings & save
 
 **⚙ Settings** (main menu or pause menu) has master / music / SFX volume, screen-shake strength, LOW / HIGH
-graphics (LOW = 1x pixel ratio, no shadows), key rebinding and save management: **EXPORT** (an `SPS1:` code,
+graphics (LOW = 1x pixel ratio, no shadows; Brawl on HIGH caps the pixel ratio at 1.5x, halves the shadow map and uses a cheaper snow shader for frame rate), key rebinding and save management: **EXPORT** (an `SPS1:` code,
 copied to the clipboard), **IMPORT** (validated; a bad code leaves your save untouched) and **RESET PROGRESS**
 (click twice). Settings live in localStorage separately from progress.
 

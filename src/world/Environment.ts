@@ -511,6 +511,15 @@ export class Environment implements WorldAPI {
     this.sun.color.setHex(zone.sunColor);
     this.sun.intensity = zone.sunIntensity;
     const brawl = zone.theme === 'brawl';
+    // Brawl trades shadow sharpness for frame rate: half-resolution shadow map.
+    const mapSize = brawl ? 1024 : 2048;
+    if (this.sun.shadow.mapSize.x !== mapSize) {
+      this.sun.shadow.mapSize.set(mapSize, mapSize);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+      const sc = this.sun.shadow.camera;
+      this.shadowTexel = (sc.right - sc.left) / mapSize;
+    }
     for (let i = 0; i < this.spots.length; i++) {
       const s = this.spots[i];
       const sx = i === 0 ? -1 : 1;
