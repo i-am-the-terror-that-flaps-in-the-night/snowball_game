@@ -1728,7 +1728,7 @@ export class UI implements UIAPI {
     this.shopTitle.textContent = 'DUEL GARAGE';
     this.shopSub.textContent =
       `Opponent garage: ${fmt(info.oppPower)} · Yours: ${fmt(info.ownPower)} · Catch-up: +${fmt(info.bonus)}. ` +
-      (info.bonus > 0 ? 'Catch-up coins buy duel-only levels first; then your own coins buy permanent upgrades.' : 'Your own coins buy permanent upgrades as usual.');
+      (info.bonus > 0 ? 'Catch-up coins are spent first and the upgrades are yours to keep; then your own coins buy upgrades as usual.' : 'Your own coins buy permanent upgrades as usual.');
     this.shopPreview.classList.add('hidden');
     this.plowPick.classList.add('hidden');
     this.shopBack.classList.add('hidden');

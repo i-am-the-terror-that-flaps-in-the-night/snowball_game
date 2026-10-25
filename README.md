@@ -67,9 +67,11 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
   5-letter room code (copy button); your friend types it under **JOIN**. Spawns face each other, a countdown starts each
   round, and a round ends on a wreck or after 90 s (higher HP% wins). Each player brings their **own garage** and Paint
   Shop look (pilot perks included). Before the match both get a 90 s **DUEL GARAGE** (60 s before a rematch): the
-  weaker garage gets **catch-up coins** = the gap in garage power (coins spent on upgrades + coins on hand, the full
-  gap with no cap; the stronger garage never gets any), spent first on duel-only levels that never touch the save (**⚖ MATCH OPPONENT** does it in one click: it raises every
-  shared, non plow-specific upgrade to the opponent's level from your catch-up coins, cheapest first); after that you can buy permanent upgrades with
+  weaker garage gets **catch-up coins**: enough to match the opponent's full garage value (everything they've spent,
+  plow lines included, plus their coins on hand) on top of what you've already spent, with no cap; the stronger garage
+  never gets any. Catch-up coins are spent first and what they buy is **yours to keep** once the match starts
+  (**⚖ MATCH OPPONENT** raises every shared, non plow-specific upgrade to the opponent's level in one click, and the
+  catch-up always covers it); after that you can buy permanent upgrades with
   your own coins. Hits use the Brawl hit cap at 60% of PvE damage, so nothing one-shots. Pausing opens the menu but
   the match keeps running; leaving ends it for both. REMATCH needs both players. Duels pay no coins.
   Networking: PeerJS (WebRTC data channels, the free public PeerJS signalling server, Google STUN). Add `?duel=local`

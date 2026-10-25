@@ -158,6 +158,18 @@ export class DuelWallet implements ShopWallet {
     return buys.length;
   }
 
+  /** Keep the duel garage's catch-up levels: fold them into the save (called when the match starts). */
+  commitTemp(): void {
+    let any = false;
+    for (const [id, n] of Object.entries(this.temp) as [UpgradeId, number][]) {
+      if (!n) continue;
+      this.p.data.upgrades[id] = Math.min(UPGRADE_BY_ID[id].maxLevel, this.p.level(id) + n);
+      any = true;
+    }
+    this.temp = {};
+    if (any) this.p.commit();
+  }
+
   /** Temporary levels bought with the bonus (for the UI / tests). */
   tempLevels(): Partial<Record<UpgradeId, number>> {
     return { ...this.temp };

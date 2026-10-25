@@ -189,6 +189,7 @@ await session('lobby', async (host, guest) => {
   check(!gw.saved.armor && !gw.saved.engine && gw.coins === 0, 'temp levels never touch the guest save', gw.saved);
   await shot(guest, '04-guest-garage');
   await shot(host, '05-host-garage');
+  const preMatchMaxHp = await guest.evaluate(() => window.__game.ctx.progression.computeStats().maxHp);
   await run(host, guest, 0.3);
   await guest.locator('.ss-duel-ready').click();
   await run(host, guest, 0.3);
@@ -196,8 +197,9 @@ await session('lobby', async (host, guest) => {
   await host.locator('.ss-duel-ready').click();
   [h, g] = await until(host, guest, (h, g) => h.phase === 'countdown' && g.phase === 'countdown', 6, 0.25);
   log('match stats', { host: h.stats, guest: g.stats });
-  const base = await guest.evaluate(() => window.__game.ctx.progression.computeStats().maxHp);
-  check(h.stats[1] && h.stats[1].maxHp > base * 1.5 && h.stats[1].plowKind === 'brute', 'host computes the guest stats WITH the temp levels', { hostSees: h.stats[1], saveMaxHp: base });
+  check(h.stats[1] && h.stats[1].maxHp > preMatchMaxHp * 1.5 && h.stats[1].plowKind === 'brute', 'host computes the guest stats WITH the catch-up levels', { hostSees: h.stats[1], preMatchMaxHp });
+  const kept = await guest.evaluate(() => ({ ...window.__game.ctx.progression.data.upgrades }));
+  check(kept.armor === 6 && kept.engine === 4 && kept.packedIce === 6 && kept.brutePound === 4, 'catch-up levels are saved to the guest garage once the match starts', kept);
   check(h.levels[1]?.armor === 6 && h.levels[1]?.brutePound === 4, 'host received the guest final effective levels', h.levels[1]);
   check(JSON.stringify(h.stats) === JSON.stringify(g.stats), 'both sides fight with identical stats');
   check(Math.abs(h.maxHp[1] - h.stats[1].maxHp) < 0.01 && Math.abs(g.maxHp[1] - h.stats[1].maxHp) < 0.01, 'guest plow max HP matches on both screens', [h.maxHp, g.maxHp]);

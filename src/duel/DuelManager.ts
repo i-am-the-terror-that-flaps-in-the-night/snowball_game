@@ -8,8 +8,7 @@ import type { UpgradeId } from '../config/upgrades';
 import {
   DUEL_BETWEEN_ROUNDS, DUEL_COUNTDOWN, DUEL_DRAW_EPS, DUEL_GARAGE_SECONDS, DUEL_MAX_ROUNDS, DUEL_REMATCH_GARAGE_SECONDS,
   DUEL_ROUND_END_DELAY, DUEL_ROUND_SECONDS, DUEL_ROUNDS_TO_WIN, DUEL_SNOW_REGEN, DUEL_SPAWNS, catchUp, cleanLevels,
-  duelPower, garageSpent,
-} from '../config/duel';
+  duelPower, garageSpent, duelBonus } from '../config/duel';
 import { Plow } from '../entities/Plow';
 import { Combat } from '../entities/Combat';
 import { cosmeticsState } from '../meta/cosmetics';
@@ -533,7 +532,7 @@ export class DuelManager {
     const [a, b] = this.profiles;
     if (!a || !b) return;
     this.power = [duelPower(a.spent, a.coins), duelPower(b.spent, b.coins)];
-    const cu = catchUp(this.power[0], this.power[1]);
+    const cu = duelBonus(a, b);
     this.bonus = [cu.a, cu.b];
     this.levels = [null, b.levels];
     this.sendCtl({ t: 'garage', seconds, bonus: this.bonus, power: this.power, names: [a.name, b.name] });
@@ -1044,7 +1043,7 @@ export class DuelManager {
     });
   }
 
-  /** The opponent's saved levels: what MATCH OPPONENT aims for (their duel-only buys aren't visible yet). */
+  /** The opponent's saved levels: what MATCH OPPONENT aims for (their duel-garage buys aren't visible yet). */
   private get oppLevels(): Partial<Record<UpgradeId, number>> | null {
     return this.profiles[this.oppIdx]?.levels ?? null;
   }
@@ -1095,6 +1094,8 @@ export class DuelManager {
     const me = this.meIdx;
     const op = this.oppIdx;
     this.closeGarageUi();
+    // The match is on: everything bought in the duel garage (catch-up levels included) is now yours to keep.
+    this.wallet?.commitTemp();
     this.wallet = null;
     this.mePilot.stats = this.stats[me]!;
     this.oppPilot.stats = this.stats[op]!;

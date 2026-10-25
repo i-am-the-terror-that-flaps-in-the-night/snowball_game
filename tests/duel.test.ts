@@ -3,7 +3,7 @@ import {
   INPUT_BYTES, NET_PLOW_LEN, NP, PressTracker, SNAP_BYTES, decodeInput, decodeSnap, decodeSnow, dequantDepth, encodeInput,
   encodeSnap, encodeSnow, fromJson, quantDepth, seqNewer, toJson, type InputFrame, type SnapHeader,
 } from '../src/net/protocol';
-import { CATCHUP_MAX, catchUp, catchUpBonus, cleanLevels, duelPower, garageSpent } from '../src/config/duel';
+import { CATCHUP_MAX, catchUp, catchUpBonus, cleanLevels, duelBonus, duelPower, garageSpent, sharedMatchCost } from '../src/config/duel';
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/config/upgrades';
 import { Progression, computeStatsFor } from '../src/core/Progression';
 import { DuelWallet } from '../src/duel/DuelWallet';
@@ -272,6 +272,44 @@ describe('DuelWallet (duel garage)', () => {
     expect(plan.missing).toBeGreaterThan(0);
     w.matchOpponent(target);
     expect(p.coins).toBe(5000); // never touches real coins
+  });
+
+  it('duelBonus: the weaker side gets the opponent\'s full value (spend incl. plow lines + coins) minus its own spend', () => {
+    const strong = { levels: { engine: 5, brutePound: 4 }, coins: 3000, spent: 0 };
+    strong.spent = garageSpent(strong.levels);
+    const weak = { levels: { engine: 1 }, coins: 800, spent: 0 };
+    weak.spent = garageSpent(weak.levels);
+    const r = duelBonus(weak, strong);
+    expect(r.b).toBe(0);
+    expect(r.a).toBe(strong.spent + strong.coins - weak.spent); // own unspent coins don't reduce it
+    expect(r.a).toBeGreaterThanOrEqual(sharedMatchCost(weak.levels, strong.levels));
+    expect(duelBonus(strong, weak)).toEqual({ a: 0, b: r.a });
+    expect(duelBonus(weak, weak)).toEqual({ a: 0, b: 0 });
+  });
+
+  it('duelBonus always covers MATCH OPPONENT, even when the weaker side over-invested elsewhere', () => {
+    const a = { levels: { armor: 12 }, coins: 0, spent: 0 };
+    a.spent = garageSpent(a.levels);
+    const b = { levels: { engine: 8 }, coins: 0, spent: 0 };
+    b.spent = garageSpent(b.levels);
+    const weakIsA = duelPower(a.spent, 0) < duelPower(b.spent, 0);
+    const r = duelBonus(a, b);
+    const weak = weakIsA ? a : b;
+    const opp = weakIsA ? b : a;
+    expect(weakIsA ? r.a : r.b).toBeGreaterThanOrEqual(sharedMatchCost(weak.levels, opp.levels));
+  });
+
+  it('commitTemp keeps catch-up levels in the save', () => {
+    const p = freshProg(0, { engine: 1 });
+    const w = new DuelWallet(p, 1e6);
+    w.buy('engine');
+    w.buy('armor');
+    expect(p.level('engine')).toBe(1);
+    w.commitTemp();
+    expect(p.level('engine')).toBe(2);
+    expect(p.level('armor')).toBe(1);
+    expect(w.level('engine')).toBe(2); // not double-counted
+    expect(JSON.parse(store.get(SAVE_KEY)!).upgrades.armor).toBe(1);
   });
 
   it('effective levels feed the duel stats', () => {

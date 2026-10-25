@@ -4,7 +4,7 @@ import { ZONES, type ZoneDef } from './zones';
 /* ------------------------------------------------------------------------------------------------
  * Online DUEL tuning: 1v1, best of 3 rounds in a campaign-size arena.
  * Each player fights with their OWN garage. Before the match both get a short DUEL GARAGE phase, and the weaker
- * garage gets CATCH-UP coins to spend on duel-only (temporary) upgrade levels first.
+ * garage gets CATCH-UP coins, spent first; what they buy is saved to the garage once the match starts.
  * ---------------------------------------------------------------------------------------------- */
 
 /** The duel arena: Frostbite Yard's layout and size, no bots, no coins. */
@@ -69,6 +69,38 @@ export function catchUpBonus(ownPower: number, oppPower: number, frac = CATCHUP_
   const gap = (oppPower - ownPower) * frac;
   if (!(gap > 0)) return 0;
   return Math.min(max, Math.max(0, Math.round(gap)));
+}
+
+/** Coins to raise every shared (non plow-specific) upgrade in `own` up to the level in `opp`. */
+export function sharedMatchCost(own: Partial<Record<UpgradeId, number>>, opp: Partial<Record<UpgradeId, number>>): number {
+  let total = 0;
+  for (const def of UPGRADES) {
+    if (def.plowOnly) continue;
+    const goal = Math.min(def.maxLevel, MAX_NET_LEVEL, Math.floor(opp[def.id] ?? 0));
+    for (let l = Math.max(0, Math.floor(own[def.id] ?? 0)); l < goal; l++) total += upgradeCost(def, l);
+  }
+  return total;
+}
+
+interface DuelSideInfo {
+  levels: Partial<Record<UpgradeId, number>>;
+  /** Coins spent on the garage (every upgrade, plow-specific included). */
+  spent: number;
+  coins: number;
+}
+
+/** Duel catch-up for two garages. Only the weaker side (lower spent + coins) gets any, and it gets enough to
+ *  match the opponent's FULL garage value (all their spending, plow lines included, plus their coins on hand)
+ *  on top of what it has already spent: oppSpent + oppCoins − ownSpent (its own unspent coins are its own and
+ *  don't reduce it). Never less than the MATCH OPPONENT cost, so that button is always fully covered. */
+export function duelBonus(a: DuelSideInfo, b: DuelSideInfo): { a: number; b: number } {
+  const pa = duelPower(a.spent, a.coins);
+  const pb = duelPower(b.spent, b.coins);
+  const forWeak = (own: DuelSideInfo, opp: DuelSideInfo) =>
+    Math.min(CATCHUP_MAX, Math.max(0, Math.round((duelPower(opp.spent, opp.coins) - Math.max(0, own.spent)) * CATCHUP_FRAC), sharedMatchCost(own.levels, opp.levels)));
+  if (pa < pb) return { a: forWeak(a, b), b: 0 };
+  if (pb < pa) return { a: 0, b: forWeak(b, a) };
+  return { a: 0, b: 0 };
 }
 
 /** Both sides' catch-up coins at once (only the weaker side gets any). */

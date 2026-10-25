@@ -294,7 +294,7 @@ export class DuelUI {
     this.gTimer.textContent = String(Math.max(0, Math.ceil(o.secondsLeft)));
     this.gTimer.classList.toggle('low', o.secondsLeft <= 10);
     this.gBonus.innerHTML = total > 0
-      ? `Catch-up <span class="ss-coin sm"></span><b>+${fmt(total)}</b> · <b>${fmt(o.bonusLeft)}</b> left <small>(this match only, spent first)</small>`
+      ? `Catch-up <span class="ss-coin sm"></span><b>+${fmt(total)}</b> · <b>${fmt(o.bonusLeft)}</b> left <small>(spent first · yours to keep)</small>`
       : 'No catch-up: your garage is the stronger one. Spend your own coins if you like.';
     this.gReady.disabled = o.readySelf;
     this.gReady.textContent = o.readySelf ? 'READY ✓ waiting…' : 'READY ✓';
