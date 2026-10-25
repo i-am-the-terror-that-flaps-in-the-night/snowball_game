@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { GameContext, Obstacle, WorldAPI, ZoneDef } from '../core/types';
+import { StaticBatch } from '../render/mergeStatic';
+import { makeShadowProxy } from '../render/shadowProxy';
+import type { ShadowProxy } from '../render/shadowProxy';
 import { ARENA, ENEMY_GATES, GATE_WIDTH } from '../core/types';
 
 type Theme = ZoneDef['theme'];
@@ -342,7 +345,9 @@ const hexCss = (hex: number) => '#' + hex.toString(16).padStart(6, '0');
 
 interface GateState {
   group: THREE.Group;
-  door: THREE.Mesh;
+  /** Door instance matrix when fully closed; the roll-up scale.y is applied on top. */
+  doorBase: THREE.Matrix4;
+  doorScale: number;
   lightMat: THREE.MeshStandardMaterial;
   glowMat: THREE.SpriteMaterial;
   floorMat: THREE.MeshBasicMaterial;
@@ -352,6 +357,15 @@ interface GateState {
   flashT: number;
   lastBurst: number;
   phase: number;
+}
+
+/** Materials shared by the three gates (created by the first one). */
+interface GateMats {
+  trim?: THREE.MeshStandardMaterial;
+  hazard?: THREE.MeshStandardMaterial;
+  door?: THREE.MeshStandardMaterial;
+  tunnel?: THREE.MeshStandardMaterial;
+  back?: THREE.MeshBasicMaterial;
 }
 
 interface Pulse {
@@ -388,6 +402,14 @@ export class Environment implements WorldAPI {
   // ambient animation
   private pulses: Pulse[] = [];
   private gates: GateState[] = [];
+  private doors: THREE.InstancedMesh | null = null;
+  /** Static parts baked while a zone is built (flushed by finishDecor). */
+  private batch: StaticBatch | null = null;
+  private wallTires: { items: Item[]; mat: THREE.Material } | null = null;
+  private crowd: { items: Item[]; phases: Float32Array[]; bodyMat: THREE.Material; eyeMat: THREE.Material } | null = null;
+  /** Shadow-only copies of the baked casters (never in the scene; read once by finishDecor). */
+  private casters = new THREE.Group();
+  private tmpM = new THREE.Matrix4();
   private zoneTex: THREE.Texture[] = [];
   private ticker: THREE.Texture | null = null;
   private spinners: { obj: THREE.Object3D; speed: number }[] = [];
@@ -559,6 +581,8 @@ export class Environment implements WorldAPI {
       const m = o as THREE.Mesh;
       // Sprites share one module-level geometry inside three.js: never dispose it.
       if (m.geometry && !(o as THREE.Sprite).isSprite) geos.add(m.geometry);
+      // Shadow proxies share global stand-in materials (render/shadowProxy.ts): only their geometry is ours.
+      if ((o as ShadowProxy).isShadowProxy) return;
       if (m.material) {
         if (Array.isArray(m.material)) m.material.forEach((x) => mats.add(x));
         else mats.add(m.material);
@@ -573,6 +597,7 @@ export class Environment implements WorldAPI {
     this.decor = null;
     this.pulses.length = 0;
     this.gates.length = 0;
+    this.doors = null;
     this.spinners.length = 0;
     this.puffs = null;
     this.ticker = null;
@@ -585,22 +610,46 @@ export class Environment implements WorldAPI {
     return o;
   }
 
+  /** Placement matrix of an Item (shared by inst() and baked items). */
+  private itemMatrix(it: Item): THREE.Matrix4 {
+    const d = this.dummy;
+    d.position.set(it.x, it.y, it.z);
+    // 'YXZ': roll/pitch first, yaw last (so lying tires / pipes keep their tilt under any yaw)
+    d.rotation.set(it.rx ?? 0, it.ry, it.rz ?? 0, 'YXZ');
+    d.scale.set(it.sx, it.sy, it.sz);
+    d.updateMatrix();
+    return d.matrix;
+  }
+
+  /** Bake a static part (world-space matrix) into the zone batch. Casting parts go into the zone shadow proxy
+   *  instead (finishDecor), so the batch only splits on material + receiveShadow. */
+  private bake(geo: THREE.BufferGeometry, matrix: THREE.Matrix4, mat: THREE.Material, cast = false, receive = false): void {
+    this.batch!.add(geo, matrix, mat, { receiveShadow: receive });
+    if (cast) {
+      const m = new THREE.Mesh(geo, mat);
+      m.matrixAutoUpdate = false;
+      m.matrix.copy(matrix);
+      m.castShadow = true;
+      this.casters.add(m);
+    }
+  }
+
+  /** Bake one copy of `geo` per item into the zone batch (static, few items, no per-item colour). */
+  private bakeItems(geo: THREE.BufferGeometry, mat: THREE.Material, items: Item[], cast = false, receive = false): void {
+    for (const it of items) this.bake(geo, this.itemMatrix(it), mat, cast, receive);
+    geo.dispose();
+  }
+
   private inst(geo: THREE.BufferGeometry, mat: THREE.Material, items: Item[], cast = false, receive = false): THREE.InstancedMesh | null {
     if (items.length === 0) {
       geo.dispose();
       return null;
     }
     const im = new THREE.InstancedMesh(geo, mat, items.length);
-    const d = this.dummy;
     const col = new THREE.Color();
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      d.position.set(it.x, it.y, it.z);
-      // 'YXZ': roll/pitch first, yaw last (so lying tires / pipes keep their tilt under any yaw)
-      d.rotation.set(it.rx ?? 0, it.ry, it.rz ?? 0, 'YXZ');
-      d.scale.set(it.sx, it.sy, it.sz);
-      d.updateMatrix();
-      im.setMatrixAt(i, d.matrix);
+      im.setMatrixAt(i, this.itemMatrix(it));
       if (it.color !== undefined) im.setColorAt(i, col.setHex(it.color));
     }
     im.instanceMatrix.needsUpdate = true;
@@ -649,9 +698,26 @@ export class Environment implements WorldAPI {
     return mat;
   }
 
-  /** Tiny blocky bot spectators that bob in their seats. Items face local +Z. */
+  /** Tiny blocky bot spectators that bob in their seats. Items face local +Z. Every call of a zone build adds to
+   *  one crowd (body + eyes draw), emitted by flushCrowd; the bob phases are drawn here, in build order. */
   private addCrowd(items: Item[]): void {
     if (items.length === 0) return;
+    const phase = new Float32Array(items.length);
+    for (let i = 0; i < phase.length; i++) phase[i] = this.rnd() * 40;
+    if (!this.crowd) {
+      const bodyMat = this.bobify(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, flatShading: true }));
+      const eyeMat = this.bobify(new THREE.MeshBasicMaterial({ color: this.style.accents[1], toneMapped: false }));
+      this.crowd = { items: [], phases: [], bodyMat, eyeMat };
+    }
+    this.crowd.items.push(...items);
+    this.crowd.phases.push(phase);
+  }
+
+  private flushCrowd(): void {
+    const crowd = this.crowd;
+    this.crowd = null;
+    if (!crowd) return;
+    const { items, bodyMat, eyeMat } = crowd;
     const white = 0xffffff;
     const body = merge([
       colored(new THREE.BoxGeometry(0.46, 0.4, 0.36).translate(0, 0.22, 0), white),
@@ -667,12 +733,14 @@ export class Environment implements WorldAPI {
       new THREE.BoxGeometry(0.08, 0.06, 0.02).translate(-0.08, 0.625, 0.19),
     ]);
     const phase = new Float32Array(items.length);
-    for (let i = 0; i < phase.length; i++) phase[i] = this.rnd() * 40;
+    let o = 0;
+    for (const p of crowd.phases) {
+      phase.set(p, o);
+      o += p.length;
+    }
     const attr = new THREE.InstancedBufferAttribute(phase, 1);
     body.setAttribute('aPhase', attr);
     eyes.setAttribute('aPhase', attr);
-    const bodyMat = this.bobify(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, flatShading: true }));
-    const eyeMat = this.bobify(new THREE.MeshBasicMaterial({ color: this.style.accents[1], toneMapped: false }));
     this.inst(body, bodyMat, items);
     this.inst(eyes, eyeMat, items.map((i) => ({ ...i, color: undefined })));
   }
@@ -694,6 +762,7 @@ export class Environment implements WorldAPI {
     this.decor = group;
     this.ctx.scene.add(group);
     this.rnd = mulberry32(1234 + zone.index * 101);
+    this.batch = new StaticBatch();
     const G = zone.snowDepth;
     const snowMat = this.std(zone.snowTint, { roughness: 0.85 });
     brawlMode = zone.theme === 'brawl';
@@ -704,11 +773,12 @@ export class Environment implements WorldAPI {
       this.buildSnowdome(zone, G);
       this.buildObstacles(G, snowMat);
       this.buildMountains(zone);
+      this.finishDecor();
       return;
     }
 
     this.buildWalls(G, snowMat);
-    for (let i = 0; i < ENEMY_GATES.length; i++) this.buildGate(i, G, snowMat);
+    this.buildGates(G, snowMat);
     this.buildStands(G);
     this.buildTowers();
     this.buildJumbotron(zone);
@@ -722,6 +792,28 @@ export class Environment implements WorldAPI {
     else if (theme === 'lake') this.buildFoundry(G);
     else if (theme === 'blizzard') this.buildBowl(zone);
     else this.buildSummit(G, snowMat);
+    this.finishDecor();
+  }
+
+  /** Emits the batched parts, then one depth-only shadow proxy for every static caster of the zone (the visible
+   *  meshes stop casting but keep receiving), so the shadow pass draws the whole static scenery in one call. Gate
+   *  doors (roll up) and spinners keep casting themselves. Finally freezes the local matrices of everything that
+   *  never moves (only spinners rotate; doors and puffs animate instance matrices). */
+  private finishDecor(): void {
+    const decor = this.decor!;
+    this.flushCrowd();
+    this.batch!.flush(decor);
+    this.batch = null;
+    const keep: THREE.Object3D[] = this.spinners.map((s) => s.obj);
+    if (this.doors) keep.push(this.doors);
+    for (const p of makeShadowProxy([decor, this.casters], null, { keep })) decor.add(p);
+    this.casters.clear();
+    const moving = new Set(this.spinners.map((sp) => sp.obj));
+    decor.traverse((o) => {
+      if (moving.has(o)) return;
+      o.updateMatrix();
+      o.matrixAutoUpdate = false;
+    });
   }
 
   /** Scatter points outside the arena + stands. `huge` items (>18 m) stay clear of the menu orbit (r=50, y=24). */
@@ -802,26 +894,49 @@ export class Environment implements WorldAPI {
 
     const unitBox = () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.55, metalness: 0.02 }), blocks, true, true);
-    this.inst(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, caps);
+    // block caps + corner caps: same hemisphere, material and flags -> one draw
+    const cornerCaps = cornerItems.map((c) => ({ ...c, y: c.sy - 0.05, sx: WALL_C * 0.55, sy: 0.4, sz: WALL_C * 0.55 }));
+    this.inst(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, [...caps, ...cornerCaps]);
     const hazardMat = this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false });
     this.inst(new THREE.BoxGeometry(1, 0.38, 0.07).translate(0, 0.19, 0), hazardMat, bands);
     const trimMat = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
     this.inst(new THREE.BoxGeometry(0.36, 1, 0.4).translate(0, 0.5, 0), trimMat, posts, true);
     this.inst(unitBox(), this.std(st.trim, { metalness: 0.4, roughness: 0.5 }), cornerItems, true, true);
-    this.inst(
-      new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2),
-      snowMat,
-      cornerItems.map((c) => ({ ...c, y: c.sy - 0.05, sx: WALL_C * 0.55, sy: 0.4, sz: WALL_C * 0.55 })),
-    );
     this.inst(new THREE.BoxGeometry(0.26, 0.16, 0.26).translate(0, 0.08, 0), this.emissive(st.gate, 1.2, { speed: 2.6 }), lamps);
     const bannerMat = new THREE.MeshStandardMaterial({ map: getBannerTex(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75 });
     this.inst(new THREE.PlaneGeometry(1.0, 1.3), bannerMat, banners);
-    this.inst(new THREE.TorusGeometry(0.42, 0.19, 7, 14), this.std(st.tire, { roughness: 0.95 }), tires, true);
+    // Campaign: the tire stacks behind the south wall share this draw (buildSouthDressing emits it).
+    this.wallTires = { items: tires, mat: this.std(st.tire, { roughness: 0.95 }) };
+    if (brawlMode) this.emitTires([]);
+  }
+
+  private emitTires(more: Item[]): void {
+    const t = this.wallTires!;
+    this.wallTires = null;
+    this.inst(new THREE.TorusGeometry(0.42, 0.19, 7, 14), t.mat, [...t.items, ...more], true);
   }
 
   /* ---------- gates ---------- */
 
-  private buildGate(index: number, G: number, snowMat: THREE.Material): void {
+  /** The three enemy gates. Static parts are baked into the zone batch (one draw per material + flags for all
+   *  gates; the materials are shared by the gates and created in the same order as before, so draw order stays the
+   *  same), each gate keeps its own animated light / portal / ramp / glow materials, and the roll-up doors are one
+   *  InstancedMesh. */
+  private buildGates(G: number, snowMat: THREE.Material): void {
+    const shared: GateMats = {};
+    for (let i = 0; i < ENEMY_GATES.length; i++) this.buildGate(i, G, snowMat, shared);
+    const doorGeo = new THREE.BoxGeometry(GATE_WIDTH - 0.05, 3.5, 0.18).translate(0, -1.75, 0);
+    const doors = new THREE.InstancedMesh(doorGeo, shared.door!, this.gates.length);
+    for (let i = 0; i < this.gates.length; i++) doors.setMatrixAt(i, this.gates[i].doorBase);
+    doors.castShadow = true;
+    doors.receiveShadow = true;
+    // Bounds at full size (closed doors); opening only shrinks them.
+    doors.computeBoundingSphere();
+    this.doors = doors;
+    this.add(doors);
+  }
+
+  private buildGate(index: number, G: number, snowMat: THREE.Material, shared: GateMats): void {
     const st = this.style;
     const gp = ENEMY_GATES[index];
     const ex = Math.min(ARENA.maxX, Math.max(ARENA.minX, gp.x));
@@ -830,61 +945,83 @@ export class Environment implements WorldAPI {
     grp.position.set(ex, 0, ez);
     grp.rotation.y = gp.heading;
     this.add(grp);
+    grp.updateMatrix();
 
     const zc = -(WALL_IN + WALL_T / 2);
     const px = GATE_HALF + PILLAR_W / 2;
-    const trim = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
+    const trim = (shared.trim ??= this.std(st.trim, { metalness: 0.55, roughness: 0.45 }));
     const lightMat = new THREE.MeshStandardMaterial({ color: st.gate, emissive: st.gate, emissiveIntensity: 1, roughness: 0.3 });
-    const hazard = this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false });
-    const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true) => {
+    const hazard = (shared.hazard ??= this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false }));
+    const lights = new StaticBatch();
+    const part = new THREE.Object3D();
+    // A static part at (x, y, z) in gate space: lightMat parts go into this gate's light batch, everything else into
+    // the zone batch (in world space; casting parts also receive).
+    const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true, scale?: THREE.Vector3) => {
+      part.position.set(x, y, z);
+      if (scale) part.scale.copy(scale);
+      else part.scale.set(1, 1, 1);
+      part.updateMatrix();
+      if (mat === lightMat) lights.add(geo, part.matrix, mat);
+      else this.bake(geo, part.matrix.premultiply(grp.matrix), mat, cast, cast);
+    };
+    // Pillars and header share coplanar faces (z-fight): they stay real meshes so their depth is computed exactly
+    // as before.
+    const solid = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
-      m.castShadow = cast;
-      m.receiveShadow = cast;
+      m.castShadow = true;
+      m.receiveShadow = true;
       grp.add(m);
-      return m;
     };
 
     // frame
     const pillarGeo = new THREE.BoxGeometry(PILLAR_W, 4.6, WALL_T);
     const plateGeo = new THREE.BoxGeometry(PILLAR_W * 0.8, 3.0, 0.06);
     for (const s of [-1, 1]) {
-      mesh(pillarGeo, trim, s * px, 2.3, zc);
+      solid(pillarGeo, trim, s * px, 2.3, zc);
       mesh(plateGeo, hazard, s * px, 2.0, -WALL_IN + 0.03, false);
       mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.3, 10), trim, s * px, 4.75, zc, false);
       mesh(new THREE.SphereGeometry(0.28, 12, 8), lightMat, s * px, 5.1, zc, false);
     }
-    mesh(new THREE.BoxGeometry(GATE_WIDTH + PILLAR_W * 2, 1.0, WALL_T), hazard, 0, 4.1, zc);
+    solid(new THREE.BoxGeometry(GATE_WIDTH + PILLAR_W * 2, 1.0, WALL_T), hazard, 0, 4.1, zc);
     mesh(new THREE.BoxGeometry(GATE_WIDTH - 0.4, 0.16, 0.08), lightMat, 0, 3.48, -WALL_IN + 0.04, false);
 
-    // roll-up garage door (pivot at its top edge so scale.y rolls it up into the header)
-    const doorMat = new THREE.MeshStandardMaterial({ map: getDoorTex(), color: new THREE.Color(st.trim).lerp(new THREE.Color(0xffffff), 0.65), roughness: 0.5, metalness: 0.35 });
-    const door = mesh(new THREE.BoxGeometry(GATE_WIDTH - 0.05, 3.5, 0.18).translate(0, -1.75, 0), doorMat, 0, 3.6, zc);
+    // roll-up garage door (pivot at its top edge so scale.y rolls it up into the header): one instance per gate
+    shared.door ??= new THREE.MeshStandardMaterial({ map: getDoorTex(), color: new THREE.Color(st.trim).lerp(new THREE.Color(0xffffff), 0.65), roughness: 0.5, metalness: 0.35 });
+    part.position.set(0, 3.6, zc);
+    part.scale.set(1, 1, 1);
+    part.updateMatrix();
+    const doorBase = part.matrix.clone().premultiply(grp.matrix);
 
     // spawn tunnel outside the wall
-    const tunnelMat = this.std(st.blockAlt, { roughness: 0.6 });
+    const tunnelMat = (shared.tunnel ??= this.std(st.blockAlt, { roughness: 0.6 }));
     const tz = -(WALL_C + TUNNEL_LEN / 2);
+    const capScale = new THREE.Vector3(0.6, 0.35, TUNNEL_LEN * 0.5);
     for (const s of [-1, 1]) {
       mesh(new THREE.BoxGeometry(0.9, 3.9, TUNNEL_LEN), tunnelMat, s * (GATE_HALF + 0.45), 1.95, tz);
-      const cap = mesh(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, s * (GATE_HALF + 0.45), 3.85, tz, false);
-      cap.scale.set(0.6, 0.35, TUNNEL_LEN * 0.5);
+      mesh(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, s * (GATE_HALF + 0.45), 3.85, tz, false, capScale);
       for (const y of [0.95, 3.3]) mesh(new THREE.BoxGeometry(0.06, 0.12, TUNNEL_LEN - 0.4), lightMat, s * (GATE_HALF - 0.02), y, tz, false);
     }
     mesh(new THREE.BoxGeometry(GATE_WIDTH + 1.8, 0.45, TUNNEL_LEN - 1.2), trim, 0, 4.12, tz - 0.6);
     mesh(new THREE.BoxGeometry(GATE_WIDTH + 1.4, 0.22, TUNNEL_LEN - 1.6), snowMat, 0, 4.42, tz - 0.6, false);
     const backZ = -(WALL_C + TUNNEL_LEN - 0.25);
-    mesh(new THREE.PlaneGeometry(GATE_WIDTH, 3.9), new THREE.MeshBasicMaterial({ color: 0x05070f }), 0, 1.95, backZ, false);
+    mesh(new THREE.PlaneGeometry(GATE_WIDTH, 3.9), (shared.back ??= new THREE.MeshBasicMaterial({ color: 0x05070f })), 0, 1.95, backZ, false);
+    lights.flush(grp);
     const portalMat = new THREE.MeshBasicMaterial({
       map: getGlowTex(), color: st.gate, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false,
     });
     this.pulses.push({ mat: portalMat, base: 0.7, speed: 1.8, phase: index });
-    mesh(new THREE.PlaneGeometry(GATE_WIDTH * 1.2, 4.6), portalMat, 0, 1.8, backZ + 0.08, false);
+    const portal = new THREE.Mesh(new THREE.PlaneGeometry(GATE_WIDTH * 1.2, 4.6), portalMat);
+    portal.position.set(0, 1.8, backZ + 0.08);
+    grp.add(portal);
     // glowing chevron ramp pointing into the arena
     const floorMat = new THREE.MeshBasicMaterial({
       map: getChevronTex(), color: st.gate, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
     });
-    const ramp = mesh(new THREE.PlaneGeometry(GATE_WIDTH - 1.4, TUNNEL_LEN - 1).rotateX(-Math.PI / 2), floorMat, 0, G + 0.1, -(WALL_C + (TUNNEL_LEN - 1) / 2 - 0.2), false);
+    const ramp = new THREE.Mesh(new THREE.PlaneGeometry(GATE_WIDTH - 1.4, TUNNEL_LEN - 1).rotateX(-Math.PI / 2), floorMat);
+    ramp.position.set(0, G + 0.1, -(WALL_C + (TUNNEL_LEN - 1) / 2 - 0.2));
     ramp.renderOrder = 2;
+    grp.add(ramp);
 
     // beacon glows (sprites live in the gate group)
     const glowMat = new THREE.SpriteMaterial({
@@ -899,7 +1036,7 @@ export class Environment implements WorldAPI {
 
     grp.updateMatrixWorld(true);
     const mouth = grp.localToWorld(new THREE.Vector3(0, G + 0.3, 0.8));
-    this.gates.push({ group: grp, door, lightMat, glowMat, floorMat, mouth, open: 0, openT: 0, flashT: 0, lastBurst: -10, phase: index * 1.7 });
+    this.gates.push({ group: grp, doorBase, doorScale: 1, lightMat, glowMat, floorMat, mouth, open: 0, openT: 0, flashT: 0, lastBurst: -10, phase: index * 1.7 });
   }
 
   /* ---------- spectator stands ---------- */
@@ -1009,16 +1146,10 @@ export class Environment implements WorldAPI {
     grp.position.set(0, 0, -54);
     this.add(grp);
     const trim = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
+    // legs (casting) + frame baked into one draw
     const legGeo = new THREE.BoxGeometry(1, 10.4, 1).translate(0, 5.2, 0);
-    for (const x of [-8, 8]) {
-      const leg = new THREE.Mesh(legGeo, trim);
-      leg.position.x = x;
-      leg.castShadow = true;
-      grp.add(leg);
-    }
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(21, 9.6, 1.2), trim);
-    frame.position.y = 15;
-    grp.add(frame);
+    for (const x of [-8, 8]) this.bake(legGeo, this.tmpM.makeTranslation(x, 0, -54), trim, true);
+    this.bake(new THREE.BoxGeometry(21, 9.6, 1.2), this.tmpM.makeTranslation(0, 15, -54), trim);
 
     // main screen
     const [c, g] = canvas(1024, 340);
@@ -1101,7 +1232,7 @@ export class Environment implements WorldAPI {
         sx: 1, sy: 1, sz: 1, color: st.accents[(rnd() * st.accents.length) | 0],
       });
     }
-    this.inst(new THREE.TorusGeometry(0.42, 0.19, 7, 14), this.std(st.tire, { roughness: 0.95 }), tires, true);
+    this.emitTires(tires);
     this.inst(new THREE.CylinderGeometry(0.4, 0.4, 1.1, 12).translate(0, 0.55, 0), this.std(0xffffff, { roughness: 0.6, metalness: 0.3 }), barrels, true);
   }
 
@@ -1115,8 +1246,8 @@ export class Environment implements WorldAPI {
     const haze = theme === 'blizzard' ? 0.82 : 0.5;
     const mCol = new THREE.Color(this.style.mountain).lerp(fogC, haze);
     const cCol = new THREE.Color(zone.snowTint).lerp(skyB, haze * 0.6);
-    const mMat = new THREE.MeshLambertMaterial({ color: mCol, flatShading: true, fog: false });
-    const cMat = new THREE.MeshLambertMaterial({ color: cCol, flatShading: true, fog: false });
+    // one draw: white material, rock / snow-cap colour per instance
+    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, fog: false });
     const mGeo = new THREE.ConeGeometry(1, 1, 6, 1).translate(0, 0.5, 0);
     const mItems: Item[] = [];
     const cItems: Item[] = [];
@@ -1134,10 +1265,12 @@ export class Environment implements WorldAPI {
       const k = 0.36;
       cItems.push({ x, y: -2 + h * (1 - k) - 0.3, z, ry, sx: r * k * 1.04, sy: h * k * 1.01, sz: sz * k * 1.04 });
     }
-    const mm = this.inst(mGeo, mMat, mItems);
-    const cm = this.inst(mGeo.clone(), cMat, cItems);
-    if (mm) mm.renderOrder = -5;
-    if (cm) cm.renderOrder = -5;
+    const mm = this.inst(mGeo, mat, [...mItems, ...cItems]);
+    if (mm) {
+      for (let i = 0; i < mm.count; i++) mm.setColorAt(i, i < mItems.length ? mCol : cCol);
+      mm.instanceColor!.needsUpdate = true;
+      mm.renderOrder = -5;
+    }
   }
 
   private buildDrifts(G: number, snowMat: THREE.Material): void {
@@ -1201,13 +1334,16 @@ export class Environment implements WorldAPI {
     const crane = new THREE.Group();
     crane.position.set(-82, 0, -70);
     crane.rotation.y = 0.7;
-    const tower = new THREE.Mesh(new THREE.BoxGeometry(1.6, 30, 1.6).translate(0, 15, 0), yellow);
-    const boom = new THREE.Mesh(new THREE.BoxGeometry(28, 1.1, 1.1).translate(9, 30.5, 0), yellow);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.2, 2.4).translate(0, 28.6, 1.6), this.std(0x30343c));
-    const weight = new THREE.Mesh(new THREE.BoxGeometry(3, 2.2, 2).translate(-5, 29.4, 0), this.std(0x4a4f58));
-    const cable = new THREE.Mesh(new THREE.BoxGeometry(0.08, 14, 0.08).translate(19, 23.5, 0), this.std(0x222222));
+    // tower + boom share `yellow`; cab, weight and cable differ only in colour -> one vertex-coloured draw
+    const frame = new THREE.Mesh(merge([new THREE.BoxGeometry(1.6, 30, 1.6).translate(0, 15, 0), new THREE.BoxGeometry(28, 1.1, 1.1).translate(9, 30.5, 0)]), yellow);
+    const dark = merge([
+      colored(new THREE.BoxGeometry(2.6, 2.2, 2.4).translate(0, 28.6, 1.6), 0x30343c),
+      colored(new THREE.BoxGeometry(3, 2.2, 2).translate(-5, 29.4, 0), 0x4a4f58),
+      colored(new THREE.BoxGeometry(0.08, 14, 0.08).translate(19, 23.5, 0), 0x222222),
+    ]);
+    const parts = new THREE.Mesh(dark, this.std(0xffffff, { vertexColors: true }));
     const magnet = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.6, 14).translate(19, 16.3, 0), this.std(0x3a3f48, { metalness: 0.6 }));
-    crane.add(tower, boom, cab, weight, cable, magnet);
+    crane.add(frame, parts, magnet);
     this.add(crane);
   }
 
@@ -1334,12 +1470,14 @@ export class Environment implements WorldAPI {
       f.rotation.y = Math.atan2(-x, -z);
       const w = 8 + rnd() * 3;
       const h = 7 + rnd() * 3;
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, w).translate(0, h / 2, 0), iron);
-      const chim = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.2, 6, 10).translate(w * 0.25, h + 3, -w * 0.2), iron);
-      const mouth = new THREE.Mesh(new THREE.BoxGeometry(w * 0.45, h * 0.35, 0.1).translate(0, h * 0.3, w / 2 + 0.06), mouthMat);
+      // body + chimney (iron) and mouth are baked into the zone batch (one draw each for all furnaces)
+      f.updateMatrix();
+      this.bake(new THREE.BoxGeometry(w, h, w).translate(0, h / 2, 0), f.matrix, iron);
+      this.bake(new THREE.CylinderGeometry(1, 1.2, 6, 10).translate(w * 0.25, h + 3, -w * 0.2), f.matrix, iron);
+      this.bake(new THREE.BoxGeometry(w * 0.45, h * 0.35, 0.1).translate(0, h * 0.3, w / 2 + 0.06), f.matrix, mouthMat);
       const shell = new THREE.Mesh(new THREE.BoxGeometry(w + 1.2, h + 1.0, w + 1.2).translate(0, (h + 1) / 2, 0), shellMat);
       shell.renderOrder = 3;
-      f.add(b, chim, mouth, shell);
+      f.add(shell);
       this.add(f);
       this.glowSprite(0xff7a2a, 0.5, w * 0.9, x + Math.sin(f.rotation.y) * (w / 2 + 1.2), h * 0.3, z + Math.cos(f.rotation.y) * (w / 2 + 1.2), 2.1);
       for (let k = 0; k < 10; k++) {
@@ -1368,7 +1506,7 @@ export class Environment implements WorldAPI {
       for (let t = 0.15; t < 0.9; t += 0.25) supports.push({ x: ax + (bx - ax) * t, y: 0, z: az + (bz - az) * t, ry, sx: 1, sy: 1, sz: 1 });
     }
     this.inst(new THREE.CylinderGeometry(0.6, 0.6, 1, 10), this.std(0x9fb8c8, { roughness: 0.5, metalness: 0.5 }), pipes);
-    this.inst(new THREE.BoxGeometry(0.4, 4.2, 0.4).translate(0, 2.1, 0), iron, supports);
+    this.bakeItems(new THREE.BoxGeometry(0.4, 4.2, 0.4).translate(0, 2.1, 0), iron, supports);
 
     // ice crystals
     const crystals: Item[] = [];
@@ -1470,13 +1608,15 @@ export class Environment implements WorldAPI {
     const core = new THREE.Group();
     core.position.set(CORE_X, 0, CORE_Z);
     const dark = this.std(new THREE.Color(0x1e1a2a).lerp(new THREE.Color(this.zone.fogColor), 0.3).getHex(), { metalness: 0.5, roughness: 0.6, fog: false });
-    const base = new THREE.Mesh(new THREE.BoxGeometry(22, 8, 22).translate(0, 4, 0), dark);
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(4, 7, 20, 8).translate(0, 18, 0), dark);
+    // base, shaft and crown share `dark`: one baked draw
+    const coreM = new THREE.Matrix4().makeTranslation(CORE_X, 0, CORE_Z);
+    this.bake(new THREE.BoxGeometry(22, 8, 22).translate(0, 4, 0), coreM, dark);
+    this.bake(new THREE.CylinderGeometry(4, 7, 20, 8).translate(0, 18, 0), coreM, dark);
     const glowMat = this.emissive(st.accents[0], 2.6, { speed: 1.1 });
     glowMat.fog = false;
     const glow = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 11, 16).translate(0, 33.5, 0), glowMat);
-    const crown = new THREE.Mesh(new THREE.ConeGeometry(5, 16, 8).translate(0, 47, 0), dark);
-    core.add(base, shaft, glow, crown);
+    this.bake(new THREE.ConeGeometry(5, 16, 8).translate(0, 47, 0), coreM, dark);
+    core.add(glow);
     const ringMat = this.emissive(st.accents[1], 2.0, { speed: 1.6, phase: 1 });
     ringMat.fog = false;
     for (let i = 0; i < 3; i++) {
@@ -1577,7 +1717,7 @@ export class Environment implements WorldAPI {
     this.inst(new THREE.ShapeGeometry(flagShape).translate(0.05, 0.4, 0), this.std(0xffffff, { side: THREE.DoubleSide, roughness: 0.7 }), flags);
     this.addCrowd(crowd);
 
-    // sponsor boards: one atlas texture, per-sponsor UV-remapped geometry
+    // sponsor boards: one atlas texture, per-sponsor UV-remapped geometry, all baked into one mesh
     const atlas = this.sponsorAtlas();
     const boardMat = new THREE.MeshBasicMaterial({ map: atlas, toneMapped: false });
     for (let i = 0; i < SPONSORS.length; i++) {
@@ -1588,7 +1728,7 @@ export class Environment implements WorldAPI {
       for (let j = 0; j < uv.count; j++) {
         uv.setXY(j, (col + uv.getX(j)) * 0.5, 1 - (row + 1 - uv.getY(j)) * 0.25);
       }
-      this.inst(geo, boardMat, sponsorItems[i]);
+      this.bakeItems(geo, boardMat, sponsorItems[i]);
     }
     // board frames
     const frames: Item[] = [];
@@ -1686,28 +1826,24 @@ export class Environment implements WorldAPI {
     const glowGeo = new THREE.BoxGeometry(23.8, 11.8, 0.6);
     const screenGeo = new THREE.PlaneGeometry(21.4, 8.4);
     const tickGeo = new THREE.PlaneGeometry(21.4, 1.5);
+    // static and sharing four materials: baked into the zone batch (4 draws for all four screens)
+    const grp = new THREE.Object3D();
+    const part = new THREE.Matrix4();
+    const bake = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) =>
+      this.bake(geo, part.makeTranslation(x, y, z).premultiply(grp.matrix), mat);
     for (const side of SIDES) {
-      const grp = new THREE.Group();
       const [px, pz] = side.map(0, backN + 1.5);
       grp.position.set(px, topH - 2, pz);
       grp.rotation.y = side.yaw;
       grp.scale.setScalar(K);
-      this.add(grp);
-      for (const lx of [-8, 8]) {
-        const leg = new THREE.Mesh(legGeo, trim);
-        leg.position.x = lx;
-        grp.add(leg);
-      }
-      const glow = new THREE.Mesh(glowGeo, glowFrame);
-      glow.position.set(0, 19, -0.3);
-      const frame = new THREE.Mesh(frameGeo, trim);
-      frame.position.y = 19;
-      const screen = new THREE.Mesh(screenGeo, screenMat);
-      screen.position.set(0, 19.9, 0.71);
-      const tick = new THREE.Mesh(tickGeo, tickMat);
-      tick.position.set(0, 14.6, 0.71);
-      grp.add(glow, frame, screen, tick);
+      grp.updateMatrix();
+      for (const lx of [-8, 8]) bake(legGeo, trim, lx, 0, 0);
+      bake(glowGeo, glowFrame, 0, 19, -0.3);
+      bake(frameGeo, trim, 0, 19, 0);
+      bake(screenGeo, screenMat, 0, 19.9, 0.71);
+      bake(tickGeo, tickMat, 0, 14.6, 0.71);
     }
+    for (const geo of [legGeo, frameGeo, glowGeo, screenGeo, tickGeo]) geo.dispose();
   }
 
   /** Decorative tunnel mouths in the stand fronts (no gameplay; Brawl has no gates). */
@@ -1748,12 +1884,9 @@ export class Environment implements WorldAPI {
     const Y = 58;
     const hubY = 70;
     const trussMat = this.std(0x3a3f55, { metalness: 0.6, roughness: 0.5 });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.9, 5, 96).rotateX(Math.PI / 2), trussMat);
-    ring.position.y = Y;
-    this.add(ring);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 4, 12), trussMat);
-    hub.position.y = hubY;
-    this.add(hub);
+    // ring, hub and cables share trussMat: one baked draw
+    this.bake(new THREE.TorusGeometry(R, 0.9, 5, 96).rotateX(Math.PI / 2), this.tmpM.makeTranslation(0, Y, 0), trussMat);
+    this.bake(new THREE.CylinderGeometry(4, 5, 4, 12), this.tmpM.makeTranslation(0, hubY, 0), trussMat);
     const hubGlow = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.35, 6, 32).rotateX(Math.PI / 2), this.emissive(st.accents[0], 2, { speed: 1.2 }));
     hubGlow.position.y = hubY - 2;
     this.add(hubGlow);
@@ -1774,7 +1907,7 @@ export class Environment implements WorldAPI {
       const a = (i / 48) * Math.PI * 2;
       lamps.push({ x: Math.cos(a) * R, y: Y - 1.3, z: Math.sin(a) * R, ry: -a, sx: 1, sy: 1, sz: 1, color: CONFETTI[i % CONFETTI.length] });
     }
-    this.inst(new THREE.CylinderGeometry(0.25, 0.25, 1, 5).translate(0, 0.5, 0), trussMat, cables);
+    this.bakeItems(new THREE.CylinderGeometry(0.25, 0.25, 1, 5).translate(0, 0.5, 0), trussMat, cables);
     this.inst(new THREE.BoxGeometry(1.6, 0.9, 1.6), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), lamps);
   }
 
@@ -1883,18 +2016,19 @@ export class Environment implements WorldAPI {
     // --- meshes
     const iceMat = this.std(0xa8e4ff, { roughness: 0.15, metalness: 0.1, emissive: 0x15405a, emissiveIntensity: 0.6 });
     this.inst(new THREE.CylinderGeometry(0.9, 1, 1, 6).translate(0, 0.5, 0), iceMat, pillars, true, true);
-    this.inst(new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, pillarCaps, false, true);
+    // pillar caps, container roofs and rock caps share snowMat + receive: baked into one draw
+    this.bakeItems(new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, pillarCaps, false, true);
     this.inst(new THREE.OctahedronGeometry(1, 0), this.emissive(0x6ff3ff, 1.4, { speed: 1.6 }), crystals);
 
     // containers: corrugated box + snow roof
     const ribs = this.ribTexture();
     const contGeo = new THREE.BoxGeometry(2.6, 2.8, 6.6).translate(0, 1.4, 0);
     this.inst(contGeo, this.std(0xffffff, { map: ribs, roughness: 0.6, metalness: 0.3, flatShading: false }), containers, true, true);
-    this.inst(new THREE.BoxGeometry(2.7, 0.32, 6.7).translate(0, 0.16, 0), snowMat, roofs, true, true);
+    this.bakeItems(new THREE.BoxGeometry(2.7, 0.32, 6.7).translate(0, 0.16, 0), snowMat, roofs, true, true);
 
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
     this.inst(rockGeo, this.std(this.style.rock, { roughness: 0.95 }), rocks, true, true);
-    this.inst(rockGeo.clone(), snowMat, rockCaps, false, true);
+    this.bakeItems(rockGeo.clone(), snowMat, rockCaps, false, true);
 
     // snowman statue (merged, vertex colored)
     const snowmanGeo = merge([
@@ -1983,12 +2117,15 @@ export class Environment implements WorldAPI {
     const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(1.2, 0).scale(1, 1, 2.2), crystalMat);
     crystal.castShadow = true;
     holder.add(crystal);
+    // the three (non-casting) satellites: one merged child, so they spin with the crystal
+    const sats = new StaticBatch();
+    const satGeo = new THREE.OctahedronGeometry(0.45, 0).scale(1, 1, 1.8);
     for (let i = 0; i < 3; i++) {
-      const sat = new THREE.Mesh(new THREE.OctahedronGeometry(0.45, 0).scale(1, 1, 1.8), crystalMat);
       const a = (i / 3) * Math.PI * 2;
-      sat.position.set(Math.cos(a) * 1.9, Math.sin(a) * 1.9, -1.2);
-      crystal.add(sat);
+      sats.add(satGeo, this.tmpM.makeTranslation(Math.cos(a) * 1.9, Math.sin(a) * 1.9, -1.2), crystalMat);
     }
+    sats.flush(crystal);
+    satGeo.dispose();
     this.add(holder);
     this.spinners.push({ obj: crystal, speed: 0.6 });
     this.glowSprite(0x7ff6ff, 0.55, 12, 0, G * 0.3 + 8.2, 0, 1.4);
@@ -2094,7 +2231,12 @@ export class Environment implements WorldAPI {
       const diff = target - g.open;
       g.open += Math.sign(diff) * Math.min(Math.abs(diff), rate * dt);
       const e = g.open * g.open * (3 - 2 * g.open);
-      g.door.scale.y = 1 - 0.94 * e;
+      const doorScale = 1 - 0.94 * e;
+      if (doorScale !== g.doorScale && this.doors) {
+        g.doorScale = doorScale;
+        this.doors.setMatrixAt(i, this.tmpM.makeScale(1, doorScale, 1).premultiply(g.doorBase));
+        this.doors.instanceMatrix.needsUpdate = true;
+      }
       const flashing = g.flashT > 0;
       const k = flashing ? (Math.sin(t * 26) > 0 ? 4.5 : 0.5) : 0.8 + 0.25 * Math.sin(t * 2.2 + g.phase);
       g.lightMat.emissiveIntensity = k;

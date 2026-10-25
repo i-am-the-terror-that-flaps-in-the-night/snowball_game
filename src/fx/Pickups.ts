@@ -41,6 +41,8 @@ export class Pickups implements PickupsAPI {
     this.mesh.castShadow = true;
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
+    // Hidden while empty: an InstancedMesh with count 0 still costs a (main + shadow) draw call.
+    this.mesh.visible = false;
     ctx.scene.add(this.mesh);
     for (let i = 0; i < MAX_COINS; i++) {
       this.coins.push({
@@ -112,6 +114,8 @@ export class Pickups implements PickupsAPI {
       this.mesh.setMatrixAt(i, this.hidden);
     }
     this.mesh.count = 0;
+    this.mesh.visible = false;
+    this.mesh.instanceMatrix.clearUpdateRanges();
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
@@ -182,7 +186,14 @@ export class Pickups implements PickupsAPI {
       maxIdx = i;
     }
     this.mesh.count = maxIdx + 1;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    this.mesh.visible = maxIdx >= 0;
+    if (maxIdx >= 0) {
+      // Only the drawn prefix changed; the slots above it are hidden and never drawn.
+      const im = this.mesh.instanceMatrix;
+      im.clearUpdateRanges();
+      im.addUpdateRange(0, (maxIdx + 1) * 16);
+      im.needsUpdate = true;
+    }
   }
 
   private floor(x: number, z: number): number {
