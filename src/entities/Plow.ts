@@ -21,6 +21,7 @@ import {
 import type { CosmeticSlot } from '../config/cosmetics';
 import { bakeGeometry, mergeBaked, mergeStatic } from '../render/mergeStatic';
 import { makeShadowProxy } from '../render/shadowProxy';
+import { getPaintEnvMap } from '../render/reflections';
 import { cosmeticsState, resolveLook, type EquippedLook } from '../meta/cosmetics';
 
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
@@ -853,6 +854,11 @@ export class Plow implements PlowAPI {
     this.paintMat.roughness = p.roughness ?? 0.45;
     this.bedMat.metalness = p.metalness ?? 0.1;
     this.bedMat.roughness = p.roughness ?? 0.5;
+    const env = p.mirror ? getPaintEnvMap(this.ctx.renderer) : null;
+    if (this.paintMat.envMap !== env) {
+      this.paintMat.envMap = this.bedMat.envMap = env;
+      this.paintMat.needsUpdate = this.bedMat.needsUpdate = true;
+    }
     const fh = this.kind === 'volt' ? 0x7fdcff : this.kind === 'brute' ? 0xffc21a : 0xffd23a;
     this.hubMat.color.setHex(p.accent ?? fh);
     if (!this._dead) {
