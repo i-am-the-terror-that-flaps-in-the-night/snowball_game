@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Progression } from '../src/core/Progression';
-import { COSMETICS, COSMETIC_BY_ID, COSMETIC_SLOTS, DEFAULT_COSMETICS, cosmeticsInSlot } from '../src/config/cosmetics';
+import { COSMETICS, COSMETIC_BY_ID, COSMETIC_SLOTS, DEFAULT_COSMETICS, cosmeticsInSlot, type CosmeticSlot } from '../src/config/cosmetics';
 import {
   buyCheck, buyCosmetic, cosmeticsState, equipCosmetic, equippedLook, isOwned, lockLabel, sanitizeCosmetics, unmetReqs,
 } from '../src/meta/cosmetics';
@@ -30,7 +30,7 @@ function grant(p: Progression, stars: number, ach: number): void {
   p.data.achievements = Object.fromEntries(Array.from({ length: ach }, (_, i) => [`a${i}`, 1]));
 }
 
-const firstPaid = (slot: 'paint' | 'decal' | 'trail', gated = false) =>
+const firstPaid = (slot: CosmeticSlot, gated = false) =>
   cosmeticsInSlot(slot).find((c) => c.price > 0 && !!c.req === gated)!;
 
 describe('cosmetics catalog', () => {
@@ -72,6 +72,9 @@ describe('buying and equipping', () => {
     expect(look.paint.body).toBeNull();
     expect(look.decal.style).toBeNull();
     expect(look.trail.style).toBeNull();
+    expect(look.blade.style).toBeNull();
+    expect(look.horn.sound).toBeNull();
+    expect(look.kill.style).toBeNull();
   });
 
   it('buy deducts the price, adds the item, equips it and saves', () => {
@@ -143,7 +146,16 @@ describe('buying and equipping', () => {
     const trail = firstPaid('trail');
     buyCosmetic(p, paint.id);
     buyCosmetic(p, trail.id);
-    expect(cosmeticsState(p).equipped).toEqual({ paint: paint.id, decal: DEFAULT_COSMETICS.decal, trail: trail.id });
+    expect(cosmeticsState(p).equipped).toEqual({ ...DEFAULT_COSMETICS, paint: paint.id, trail: trail.id });
+    const blade = firstPaid('blade');
+    const horn = firstPaid('horn');
+    const kill = firstPaid('kill');
+    for (const c of [blade, horn, kill]) expect(buyCosmetic(p, c.id)).toBe(true);
+    expect(cosmeticsState(p).equipped).toEqual({ paint: paint.id, decal: DEFAULT_COSMETICS.decal, trail: trail.id, blade: blade.id, horn: horn.id, kill: kill.id });
+    const look = equippedLook(p);
+    expect(look.blade.id).toBe(blade.id);
+    expect(look.horn.sound).toBe((horn as { sound: string }).sound);
+    expect(look.kill.id).toBe(kill.id);
   });
 });
 
@@ -164,7 +176,27 @@ describe('sanitizing saves', () => {
     });
     expect(s.owned).toEqual([paint.id, decal.id]);
     // decal slot held a trail id; trail isn't owned -> both fall back.
-    expect(s.equipped).toEqual({ paint: paint.id, decal: DEFAULT_COSMETICS.decal, trail: DEFAULT_COSMETICS.trail });
+    expect(s.equipped).toEqual({ ...DEFAULT_COSMETICS, paint: paint.id });
+  });
+
+  it('an old save without the blade / horn / kill slots loads with their defaults', () => {
+    const paint = firstPaid('paint');
+    const trail = firstPaid('trail');
+    const s = sanitizeCosmetics({ owned: [paint.id, trail.id], equipped: { paint: paint.id, decal: DEFAULT_COSMETICS.decal, trail: trail.id } });
+    expect(s.equipped).toEqual({ ...DEFAULT_COSMETICS, paint: paint.id, trail: trail.id });
+    const p = prog(0);
+    p.data.cosmetics = { owned: [paint.id], equipped: { paint: paint.id } } as never;
+    const look = equippedLook(p);
+    expect(look.paint.id).toBe(paint.id);
+    expect(look.blade.id).toBe(DEFAULT_COSMETICS.blade);
+    expect(look.horn.id).toBe(DEFAULT_COSMETICS.horn);
+    expect(look.kill.id).toBe(DEFAULT_COSMETICS.kill);
+  });
+
+  it('a wrong-slot id in a new slot falls back', () => {
+    const blade = firstPaid('blade');
+    const s = sanitizeCosmetics({ owned: [blade.id], equipped: { horn: blade.id, kill: blade.id, blade: blade.id } });
+    expect(s.equipped).toEqual({ ...DEFAULT_COSMETICS, blade: blade.id });
   });
 
   it('a tampered import never equips unowned items or breaks the save', () => {

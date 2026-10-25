@@ -6,7 +6,8 @@ import {
   buyCheck, buyCosmetic, cosmeticsState, equipCosmetic, equippedLook, isOwned, lockHint, lockLabel,
 } from '../meta/cosmetics';
 import { Plow } from '../entities/Plow';
-import { FACTORY_PAINT, drawDecal } from '../entities/plowModels';
+import { FACTORY_PAINT, drawBladeSkin, drawDecal } from '../entities/plowModels';
+import { emitKillFx } from '../fx/killFx';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -30,6 +31,9 @@ const TABS: Record<CosmeticSlot, { label: string; icon: string; blurb: string }>
   paint: { label: 'Paint', icon: '🎨', blurb: 'Body colour for whichever plow you drive.' },
   decal: { label: 'Decal', icon: '💀', blurb: 'Stripes, flames and crests on the bodywork.' },
   trail: { label: 'Trail', icon: '💨', blurb: 'Particles off the back while you drive. Dash for a burst.' },
+  blade: { label: 'Blade', icon: '🪓', blurb: 'A skin for the big front blade.' },
+  horn: { label: 'Horn', icon: '📯', blurb: 'What your slams sound like (plus a honk on dash).' },
+  kill: { label: 'Kill FX', icon: '🎉', blurb: 'An extra burst when you wreck a bot or rival.' },
 };
 
 /** Showcase camera: direction from the plow (normalized in the constructor), plow size to frame (m), distance clamp. */
@@ -74,6 +78,11 @@ export class StyleShop {
   private lastT = 0;
   private showCam = new THREE.PerspectiveCamera();
   private tmpV = new THREE.Vector3();
+  private tmpK = new THREE.Vector3();
+  /** Programmatic focus (open / tab switch) previews without playing horns or firing kill effects. */
+  private quietFocus = false;
+  private lastSample: Card | null = null;
+  private lastSampleT = 0;
 
   constructor(ctx: GameContext, parent: HTMLElement) {
     this.ctx = ctx;
@@ -196,11 +205,17 @@ export class StyleShop {
     const card: Card = { def, btn, swatch, act };
     if (def.slot === 'decal') this.drawDecalSwatch(card);
     else if (def.slot === 'trail') this.drawTrailSwatch(card);
+    else if (def.slot === 'blade') this.drawBladeSwatch(card);
+    else if (def.slot === 'horn' || def.slot === 'kill') this.drawIconSwatch(card);
     btn.addEventListener('click', () => this.onPick(card));
-    btn.addEventListener('focus', () => this.showPreview(card));
+    btn.addEventListener('focus', () => {
+      this.showPreview(card);
+      if (!this.quietFocus) this.sample(card);
+    });
     btn.addEventListener('mouseenter', () => {
       this.hover = card;
       this.showPreview(card);
+      this.sample(card);
     });
     btn.addEventListener('mouseleave', () => {
       if (this.hover === card) this.hover = null;
@@ -235,6 +250,51 @@ export class StyleShop {
       }
     } else {
       drawDecal(g, d.style, c.width, c.height);
+    }
+  }
+
+  private drawBladeSwatch(card: Card): void {
+    const d = card.def;
+    if (d.slot !== 'blade') return;
+    if (!d.style) {
+      card.swatch.classList.add('ss-style-blade-stock');
+      return;
+    }
+    const c = el('canvas', 'ss-style-canvas ss-style-blade-canvas', undefined, card.swatch);
+    c.width = 128;
+    c.height = 56;
+    const g = c.getContext('2d');
+    if (g) drawBladeSkin(g, d.style, c.width, c.height);
+  }
+
+  private drawIconSwatch(card: Card): void {
+    const d = card.def;
+    if (d.slot !== 'horn' && d.slot !== 'kill') return;
+    card.swatch.classList.add('ss-style-icon');
+    el('span', 'ss-style-icon-glyph', d.icon, card.swatch);
+    if (d.slot === 'kill' && d.colors.length) {
+      card.swatch.style.setProperty('--glow', css(d.colors[0]));
+      card.swatch.style.setProperty('--glow2', css(d.colors[d.colors.length - 1]));
+    }
+  }
+
+  /** Horns play once and kill effects fire once in front of the parked plow when a card is hovered / focused. */
+  private sample(card: Card): void {
+    const d = card.def;
+    if (!this._open || d.slot !== this.slot) return;
+    // Hover then click-focus on the same card: sample once.
+    const now = performance.now();
+    if (this.lastSample === card && now - this.lastSampleT < 600) return;
+    this.lastSample = card;
+    this.lastSampleT = now;
+    if (d.slot === 'horn') {
+      this.ctx.audio?.play(d.sound ?? 'slam', { volume: 0.8 });
+    } else if (d.slot === 'kill' && d.style) {
+      const plow = this.plow;
+      if (!plow) return;
+      const at = this.tmpK.copy(plow.position).addScaledVector(SHOW_DIR, 3.2);
+      at.y = plow.position.y + 0.6;
+      emitKillFx(this.ctx, d, at, true);
     }
   }
 
@@ -286,7 +346,9 @@ export class StyleShop {
   private focusEquipped(): void {
     const eq = cosmeticsState(this.ctx.progression).equipped[this.slot];
     const card = this.cards.find((c) => c.def.id === eq) ?? this.cards.find((c) => c.def.slot === this.slot);
+    this.quietFocus = true;
     card?.btn.focus({ preventScroll: true });
+    this.quietFocus = false;
     card?.btn.scrollIntoView({ block: 'nearest' });
   }
 
@@ -326,6 +388,8 @@ export class StyleShop {
       } else if (d.slot === 'decal') {
         // Decals sit on your current paint.
         c.swatch.style.setProperty('--body', css(look.paint.body ?? factory.body));
+      } else if (d.slot === 'blade' && !d.style) {
+        c.swatch.style.setProperty('--blade', css(p.plow === 'volt' ? 0x9fe8ff : p.plow === 'brute' ? 0x7a828e : 0xffd23a));
       }
     }
     for (const [s, t] of this.tabBtns) {

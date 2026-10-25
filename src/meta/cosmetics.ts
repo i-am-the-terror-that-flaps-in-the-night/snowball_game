@@ -1,7 +1,7 @@
 import type { Progression } from '../core/Progression';
 import {
   COSMETIC_BY_ID, COSMETIC_SLOTS, DEFAULT_COSMETICS,
-  type CosmeticDef, type CosmeticSlot, type DecalDef, type PaintDef, type TrailDef,
+  type BladeDef, type CosmeticDef, type CosmeticSlot, type DecalDef, type HornDef, type KillDef, type PaintDef, type TrailDef,
 } from '../config/cosmetics';
 import { achievementCount, totalStars } from './progress';
 
@@ -122,14 +122,22 @@ export interface EquippedLook {
   paint: PaintDef;
   decal: DecalDef;
   trail: TrailDef;
+  blade: BladeDef;
+  horn: HornDef;
+  kill: KillDef;
 }
 
-export function resolveLook(equipped: Record<CosmeticSlot, string>): EquippedLook {
+/** Missing slots (older saves / partial previews) resolve to their free defaults. */
+export function resolveLook(equipped: Partial<Record<CosmeticSlot, string>>): EquippedLook {
   const get = <T extends CosmeticDef>(slot: CosmeticSlot) => {
-    const def = COSMETIC_BY_ID.get(equipped[slot]);
+    const id = equipped[slot];
+    const def = id ? COSMETIC_BY_ID.get(id) : undefined;
     return (def && def.slot === slot ? def : COSMETIC_BY_ID.get(DEFAULT_COSMETICS[slot])!) as T;
   };
-  return { paint: get<PaintDef>('paint'), decal: get<DecalDef>('decal'), trail: get<TrailDef>('trail') };
+  return {
+    paint: get<PaintDef>('paint'), decal: get<DecalDef>('decal'), trail: get<TrailDef>('trail'),
+    blade: get<BladeDef>('blade'), horn: get<HornDef>('horn'), kill: get<KillDef>('kill'),
+  };
 }
 
 export function equippedLook(p: Progression): EquippedLook {

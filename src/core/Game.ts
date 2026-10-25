@@ -26,6 +26,8 @@ import { ChallengeTracker, hardUnlocked, hardZone, recordHardClear } from '../me
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
 import { todaysDaily } from '../meta/daily';
+import { equippedLook } from '../meta/cosmetics';
+import { emitKillFx } from '../fx/killFx';
 import type { GameEvents, KillSource } from './events';
 
 type State =
@@ -613,7 +615,10 @@ export class Game {
 
   private wireEvents(): void {
     const { events, ui } = this.ctx;
-    events.on('enemyKilled', ({ source }) => {
+    events.on('enemyKilled', ({ enemy, source }) => {
+      // Paint Shop kill effect (player kills only: Brawl emits this just for the player's kills).
+      const kill = equippedLook(this.ctx.progression).kill;
+      if (kill.style) emitKillFx(this.ctx, kill, enemy.position);
       this.run.kills++;
       this.run.killsBy[source ?? 'other']++;
     });
