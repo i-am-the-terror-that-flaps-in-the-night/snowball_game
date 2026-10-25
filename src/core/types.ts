@@ -80,6 +80,8 @@ export interface PlayerStats {
   maxHp: number;
   /** Multiplier on all damage taken (1 = full, 0.75 = 25% less). */
   damageTaken: number;
+  /** Iron Hide (BRUTUS): damage-taken multiplier at speed (1 = not owned); Combat eases it off when slow. */
+  ironHide: number;
   /** Fraction of max HP repaired between rounds. */
   repairFraction: number;
   /** HP regenerated per second (0 if no Repair Kit). */
@@ -107,6 +109,16 @@ export interface PlayerStats {
   hitCapBonus: number;
   /** Fraction of dash/whirl recharge refunded per kill. */
   killRecharge: number;
+  /** Last Stand: bonus damage dealt (and half as much less taken) below LAST_STAND_HP; 0 = not owned. */
+  lastStand: number;
+  /** Classic Plow line (all 0 unless driving the Classic Plow with the upgrade). Shatter Slam: share of slam
+   *  damage dealt to bots up to shardReach m beyond the slam zone. */
+  shardFrac: number;
+  shardReach: number;
+  /** Snow Reserve: share of the ball kept after a slam. */
+  reserveFrac: number;
+  /** Slam Combo: extra slam damage per combo stack. */
+  comboStep: number;
   /** Inferno flame attack (F, free on the Classic Plow): reach m, burn dps (0 = not the Classic Plow), recharge s. */
   flameRange: number;
   flameDps: number;
@@ -139,7 +151,7 @@ export interface PlayerStats {
   sawRadius: number;
   sawDps: number;
   /** Overclock (pilot perk): multiplier on all ability cooldowns, 1 -> 0.4. Already folded into
-   *  dashCooldown / whirlCooldown / flameCooldown / clapCooldown; Plow applies it to the slam cooldown. Every
+   *  dashCooldown / whirlCooldown / flameCooldown / clapCooldown / poundCooldown; Plow applies it to the slam cooldown. Every
    *  cooldown is floored at MIN_COOLDOWN (config/upgrades.ts) after the multiplier. */
   cooldownMult: number;
   frostCore: boolean;
@@ -207,7 +219,7 @@ export interface PlowAPI {
   /** Spawn protection / dash start i-frames: Combat.hitPlow ignores damage while true. */
   readonly invulnerable: boolean;
   /** 0..1 growth of the BRUTUS Buzzsaw halos (0 = idle or no saws). Grows with saw spin, which rises with plow
-   *  speed and saw fury; Combat widens the saw reach and BRUTUS's ram splash with it. */
+   *  speed and saw fury; Combat widens the saw reach with it. */
   readonly sawHalo: number;
   /** Build Buzzsaw fury from damage dealt and taken (spins the saws up). No-op without the saws. */
   feedSawFury(dealt: number, taken: number): void;

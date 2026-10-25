@@ -504,11 +504,38 @@
 .ss-chip-tag.tip { background: #3f86c9; }
 .ss-chip.boss { animation: ss-throb 1.2s ease-in-out infinite; }
 
-.ss-shop-body { flex: 1; min-height: 0; overflow-y: auto; margin-top: 16px; padding: 4px 8px 10px 2px; scrollbar-width: thin; scrollbar-color: rgba(80, 140, 200, 0.5) transparent; }
+.ss-shop-body { flex: 1; min-height: 0; overflow-y: auto; margin-top: 12px; padding: 4px 8px 10px 2px; scrollbar-width: thin; scrollbar-color: rgba(80, 140, 200, 0.5) transparent; }
 .ss-cat { margin-bottom: 18px; }
-.ss-cat-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-family: var(--display); font-weight: 900; font-size: 18px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+.ss-cat.hidden, .ss-tab-pane.hidden { display: none; }
+.ss-cat-title { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-family: var(--display); font-weight: 900; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
 .ss-cat-icon { font-size: 20px; }
 .ss-cat-title::after { content: ""; flex: 1; height: 3px; border-radius: 3px; background: linear-gradient(90deg, rgba(90, 150, 210, 0.5), transparent); margin-left: 6px; }
+/* Garage tabs */
+.ss-tabs { display: flex; align-items: stretch; gap: 6px; margin-top: 4px; padding: 5px; border-radius: 16px; background: rgba(30, 80, 140, 0.1); }
+.ss-tab { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 10px; border: 0; border-radius: 12px; background: transparent; cursor: pointer;
+  font: inherit; font-family: var(--display); font-weight: 900; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); --acc: #3fa7f0; }
+.ss-tab:hover { background: rgba(255, 255, 255, 0.55); color: var(--ink); }
+.ss-tab.on { background: #fff; color: var(--ink); box-shadow: inset 0 -3px 0 var(--acc), 0 3px 0 rgba(120, 175, 220, 0.5), 0 6px 12px rgba(30, 80, 140, 0.12); }
+.ss-tab:focus-visible { outline: 4px solid rgba(255, 200, 60, 0.95); outline-offset: 2px; }
+.ss-tab-drive { --acc: #ff8a1f; }
+.ss-tab-ball { --acc: #3fa7f0; }
+.ss-tab-defense { --acc: #35c86b; }
+.ss-tab-pilot { --acc: #b05cf0; }
+.ss-tab-line[data-plow='classic'] { --acc: #ff8a1a; }
+.ss-tab-line[data-plow='volt'] { --acc: #2fb8ff; }
+.ss-tab-line[data-plow='brute'] { --acc: #e0a800; }
+.ss-tab-icon { font-size: 18px; line-height: 1; }
+.ss-tab-label { white-space: nowrap; }
+.ss-tab-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #ff8a1f; color: #fff; font-size: 12px; line-height: 20px; letter-spacing: 0; box-shadow: 0 2px 0 rgba(150, 70, 0, 0.35); }
+.ss-tab-badge:empty { display: none; }
+.ss-tab-key { align-self: center; padding: 3px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.6); font-size: 11px; font-weight: 900; color: var(--ink-soft); }
+.ss-tab-info { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 10px 4px 0; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.ss-tab-traits { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ss-tab-traits:empty { display: none; }
+.ss-tab-traits li { padding: 2px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.75); font-size: 11.5px; color: var(--ink); }
+.ss-cat-pilot .ss-card { --acc: #b05cf0; }
+.ss-cat-volt .ss-card { --acc: #2fb8ff; }
+.ss-cat-brute .ss-card { --acc: #e0a800; }
 .ss-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
 .ss-card {
   display: grid;
@@ -526,6 +553,8 @@
 .ss-cat-plow .ss-card { --acc: #ff8a1f; }
 .ss-cat-ball .ss-card { --acc: #3fa7f0; }
 .ss-cat-defense .ss-card { --acc: #35c86b; }
+.ss-cat-utility .ss-card { --acc: #7a8ca3; }
+.ss-cat-classic .ss-card { --acc: #ff8a1f; }
 .ss-cat-special .ss-card { --acc: #b05cf0; }
 .ss-card-icon {
   width: 54px;
@@ -1041,6 +1070,7 @@
   .ss-howto-cols { grid-template-columns: 1fr; }
   .ss-stats { grid-template-columns: repeat(3, 1fr); }
   .ss-card-grid { grid-template-columns: 1fr; }
+  .ss-tab-label, .ss-tab-key, .ss-plow-tag, .ss-plow-sel span { display: none; }
   .ss-hud-bl { width: 220px; }
   .ss-hint { display: none; }
   .ss-bosses { width: 60vw; top: 92px; }
@@ -1059,9 +1089,9 @@
 }
 
 /* ---- Starter plow picker (Garage) */
-.ss-plow-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 4px 0 10px; }
+.ss-plow-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 4px 0 10px; }
 .ss-plow-pick.hidden { display: none; }
-.ss-plow-card { position: relative; display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 12px 14px; border-radius: 16px; cursor: pointer; font: inherit; color: #1b2b40;
+.ss-plow-card { position: relative; display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; border-radius: 16px; cursor: pointer; font: inherit; color: #1b2b40;
   background: linear-gradient(160deg, rgba(255,255,255,0.85), rgba(225,238,252,0.75)); border: 2px solid rgba(255,255,255,0.9); box-shadow: 0 3px 0 rgba(40,80,120,0.25); transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s; }
 .ss-plow-card:hover { transform: translateY(-2px); }
 .ss-plow-card.on { border-color: var(--acc, #ff8a1a); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc, #ff8a1a) 45%, transparent), 0 3px 0 rgba(40,80,120,0.25); }
@@ -1070,13 +1100,13 @@
 .ss-plow-volt.on { animation: ss-volt-glow 1.6s ease-in-out infinite; }
 @keyframes ss-volt-glow { 50% { box-shadow: 0 0 0 3px rgba(47,184,255,0.6), 0 0 22px rgba(47,184,255,0.7), 0 3px 0 rgba(40,80,120,0.25); } }
 .ss-plow-brute { --acc: #e0a800; background: repeating-linear-gradient(135deg, rgba(255,194,26,0.22) 0 10px, rgba(40,44,52,0.1) 10px 20px), linear-gradient(160deg, rgba(236,238,242,0.94), rgba(196,202,212,0.85)); }
-.ss-plow-icon { font-size: 34px; line-height: 1; }
-.ss-plow-name { font-weight: 900; font-size: 17px; letter-spacing: 0.04em; }
-.ss-plow-tag { font-size: 12px; opacity: 0.8; margin: 2px 0 4px; }
-.ss-plow-traits { margin: 0; padding-left: 16px; font-size: 11.5px; font-weight: 700; color: color-mix(in srgb, var(--acc) 55%, #1b2b40); }
+.ss-plow-icon { font-size: 28px; line-height: 1; }
+.ss-plow-name { font-weight: 900; font-size: 16px; letter-spacing: 0.04em; }
+.ss-plow-tag { font-size: 11.5px; opacity: 0.8; margin-top: 1px; line-height: 1.25; }
 .ss-plow-sel { position: absolute; top: 8px; right: 10px; font-size: 11px; font-weight: 900; color: #fff; background: var(--acc); padding: 2px 8px; border-radius: 999px; opacity: 0; }
 .ss-plow-card.on .ss-plow-sel { opacity: 1; }
 .ss-card.inactive { opacity: 0.5; filter: saturate(0.5); }
+.ss-cat-classic .ss-cat-title { color: #e06a00; }
 .ss-cat-volt .ss-cat-title { color: #1a8cff; }
 .ss-cat-brute .ss-cat-title { color: #c08a00; }
 .ss-ab-pound { --ac: #ffc21a; }

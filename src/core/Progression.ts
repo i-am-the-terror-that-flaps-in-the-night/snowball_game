@@ -37,6 +37,19 @@ function freshSave(): SaveData {
 
 const EXPORT_PREFIX = 'SPS1:';
 
+/** Upgrade ids that were replaced: old saves carry their levels over to the new upgrade. */
+const RENAMED_UPGRADES: Record<string, UpgradeId> = { vitality: 'lastStand' };
+
+function migrateUpgrades<T>(ups: Record<string, T>): Record<string, T> {
+  const out = { ...ups };
+  for (const [from, to] of Object.entries(RENAMED_UPGRADES)) {
+    if (!(from in out)) continue;
+    if (!(to in out)) out[to] = out[from];
+    delete out[from];
+  }
+  return out;
+}
+
 /** Validate an imported save: every field type-checked and clamped; unknown keys dropped. Null if unusable. */
 function sanitizeSave(raw: unknown): SaveData | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -48,7 +61,7 @@ function sanitizeSave(raw: unknown): SaveData | null {
   const out = freshSave();
   out.coins = num(p.coins);
   if (p.upgrades && typeof p.upgrades === 'object') {
-    for (const [id, lv] of Object.entries(p.upgrades as Record<string, unknown>)) {
+    for (const [id, lv] of Object.entries(migrateUpgrades(p.upgrades as Record<string, unknown>))) {
       const def = UPGRADE_BY_ID[id as UpgradeId];
       if (def && typeof lv === 'number') out.upgrades[id as UpgradeId] = num(lv, 0, def.maxLevel);
     }
@@ -86,7 +99,7 @@ export class Progression {
       const raw = localStorage.getItem(SAVE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as SaveData;
-        if (parsed && parsed.version === 1) return { ...freshSave(), ...parsed };
+        if (parsed && parsed.version === 1) return { ...freshSave(), ...parsed, upgrades: migrateUpgrades(parsed.upgrades ?? {}) };
       }
     } catch {
       /* corrupted save — start fresh */
@@ -275,8 +288,9 @@ export class Progression {
       maxBallRadius: FX.maxBallRadius(L('hopper')),
       damageMult: FX.damageMult(L('packedIce')) * plow.slamMult,
       ramDamage: FX.ramDamage(L('ramSpikes')),
-      maxHp: (FX.maxHp(L('armor')) + FX.bonusHp(L('vitality'))) * plow.hpMult,
-      damageTaken: FX.damageTaken(L('plating')) * FX.ironHide(L('bruteHide')),
+      maxHp: FX.maxHp(L('armor')) * plow.hpMult,
+      damageTaken: FX.damageTaken(L('plating')),
+      ironHide: FX.ironHide(L('bruteHide')),
       repairFraction: FX.repairFraction(L('repairKit')),
       hpRegen: FX.hpRegen(L('repairKit')),
       dashCooldown: cooldown(FX.dashCooldown(L('nitro')), cd),
@@ -291,6 +305,11 @@ export class Progression {
       secondWindCd: FX.secondWindCd(L('secondWind')),
       hitCapBonus: FX.hitCapBonus(L('wreckingBall')),
       killRecharge: FX.killRecharge(L('adrenaline')),
+      lastStand: FX.lastStand(L('lastStand')),
+      shardFrac: FX.shardFrac(L('classicShatter')),
+      shardReach: FX.shardReach(L('classicShatter')),
+      reserveFrac: FX.reserveFrac(L('classicReserve')),
+      comboStep: FX.comboStep(L('classicCombo')),
       flameRange: FX.flameRange(L('inferno')),
       flameDps: fire ? FX.flameDps(L('inferno')) : 0,
       // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.

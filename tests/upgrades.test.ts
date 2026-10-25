@@ -36,8 +36,14 @@ describe('upgrade definitions', () => {
     for (const u of UPGRADES) if (u.plowOnly) expect(PLOWS[u.plowOnly]).toBeDefined();
   });
 
+  it('every starter plow has an equally deep upgrade line', () => {
+    const sizes = Object.keys(PLOWS).map((k) => UPGRADES.filter((u) => u.plowOnly === k).length);
+    expect(new Set(sizes).size).toBe(1);
+    expect(sizes[0]).toBeGreaterThanOrEqual(4);
+  });
+
   it('plow-line and pilot upgrades are player-only', () => {
-    for (const u of UPGRADES) if (u.category === 'pilot' || u.category === 'volt' || u.category === 'brute' || u.plowOnly) expect(u.playerOnly, u.id).toBe(true);
+    for (const u of UPGRADES) if (u.category === 'pilot' || u.category === 'classic' || u.category === 'volt' || u.category === 'brute' || u.plowOnly) expect(u.playerOnly, u.id).toBe(true);
   });
 
   it('value labels render for every level without NaN', () => {
@@ -120,6 +126,11 @@ describe('FX curves', () => {
     expect(FX.momentum(0)).toBe(0);
     expect(FX.ironHide(0)).toBe(1);
     expect(FX.secondWindCd(0)).toBe(Infinity);
+    expect(FX.lastStand(0)).toBe(0);
+    expect(FX.shardFrac(0)).toBe(0);
+    expect(FX.shardReach(0)).toBe(0);
+    expect(FX.reserveFrac(0)).toBe(0);
+    expect(FX.comboStep(0)).toBe(0);
   });
 
   it('capped curves respect their ceilings at huge levels', () => {
@@ -131,5 +142,7 @@ describe('FX curves', () => {
     // Iron Hide tops out around -36% so BRUTUS (x1.35 HP, stacking with Reinforced Frame) can't run away on effective HP.
     expect(FX.ironHide(1e4)).toBeGreaterThanOrEqual(1 - 0.06 * 8 - 1e-9);
     expect(FX.secondWindCd(1e4)).toBeGreaterThanOrEqual(30);
+    expect(FX.reserveFrac(1e4)).toBeLessThanOrEqual(0.6);
+    expect(FX.lastStand(1e4)).toBeLessThanOrEqual(0.5);
   });
 });

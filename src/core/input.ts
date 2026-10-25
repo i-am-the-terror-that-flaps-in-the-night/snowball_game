@@ -55,8 +55,9 @@ const PAD_BUTTONS: [number, Action][] = [
   [0, 'slam'], [1, 'dash'], [5, 'dash'], [2, 'whirl'], [3, 'ability'], [9, 'pause'],
   [12, 'forward'], [13, 'back'], [14, 'left'], [15, 'right'],
 ];
-/** Menu navigation: d-pad / stick -> arrow keys, A -> Enter, B -> Escape (synthetic key events). */
-const MENU_NAV: [number, string][] = [[12, 'ArrowUp'], [13, 'ArrowDown'], [14, 'ArrowLeft'], [15, 'ArrowRight'], [0, 'Enter'], [1, 'Escape']];
+/** Menu navigation: d-pad / stick -> arrow keys, A -> Enter, B -> Escape, LB / RB -> PageUp / PageDown (Garage
+ *  tabs) (synthetic key events). */
+const MENU_NAV: [number, string][] = [[12, 'ArrowUp'], [13, 'ArrowDown'], [14, 'ArrowLeft'], [15, 'ArrowRight'], [0, 'Enter'], [1, 'Escape'], [4, 'PageUp'], [5, 'PageDown']];
 
 function deadzone(v: number): number {
   const a = Math.abs(v);

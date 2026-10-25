@@ -36,14 +36,16 @@ function restart(e: HTMLElement, cls: string, ...others: string[]): void {
   e.classList.add(cls);
 }
 
-const CATEGORIES: { id: UpgradeCategory; label: string; icon: string }[] = [
-  { id: 'plow', label: 'Plow', icon: '🚜' },
-  { id: 'ball', label: 'Snowball', icon: '⚪' },
-  { id: 'defense', label: 'Defense', icon: '🛡️' },
-  { id: 'pilot', label: "Pilot Perks — bots can't copy these", icon: '🧑‍✈️' },
-  { id: 'volt', label: 'VOLT-9 Upgrades — only while driving VOLT-9', icon: '⚡' },
-  { id: 'brute', label: 'BRUTUS Upgrades — only while driving BRUTUS', icon: '🦏' },
-  { id: 'special', label: 'Specials', icon: '✨' },
+type ShopTabId = 'drive' | 'ball' | 'defense' | 'pilot' | 'line';
+
+/** Garage tabs, each listing one or more upgrade categories. 'line' only shows the driven plow's own line
+ *  (category id === PlowKind), and takes that plow's name and icon. */
+const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; groups: { cat: UpgradeCategory; title?: string }[] }[] = [
+  { id: 'drive', label: 'Drive', icon: '🏁', blurb: 'Speed, blade, rams, dash and whirlwind.', groups: [{ cat: 'plow' }] },
+  { id: 'ball', label: 'Snowball', icon: '⚪', blurb: 'Your weapon and your shield: pack it faster, bigger and harder.', groups: [{ cat: 'ball' }, { cat: 'special', title: 'One-time cores' }] },
+  { id: 'defense', label: 'Defense', icon: '🛡️', blurb: 'Hit points, armor and repairs.', groups: [{ cat: 'defense' }, { cat: 'utility', title: 'Utility' }] },
+  { id: 'pilot', label: 'Pilot', icon: '🧑‍✈️', blurb: "Pilot perks work on every plow, and Brawl bots can't copy them.", groups: [{ cat: 'pilot' }] },
+  { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }] },
 ];
 
 const ENEMY_ICON: Record<EnemyType, string> = {
@@ -120,6 +122,7 @@ function zoneBossDef(z: ZoneDef): EnemyDef | undefined {
 
 interface CardRefs {
   def: UpgradeDef;
+  tab: ShopTabId;
   root: HTMLElement;
   pips: HTMLElement[];
   /** "LV n" badge for endless upgrades past their pips. */
@@ -184,6 +187,14 @@ export class UI implements UIAPI {
   private shopStart!: HTMLButtonElement;
   private shopHint!: HTMLElement;
   private cards: CardRefs[] = [];
+  /** Garage tabs: open tab, tab buttons, their panes and the plow-line sections (one per plow). */
+  private shopTab: ShopTabId = 'drive';
+  private tabBtns = new Map<ShopTabId, { btn: HTMLButtonElement; icon: HTMLElement; label: HTMLElement; badge: HTMLElement }>();
+  private tabPanes = new Map<ShopTabId, HTMLElement>();
+  private lineSections = new Map<UpgradeCategory, HTMLElement>();
+  private shopBody!: HTMLElement;
+  private tabBlurb!: HTMLElement;
+  private tabTraits!: HTMLElement;
   private shopContinue: (() => void) | null = null;
   /** Open Survival between-wave shop (null otherwise); drives the Full Repair button. */
   private survivalShop: SurvivalShopOpts | null = null;
@@ -407,6 +418,11 @@ export class UI implements UIAPI {
       }
       return;
     }
+    if (name === 'garage' && (code === 'KeyQ' || code === 'KeyE' || code === 'PageUp' || code === 'PageDown')) {
+      e.preventDefault();
+      this.cycleShopTab(code === 'KeyQ' || code === 'PageUp' ? -1 : 1);
+      return;
+    }
     const isActivate = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
     if (isActivate) {
       e.preventDefault();
@@ -604,27 +620,56 @@ export class UI implements UIAPI {
       const info = el('div', 'ss-plow-info', undefined, card);
       el('div', 'ss-plow-name', def.name, info);
       el('div', 'ss-plow-tag', def.tagline, info);
-      const ul = el('ul', 'ss-plow-traits', undefined, info);
-      for (const t of def.traits) el('li', '', t, ul);
-      el('div', 'ss-plow-sel', '✓ DRIVING', card);
+      card.title = def.traits.join(' · ');
+      el('span', '', ' DRIVING', el('div', 'ss-plow-sel', '✓', card));
       card.addEventListener('click', () => {
         this.ctx.progression.setPlow(def.id);
         this.ctx.stats = this.ctx.progression.computeStats();
         this.ctx.plow.applyStats(this.ctx.stats);
         this.sfx(def.id === 'classic' ? 'click' : 'buy');
+        // Show what the new plow brings: its traits and its own upgrade line.
+        this.setShopTab('line');
       });
       this.plowCards.set(def.id, card);
     }
 
-    const body = el('div', 'ss-shop-body', undefined, panel);
-    for (const cat of CATEGORIES) {
-      const sec = el('section', `ss-cat ss-cat-${cat.id}`, undefined, body);
-      const h = el('h3', 'ss-cat-title', undefined, sec);
-      el('span', 'ss-cat-icon', cat.icon, h);
-      el('span', '', cat.label, h);
-      const grid = el('div', 'ss-card-grid', undefined, sec);
-      for (const def of UPGRADES.filter((u) => u.category === cat.id)) this.cards.push(this.buildCard(def, grid));
+    const tabs = el('div', 'ss-tabs', undefined, panel);
+    tabs.setAttribute('role', 'tablist');
+    el('span', 'ss-tab-key', 'Q', tabs).title = 'Previous tab (Q / LB)';
+    for (const t of SHOP_TABS) {
+      const btn = el('button', `ss-tab ss-tab-${t.id}`, undefined, tabs);
+      btn.type = 'button';
+      btn.setAttribute('role', 'tab');
+      const icon = el('span', 'ss-tab-icon', t.icon, btn);
+      const label = el('span', 'ss-tab-label', t.label, btn);
+      const badge = el('span', 'ss-tab-badge', '', btn);
+      btn.title = t.label;
+      badge.title = 'Upgrades you can afford';
+      btn.addEventListener('click', () => {
+        if (this.shopTab !== t.id) this.sfx('click');
+        this.setShopTab(t.id);
+      });
+      this.tabBtns.set(t.id, { btn, icon, label, badge });
     }
+    el('span', 'ss-tab-key', 'E', tabs).title = 'Next tab (E / RB)';
+    const info = el('div', 'ss-tab-info', undefined, panel);
+    this.tabBlurb = el('div', 'ss-tab-blurb', '', info);
+    this.tabTraits = el('ul', 'ss-tab-traits', undefined, info);
+
+    this.shopBody = el('div', 'ss-shop-body', undefined, panel);
+    for (const t of SHOP_TABS) {
+      const pane = el('div', `ss-tab-pane ss-pane-${t.id}`, undefined, this.shopBody);
+      pane.setAttribute('role', 'tabpanel');
+      this.tabPanes.set(t.id, pane);
+      for (const g of t.groups) {
+        const sec = el('section', `ss-cat ss-cat-${g.cat}`, undefined, pane);
+        if (g.title) el('h3', 'ss-cat-title', g.title, sec);
+        const grid = el('div', 'ss-card-grid', undefined, sec);
+        for (const def of UPGRADES.filter((u) => u.category === g.cat)) this.cards.push(this.buildCard(def, t.id, grid));
+        if (t.id === 'line') this.lineSections.set(g.cat, sec);
+      }
+    }
+    this.setShopTab(this.shopTab);
 
     const foot = el('div', 'ss-panel-foot ss-shop-foot', undefined, panel);
     this.shopBack = this.btn('◀ BACK', 'ss-ice', () => {
@@ -639,9 +684,61 @@ export class UI implements UIAPI {
     }, foot);
   }
 
-  private buildCard(def: UpgradeDef, parent: HTMLElement): CardRefs {
+  /** Open a Garage tab (also refreshes the tab bar, badges and the plow-line view). */
+  private setShopTab(id: ShopTabId): void {
+    const changed = id !== this.shopTab;
+    this.shopTab = id;
+    for (const [tid, t] of this.tabBtns) {
+      t.btn.classList.toggle('on', tid === id);
+      t.btn.setAttribute('aria-selected', tid === id ? 'true' : 'false');
+    }
+    for (const [tid, pane] of this.tabPanes) pane.classList.toggle('hidden', tid !== id);
+    if (changed) this.shopBody.scrollTop = 0;
+    this.refreshTabs();
+  }
+
+  /** Tab labels, affordable-upgrade badges and the info line under the tabs. */
+  private refreshTabs(): void {
+    const p = this.ctx.progression;
+    const plow = PLOWS[p.plow];
+    const line = this.tabBtns.get('line');
+    if (line) {
+      line.icon.textContent = plow.icon;
+      line.label.textContent = plow.name;
+      line.btn.title = `${plow.name} upgrades`;
+      line.btn.dataset.plow = plow.id;
+    }
+    for (const [cat, sec] of this.lineSections) sec.classList.toggle('hidden', cat !== plow.id);
+    const affordable = new Map<ShopTabId, number>();
+    for (const c of this.cards) {
+      if (c.tab === 'line' && c.def.category !== plow.id) continue;
+      if (!p.isMaxed(c.def.id) && p.canBuy(c.def.id)) affordable.set(c.tab, (affordable.get(c.tab) ?? 0) + 1);
+    }
+    for (const [tid, t] of this.tabBtns) {
+      const n = affordable.get(tid) ?? 0;
+      t.badge.textContent = n ? String(n) : '';
+    }
+    const tab = SHOP_TABS.find((t) => t.id === this.shopTab)!;
+    this.tabTraits.textContent = '';
+    if (tab.id === 'line') {
+      this.tabBlurb.textContent = `${plow.name} only: these upgrades work while you drive it.`;
+      for (const t of plow.traits) el('li', '', t, this.tabTraits);
+    } else {
+      this.tabBlurb.textContent = tab.blurb;
+    }
+  }
+
+  /** Q / E (gamepad LB / RB): previous / next Garage tab. */
+  private cycleShopTab(dir: number): void {
+    const i = SHOP_TABS.findIndex((t) => t.id === this.shopTab);
+    this.setShopTab(SHOP_TABS[(i + dir + SHOP_TABS.length) % SHOP_TABS.length].id);
+    this.sfx('click');
+  }
+
+  private buildCard(def: UpgradeDef, tab: ShopTabId, parent: HTMLElement): CardRefs {
     const root = el('div', 'ss-card', undefined, parent);
     root.dataset.id = def.id;
+    if (def.details) root.title = def.details;
     el('div', 'ss-card-icon', def.icon, root);
     const info = el('div', 'ss-card-info', undefined, root);
     el('div', 'ss-card-name', def.name, info);
@@ -658,7 +755,7 @@ export class UI implements UIAPI {
     const buy = el('button', 'ss-btn ss-buy', '', root);
     buy.type = 'button';
     buy.addEventListener('click', () => this.onBuy(def, root));
-    return { def, root, pips, lvl, cur, next, arrow, buy };
+    return { def, tab, root, pips, lvl, cur, next, arrow, buy };
   }
 
   private onBuy(def: UpgradeDef, card: HTMLElement): void {
@@ -698,6 +795,7 @@ export class UI implements UIAPI {
       c.buy.innerHTML = maxed ? (c.def.maxLevel === 1 ? '✓ OWNED' : '★ MAXED') : `<span class="ss-coin sm"></span>${fmt(p.cost(c.def.id))}`;
       c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
     }
+    this.refreshTabs();
   }
 
   private refreshRepair(): void {

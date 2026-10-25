@@ -6,7 +6,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
-const out = process.argv[2] || '/tmp/brawl-probe';
+const out = process.argv.slice(2).find((a) => !a.startsWith('--')) || '/tmp/brawl-probe';
 const SHOTS = !process.argv.includes('--noshots');
 mkdirSync(out, { recursive: true });
 const port = 5900 + Math.floor(Math.random() * 90);

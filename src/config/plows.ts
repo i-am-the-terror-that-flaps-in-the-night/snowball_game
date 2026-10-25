@@ -1,5 +1,5 @@
 /** Starter plows. Picked in the Garage; all are free. Each multiplies the shared garage stats and has its own
- *  exclusive upgrade line (Classic: Inferno fire on F; VOLT-9: the 'volt' category, Thunderclap on F;
+ *  exclusive upgrade line (Classic: the 'classic' category, Inferno fire on F; VOLT-9: the 'volt' category, Thunderclap on F;
  *  BRUTUS: the 'brute' category, Ground Pound on F). */
 export type PlowKind = 'classic' | 'volt' | 'brute';
 
@@ -8,7 +8,7 @@ export interface PlowDef {
   name: string;
   icon: string;
   tagline: string;
-  /** Short perks / drawbacks shown on the picker card. */
+  /** Short perks / drawbacks: the picker card's tooltip and the chips on the Garage's plow-line tab. */
   traits: string[];
   hpMult: number;
   speedMult: number;
@@ -25,7 +25,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'Classic Plow',
     icon: '🚜',
     tagline: 'The trusty orange municipal plow. Tough, heavy-hitting, runs on diesel.',
-    traits: ['+25% HP', 'Full slam damage', 'F: Inferno fire cone (free)', 'Own upgrade: Inferno Exhaust (hotter, faster fire)'],
+    traits: ['+25% HP', 'Full slam damage', 'F: Inferno fire cone (free)'],
     hpMult: 1.25,
     speedMult: 1,
     accelMult: 1,
@@ -38,7 +38,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'VOLT-9',
     icon: '⚡',
     tagline: 'Experimental electric plow. Quick and twitchy, crackling with stored charge.',
-    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (electrified blade), -15% HP', 'F: Thunderclap storm (free, costs HP)', 'Own Volt upgrades: chain lightning, Tesla field, clap, battery'],
+    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (electrified blade), -15% HP', 'F: Thunderclap storm (free, costs HP)'],
     hpMult: 0.85,
     speedMult: 1.12,
     accelMult: 1.25,
@@ -51,7 +51,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'BRUTUS',
     icon: '🦏',
     tagline: 'Armored demolition rig. Slow to get rolling, impossible to stop once it is.',
-    traits: ['+35% HP, +20% damage, bigger blade', '-8% acceleration, -10% dash', 'F: Ground Pound shockwave (free)', 'Own Brute upgrades: pound, Iron Hide, Momentum, Buzzsaws'],
+    traits: ['+35% HP, +20% damage, bigger blade', '-8% acceleration, -10% dash', 'F: Ground Pound shockwave (free)'],
     hpMult: 1.35,
     speedMult: 1,
     accelMult: 0.92,

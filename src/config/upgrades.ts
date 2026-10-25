@@ -22,9 +22,13 @@ export type UpgradeId =
   | 'secondWind'
   | 'wreckingBall'
   | 'adrenaline'
-  | 'inferno'
-  | 'vitality'
+  | 'lastStand'
   | 'overclock'
+  // Classic Plow line (only active while driving the Classic Plow; player-only).
+  | 'inferno'
+  | 'classicShatter'
+  | 'classicReserve'
+  | 'classicCombo'
   // VOLT-9 plow line (only active while driving VOLT-9; player-only).
   | 'voltChain'
   | 'voltField'
@@ -36,14 +40,17 @@ export type UpgradeId =
   | 'bruteMomentum'
   | 'bruteSaws';
 
-export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'pilot' | 'volt' | 'brute' | 'special';
+export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'special';
 
 export interface UpgradeDef {
   id: UpgradeId;
   name: string;
   icon: string;
   category: UpgradeCategory;
+  /** One line on the shop card. */
   description: string;
+  /** Longer mechanics text, shown as the card's tooltip. */
+  details?: string;
   /** Levels at full strength (shown as pips). ENDLESS upgrades keep going past this with tapering or
    *  steady gains; one-time specials stop here. */
   pips: number;
@@ -66,9 +73,15 @@ export const ENDLESS_COST_GROWTH = 1.1;
  *  affordable for every upgrade and plow line. */
 export const COST_GROWTH_SOFTEN = 0.55;
 
-/** Hard floor on every player ability recharge (slam, dash, whirl, fire, clap) after Overclock: nothing is ever
+/** Hard floor on every player ability recharge (slam, dash, whirl, F ability) after Overclock: nothing is ever
  *  free to spam. */
 export const MIN_COOLDOWN = 0.35;
+/** Last Stand kicks in below this fraction of max hp. */
+export const LAST_STAND_HP = 0.35;
+/** Slam Combo (Classic Plow): a landed slam within this many seconds of the last one adds a stack, up to COMBO_MAX. */
+export const COMBO_WINDOW = 4;
+export const COMBO_MAX = 3;
+
 /** Applies an Overclock multiplier to a base cooldown, never going below MIN_COOLDOWN. */
 export const cooldown = (base: number, mult: number) => Math.max(MIN_COOLDOWN, base * mult);
 
@@ -115,10 +128,18 @@ export const FX = {
   flameRange: (L: number) => 8.5 + 0.8 * soft(L, 5),
   flameDps: (L: number) => 45 + 26 * grow(L, 5),
   flameCooldown: (L: number) => 2.5 + 3.5 * Math.exp(-L / 4),
-  /** Vitality: flat bonus HP on top of Armor Plating (rivals never get it). */
-  bonusHp: (L: number) => 40 * grow(L, 5),
-  /** Overclock: multiplier on every ability cooldown (slam, dash, whirl, fire). 10 levels, -6% each: 1 -> 0.4. */
+  /** Last Stand: below LAST_STAND_HP of max hp, you deal this much more damage and take half of it less. */
+  lastStand: (L: number) => (L <= 0 ? 0 : 0.1 + 0.04 * soft(L, 5)),
+  /** Overclock: multiplier on every ability cooldown (slam, dash, whirl, F ability). 10 levels, -6% each: 1 -> 0.4. */
   cooldownMult: (L: number) => 1 - 0.06 * Math.min(10, Math.max(0, L)),
+  // ---- Classic Plow line (level 0 = not owned)
+  /** Shatter Slam: bots up to shardReach m beyond the slam zone take shardFrac of the slam's damage. */
+  shardFrac: (L: number) => (L <= 0 ? 0 : 0.3 + 0.06 * soft(L, 5)),
+  shardReach: (L: number) => (L <= 0 ? 0 : 3 + 0.6 * soft(L, 5)),
+  /** Snow Reserve: share of the ball's snow you keep after a slam (capped at 60%). */
+  reserveFrac: (L: number) => (L <= 0 ? 0 : Math.min(0.6, 0.15 + 0.05 * soft(L, 5, 4))),
+  /** Slam Combo: extra slam damage per combo stack (slams that land within COMBO_WINDOW of the last one). */
+  comboStep: (L: number) => (L <= 0 ? 0 : 0.12 + 0.03 * grow(L, 5)),
   // ---- VOLT-9 line (level 0 = not owned)
   /** Chain Lightning: extra bots each of your hits arcs to, and the share of the hit they take. */
   chainCount: (L: number) => (L <= 0 ? 0 : Math.min(6, 1 + Math.floor(soft(L, 5, 4) / 2))),
@@ -141,7 +162,7 @@ export const FX = {
   poundStun: (L: number) => 1.2 + 0.15 * soft(L, 5),
   poundKnock: (L: number) => 12 + 1.5 * soft(L, 5),
   poundCooldown: (L: number) => 3 + 2.5 * Math.exp(-L / 4),
-  /** Iron Hide: multiplier on damage taken (stacks with Plating). */
+  /** Iron Hide: multiplier on damage taken at speed (stacks with Plating); Combat scales it down when slow. */
   ironHide: (L: number) => 1 - 0.06 * soft(L, 5, 3),
   /** Momentum: extra ram damage per m/s of closing speed, as a fraction (0.04 = +40% at 10 m/s). */
   momentum: (L: number) => (L <= 0 ? 0 : 0.03 + 0.015 * soft(L - 1, 4)),
@@ -159,31 +180,34 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'engine', name: 'V8 Engine', icon: '⚙️', category: 'plow', description: 'Top speed, acceleration and steering.', pips: 5, maxLevel: ENDLESS, baseCost: 40, costGrowth: 1.7, valueLabel: (l) => `${f1(FX.maxSpeed(l))} m/s` },
   { id: 'blade', name: 'Wide Blade', icon: '🔪', category: 'plow', description: 'A wider blade scoops more snow and hits a wider area.', pips: 5, maxLevel: ENDLESS, baseCost: 45, costGrowth: 1.7, valueLabel: (l) => `${f1(FX.bladeWidth(l))} m wide` },
   { id: 'ramSpikes', name: 'Ram Spikes', icon: '🦔', category: 'plow', description: 'Ramming bots at speed hurts them more.', pips: 5, maxLevel: ENDLESS, baseCost: 50, costGrowth: 1.75, valueLabel: (l) => `${Math.round(FX.ramDamage(l))} ram dmg` },
-  { id: 'nitro', name: 'Nitro Dash', icon: '🔥', category: 'plow', description: 'SHIFT dash recharges faster and goes farther.', pips: 3, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.9, valueLabel: (l) => `${FX.dashCooldown(l).toFixed(2)}s recharge, +${f1(FX.dashPower(l))} m/s` },
+  { id: 'nitro', name: 'Nitro Dash', icon: '🚀', category: 'plow', description: 'SHIFT dash recharges faster and goes farther.', pips: 3, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.9, valueLabel: (l) => `${FX.dashCooldown(l).toFixed(2)}s recharge, +${f1(FX.dashPower(l))} m/s` },
   { id: 'whirl', name: 'Whirlwind Turbine', icon: '🌀', category: 'plow', description: 'Bigger, harder-hitting E spin that recharges faster.', pips: 3, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.9, valueLabel: (l) => `${f1(FX.whirlRadius(l))} m, ${Math.round(FX.whirlDamage(l))}x4 dmg, ${f1(FX.whirlCooldown(l))}s` },
   { id: 'compactor', name: 'Snow Compactor', icon: '🧊', category: 'ball', description: 'Packs more plowed snow into your snowball.', pips: 5, maxLevel: ENDLESS, baseCost: 50, costGrowth: 1.75, valueLabel: (l) => `${Math.round(FX.collectRate(l) * 100)}% packing` },
-  { id: 'hopper', name: 'Mega Hopper', icon: '⚪', category: 'ball', description: 'Raises the maximum snowball size.', pips: 5, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.8, valueLabel: (l) => `max ${FX.maxBallRadius(l).toFixed(2)} m radius` },
+  { id: 'hopper', name: 'Mega Hopper', icon: '🪣', category: 'ball', description: 'Raises the maximum snowball size.', pips: 5, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.8, valueLabel: (l) => `max ${FX.maxBallRadius(l).toFixed(2)} m radius` },
   { id: 'packedIce', name: 'Packed Ice', icon: '💎', category: 'ball', description: 'Snowball slams hit much harder.', pips: 5, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.8, valueLabel: (l) => `x${FX.damageMult(l).toFixed(2)} slam damage` },
   { id: 'armor', name: 'Armor Plating', icon: '🛡️', category: 'defense', description: 'More plow hit points.', pips: 5, maxLevel: ENDLESS, baseCost: 40, costGrowth: 1.65, valueLabel: (l) => `${Math.round(FX.maxHp(l))} HP` },
   { id: 'plating', name: 'Reinforced Frame', icon: '🔩', category: 'defense', description: 'Take less damage from every hit.', pips: 5, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.8, valueLabel: (l) => `-${f1((1 - FX.damageTaken(l)) * 100)}% damage taken` },
   { id: 'repairKit', name: 'Repair Kit', icon: '🧰', category: 'defense', description: 'Repairs more between rounds and slowly regenerates HP.', pips: 3, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.9, valueLabel: (l) => `${Math.round(FX.repairFraction(l) * 100)}% repair, ${f1(FX.hpRegen(l))} HP/s` },
-  { id: 'snowMachine', name: 'Snow Machine', icon: '🌨️', category: 'defense', description: 'Snow falls back onto plowed ground faster.', pips: 3, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.9, valueLabel: (l) => `x${f1(1 + soft(l, 3))} snowfall` },
-  { id: 'magnet', name: 'Bolt Magnet', icon: '🧲', category: 'defense', description: 'Grab dropped coins from farther away.', pips: 3, maxLevel: ENDLESS, baseCost: 35, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.magnetRadius(l))} m reach` },
+  { id: 'snowMachine', name: 'Snow Machine', icon: '🌨️', category: 'utility', description: 'Snow falls back onto plowed ground faster.', pips: 3, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.9, valueLabel: (l) => `x${f1(1 + soft(l, 3))} snowfall` },
+  { id: 'magnet', name: 'Bolt Magnet', icon: '🧲', category: 'utility', description: 'Grab dropped coins from farther away.', pips: 3, maxLevel: ENDLESS, baseCost: 35, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.magnetRadius(l))} m reach` },
   { id: 'salvage', name: 'Salvage Rig', icon: '🔧', category: 'pilot', playerOnly: true, description: 'Every hit you land repairs your plow by a share of the damage.', pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.lifesteal(l) * 100)}% lifesteal` },
   { id: 'secondWind', name: 'Second Wind', icon: '💨', category: 'pilot', playerOnly: true, description: 'A lethal hit leaves you at 1 HP with 1.5s of invulnerability instead. Recharges.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => (l ? `every ${Math.round(FX.secondWindCd(l))}s` : 'Locked') },
-  { id: 'wreckingBall', name: 'Wrecking Ball', icon: '🏗️', category: 'pilot', playerOnly: true, description: 'Your hits punch through the Brawl hit cap (bots stay capped at 60%).', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round((0.6 + FX.hitCapBonus(l)) * 100)}% max hit` },
-  { id: 'adrenaline', name: 'Adrenaline', icon: '⚡', category: 'pilot', playerOnly: true, description: 'Wrecking a bot instantly refunds part of your dash and whirl recharge.', pips: 4, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.killRecharge(l) * 100)}% refund on kill` },
-  { id: 'inferno', name: 'Inferno Exhaust', icon: '🔥', category: 'pilot', playerOnly: true, plowOnly: 'classic', description: 'Classic Plow only. F (free on the Classic Plow): roar a cone of fire from your blade that scorches everything in it, sets bots ablaze for 4s (burning bots take +20% damage from everything) and melts snow. Upgrades make it hotter, longer and faster to recharge.', pips: 5, maxLevel: ENDLESS, baseCost: 160, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.flameDps(l))} burn/s, ${f1(FX.flameRange(l))} m, ${f1(FX.flameCooldown(l))}s` },
-  { id: 'vitality', name: 'Vitality Core', icon: '❤️', category: 'pilot', playerOnly: true, description: 'Bonus hit points on top of Armor Plating.', pips: 5, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.75, valueLabel: (l) => `+${Math.round(FX.bonusHp(l))} HP` },
-  { id: 'overclock', name: 'Overclock', icon: '⏱️', category: 'pilot', playerOnly: true, description: 'Cuts EVERY ability cooldown (slam, dash, whirl, fire) by 6% per level, up to -60% at level 10. Nothing ever recharges faster than 0.35s.', pips: 10, maxLevel: 10, baseCost: 150, costGrowth: 1.6, valueLabel: (l) => `-${Math.round((1 - FX.cooldownMult(l)) * 100)}% cooldowns` },
-  { id: 'voltChain', name: 'Chain Lightning', icon: '⚡', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'Your slams, rams, dashes, whirls and claps arc lightning to nearby bots.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `${FX.chainCount(l)} arcs × ${Math.round(FX.chainFrac(l) * 100)}%` : 'Locked') },
+  { id: 'wreckingBall', name: 'Wrecking Ball', icon: '🏗️', category: 'pilot', playerOnly: true, description: 'BRAWL ONLY: your hits punch through the Brawl hit cap (bots stay capped at 60%).', details: 'Does nothing in Campaign, Survival or the Tutorial: only Snowdome Brawl caps how much one hit can take.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round((0.6 + FX.hitCapBonus(l)) * 100)}% max hit (Brawl)` },
+  { id: 'adrenaline', name: 'Adrenaline', icon: '💉', category: 'pilot', playerOnly: true, description: 'Wrecking a bot instantly refunds part of your dash and whirl recharge.', pips: 4, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.killRecharge(l) * 100)}% refund on kill` },
+  { id: 'lastStand', name: 'Last Stand', icon: '❤️‍🔥', category: 'pilot', playerOnly: true, description: `Below ${LAST_STAND_HP * 100}% HP you hit harder and take less damage.`, details: `While your plow is under ${LAST_STAND_HP * 100}% HP you deal the bonus damage and take half that much less damage.`, pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.75, valueLabel: (l) => (l ? `+${Math.round(FX.lastStand(l) * 100)}% dmg, -${Math.round(FX.lastStand(l) * 50)}% taken` : 'Locked') },
+  { id: 'overclock', name: 'Overclock', icon: '⏱️', category: 'pilot', playerOnly: true, description: 'Cuts every ability cooldown (slam, dash, whirl and your F ability) by 6% per level, up to -60%.', details: 'Applies to Inferno, Thunderclap and Ground Pound alike. Nothing ever recharges faster than 0.35s.', pips: 10, maxLevel: 10, baseCost: 150, costGrowth: 1.6, valueLabel: (l) => (l ? `-${Math.round((1 - FX.cooldownMult(l)) * 100)}% cooldowns` : 'No cut') },
+  { id: 'inferno', name: 'Inferno Exhaust', icon: '🔥', category: 'classic', playerOnly: true, plowOnly: 'classic', description: 'F: a cone of fire that sets bots ablaze. Hotter, longer and faster to recharge.', details: 'Free on the Classic Plow. Burning lasts 4s and burning bots take +20% damage from everything you do. The fire also melts snow.', pips: 5, maxLevel: ENDLESS, baseCost: 160, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.flameDps(l))} burn/s, ${f1(FX.flameRange(l))} m, ${f1(FX.flameCooldown(l))}s` },
+  { id: 'classicShatter', name: 'Shatter Slam', icon: '🧨', category: 'classic', playerOnly: true, plowOnly: 'classic', description: 'Slams burst into ice shards that hit bots around the impact.', details: 'Bots outside the slam zone but within shard reach take a share of the slam\'s damage. Bigger balls throw harder shards.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.shardFrac(l) * 100)}% dmg, +${f1(FX.shardReach(l))} m` : 'Locked') },
+  { id: 'classicReserve', name: 'Snow Reserve', icon: '☃️', category: 'classic', playerOnly: true, plowOnly: 'classic', description: 'Keep part of your snowball after every slam.', details: 'The slam still hits with your full ball; you just keep some snow packed on the blade for the next one (and as a shield).', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `keep ${Math.round(FX.reserveFrac(l) * 100)}%` : 'Locked') },
+  { id: 'classicCombo', name: 'Slam Combo', icon: '🥊', category: 'classic', playerOnly: true, plowOnly: 'classic', description: `Back-to-back slams hit harder, stacking up to ${COMBO_MAX} times.`, details: `Each slam that lands within ${COMBO_WINDOW}s of your last landed slam adds a stack. Pairs well with Snow Reserve.`, pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round(FX.comboStep(l) * 100)}% per stack` : 'Locked') },
+  { id: 'voltChain', name: 'Chain Lightning', icon: '⛓️', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'Your slams, rams, dashes, whirls and claps arc lightning to nearby bots.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `${FX.chainCount(l)} arcs × ${Math.round(FX.chainFrac(l) * 100)}%` : 'Locked') },
   { id: 'voltField', name: 'Tesla Field', icon: '🌩️', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'A crackling shock aura that constantly zaps every bot near you.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.fieldDps(l))} dps, ${f1(FX.fieldRadius(l))} m` : 'Locked') },
-  { id: 'voltClap', name: 'Thunderclap', icon: '🌀', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'F (free on VOLT-9): a lightning storm around you — huge blast, extra sky strikes and an electrified field. Overload: each clap shocks you a little; chaining claps back-to-back shocks you much harder. Upgrades make it bigger and harder-hitting.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.clapDamage(l))} dmg, ${f1(FX.clapRadius(l))} m, ${f1(FX.clapCooldown(l))}s` },
+  { id: 'voltClap', name: 'Thunderclap', icon: '⛈️', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'F: a lightning storm around you. Each clap shocks you a little; chaining claps shocks you hard.', details: 'Free on VOLT-9. A huge blast, extra sky strikes and an electrified field. The meter over the F icon shows the next clap\'s self-shock. Upgrades make it bigger and harder-hitting.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.clapDamage(l))} dmg, ${f1(FX.clapRadius(l))} m, ${f1(FX.clapCooldown(l))}s` },
   { id: 'voltCell', name: 'Battery Shield', icon: '🔋', category: 'volt', playerOnly: true, plowOnly: 'volt', description: 'An energy shield soaks up damage before your HP, recharging after 3s without taking hits.', pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.75, valueLabel: (l) => (l ? `${Math.round(FX.shieldMax(l))} shield` : 'Locked') },
-  { id: 'brutePound', name: 'Ground Pound', icon: '💥', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'F (free on BRUTUS): hop up and slam down — a snow shockwave that damages, stuns and hurls back every bot around you. Upgrades make it wider, harder-hitting and faster to recharge.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.poundDamage(l))} dmg, ${f1(FX.poundRadius(l))} m, ${f1(FX.poundCooldown(l))}s` },
-  { id: 'bruteHide', name: 'Iron Hide', icon: '🛡️', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Bolted-on armor plates: take less damage from everything (stacks with Reinforced Frame).', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `-${Math.round((1 - FX.ironHide(l)) * 100)}% damage taken` : 'Locked') },
-  { id: 'bruteMomentum', name: 'Momentum', icon: '🦏', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Rams and dash strikes hit harder the faster you are going. Get BRUTUS rolling and nothing stands.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round(FX.momentum(l) * 1000)}% ram dmg at 10 m/s` : 'Locked') },
-  { id: 'bruteSaws', name: 'Buzzsaws', icon: '🪚', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Bolts a pair of spinning saw blades onto the ends of your blade: they constantly shred every bot in front of you and off to the sides. Speed and fury (damage you deal and take) spin them up, growing glowing halos that stretch their reach and make your rams splash onto every bot nearby. Upgrades make them bite harder and reach further.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.sawDps(l))} dps, ${f1(FX.sawRadius(l))} m` : 'Locked') },
+  { id: 'brutePound', name: 'Ground Pound', icon: '💥', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'F: hop and slam down, a shockwave that damages, stuns and hurls back bots around you.', details: 'Free on BRUTUS. Upgrades make it wider, harder-hitting and faster to recharge.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.poundDamage(l))} dmg, ${f1(FX.poundRadius(l))} m, ${f1(FX.poundCooldown(l))}s` },
+  { id: 'bruteHide', name: 'Iron Hide', icon: '🪖', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Take less damage the faster you are going.', details: 'Full effect from 70% of top speed (dashing counts); parked, you keep 40% of it. Stacks with Reinforced Frame.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `-${Math.round((1 - FX.ironHide(l)) * 100)}% damage at speed` : 'Locked') },
+  { id: 'bruteMomentum', name: 'Momentum', icon: '☄️', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Rams and dash strikes hit harder the faster you are going.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round(FX.momentum(l) * 1000)}% ram dmg at 10 m/s` : 'Locked') },
+  { id: 'bruteSaws', name: 'Buzzsaws', icon: '🪚', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Spinning saws on your blade ends shred bots in front of you and to the sides.', details: 'Speed and fury (damage you deal and take) spin them up, growing glowing halos that stretch their reach.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.sawDps(l))} dps, ${f1(FX.sawRadius(l))} m` : 'Locked') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },

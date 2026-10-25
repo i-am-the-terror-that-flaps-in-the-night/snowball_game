@@ -963,12 +963,16 @@ export class Plow implements PlowAPI {
       ctx.audio.play('error');
       return;
     }
-    const volume = this.heldVolume;
-    this.heldVolume = 0;
-    this.ballR = 0;
-    this.ball.visible = false;
-    this.glow.visible = false;
-    this.ballWasVisible = false;
+    // Snow Reserve (Classic Plow) keeps part of the ball on the blade; the slam still hits with the full radius.
+    const volume = this.heldVolume * (1 - ctx.stats.reserveFrac);
+    this.heldVolume -= volume;
+    if (this.heldBallRadius < 0.2) {
+      this.heldVolume = 0;
+      this.ballR = 0;
+      this.ball.visible = false;
+      this.glow.visible = false;
+      this.ballWasVisible = false;
+    }
     this.getBladeTip(_c);
     this.getForward(_fwd);
     const cx = _c.x + _fwd.x * (r + 0.5);

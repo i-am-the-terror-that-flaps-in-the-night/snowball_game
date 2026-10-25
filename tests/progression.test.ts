@@ -64,8 +64,13 @@ describe('computeStats', () => {
     const v = progWith(ups, 'volt').computeStats();
     const b = progWith(ups, 'brute').computeStats();
 
-    // Classic: Inferno counts, Volt/Brute lines are inert.
+    // Classic: Classic line counts, Volt/Brute lines are inert.
     expect(c.flameDps).toBe(FX.flameDps(5));
+    expect(c.shardFrac).toBe(FX.shardFrac(5));
+    expect(c.shardReach).toBe(FX.shardReach(5));
+    expect(c.reserveFrac).toBe(FX.reserveFrac(5));
+    expect(c.comboStep).toBe(FX.comboStep(5));
+    expect(c.ironHide).toBe(1);
     expect(c.chainCount).toBe(0);
     expect(c.fieldDps).toBe(0);
     expect(c.shieldMax).toBe(0);
@@ -78,6 +83,9 @@ describe('computeStats', () => {
     expect(v.shieldMax).toBe(FX.shieldMax(5));
     expect(v.clapDamage).toBe(FX.clapDamage(5));
     expect(v.flameRange).toBe(FX.flameRange(0));
+    expect(v.shardFrac).toBe(0);
+    expect(v.reserveFrac).toBe(0);
+    expect(v.comboStep).toBe(0);
     expect(v.momentum).toBe(0);
     expect(v.damageTaken).toBeCloseTo(FX.damageTaken(5));
 
@@ -85,7 +93,9 @@ describe('computeStats', () => {
     expect(b.poundDamage).toBe(FX.poundDamage(5));
     expect(b.poundRadius).toBe(FX.poundRadius(5));
     expect(b.momentum).toBe(FX.momentum(5));
-    expect(b.damageTaken).toBeCloseTo(FX.damageTaken(5) * FX.ironHide(5));
+    expect(b.damageTaken).toBeCloseTo(FX.damageTaken(5));
+    expect(b.ironHide).toBe(FX.ironHide(5));
+    expect(b.comboStep).toBe(0);
     expect(b.chainCount).toBe(0);
     expect(b.shieldMax).toBe(0);
     expect(b.clapRadius).toBe(FX.clapRadius(0));
@@ -93,8 +103,9 @@ describe('computeStats', () => {
 
   it('shared and pilot upgrades apply on every plow', () => {
     for (const kind of Object.keys(PLOWS) as PlowKind[]) {
-      const s = progWith({ armor: 3, vitality: 2, salvage: 4, wreckingBall: 2, secondWind: 1, overclock: 5 }, kind).computeStats();
-      expect(s.maxHp).toBeCloseTo((FX.maxHp(3) + FX.bonusHp(2)) * PLOWS[kind].hpMult);
+      const s = progWith({ armor: 3, lastStand: 2, salvage: 4, wreckingBall: 2, secondWind: 1, overclock: 5 }, kind).computeStats();
+      expect(s.maxHp).toBeCloseTo(FX.maxHp(3) * PLOWS[kind].hpMult);
+      expect(s.lastStand).toBe(FX.lastStand(2));
       expect(s.lifesteal).toBe(FX.lifesteal(4));
       expect(s.hitCapBonus).toBe(FX.hitCapBonus(2));
       expect(s.secondWindCd).toBe(FX.secondWindCd(1));
@@ -236,6 +247,15 @@ describe('save export / import', () => {
     expect(p.plow).toBe('classic');
     expect(p.data.brawlBestKills).toBe(0);
     expect(p.computeStats().maxHp).toBeCloseTo(FX.maxHp(1) * PLOWS.classic.hpMult);
+  });
+
+  it('carries old Vitality Core levels over to Last Stand', () => {
+    store.set(SAVE_KEY, JSON.stringify({ version: 1, coins: 5, upgrades: { vitality: 3 }, unlockedZones: 1, zones: {}, totalKills: 0, totalCoinsEarned: 5, muted: false }));
+    expect(new Progression().level('lastStand')).toBe(3);
+    const p = new Progression();
+    expect(p.importSave(JSON.stringify({ version: 1, coins: 0, upgrades: { vitality: 2 }, unlockedZones: 1, zones: {} })).ok).toBe(true);
+    expect(p.level('lastStand')).toBe(2);
+    expect('vitality' in p.data.upgrades).toBe(false);
   });
 
   it('falls back to a fresh save on corrupted storage', () => {

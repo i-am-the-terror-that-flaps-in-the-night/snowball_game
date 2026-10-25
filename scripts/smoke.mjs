@@ -4,7 +4,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
-const out = process.argv[2] || '/tmp/snowplow-shots';
+const out = process.argv.slice(2).find((a) => !a.startsWith('--')) || '/tmp/snowplow-shots';
 mkdirSync(out, { recursive: true });
 const port = 5200 + Math.floor(Math.random() * 500);
 const server = await createServer({ server: { port, strictPort: true }, logLevel: 'error' });

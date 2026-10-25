@@ -9,6 +9,7 @@ import {
   type GameContext,
   type PlowAPI,
 } from '../core/types';
+import { COMBO_MAX, COMBO_WINDOW, LAST_STAND_HP } from '../config/upgrades';
 
 /** Seconds of damage i-frames after the plow is hit (overlapping hits only add their excess). */
 const IFRAME_SECONDS = 0.15;
@@ -40,13 +41,11 @@ const POUND_HOP_HEIGHT = 1.5;
 const POUND_RIM_FRAC = 0.6;
 /** Momentum (BRUTUS) only counts closing speed up to this many m/s. */
 const MOMENTUM_SPEED_CAP = 20;
-/** Buzzsaw halos (BRUTUS): a full halo stretches the saw reach by this share... */
+/** Buzzsaw halos (BRUTUS): a full halo stretches the saw reach by this share. */
 const SAW_HALO_REACH = 0.5;
-/** ...and BRUTUS's rams splash this share of their damage onto every other bot within
- *  SAW_SPLASH_R0 + SAW_SPLASH_R * halo metres of the target. */
-const SAW_SPLASH_FRAC = 0.6;
-const SAW_SPLASH_R0 = 1.5;
-const SAW_SPLASH_R = 4.5;
+/** Iron Hide (BRUTUS) is at full strength from this share of top speed; parked it keeps IRON_HIDE_IDLE of it. */
+const IRON_HIDE_SPEED = 0.7;
+const IRON_HIDE_IDLE = 0.4;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
 const RAM_REPEAT = 0.25;
 /** cos(60°): attacker must be within ±60° of the plow's front for the ball to shield. */
@@ -85,7 +84,10 @@ export class Combat implements CombatAPI {
   private iframeDmg = 0;
   private ramCd = new Map<number, number>();
   private queryOut: EnemyHandle[] = [];
-  private splashBuf: EnemyHandle[] = [];
+  private shardBuf: EnemyHandle[] = [];
+  /** Slam Combo (Classic Plow): stacks and when the last slam landed. */
+  private comboStacks = 0;
+  private lastSlamHitAt = -999;
   private targets: EnemyHandle[] = [];
   private lastFreezeSound = -10;
   private lastBlockSound = -10;
@@ -159,7 +161,7 @@ export class Combat implements CombatAPI {
       _q.set(best.position.x, best.position.y + best.radius + 0.6, best.position.z);
       this.lightning.bolt(_p, _q, { life: 0.22, width: 0.3 });
       const hp0 = best.hp;
-      const killed = ctx.enemies.damage(best, dmg * this.burnMult(best), { source: 'other', freezeSeconds: 0.4, fromX: best.position.x, fromZ: best.position.z });
+      const killed = ctx.enemies.damage(best, dmg * this.hitMult(best), { source: 'other', freezeSeconds: 0.4, fromX: best.position.x, fromZ: best.position.z });
       const d2 = Math.max(0, hp0 - Math.max(0, best.hp));
       this.onPlayerHit(d2, killed, best, false, heal);
       if (d2 > 0) ctx.fx.floatText(_q, `⚡${Math.round(d2)}`, '#7fdcff', 0.8);
@@ -200,7 +202,7 @@ export class Combat implements CombatAPI {
       _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.14, width: 0.18 });
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.burnMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+      const killed = ctx.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
       this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
     }
     if (any) ctx.audio.play('zap', { volume: 0.35, pitch: 1.4 });
@@ -230,7 +232,7 @@ export class Combat implements CombatAPI {
       if ((dx * _fwd.x + dz * _fwd.z) / d < -0.25) continue;
       any = true;
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.sawDps * st.damageMult * TICK * this.burnMult(e), {
+      const killed = ctx.enemies.damage(e, st.sawDps * st.damageMult * TICK * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3((dx / d) * 2.5, 0, (dz / d) * 2.5),
         fromX: e.position.x,
@@ -296,7 +298,7 @@ export class Combat implements CombatAPI {
       _q.set(e.position.x, e.position.y + e.radius, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.35 });
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.clapDamage * st.damageMult * this.burnMult(e), {
+      const killed = ctx.enemies.damage(e, st.clapDamage * st.damageMult * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3(dx * 14, 0, dz * 14),
         freezeSeconds: st.clapStun,
@@ -394,7 +396,7 @@ export class Combat implements CombatAPI {
       }
       const fall = 1 - (1 - POUND_RIM_FRAC) * Math.min(1, d / R);
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.poundDamage * st.damageMult * fall * this.burnMult(e), {
+      const killed = ctx.enemies.damage(e, st.poundDamage * st.damageMult * fall * this.hitMult(e), {
         source: 'other',
         knockback: new THREE.Vector3(dx * st.poundKnock * fall, 0, dz * st.poundKnock * fall),
         stunSeconds: st.poundStun,
@@ -475,7 +477,7 @@ export class Combat implements CombatAPI {
         const e = hits[i];
         if (!e.alive) continue;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.burnMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz });
+        const killed = ctx.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz });
         const d = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(d, killed, e, false, false);
         _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
@@ -499,7 +501,7 @@ export class Combat implements CombatAPI {
         const e = hits[i];
         if (!e.alive) continue;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dmgBase * STORM_FIELD_FRAC * 0.5 * this.burnMult(e), { source: 'other', freezeSeconds: 0.6, fromX: e.position.x, fromZ: e.position.z });
+        const killed = ctx.enemies.damage(e, dmgBase * STORM_FIELD_FRAC * 0.5 * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: e.position.x, fromZ: e.position.z });
         this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
         _p.set(this.stormX, 0.3, this.stormZ);
         _q.set(e.position.x, e.position.y + e.radius * 0.6, e.position.z);
@@ -520,9 +522,16 @@ export class Combat implements CombatAPI {
     else if (this.shield < max) this.shield = Math.min(max, this.shield + max * 0.25 * dt);
   }
 
-  /** Burning bots take BURN_VULN x damage from the player's hits. */
-  private burnMult(e: EnemyHandle): number {
-    return this.burns.has(e) ? BURN_VULN : 1;
+  /** Multiplier on the player's hits against `e`: burning bots take BURN_VULN x, and Last Stand adds its bonus. */
+  private hitMult(e: EnemyHandle): number {
+    return (this.burns.has(e) ? BURN_VULN : 1) * this.lastStandMult();
+  }
+
+  /** Last Stand (pilot perk): 1 + bonus while the plow is under LAST_STAND_HP, else 1. */
+  private lastStandMult(): number {
+    const plow = this.ctx.plow;
+    const bonus = this.ctx.stats.lastStand;
+    return bonus > 0 && plow.hp < plow.maxHp * LAST_STAND_HP ? 1 + bonus : 1;
   }
 
   /* ------------------------------------------------------------------ bots -> plow */
@@ -556,10 +565,16 @@ export class Combat implements CombatAPI {
       const vol = ballVolume(r);
       if (vol > 0) plow.stealSnow(Math.min(1, (blocked * BLOCK_SNOW_PER_DMG) / vol));
     }
-    // 2) Dash halves damage, whirling takes 30% less. 3) Plating.
+    // 2) Dash halves damage, whirling takes 30% less. 3) Plating, Iron Hide (scaled by speed), Last Stand.
     if (plow.dashing) dmg *= 0.5;
     if (plow.whirling) dmg *= 0.7;
     dmg *= stats.damageTaken;
+    if (stats.ironHide < 1) {
+      const roll = THREE.MathUtils.clamp(Math.abs(plow.speed) / (stats.maxSpeed * IRON_HIDE_SPEED), 0, 1);
+      dmg *= 1 - (1 - stats.ironHide) * (IRON_HIDE_IDLE + (1 - IRON_HIDE_IDLE) * roll);
+    }
+    const lastStandBefore = this.lastStandMult() > 1;
+    if (lastStandBefore) dmg *= 1 - stats.lastStand * 0.5;
     // Battery Shield (VOLT-9) soaks damage before HP.
     if (this.shield > 0 && dmg > 0) {
       const soak = Math.min(this.shield, dmg);
@@ -597,6 +612,12 @@ export class Combat implements CombatAPI {
     if (final > 0) {
       plow.damage(final);
       plow.feedSawFury(0, final);
+      if (!lastStandBefore && !plow.dead && this.lastStandMult() > 1) {
+        _q.set(plow.position.x, 3.8, plow.position.z);
+        ctx.fx.floatText(_q, 'LAST STAND!', '#ff6a3a', 1.2);
+        _q.set(plow.position.x, 0.1, plow.position.z);
+        ctx.fx.ring(_q, 5, 0xff6a3a);
+      }
     }
 
     // Knockback away from the attacker (shield absorbs some of it).
@@ -667,7 +688,7 @@ export class Combat implements CombatAPI {
     const knock = new THREE.Vector3((dx / n) * k, 0, (dz / n) * k);
 
     const hp0 = enemy.hp;
-    const killed = ctx.enemies.damage(enemy, dmg * this.burnMult(enemy), {
+    const killed = ctx.enemies.damage(enemy, dmg * this.hitMult(enemy), {
       source: 'ram',
       knockback: knock,
       fromX: plow.position.x,
@@ -695,43 +716,7 @@ export class Combat implements CombatAPI {
     ctx.audio.play('ram', { volume: Math.min(1, 0.45 + closingSpeed * 0.04) });
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1, enemy.position.z);
     if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : '#ffffff', 0.8 + Math.min(0.5, dealt * 0.01));
-    this.sawRamSplash(enemy, dmg);
     return dmg;
-  }
-
-  /** Saw fury splash (BRUTUS with Buzzsaws): a ram also shreds every other bot around the target, out to a
-   *  radius that grows with the saw halos. */
-  private sawRamSplash(target: EnemyHandle, dmg: number): void {
-    const ctx = this.ctx;
-    const plow = ctx.plow;
-    const h = plow.sawHalo;
-    if (ctx.stats.sawDps <= 0 || h < 0.05 || plow.dead) return;
-    const R = SAW_SPLASH_R0 + SAW_SPLASH_R * h;
-    const cx = target.position.x;
-    const cz = target.position.z;
-    const hits = ctx.enemies.query(cx, cz, R, this.splashBuf);
-    for (let i = 0; i < hits.length; i++) {
-      const e = hits[i];
-      if (e === target || !e.alive) continue;
-      const dx = e.position.x - cx;
-      const dz = e.position.z - cz;
-      const d = Math.hypot(dx, dz) || 1;
-      const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg * SAW_SPLASH_FRAC * this.burnMult(e), {
-        source: 'other',
-        knockback: new THREE.Vector3((dx / d) * 6, 0, (dz / d) * 6),
-        fromX: cx,
-        fromZ: cz,
-      });
-      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-      this.onPlayerHit(dealt, killed, e, false, false);
-      if (dealt > 0) {
-        _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
-        ctx.fx.floatText(_q, `🪚${Math.round(dealt)}`, '#ff8a30', 0.8);
-      }
-    }
-    _q.set(cx, 0.05, cz);
-    ctx.fx.ring(_q, R, 0xff6a20);
   }
 
   /** DASH STRIKE: the dashing plow hits a bot like a truck. The dash keeps going (80% speed). */
@@ -756,7 +741,7 @@ export class Combat implements CombatAPI {
     const knock = new THREE.Vector3((dx / n) * DASH_KNOCK, 0, (dz / n) * DASH_KNOCK);
 
     const hp0 = enemy.hp;
-    const killed = ctx.enemies.damage(enemy, dmg * this.burnMult(enemy), {
+    const killed = ctx.enemies.damage(enemy, dmg * this.hitMult(enemy), {
       source: 'ram',
       knockback: knock,
       fromX: plow.position.x,
@@ -787,7 +772,6 @@ export class Combat implements CombatAPI {
     ctx.audio.play('dashStrike');
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1.4, enemy.position.z);
     fx.floatText(_q, dealt > 0 ? `DASH! ${Math.round(dealt)}` : 'DASH!', killed ? '#fff3a0' : '#ff9a2a', 1.35);
-    this.sawRamSplash(enemy, dmg);
     return dmg;
   }
 
@@ -800,7 +784,10 @@ export class Combat implements CombatAPI {
     const fx = ctx.fx;
     const avalanche = stats.avalancheCore;
     const zone = (r * 1.3 + stats.bladeWidth * 0.35) * (avalanche ? 1.5 : 1);
-    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult;
+    // Slam Combo (Classic Plow): stacks from slams that landed recently.
+    if (ctx.time - this.lastSlamHitAt > COMBO_WINDOW) this.comboStacks = 0;
+    const combo = stats.comboStep > 0 ? this.comboStacks : 0;
+    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo);
     const knockMag = (10 + 6 * r) * (avalanche ? 1.6 : 1);
     const freeze = stats.frostCore ? 3 : 0;
 
@@ -821,7 +808,7 @@ export class Combat implements CombatAPI {
         dz /= d;
       }
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg * this.burnMult(e), {
+      const killed = ctx.enemies.damage(e, dmg * this.hitMult(e), {
         source: 'slam',
         knockback: new THREE.Vector3(dx * knockMag, 0, dz * knockMag),
         freezeSeconds: freeze,
@@ -837,7 +824,16 @@ export class Combat implements CombatAPI {
       _q.set(e.position.x, 1, e.position.z);
       fx.burst(_q, { color: freeze ? 0xbfeaff : 0xffffff, count: 8, speed: 5, size: 0.2, gravity: 16, life: 0.6 });
     }
+    if (stats.shardFrac > 0) this.shatter(x, z, zone, dmg, hits);
     this.targets.length = 0;
+    if (count > 0 && stats.comboStep > 0) {
+      this.lastSlamHitAt = ctx.time;
+      this.comboStacks = Math.min(COMBO_MAX, this.comboStacks + 1);
+      if (combo > 0) {
+        _q.set(x, 3.2 + r, z);
+        fx.floatText(_q, `COMBO x${combo + 1}`, '#ffb340', 0.9 + 0.15 * combo);
+      }
+    }
 
     // Shatter the ball.
     const ground = ctx.snow ? ctx.snow.getDepth(x, z) : 0;
@@ -864,6 +860,40 @@ export class Combat implements CombatAPI {
       ctx.audio.play('strike');
     }
     return count;
+  }
+
+  /** Shatter Slam (Classic Plow): the ball bursts into shards that hit every bot outside the slam zone (`slammed`)
+   *  but within stats.shardReach of it, for stats.shardFrac of the slam damage. */
+  private shatter(x: number, z: number, zone: number, dmg: number, slammed: EnemyHandle[]): void {
+    const ctx = this.ctx;
+    const stats = ctx.stats;
+    const fx = ctx.fx;
+    const R = zone + stats.shardReach;
+    const hits = ctx.enemies.query(x, z, R, this.shardBuf).slice();
+    for (const e of hits) {
+      if (!e.alive || slammed.includes(e)) continue;
+      const dx = e.position.x - x;
+      const dz = e.position.z - z;
+      const d = Math.hypot(dx, dz) || 1;
+      const hp0 = e.hp;
+      const killed = ctx.enemies.damage(e, dmg * stats.shardFrac * this.hitMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3((dx / d) * 8, 0, (dz / d) * 8),
+        fromX: x,
+        fromZ: z,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e);
+      _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
+      if (dealt > 0) fx.floatText(_q, `🧨${Math.round(dealt)}`, '#bfe6ff', 0.8);
+      _q.y = 1;
+      fx.burst(_q, { color: 0xcfeeff, count: 6, speed: 6, size: 0.14, gravity: 14, life: 0.5 });
+    }
+    const ground = ctx.snow ? ctx.snow.getDepth(x, z) : 0;
+    _p.set(x, ground + 0.6, z);
+    fx.burst(_p, { color: 0xcfeeff, count: 18, speed: 9 + stats.shardReach, size: 0.12, gravity: 10, life: 0.6 });
+    _p.y = ground;
+    fx.ring(_p, R, 0xa8dcff);
   }
 
   /** One damage tick of the E whirl centered on (x, z). Every bot within `radius` is hit once per tick.
@@ -897,7 +927,7 @@ export class Combat implements CombatAPI {
         kz = -dz * pull - dx * 3.5;
       }
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, dmg * this.burnMult(e), {
+      const killed = ctx.enemies.damage(e, dmg * this.hitMult(e), {
         source: 'whirl',
         knockback: new THREE.Vector3(kx, 0, kz),
         fromX: x,
@@ -1031,7 +1061,7 @@ export class Combat implements CombatAPI {
       // Scorch: direct damage + a shove away from the blade while caught in the cone.
       const nd = d || 1;
       const hp0 = e.hp;
-      const killed = ctx.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN, {
+      const killed = ctx.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN * this.lastStandMult(), {
         source: 'other',
         knockback: new THREE.Vector3((dx / nd) * 3, 0, (dz / nd) * 3),
         fromX: e.position.x,
@@ -1066,7 +1096,7 @@ export class Combat implements CombatAPI {
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;
         const hp0 = e.hp;
-        const killed = ctx.enemies.damage(e, dps * ctx.stats.damageMult * BURN_TICK * BURN_VULN, { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+        const killed = ctx.enemies.damage(e, dps * ctx.stats.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(dealt, killed, e, false);
         if (dealt > 0) {

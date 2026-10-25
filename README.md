@@ -58,15 +58,21 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 
 Coins from both modes buy permanent upgrades in the Garage. Stat upgrades are **endless**: full-strength gains up
 to the pips, then speed/size/cooldown stats taper toward a ceiling while damage, HP and regen keep growing.
-**Pilot perks** (Salvage Rig, Second Wind, Wrecking Ball, Adrenaline, Inferno Exhaust, Vitality Core, Overclock)
-are player-only: Brawl bots never roll them into their garages. Overclock tops out at -60% cooldowns, and no
-ability ever recharges faster than 0.35s.
+**Pilot perks** (Salvage Rig, Second Wind, Wrecking Ball, Adrenaline, Last Stand, Overclock) are player-only:
+Brawl bots never roll them into their garages. Wrecking Ball only matters in Brawl (it raises the Brawl hit cap).
+Last Stand makes you hit harder and take less damage below 35% HP. Overclock cuts every cooldown — slam, dash,
+whirl and your plow's F ability — by up to -60%, and no ability ever recharges faster than 0.35s.
 
-**Starter plows** (picked in the Garage): the **Classic Plow** (+25% HP, free Inferno fire on F that grows with Packed Ice and its own Inferno Exhaust upgrade) or the
+**Starter plows** (picked in the Garage): the **Classic Plow** (+25% HP, free Inferno fire on F) with its own line — Inferno Exhaust
+(hotter, faster fire), Shatter Slam (slams throw ice shards at bots around the impact), Snow Reserve (keep part of
+your ball after a slam) and Slam Combo (back-to-back slams hit harder, stacking up to 3 times) — or the
 electric **VOLT-9** (faster, more fragile) with its own upgrade line — Chain Lightning, Tesla Field, Thunderclap
 and Battery Shield — or the armored **BRUTUS** (+35% HP, +20% damage, bigger blade; sluggish to accelerate) with a free Ground Pound on F (AoE damage ring, short knockback, stun) and its own line —
-Ground Pound, Iron Hide (less damage taken), Momentum (rams and dash strikes scale with speed) and Buzzsaws
-(spinning saws on the blade ends that shred every bot in front of and beside you).
+Ground Pound, Iron Hide (less damage taken the faster you're going), Momentum (rams and dash strikes scale with
+speed) and Buzzsaws (spinning saws on the blade ends that shred every bot in front of and beside you).
+
+The Garage is split into tabs (Drive, Snowball, Defense, Pilot, and your current plow's own line), each with a
+count of upgrades you can afford; switch with Q / E or LB / RB. Hover a card for the full mechanics of that upgrade.
 
 ## Project layout
 
@@ -95,8 +101,9 @@ Each script boots Vite and drives the game in headless Chrome via `window.__game
 ```bash
 node scripts/smoke.mjs                 # campaign smoke test + screenshots
 node scripts/combat-probe.mjs          # slam / ram / boss numbers
-node scripts/brawl-probe.mjs --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
+node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
 node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
 ```
 
-`archive/base-defense-v1.tar.gz` holds the original base-defense prototype this game grew out of.
+The original base-defense prototype this game grew out of is kept at the `base-defense-v1` git tag
+(`archive/base-defense-v1.tar.gz` in that commit).
