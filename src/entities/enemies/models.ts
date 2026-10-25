@@ -55,6 +55,32 @@ function hazardTexture(): THREE.Texture {
   return t;
 }
 
+let _magaTex: THREE.Texture | null = null;
+/** Red cap front panel with white block letters (THE DONALD + its rally bots). */
+export function magaTexture(): THREE.Texture {
+  if (_magaTex) return _magaTex;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 112;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#c8102e';
+  g.fillRect(0, 0, 256, 112);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = '900 86px "Arial Black", Impact, sans-serif';
+  g.lineJoin = 'round';
+  g.lineWidth = 10;
+  g.strokeStyle = '#7a0716';
+  g.strokeText('MAGA', 128, 60, 238);
+  g.fillStyle = '#ffffff';
+  g.fillText('MAGA', 128, 60, 238);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  _magaTex = t;
+  return t;
+}
+
 export const M = {
   rubber: () => mat('rubber', 0x1f2024, { roughness: 0.95 }),
   cleat: () => mat('cleat', 0x2c2e34, { roughness: 0.9 }),
@@ -71,6 +97,10 @@ export const M = {
   ice: () => mat('ice', 0xa8e2ff, { transparent: true, opacity: 0.55, roughness: 0.1, metalness: 0.1, emissive: 0x2a7ac0, emissiveIntensity: 0.35, depthWrite: false }),
   star: () => mat('star', 0xffe14a, { emissive: 0xffc400, emissiveIntensity: 1.6 }),
   rustDark: () => mat('rustDark', 0x5a2a16, { roughness: 0.8, metalness: 0.2 }),
+  gold: () => mat('gold', 0xf0b928, { roughness: 0.32, metalness: 0.3, emissive: 0x4a3000, emissiveIntensity: 0.35 }),
+  capRed: () => mat('capRed', 0xc8102e, { roughness: 0.7 }),
+  maga: () => mat('maga', 0xffffff, { map: magaTexture(), roughness: 0.7, flatShading: false }),
+  flagBlue: () => mat('flagBlue', 0x1f3b8c, { roughness: 0.7 }),
 };
 const paint = (t: EnemyType) => mat('paint_' + t, ENEMIES[t].color, { roughness: 0.48, metalness: 0.15 }, 'paint');
 const accent = (t: EnemyType) => mat('accent_' + t, ENEMIES[t].accent, { roughness: 0.48, metalness: 0.2 }, 'paint');
@@ -272,8 +302,7 @@ interface Tpl {
   front: number;
 }
 
-function scrapper(): Tpl {
-  const t: EnemyType = 'scrapper';
+function scrapper(t: EnemyType = 'scrapper'): Tpl {
   const root = new THREE.Group();
   const base = new Part(root);
   const stacks: number[] = [];
@@ -285,6 +314,7 @@ function scrapper(): Tpl {
   b.add(G.box(), M.dark(), [0, 0.42, -0.05], [0.8, 0.12, 1.3]);
   // red ram nose with steel spikes
   b.add(G.wedge(0.5), accent(t), [0, 0.42, 0.72], [0.98, 0.26, 0.34]);
+  if (t === 'rallybot') for (const sx of [-1, 1]) b.add(G.box(), M.gold(), [sx * 0.435, 0.8, -0.05], [0.02, 0.06, 1.2]);
   for (const x of [-0.28, 0, 0.28]) b.add(G.cone(6), M.chrome(), [x, 0.43, 0.98], [0.07, 0.26, 0.07], [PI / 2, 0, 0]);
   // hazard cheeks
   for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.44, 0.66, -0.2], [0.03, 0.24, 0.7], ZERO, [2, 0.6]);
@@ -292,10 +322,24 @@ function scrapper(): Tpl {
   b.add(G.cyl(10), paint(t), [0, 0.97, -0.22], [0.3, 0.22, 0.3]);
   b.add(G.cyl(12), M.black(), [0, 0.98, 0.04], [0.19, 0.12, 0.19], [PI / 2, 0, 0]);
   b.add(G.sph(1), eyeMat(t, 0xff3b30), [0, 0.98, 0.1], [0.13, 0.13, 0.08]);
-  b.add(G.box(), M.black(), [0, 1.12, 0.02], [0.36, 0.06, 0.12], [0.25, 0, 0]);
-  // antenna + exhaust
-  b.add(G.cyl(6), M.black(), [0.26, 1.2, -0.5], [0.02, 0.5, 0.02]);
-  b.add(G.sph(0), eyeMat(t, 0xff3b30), [0.26, 1.46, -0.5], [0.05, 0.05, 0.05]);
+  if (t === 'rallybot') {
+    // red rally cap on the eye turret (MAGA front panel + brim)
+    b.add(G.taper(0.82, 12), M.capRed(), [0, 1.2, -0.25], [0.36, 0.26, 0.36]);
+    b.add(G.box(), M.maga(), [0, 1.22, 0.1], [0.5, 0.22, 0.03], [-0.3, 0, 0]);
+    b.add(G.box(), M.capRed(), [0, 1.08, 0.22], [0.52, 0.04, 0.34], [0.1, 0, 0]);
+    // a little flag on the antenna
+    b.add(G.cyl(6), M.black(), [0.26, 1.2, -0.5], [0.02, 0.6, 0.02]);
+    b.add(G.box(), M.white(), [0.38, 1.42, -0.5], [0.24, 0.16, 0.01]);
+    b.add(G.box(), M.capRed(), [0.38, 1.47, -0.5], [0.24, 0.04, 0.015]);
+    b.add(G.box(), M.capRed(), [0.38, 1.39, -0.5], [0.24, 0.04, 0.015]);
+    b.add(G.box(), M.flagBlue(), [0.31, 1.46, -0.5], [0.1, 0.08, 0.02]);
+  } else {
+    b.add(G.box(), M.black(), [0, 1.12, 0.02], [0.36, 0.06, 0.12], [0.25, 0, 0]);
+    // antenna
+    b.add(G.cyl(6), M.black(), [0.26, 1.2, -0.5], [0.02, 0.5, 0.02]);
+    b.add(G.sph(0), eyeMat(t, 0xff3b30), [0.26, 1.46, -0.5], [0.05, 0.05, 0.05]);
+  }
+  // exhaust
   stack(b, stacks, -0.24, 0.85, -0.55, 0.06, 0.24, M.steel(), M.dark());
   b.flush();
   base.flush();
@@ -660,18 +704,129 @@ function omega(): Tpl {
   return { root, height: 6.2, stacks, front: 3.0 };
 }
 
+/** THE DONALD: a huge gold-and-white caricature plow. The cab is a big orange face block with a swoopy blond
+ *  hair sweep, small squinting eyes and a pursed mouth under a red MAGA cap; a long red tie runs down the hood
+ *  to a gold blade. A stylised toy, not a likeness. */
+function donald(): Tpl {
+  const t: EnemyType = 'donald';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  const GOLD = M.gold();
+  treads(base, wheels, 2.1, 5.0, 1.35, 1.05, 6, GOLD);
+  wheels.flush(root);
+  for (const sx of [-1, 1]) base.add(G.box(), GOLD, [sx * 2.1, 1.46, 0], [1.2, 0.12, 4.8]);
+  const { b } = sub(root, 'body', [0, 0, 0]);
+  const P = paint(t);
+  const A = accent(t);
+  // hull: white with gold trim
+  b.add(G.box(), P, [0, 2.2, -0.2], [3.4, 1.5, 5.0]);
+  b.add(G.box(), M.dark(), [0, 1.44, -0.2], [3.3, 0.16, 5.1]);
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), A, [sx * 1.71, 2.62, -0.2], [0.05, 0.16, 4.9]);
+    b.add(G.box(), A, [sx * 1.71, 1.82, -0.2], [0.05, 0.1, 4.9]);
+    // gold stars on the flanks
+    for (const z of [-1.4, 0, 1.4]) b.add(G.oct(), A, [sx * 1.73, 2.22, z], [0.04, 0.22, 0.22], [PI / 4, 0, 0]);
+  }
+  // gold rim around the white hood
+  for (const sx of [-1, 1]) b.add(G.box(), A, [sx * 1.66, 2.97, -0.2], [0.18, 0.08, 5.1]);
+  b.add(G.box(), A, [0, 2.97, 2.24], [3.5, 0.08, 0.16]);
+  // gold grille + headlights (they flash during wind-ups)
+  b.add(G.box(), GOLD, [0, 2.2, 2.32], [2.0, 0.9, 0.06]);
+  for (let i = 0; i < 7; i++) b.add(G.box(), M.dark(), [-0.75 + i * 0.25, 2.2, 2.36], [0.07, 0.8, 0.03]);
+  for (const sx of [-1, 1]) {
+    b.add(G.cyl(12), GOLD, [sx * 1.35, 2.5, 2.3], [0.3, 0.12, 0.3], [PI / 2, 0, 0]);
+    b.add(G.cyl(12), eyeMat(t, 0xfff2c0, 2.0), [sx * 1.35, 2.5, 2.37], [0.22, 0.04, 0.22], [PI / 2, 0, 0]);
+  }
+
+  // ---- THE HEAD (the cab is the face)
+  const SKIN = mat('donaldSkin', 0xf08a2a, { roughness: 0.6 });
+  const PALE = mat('donaldPale', 0xf9d3a2, { roughness: 0.6 });
+  const HAIR = mat('donaldHair', 0xf6d55c, { roughness: 0.45, metalness: 0.15 });
+  const LIPS = mat('donaldLips', 0xd8605a, { roughness: 0.5 });
+  const HZ = -0.35; // head centre z
+  const FZ = HZ + 1.0; // face plane
+  b.add(G.box(), SKIN, [0, 3.95, HZ], [2.5, 2.0, 2.0]);
+  // rounded chin
+  b.add(G.sph(1), SKIN, [0, 3.2, FZ - 0.3], [1.0, 0.36, 0.38]);
+  // ears
+  for (const sx of [-1, 1]) b.add(G.sph(0), SKIN, [sx * 1.3, 4.0, HZ + 0.1], [0.16, 0.36, 0.26]);
+  // pale goggle patches + small squinting eyes
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), PALE, [sx * 0.5, 4.28, FZ + 0.01], [0.78, 0.44, 0.04]);
+    b.add(G.box(), M.white(), [sx * 0.5, 4.26, FZ + 0.04], [0.46, 0.17, 0.04]);
+    b.add(G.box(), M.black(), [sx * 0.45, 4.25, FZ + 0.07], [0.16, 0.15, 0.03]);
+    // heavy squint lid
+    b.add(G.box(), SKIN, [sx * 0.5, 4.39, FZ + 0.06], [0.54, 0.1, 0.05], [0, 0, sx * 0.12]);
+    // brows
+    b.add(G.box(), HAIR, [sx * 0.5, 4.58, FZ + 0.06], [0.6, 0.11, 0.1], [0, 0, sx * 0.14]);
+  }
+  // nose
+  b.add(G.wedge(0.3), SKIN, [0, 3.95, FZ + 0.12], [0.34, 0.42, 0.26]);
+  // pursed mouth
+  b.add(G.sph(1), LIPS, [0, 3.48, FZ + 0.12], [0.3, 0.17, 0.12]);
+  b.add(G.sph(1), mat('donaldMouth', 0x5a1a1a, { roughness: 0.6 }), [0, 3.48, FZ + 0.22], [0.1, 0.06, 0.04]);
+  // HAIR: swept-back sides + the big blond swoop across the forehead
+  for (const sx of [-1, 1]) b.add(G.sph(1), HAIR, [sx * 1.2, 4.7, HZ - 0.15], [0.3, 0.42, 1.0], [0.2, 0, 0]);
+  b.add(G.sph(1), HAIR, [0, 4.72, HZ - 1.0], [1.25, 0.45, 0.3]);
+  b.add(G.sph(1), HAIR, [0.15, 4.86, FZ + 0.05], [1.5, 0.28, 0.48], [0, 0.12, -0.12]);
+  b.add(G.sph(1), HAIR, [-0.95, 4.76, FZ + 0.12], [0.5, 0.22, 0.3], [0.2, 0.4, -0.35]);
+  b.add(G.cone(8), HAIR, [-1.35, 4.62, FZ + 0.1], [0.16, 0.42, 0.16], [0, 0, 1.9]);
+  // RED CAP (MAGA front panel)
+  const RED = M.capRed();
+  b.add(G.taper(0.78, 14), RED, [0, 5.32, HZ + 0.05], [1.3, 0.78, 1.18]);
+  b.add(G.cyl(14), RED, [0, 5.73, HZ + 0.05], [1.02, 0.06, 0.92]);
+  b.add(G.box(), M.maga(), [0, 5.36, HZ + 1.07], [1.8, 0.66, 0.06], [-0.27, 0, 0]);
+  b.add(G.box(), RED, [0, 4.98, FZ + 0.42], [2.1, 0.08, 1.0], [0.06, 0, 0]);
+  b.add(G.sph(0), RED, [0, 5.78, HZ + 0.05], [0.12, 0.08, 0.12]);
+  // shirt collar + the LONG RED TIE running down the hood
+  for (const sx of [-1, 1]) b.add(G.box(), M.white(), [sx * 0.34, 3.0, FZ + 0.1], [0.42, 0.12, 0.3], [0, sx * 0.5, sx * -0.25]);
+  const TIE = mat('donaldTie', 0xd0102a, { roughness: 0.5 });
+  b.add(G.box(), TIE, [0, 3.02, FZ + 0.16], [0.36, 0.3, 0.2]);
+  b.add(G.box(), TIE, [0, 2.99, FZ + 1.0], [0.48, 0.06, 1.7]);
+  b.add(G.box(), TIE, [0, 2.99, FZ + 1.95], [0.62, 0.06, 0.5]);
+  b.add(G.box(), TIE, [0, 2.75, 2.33], [0.62, 0.5, 0.06]);
+  b.add(G.box(), TIE, [0, 2.45, 2.33], [0.32, 0.32, 0.06], [0, 0, PI / 4]);
+  // suit shoulders in gold behind the head
+  b.add(G.box(), A, [0, 3.1, HZ - 0.4], [2.7, 0.32, 1.4]);
+
+  // GOLD BLADE with a dark top edge + glow strip, swept wings, chrome bolts
+  b.add(G.box(), GOLD, [0, 1.25, 2.95], [3.4, 2.3, 0.3], [-0.12, 0, 0]);
+  for (const sx of [-1, 1]) b.add(G.box(), GOLD, [sx * 2.4, 1.25, 2.6], [1.7, 2.3, 0.3], [-0.12, sx * -0.45, 0]);
+  b.add(G.box(), M.dark(), [0, 2.42, 2.85], [5.8, 0.14, 0.4]);
+  b.add(G.box(), glowMat(t, 0xffc24a, 0.25), [0, 0.28, 3.06], [3.4, 0.12, 0.2]);
+  for (const sx of [-1, 1]) b.add(G.box(), glowMat(t, 0xffc24a, 0.25), [sx * 2.4, 0.28, 2.72], [1.6, 0.12, 0.2], [0, sx * -0.45, 0]);
+  for (const x of [-1.2, -0.4, 0.4, 1.2]) b.add(G.sph(0), M.chrome(), [x, 1.8, 3.13], [0.09, 0.09, 0.06]);
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), M.dark(), [sx * 1.1, 1.5, 2.45], [0.3, 0.3, 1.2]);
+    b.add(G.cyl(8), M.chrome(), [sx * 0.6, 2.1, 2.45], [0.09, 1.2, 0.09], [PI / 2 - 0.6, 0, 0]);
+  }
+  // gold smokestacks + a flag on the back
+  for (const sx of [-1, 1]) stack(b, stacks, sx * 1.15, 2.95, -2.35, 0.2, 1.4, GOLD, M.black());
+  b.add(G.cyl(6), M.chrome(), [0, 4.1, -2.5], [0.04, 2.3, 0.04]);
+  b.add(G.box(), M.capRed(), [0.45, 4.98, -2.5], [0.9, 0.5, 0.02]);
+  b.add(G.box(), M.white(), [0.45, 4.98, -2.5], [0.9, 0.18, 0.03]);
+  b.add(G.box(), M.flagBlue(), [0.22, 5.08, -2.5], [0.44, 0.3, 0.04]);
+  b.flush();
+  base.flush();
+  return { root, height: 5.9, stacks, front: 3.1 };
+}
+
 const BUILDERS: Record<EnemyType, () => Tpl> = {
-  scrapper,
+  scrapper: () => scrapper(),
   brute,
   spinner,
   thief,
+  rallybot: () => scrapper('rallybot'),
+  donald,
   bulldoza,
   frostbyte,
   grinder,
   slush: () => twin('slush'),
   sleet: () => twin('sleet'),
   omega,
-  rival: scrapper, // Brawl rivals use their own models (src/brawl); placeholder for exhaustiveness
+  rival: () => scrapper(), // Brawl rivals use their own models (src/brawl); placeholder for exhaustiveness
 };
 /** One depth-only shadow proxy per rigid group of the template (root base, body, lift, saw rings, auger, ball):
  *  the per-material meshes stop casting and the group's shadow is a single draw. Clones share the proxy

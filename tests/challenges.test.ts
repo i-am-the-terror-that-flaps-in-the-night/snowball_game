@@ -41,7 +41,8 @@ describe('challenge definitions', () => {
       expect(new Set(list.map((c) => c.id)).size).toBe(3);
       for (const c of list) expect(c.goal.length, `${z.id}/${c.id}`).toBeLessThanOrEqual(22);
     }
-    expect(maxStars()).toBe(15);
+    expect(maxStars()).toBe(ZONES.length * 3);
+    expect(ZONES.length).toBe(6);
   });
 
   it('a plain win meets nothing; each crafted payload meets its own challenge', () => {

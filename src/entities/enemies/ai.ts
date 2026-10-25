@@ -72,6 +72,8 @@ const TUNE: Record<EnemyType, [turn: number, accel: number]> = {
   slush: [2.4, 13],
   sleet: [2.6, 13],
   omega: [1.1, 8],
+  rallybot: [4.5, 16],
+  donald: [1.3, 9],
   rival: [3, 14], // Brawl-only; never spawned by the campaign manager
 };
 
@@ -86,6 +88,8 @@ const DEFAULT_STATE: Record<EnemyType, string> = {
   slush: 'lineup',
   sleet: 'pin',
   omega: 'approach',
+  rallybot: 'circle',
+  donald: 'approach',
   rival: 'approach',
 };
 
@@ -95,7 +99,7 @@ export function initAI(e: Bot): void {
   e.baseAccel = e.accel = a;
   e.set(DEFAULT_STATE[e.type], e.type === 'spinner' ? 3 : 0);
   e.cd = e.isBoss ? 1.5 : 0.6 + Math.random() * 1.2;
-  e.orbitR = e.type === 'scrapper' ? 5.4 + (e.id % 3) * 0.8 : 6;
+  e.orbitR = e.type === 'scrapper' || e.type === 'rallybot' ? 5.4 + (e.id % 3) * 0.8 : 6;
 }
 
 /** Cancel whatever the bot was doing (stagger / plow died): drop attack, telegraphs, tokens. */
@@ -375,4 +379,5 @@ export const MINION_AI: Partial<Record<EnemyType, (h: Host, e: Bot, dt: number) 
   brute,
   spinner,
   thief,
+  rallybot: scrapper,
 };

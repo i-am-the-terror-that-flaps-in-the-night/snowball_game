@@ -48,7 +48,7 @@ export interface ZoneDef {
   /** Falling snow particle density, 0..1. */
   snowfall: number;
   /** Decoration theme for Environment. */
-  theme: 'meadow' | 'pines' | 'lake' | 'blizzard' | 'peak' | 'brawl';
+  theme: 'meadow' | 'pines' | 'lake' | 'blizzard' | 'peak' | 'rally' | 'brawl';
 }
 
 const g = (type: EnemyType, count: number, delay = 0, interval = 2.5): SpawnGroup => ({ type, count, delay, interval });
@@ -112,6 +112,18 @@ export const ZONES: ZoneDef[] = [
     enemyHpMult: 2.1, coinMult: 1.8, snowDepth: 0.6, snowRegenMult: 1.3, clearReward: 1200,
     skyTop: 0x1b2347, skyBottom: 0xb46a8c, fogColor: 0x8a6f8f, fogNear: 40, fogFar: 140,
     sunColor: 0xffa7a0, sunIntensity: 1.9, ambientColor: 0x8f8fd8, ambientIntensity: 0.9, snowTint: 0xf6ecff, snowfall: 0.5, theme: 'peak',
+  },
+  {
+    index: 5, id: 'plaza', name: 'Golden Tower Plaza', tagline: 'A very big rally. The biggest. Everybody says so.', bossName: 'THE DONALD',
+    rounds: [
+      { groups: [g('rallybot', 7, 0, 0.8), g('brute', 2, 2, 3), g('thief', 3, 5, 1.5)] },
+      { groups: [g('spinner', 4, 0, 1.8), g('rallybot', 6, 2, 0.9), g('brute', 3, 6, 2.5)] },
+      { groups: [g('brute', 4, 0, 2.5), g('spinner', 3, 3, 1.8), g('thief', 3, 5, 1.2), g('rallybot', 7, 7, 0.7)] },
+      { boss: true, groups: [g('donald', 1, 1, 1)] },
+    ],
+    enemyHpMult: 2.4, coinMult: 2.0, snowDepth: 0.6, snowRegenMult: 1.4, clearReward: 1600,
+    skyTop: 0x2a3f8f, skyBottom: 0xffd59a, fogColor: 0xf0d6b0, fogNear: 50, fogFar: 160,
+    sunColor: 0xffe2a8, sunIntensity: 2.4, ambientColor: 0xffe6c8, ambientIntensity: 0.95, snowTint: 0xfffaf0, snowfall: 0.2, theme: 'rally',
   },
 ];
 

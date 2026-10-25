@@ -92,6 +92,8 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
     bossClean(60, 'Omega Dodger'),
     slamKills(10, 'Avalanche Artist'),
   ],
+  // Golden Tower Plaza: break up the rally crowds, dodge the walls and the beam, keep the combo going bigly.
+  plaza: [strikes(3, 'Crowd Control'), bossClean(80, 'Fake Damage'), combo(40, 'Tremendous Combo')],
 };
 
 /** Hard mode tuning (meta/challenges.ts hardZone / recordHardClear). */

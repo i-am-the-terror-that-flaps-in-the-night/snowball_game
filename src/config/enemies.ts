@@ -11,6 +11,9 @@ export type EnemyType =
   | 'slush'
   | 'sleet'
   | 'omega'
+  /** THE DONALD's red-cap rally minion (a re-skinned scrapper). */
+  | 'rallybot'
+  | 'donald'
   /** Brawl mode rival plow (stats are the baseline; BrawlManager scales by difficulty). */
   | 'rival';
 
@@ -79,6 +82,14 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
   rival: {
     type: 'rival', name: 'Rival Plow', title: '', hp: 140, speed: 10.5, radius: 1.6, mass: 1.5, ramDamage: 14, armor: 0, coins: 0, isBoss: false, color: 0x2a9df4, accent: 0xffffff,
     special: 'Brawl-mode AI snowplow with the SAME kit as the player: plows snow into a held ball, slams it (SLAM_DAMAGE_K * r^2), rams, dashes (long burst + dash strike), whirls (E). Hunts the player AND the other rivals.',
+  },
+  rallybot: {
+    type: 'rallybot', name: 'Rally Bot', title: '', hp: 34, speed: 8, radius: 0.9, mass: 0.6, ramDamage: 8, armor: 0, coins: 6, isBoss: false, color: 0xf2f2f4, accent: 0xd8202c,
+    special: 'A scrapper in THE DONALD\'s colors with a red cap. Summoned in a ring during RALLY (scrapper AI); while the rally lasts it is faster and hits harder.',
+  },
+  donald: {
+    type: 'donald', name: 'THE DONALD', title: 'Tremendous Plow of the Tower', hp: 2600, speed: 5, radius: 3.0, mass: 9, ramDamage: 30, armor: 8, coins: 450, isBoss: true, color: 0xf4f1e8, accent: 0xe0a91c,
+    special: 'Huge gold-and-white caricature plow (orange face, swoopy blond hair, red cap, long red tie). (1) BUILD THE WALL: snow-brick wall lines rise across the arena (1.0s ground-stripe telegraph), block movement for 9s, smashed by slams / dash strikes. (2) DEPORTATION: 1.2s tractor-beam ring near the plow; inside when it fires = flung to the far edge, held ball lost (bots too). (3) RALLY: parks at the podium, summons a ring of red-cap rally bots, takes 60% less damage, bots buffed; wrecking half of them or smashing the podium breaks it (boss stunned). SHOVE / STEAMROLL charge between. Phase 2 at 50%: GOLD PLATED (reflects 15% of damage), faster, more walls, taunts.',
   },
   omega: {
     type: 'omega', name: 'MEGAPLOW Ω', title: 'The Final Machine', hp: 2400, speed: 4.5, radius: 3.2, mass: 10, ramDamage: 30, armor: 8, coins: 400, isBoss: true, color: 0x22252b, accent: 0xff1744,

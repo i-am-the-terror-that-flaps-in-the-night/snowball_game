@@ -60,11 +60,11 @@ const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; gr
 
 const ENEMY_ICON: Record<EnemyType, string> = {
   scrapper: '🤖', brute: '🚧', spinner: '🪚', thief: '🦝',
-  bulldoza: '🚜', frostbyte: '👾', grinder: '🔩', slush: '🔴', sleet: '🔵', omega: '💀', rival: '🚜',
+  bulldoza: '🚜', frostbyte: '👾', grinder: '🔩', slush: '🔴', sleet: '🔵', omega: '💀', rival: '🚜', rallybot: '🧢', donald: '🍊',
 };
 
 const ENEMY_TIP: Partial<Record<EnemyType, string>> = {
-  scrapper: 'FAST', brute: 'FRONT ARMOR', spinner: 'OVERHEATS', thief: 'STEALS SNOW',
+  scrapper: 'FAST', brute: 'FRONT ARMOR', spinner: 'OVERHEATS', thief: 'STEALS SNOW', rallybot: 'RALLY BUFF',
 };
 
 /** Controls cheat-sheet. Action rows show the player's current (rebindable) keys; other rows are literal labels. */

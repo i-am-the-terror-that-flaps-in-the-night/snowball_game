@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { ballRadius, ballVolume } from '../../core/types';
 import type { EnemyType } from '../../config/enemies';
 import { Bot, Vuln, type Host } from './Bot';
-import { face, goTo } from './ai';
+import { clamp, face, goTo } from './ai';
+import { donaldProps, type WallLine } from './donaldProps';
+import { ARENA } from '../../core/types';
 
 /* Boss AI. Every big move has a readable wind-up (>= 0.6s): glowing parts, the bot backing up / revving,
  * and a ground decal (red chevron stripe for charges/dashes, a filling warning ring for AOE moves). */
@@ -810,6 +812,320 @@ function omega(h: Host, e: Bot, dt: number): void {
   }
 }
 
+/* ------------------------------------------------------------------ THE DONALD */
+
+/** Caricature taunts (GOLD PLATED phase, ~every 6s). Written for the game; not quotes. */
+const DONALD_TAUNTS = [
+  'TREMENDOUS PLOW!',
+  'THE BEST SNOW, EVERYBODY SAYS SO',
+  'SAD!',
+  "YOU'RE FIRED!",
+  'BIGLY!',
+  'FAKE SNOW!',
+  'NOBODY PLOWS BETTER. NOBODY.',
+  'HUGE BLADE. THE HUGEST.',
+  'WRONG!',
+  'LOW ENERGY PLOW!',
+  'MANY PLOWS ARE SAYING IT',
+  'A VERY STABLE PLOW',
+];
+/** Where the boss parks for a RALLY: in front of the stage (north end). */
+const RALLY_X = 0;
+const RALLY_Z = -21;
+
+interface DonaldState {
+  wallCd: number;
+  beamCd: number;
+  rallyCd: number;
+  tauntT: number;
+  tauntI: number;
+  plated: boolean;
+  /** The first rally triggers early once the boss is below 75% HP. */
+  rallied: boolean;
+  rally: Bot[];
+  glintT: number;
+  podX: number;
+  podZ: number;
+  podPending: boolean;
+}
+const DSTATE = new WeakMap<Bot, DonaldState>();
+function dstate(e: Bot): DonaldState {
+  let s = DSTATE.get(e);
+  if (!s) {
+    s = { wallCd: 3.5, beamCd: 8, rallyCd: 20, tauntT: 2, tauntI: (Math.random() * 12) | 0, plated: false, rallied: false, rally: [], glintT: 0, podX: 0, podZ: 0, podPending: false };
+    DSTATE.set(e, s);
+  }
+  return s;
+}
+/** THE DONALD's attack timers (headless probes force attacks through this; undefined before its first AI frame). */
+export const donaldTimers = (e: Bot): Pick<DonaldState, 'wallCd' | 'beamCd' | 'rallyCd' | 'plated'> | undefined => DSTATE.get(e);
+
+/** BUILD THE WALL: 1-2 lines in phase 1 (a corridor toward the boss, or a wall behind the plow), a U-box in phase 2. */
+function donaldWalls(h: Host, e: Bot, s: DonaldState): void {
+  let ux = h.px - e.position.x;
+  let uz = h.pz - e.position.z;
+  const ul = Math.hypot(ux, uz) || 1;
+  ux /= ul;
+  uz /= ul;
+  const vx = uz;
+  const vz = -ux;
+  const lines: WallLine[] = [];
+  // laid out around the plow (the arena walls stand in for any line that would fall outside)
+  const m = 4;
+  const cx = clamp(h.px, ARENA.minX + m, ARENA.maxX - m);
+  const cz = clamp(h.pz, ARENA.minZ + m, ARENA.maxZ - m);
+  // a wall parallel to boss -> plow, offset sideways by o (with the plow in the middle)
+  const side = (o: number) => lines.push({ x: cx + vx * o - ux * 12, z: cz + vz * o - uz * 12, dx: ux, dz: uz, len: 22 });
+  // a wall across, behind the plow (skipped when the plow already has an arena wall at its back)
+  const back = () => {
+    const bx = cx + ux * 5.5;
+    const bz = cz + uz * 5.5;
+    const mm = 1.5;
+    if (bx < ARENA.minX + mm || bx > ARENA.maxX - mm || bz < ARENA.minZ + mm || bz > ARENA.maxZ - mm) return;
+    lines.push({ x: bx - vx * 8.5, z: bz - vz * 8.5, dx: vx, dz: vz, len: 17 });
+  };
+  const n = s.plated ? 3 : Math.random() < 0.6 ? 2 : 1;
+  if (n >= 2) {
+    side(6.5);
+    side(-6.5);
+  }
+  if (n !== 2) back();
+  if (lines.length === 0) {
+    side(6.5);
+    side(-6.5);
+  }
+  const tele = s.plated ? 0.75 : 1.0;
+  donaldProps.buildWalls(h, lines, tele, 9);
+  e.set('wallWind', tele);
+  s.wallCd = s.plated ? 8 : 13;
+  h.label(e, 'BUILD THE WALL!', '#ffd24a', 1.25);
+  h.sfx('charge', 0.7, 0.6, 0.15);
+}
+
+/** DEPORTATION: a tractor-beam ring just ahead of the plow (it fires itself after 1.2s; see donaldProps). */
+function donaldBeam(h: Host, e: Bot, s: DonaldState): void {
+  const plow = h.ctx.plow;
+  const lead = clamp(plow.speed, -6, 12) * 0.35;
+  const m = 4;
+  const x = clamp(h.px + Math.sin(plow.heading) * lead, ARENA.minX + m, ARENA.maxX - m);
+  const z = clamp(h.pz + Math.cos(plow.heading) * lead, ARENA.minZ + m, ARENA.maxZ - m);
+  donaldProps.startBeam(h, x, z, s.plated ? 4.8 : 4.2, 1.2);
+  e.set('beamWind', 1.2);
+  s.beamCd = s.plated ? 7 : 9.5;
+  h.label(e, 'DEPORTATION!', '#7fe3ff', 1.25);
+}
+
+/** RALLY: park, summon a ring of red-cap rally bots (buffed), raise the podium, take 60% less damage. */
+function donaldRallyStart(h: Host, e: Bot, s: DonaldState): void {
+  const ctx = h.ctx;
+  const n = s.plated ? 6 : 4;
+  // face down the red carpet (south) from the rally spot, else toward the arena centre
+  const atSpot = Math.hypot(RALLY_X - e.position.x, RALLY_Z - e.position.z) < 4;
+  const hd = atSpot ? 0 : Math.atan2(-e.position.x, -e.position.z);
+  e.set('rally', 9);
+  e.dmgTakenMult = 0.4;
+  e.speed = 0;
+  s.rally.length = 0;
+  for (let i = 0; i < n; i++) {
+    const a = hd + Math.PI / n + (i / n) * Math.PI * 2;
+    const m = 2;
+    const x = clamp(e.position.x + Math.sin(a) * 7, ARENA.minX + m, ARENA.maxX - m);
+    const z = clamp(e.position.z + Math.cos(a) * 7, ARENA.minZ + m, ARENA.maxZ - m);
+    const b = ctx.enemies.spawn('rallybot', x, z, { hpMult: ctx.zone.enemyHpMult, heading: a }) as Bot;
+    b.spdMult = 1.3;
+    b.dmgOutMult = 1.4;
+    s.rally.push(b);
+    _v.set(x, 1, z);
+    for (const c of [0xc8102e, 0xffffff, 0x1f3b8c, 0xffd24a]) ctx.fx.burst(_v, { color: c, count: 8, speed: 7, size: 0.13, gravity: 9, life: 1.0 });
+  }
+  // the podium rises in front of the blade once the boss has turned to face the crowd (see 'rally')
+  const f = e.rig.front + 1.9;
+  s.podX = e.position.x + Math.sin(hd) * f;
+  s.podZ = e.position.z + Math.cos(hd) * f;
+  s.podPending = true;
+  e.aimH = hd;
+  h.label(e, 'WHAT A CROWD! RALLY!', '#ff4a5a', 1.3);
+  h.sfx('roar', 0.9, 1.1, 0.2);
+}
+
+/** Ends the rally; `broken` = the player wrecked half the bots or the podium: the boss is stunned. */
+function donaldRallyEnd(h: Host, e: Bot, s: DonaldState, broken: boolean): void {
+  e.dmgTakenMult = 1;
+  for (const b of s.rally) {
+    b.spdMult = 1;
+    b.dmgOutMult = 1;
+  }
+  s.rally.length = 0;
+  s.podPending = false;
+  donaldProps.dropPodium();
+  s.rallyCd = s.plated ? 20 : 26;
+  e.glow = 0;
+  if (broken) {
+    e.set('recover', 0.3);
+    e.stun = 2.6;
+    e.stunMult = 1.5;
+    h.label(e, 'RALLY BROKEN!', '#ffe14a', 1.3);
+    h.sfx('stun', 0.9, 0.9, 0.1);
+  } else e.set('recover', 0.5);
+}
+
+/** Phase 2 at 50%: GOLD PLATED. Shinier gold hull, reflects 15% of damage, faster, more walls, taunts. */
+function donaldPlate(h: Host, e: Bot, s: DonaldState): void {
+  s.plated = true;
+  e.enraged = true;
+  e.reflect = 0.15;
+  h.bossPhase(e, 'GOLD PLATED!');
+  const gold = new THREE.Color(0xffd257);
+  const rig = e.rig;
+  for (let i = 0; i < rig.paint.length; i++) {
+    rig.paintBase[i].lerp(gold, i === 0 ? 0.75 : 0.4);
+    rig.paint[i].metalness = 0.4;
+    rig.paint[i].roughness = 0.2;
+  }
+  s.wallCd = Math.min(s.wallCd, 1.5);
+  s.tauntT = 1.5;
+}
+
+function donald(h: Host, e: Bot, dt: number): void {
+  let s = DSTATE.get(e);
+  if (!s) {
+    s = dstate(e);
+    // grand entrance: confetti cannons from the stage and both stands
+    const fx = h.ctx.fx;
+    const cols = [0xc8102e, 0xffffff, 0x1f3b8c, 0xffd24a];
+    for (const [x, y, z] of [[-9, 6, -32], [9, 6, -32], [0, 9, -34], [-31, 5, -12], [31, 5, -12], [-31, 5, 12], [31, 5, 12]]) {
+      for (const c of cols) fx.burst(_v.set(x, y, z), { color: c, count: 10, speed: 9, size: 0.14, gravity: 5, life: 1.8 });
+    }
+    h.label(e, 'THE DONALD HAS ARRIVED!', '#ffd24a', 1.3);
+    h.sfx('roar', 0.8, 1.05, 0.2);
+  }
+  s.wallCd -= dt;
+  s.beamCd -= dt;
+  s.rallyCd -= dt;
+  // a reset out of the rally state (plow died, etc.) must still drop the rally buffs
+  if (e.state !== 'rally' && e.dmgTakenMult !== 1) donaldRallyEnd(h, e, s, false);
+  const d = h.dist(e);
+  if (!s.plated && e.hpFrac <= 0.5) donaldPlate(h, e, s);
+  if (s.plated) {
+    s.tauntT -= dt;
+    if (s.tauntT <= 0) {
+      s.tauntT = 6;
+      h.label(e, DONALD_TAUNTS[s.tauntI++ % DONALD_TAUNTS.length], '#ffd24a', 1.05);
+    }
+    s.glintT -= dt;
+    if (s.glintT <= 0) {
+      s.glintT = 0.12;
+      h.sparks(e, 0xfff2b0, 2);
+    }
+  }
+  if (!s.rallied && e.hpFrac < 0.75) {
+    s.rallied = true;
+    s.rallyCd = Math.min(s.rallyCd, 0);
+  }
+  const spd = e.def.speed * (s.plated ? 1.25 : 1);
+  const C: ChargeCfg = { speed: s.plated ? 19 : 17, maxT: 2.2, dmg: e.def.ramDamage * 1.3, knock: 22 };
+  switch (e.state) {
+    case 'chargeWind':
+      chargeWind(h, e, C);
+      break;
+    case 'charge': {
+      const r = charge(h, e, C);
+      if (r === 'wall') {
+        wallSlam(h, e, 2);
+        e.set('recover', 0.4);
+      } else if (r === 'done') e.set('recover', e.atkHits > 0 ? 1.5 : 0.9);
+      break;
+    }
+    case 'shoveWind':
+    case 'shove':
+      shove(h, e, e.def.ramDamage, 16, 10);
+      break;
+    case 'wallWind':
+      // stands and "builds": the gold stripes on the ground show where the walls will rise
+      e.desSpeed = 0;
+      face(e, h.px, h.pz);
+      e.windup = e.prog * 0.6;
+      e.glow = e.prog;
+      if (e.stateT <= 0) {
+        e.windup = 0;
+        e.set('wallPause', s.plated ? 0.9 : 1.3);
+      }
+      break;
+    case 'wallPause':
+      // the walls are up: a beat to react (smash out!), then STEAMROLL down the corridor
+      e.desSpeed = 0;
+      face(e, h.px, h.pz);
+      e.glow = Math.max(0, e.glow - dt);
+      if (e.stateT <= 0) {
+        e.chargesLeft = 1;
+        beginChargeWind(h, e, 1.0);
+      }
+      break;
+    case 'beamWind':
+      e.desSpeed = 0;
+      face(e, h.px, h.pz);
+      e.windup = e.prog;
+      e.glow = e.prog;
+      e.jitter = 0.02 * e.prog;
+      if (e.stateT <= 0) {
+        e.windup = 0;
+        e.jitter = 0;
+        e.set('recover', 0.6);
+      }
+      break;
+    case 'rallyGo':
+      goTo(e, RALLY_X, RALLY_Z, spd * 1.6, 3);
+      e.turnRate = 2.2;
+      if (Math.hypot(RALLY_X - e.position.x, RALLY_Z - e.position.z) < 2.2 || e.stateT <= 0) donaldRallyStart(h, e, s);
+      break;
+    case 'rally': {
+      e.desSpeed = 0;
+      e.desHeading = e.aimH;
+      e.turnRate = 3;
+      e.glow = 0.4 + 0.3 * Math.sin(h.time * 6);
+      if (s.podPending && (Math.abs(Math.atan2(Math.sin(e.heading - e.aimH), Math.cos(e.heading - e.aimH))) < 0.2 || e.prog > 0.12)) {
+        s.podPending = false;
+        e.heading = e.aimH;
+        donaldProps.raisePodium(h, s.podX, s.podZ, e.aimH + Math.PI);
+      }
+      let alive = 0;
+      for (const b of s.rally) if (b.alive) alive++;
+      const wrecked = s.rally.length - alive;
+      if (donaldProps.podiumBroken || wrecked >= Math.ceil(s.rally.length / 2)) {
+        donaldProps.podiumBroken = false;
+        donaldRallyEnd(h, e, s, true);
+      } else if (e.stateT <= 0) {
+        h.label(e, 'WHAT A RALLY. THE BEST.', '#ffd24a', 1.1);
+        donaldRallyEnd(h, e, s, false);
+      }
+      break;
+    }
+    case 'recover':
+      if (recover(e, dt)) {
+        e.set('approach', 0);
+        e.cd = (1.0 + Math.random() * 0.8) * (s.plated ? 0.7 : 1);
+      }
+      break;
+    default:
+      goTo(e, h.px, h.pz, spd, 3);
+      e.turnRate = 1.3 * (s.plated ? 1.25 : 1);
+      if (e.cd <= 0) {
+        if (s.rallyCd <= 0) {
+          e.set('rallyGo', 8);
+          h.label(e, 'RALLY TIME!', '#ff4a5a', 1.1);
+        } else if (s.wallCd <= 0 && !donaldProps.wallsUp) donaldWalls(h, e, s);
+        else if (s.beamCd <= 0 && !donaldProps.beamActive) donaldBeam(h, e, s);
+        else if (d < e.radius + h.pr + 1.6) {
+          e.set('shoveWind', 0.6);
+          h.sfx('charge', 0.45, 0.6, 0.2);
+        } else if (d > 11) {
+          e.chargesLeft = 1;
+          beginChargeWind(h, e, 1.0);
+        } else e.cd = 0.4;
+      }
+  }
+}
+
 export const BOSS_AI: Partial<Record<EnemyType, (h: Host, e: Bot, dt: number) => void>> = {
   bulldoza,
   frostbyte,
@@ -817,4 +1133,5 @@ export const BOSS_AI: Partial<Record<EnemyType, (h: Host, e: Bot, dt: number) =>
   slush,
   sleet,
   omega,
+  donald,
 };

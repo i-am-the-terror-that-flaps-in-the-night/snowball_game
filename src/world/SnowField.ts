@@ -23,6 +23,7 @@ const BARE_COLORS: Record<ZoneDef['theme'], number> = {
   lake: 0x7f9db3,
   blizzard: 0x7f8b99,
   peak: 0x5a4e68,
+  rally: 0x8a6a4a,
   brawl: 0x5d6478,
 };
 
