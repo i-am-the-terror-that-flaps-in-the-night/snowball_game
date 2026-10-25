@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { GameContext } from './types';
 import { ACTIONS, type Action } from './input';
+import { configureBloom } from '../render/post';
 
 const SETTINGS_KEY = 'snowplow-showdown-settings-v1';
 
@@ -15,12 +16,14 @@ export interface Settings {
   /** Camera shake multiplier, 0..1. */
   shake: number;
   quality: Quality;
+  /** Bloom post-processing (HIGH quality only). */
+  bloom: boolean;
   /** Rebound primary key per action (KeyboardEvent.code). Missing = default. */
   keys: Partial<Record<Action, string>>;
 }
 
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', keys: {} };
+  return { master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', bloom: true, keys: {} };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -44,6 +47,7 @@ function load(): Settings {
       sfx: clamp01(p.sfx, d.sfx),
       shake: clamp01(p.shake, d.shake),
       quality: p.quality === 'low' ? 'low' : 'high',
+      bloom: p.bloom !== false,
       keys,
     };
   } catch {
@@ -84,9 +88,15 @@ export function setBrawlPerf(ctx: GameContext, on: boolean): void {
     ctx.renderer.setPixelRatio(Math.min(window.devicePixelRatio, on ? 1.5 : 2));
     ctx.renderer.setSize(window.innerWidth, window.innerHeight);
   }
+  syncBloom(ctx);
 }
 
-/** Low = 1x pixel ratio and no shadow maps; High = up to 2x (1.5x in Brawl) and PCF shadows. */
+/** Bloom runs on HIGH only (with the Bloom setting on); Brawl gets the cheaper bloom chain. */
+function syncBloom(ctx: GameContext): void {
+  configureBloom(ctx.renderer, settings.quality === 'high' && settings.bloom, brawlPerf);
+}
+
+/** Low = 1x pixel ratio, no shadow maps, no bloom; High = up to 2x (1.5x in Brawl), PCF shadows and bloom. */
 export function applyQuality(ctx: GameContext): void {
   const r = ctx.renderer;
   const high = settings.quality === 'high';
@@ -103,6 +113,7 @@ export function applyQuality(ctx: GameContext): void {
   r.shadowMap.enabled = high;
   r.shadowMap.needsUpdate = true;
   appliedQuality = settings.quality;
+  syncBloom(ctx);
 }
 
 export function applyAllSettings(ctx: GameContext): void {
