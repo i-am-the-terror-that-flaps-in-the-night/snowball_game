@@ -909,8 +909,8 @@ export class BrawlManager implements BrawlAPI {
       if (f === this.player) {
         // Bounty hunting: the lobby goes after the player, harder when they lead or are on a streak.
         s += this.diff.playerFocus;
-        if (playerLeads) s += 0.6 * this.diff.playerFocus;
-        s += 0.35 * this.tierOf(pe.streak) * this.diff.playerFocus;
+        if (playerLeads) s += 0.3 * this.diff.playerFocus;
+        s += 0.2 * this.tierOf(pe.streak) * this.diff.playerFocus;
       } else {
         // Elites farm weaker bots; ordinary bots only mildly chase other bots' bounties.
         if (r.s.elite && f.rival && !f.rival.s.elite) s += 0.35;

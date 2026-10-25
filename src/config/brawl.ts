@@ -69,9 +69,9 @@ export interface BrawlDifficultyDef {
 }
 
 export const BRAWL_DIFFICULTIES: BrawlDifficultyDef[] = [
-  { id: 'rookie', name: 'Rookie Lobby', blurb: 'Bots that just got their licence. Sloppy aim, slow reactions, budget garages.', hpMult: 0.8, dmgMult: 0.7, reaction: 0.6, skill: 0.3, coinMult: 1, botLevels: { regular: [0.1, 0.45], elite: [0.5, 0.75], floor: 0, eliteFloor: 0 }, perkChance: { regular: 0, elite: 0.3 }, elites: 1, playerFocus: 0.2, maxHunters: 1, killHeal: 0.2, streakBuff: 0.05 },
-  { id: 'pro', name: 'Pro Lobby', blurb: 'Seasoned plowers with garages a bit behind yours. They dash, flank and steal kills.', hpMult: 1, dmgMult: 1, reaction: 0.35, skill: 0.65, coinMult: 1.6, botLevels: { regular: [0.4, 0.75], elite: [0.75, 0.95], floor: 0, eliteFloor: 1 }, perkChance: { regular: 0.25, elite: 0.65 }, elites: 2, playerFocus: 0.55, maxHunters: 2, killHeal: 0.3, streakBuff: 0.06 },
-  { id: 'legend', name: 'Legend Lobby', blurb: 'Sweaty tryhards with garages as good as yours. They hunt the leader.', hpMult: 1.2, dmgMult: 1.35, reaction: 0.16, skill: 0.95, coinMult: 2.5, botLevels: { regular: [0.6, 0.9], elite: [0.9, 1.05], floor: 1, eliteFloor: 2 }, perkChance: { regular: 0.6, elite: 1 }, elites: 3, playerFocus: 1.2, maxHunters: 3, killHeal: 0.4, streakBuff: 0.08 },
+  { id: 'rookie', name: 'Rookie Lobby', blurb: 'Bots that just got their licence. Sloppy aim, slow reactions, budget garages.', hpMult: 0.8, dmgMult: 0.7, reaction: 0.6, skill: 0.3, coinMult: 1, botLevels: { regular: [0.1, 0.45], elite: [0.5, 0.75], floor: 0, eliteFloor: 0 }, perkChance: { regular: 0, elite: 0.3 }, elites: 1, playerFocus: 0.1, maxHunters: 1, killHeal: 0.2, streakBuff: 0.05 },
+  { id: 'pro', name: 'Pro Lobby', blurb: 'Seasoned plowers with garages a bit behind yours. They dash, flank and steal kills.', hpMult: 1, dmgMult: 1, reaction: 0.35, skill: 0.65, coinMult: 1.6, botLevels: { regular: [0.4, 0.75], elite: [0.75, 0.95], floor: 0, eliteFloor: 1 }, perkChance: { regular: 0.25, elite: 0.65 }, elites: 2, playerFocus: 0.3, maxHunters: 1, killHeal: 0.3, streakBuff: 0.06 },
+  { id: 'legend', name: 'Legend Lobby', blurb: 'Sweaty tryhards with garages as good as yours. They hunt the leader.', hpMult: 1.2, dmgMult: 1.35, reaction: 0.16, skill: 0.95, coinMult: 2.5, botLevels: { regular: [0.6, 0.9], elite: [0.9, 1.05], floor: 1, eliteFloor: 2 }, perkChance: { regular: 0.6, elite: 1 }, elites: 3, playerFocus: 0.6, maxHunters: 2, killHeal: 0.4, streakBuff: 0.08 },
 ];
 
 /** Gamer-tag style rival names (pick BRAWL_BOTS at random per match). */
