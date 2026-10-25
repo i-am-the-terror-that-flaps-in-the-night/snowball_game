@@ -340,7 +340,7 @@ export class Game {
   private survivalWaveCleared(): void {
     const { ctx } = this;
     ctx.pickups.collectAll();
-    ctx.combat.clear();
+    ctx.combat.clear(true);
     if (this.survival.isBossWave) this.run.bossDefeated = true;
     const bonus = this.survival.waveCleared();
     this.run.coins += bonus;
@@ -482,7 +482,7 @@ export class Game {
     const bonus = Math.round((15 + 10 * this.roundIndex) * ctx.zone.coinMult);
     ctx.progression.addCoins(bonus);
     this.run.coins += bonus;
-    ctx.combat.clear();
+    ctx.combat.clear(true);
     ctx.audio.play('roundClear');
     if (this.roundIndex >= ctx.zone.rounds.length - 1) {
       this.victory();

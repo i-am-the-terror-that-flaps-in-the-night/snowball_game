@@ -280,7 +280,9 @@ export interface CombatAPI {
   readonly overloadHeat: number;
   /** Self-damage the NEXT Thunderclap would deal at the current heat (capped so it leaves 1 HP); 0 off VOLT-9. */
   readonly overloadCost: number;
-  clear(): void;
+  /** Reset combat state. `betweenRounds` (round / wave cleared mid-run) keeps run-long meters like ISOTOPE's
+   *  Critical Mass; a new run clears everything. */
+  clear(betweenRounds?: boolean): void;
   update(dt: number): void;
 }
 

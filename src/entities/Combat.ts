@@ -1379,7 +1379,7 @@ export class Combat implements CombatAPI {
     }
   }
 
-  clear(): void {
+  clear(betweenRounds = false): void {
     this.flameCone.hide();
     this.lightning.clear();
     this.clapCharge = 1;
@@ -1396,7 +1396,7 @@ export class Combat implements CombatAPI {
     this.flameCharge = 1;
     this.burns.clear();
     this.meltCharge = 1;
-    this.critCharge = 0;
+    if (!betweenRounds) this.critCharge = 0;
     this.rads.clear();
     this.chainQueue.length = 0;
     for (const pl of this.pools) {
