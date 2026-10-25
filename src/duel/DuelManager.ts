@@ -53,8 +53,11 @@ export interface DuelHooks {
 
 /** The subset of src/ui/DuelUI.ts the manager uses. */
 export interface DuelUIApi {
-  showGarageBanner(o: { secondsLeft: number; ownPower: number; oppPower: number; bonus: number; bonusLeft: number; readySelf: boolean; readyOpp: boolean; onReady(): void }): void;
-  updateGarageBanner(o: { secondsLeft: number; bonusLeft: number; readySelf: boolean; readyOpp: boolean }): void;
+  showGarageBanner(o: {
+    secondsLeft: number; ownPower: number; oppPower: number; bonus: number; bonusLeft: number; readySelf: boolean; readyOpp: boolean; onReady(): void;
+    match?: { cost: number; missing: number; levels: number } | null; onMatch?(): void;
+  }): void;
+  updateGarageBanner(o: { secondsLeft: number; bonusLeft: number; readySelf: boolean; readyOpp: boolean; match?: { cost: number; missing: number; levels: number } | null }): void;
   hideGarageBanner(): void;
   showHud(roundsToWin: number): void;
   updateHud(o: { me: DuelSideView; opp: DuelSideView; timeLeft: number; round: number; pingMs: number | null }): void;
@@ -178,7 +181,7 @@ export class DuelManager {
     round: 1,
     pingMs: null as number | null,
   };
-  private bannerView = { secondsLeft: 0, bonusLeft: 0, readySelf: false, readyOpp: false };
+  private bannerView: { secondsLeft: number; bonusLeft: number; readySelf: boolean; readyOpp: boolean; match: { cost: number; missing: number; levels: number } | null } = { secondsLeft: 0, bonusLeft: 0, readySelf: false, readyOpp: false, match: null };
   private timerAtEnd = 0;
   private lastCount = -1;
   private helloT = 0;
@@ -1036,7 +1039,30 @@ export class DuelManager {
     this.hooks.ui.showGarageBanner({
       secondsLeft: Math.ceil(seconds), ...info, bonusLeft: wallet.bonus, readySelf: false, readyOpp: false,
       onReady: () => this.setReady(),
+      match: this.matchInfo(),
+      onMatch: () => this.matchOpponent(),
     });
+  }
+
+  /** The opponent's saved levels: what MATCH OPPONENT aims for (their duel-only buys aren't visible yet). */
+  private get oppLevels(): Partial<Record<UpgradeId, number>> | null {
+    return this.profiles[this.oppIdx]?.levels ?? null;
+  }
+
+  private matchInfo(): { cost: number; missing: number; levels: number } | null {
+    const w = this.wallet;
+    const t = this.oppLevels;
+    if (!w || !t || w.bonusTotal <= 0) return null;
+    const p = w.matchPlan(t);
+    return { cost: p.cost, missing: p.missing, levels: p.buys.length };
+  }
+
+  /** MATCH OPPONENT: copy the opponent's shared upgrades, paid from the catch-up bonus. */
+  matchOpponent(): number {
+    if (this.phase !== 'garage' || !this.wallet || !this.oppLevels || this.ready[this.meIdx]) return 0;
+    const n = this.wallet.matchOpponent(this.oppLevels);
+    this.ctx.audio?.play(n > 0 ? 'buy' : 'error');
+    return n;
   }
 
   /** Local READY in the duel garage. */
@@ -1054,6 +1080,7 @@ export class DuelManager {
     b.bonusLeft = this.wallet.bonus;
     b.readySelf = this.ready[this.meIdx];
     b.readyOpp = this.ready[this.oppIdx];
+    b.match = this.matchInfo();
     this.hooks.ui.updateGarageBanner(b);
   }
 

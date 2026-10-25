@@ -244,6 +244,36 @@ describe('DuelWallet (duel garage)', () => {
     expect(w.bonus).toBe(10);
   });
 
+  it('MATCH OPPONENT copies shared upgrades from the bonus only, skipping plow-specific lines', () => {
+    const p = freshProg(0, { engine: 1 });
+    const before = store.get(SAVE_KEY);
+    const w = new DuelWallet(p, 1e7);
+    const target: Partial<Record<UpgradeId, number>> = { engine: 4, armor: 3, brutePound: 5, voltChain: 2 };
+    const plan = w.matchPlan(target);
+    expect(plan.missing).toBe(0);
+    expect(w.matchOpponent(target)).toBe(plan.buys.length);
+    expect(w.level('engine')).toBe(4);
+    expect(w.level('armor')).toBe(3);
+    expect(w.level('brutePound')).toBe(0);
+    expect(w.level('voltChain')).toBe(0);
+    expect(w.bonus).toBe(1e7 - plan.cost);
+    expect(store.get(SAVE_KEY)).toBe(before);
+    // Already matched: nothing left to buy.
+    expect(w.matchPlan(target).buys).toHaveLength(0);
+  });
+
+  it('MATCH OPPONENT with too little bonus buys the cheapest levels and reports the shortfall', () => {
+    const p = freshProg(5000);
+    const target: Partial<Record<UpgradeId, number>> = { engine: 6, armor: 6 };
+    const one = upgradeCost(UPGRADE_BY_ID.engine, 0);
+    const w = new DuelWallet(p, one);
+    const plan = w.matchPlan(target);
+    expect(plan.cost).toBeLessThanOrEqual(one);
+    expect(plan.missing).toBeGreaterThan(0);
+    w.matchOpponent(target);
+    expect(p.coins).toBe(5000); // never touches real coins
+  });
+
   it('effective levels feed the duel stats', () => {
     const p = freshProg(0);
     const w = new DuelWallet(p, 1e6);

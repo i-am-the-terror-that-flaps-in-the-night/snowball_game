@@ -68,7 +68,8 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
   round, and a round ends on a wreck or after 90 s (higher HP% wins). Each player brings their **own garage** and Paint
   Shop look (pilot perks included). Before the match both get a 90 s **DUEL GARAGE** (60 s before a rematch): the
   weaker garage gets **catch-up coins** = the gap in garage power (coins spent on upgrades + coins on hand, the full
-  gap with no cap; the stronger garage never gets any), spent first on duel-only levels that never touch the save; after that you can buy permanent upgrades with
+  gap with no cap; the stronger garage never gets any), spent first on duel-only levels that never touch the save (**⚖ MATCH OPPONENT** does it in one click: it raises every
+  shared, non plow-specific upgrade to the opponent's level from your catch-up coins, cheapest first); after that you can buy permanent upgrades with
   your own coins. Hits use the Brawl hit cap at 60% of PvE damage, so nothing one-shots. Pausing opens the menu but
   the match keeps running; leaving ends it for both. REMATCH needs both players. Duels pay no coins.
   Networking: PeerJS (WebRTC data channels, the free public PeerJS signalling server, Google STUN). Add `?duel=local`

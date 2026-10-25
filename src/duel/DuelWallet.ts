@@ -109,6 +109,55 @@ export class DuelWallet implements ShopWallet {
     return out;
   }
 
+  /** MATCH OPPONENT: raise every shared (non plow-specific) upgrade to the opponent's level, paid only from the
+   *  catch-up bonus, cheapest next level first. Returns what that would buy and cost, and how many levels the
+   *  bonus can't cover. Doesn't change anything. */
+  matchPlan(target: Partial<Record<UpgradeId, number>>): { buys: UpgradeId[]; cost: number; missing: number } {
+    const lvl = new Map<UpgradeId, number>();
+    let want = 0;
+    for (const def of UPGRADES) {
+      if (def.plowOnly) continue;
+      const goal = Math.min(def.maxLevel, target[def.id] ?? 0);
+      const have = this.level(def.id);
+      if (goal > have) {
+        lvl.set(def.id, have);
+        want += goal - have;
+      }
+    }
+    const buys: UpgradeId[] = [];
+    let budget = this.bonus;
+    let cost = 0;
+    for (;;) {
+      let best: UpgradeId | null = null;
+      let bestCost = Infinity;
+      for (const [id, l] of lvl) {
+        if (l >= Math.min(UPGRADE_BY_ID[id].maxLevel, target[id] ?? 0)) continue;
+        const c = upgradeCost(UPGRADE_BY_ID[id], l);
+        if (c < bestCost) {
+          bestCost = c;
+          best = id;
+        }
+      }
+      if (!best || bestCost > budget) break;
+      budget -= bestCost;
+      cost += bestCost;
+      buys.push(best);
+      lvl.set(best, lvl.get(best)! + 1);
+    }
+    return { buys, cost, missing: want - buys.length };
+  }
+
+  /** Apply matchPlan: buys from the bonus only. Returns levels bought. */
+  matchOpponent(target: Partial<Record<UpgradeId, number>>): number {
+    const { buys } = this.matchPlan(target);
+    for (const id of buys) {
+      this.bonus -= this.bonusCost(id);
+      this.temp[id] = this.tempLevel(id) + 1;
+    }
+    if (buys.length) this.changed();
+    return buys.length;
+  }
+
   /** Temporary levels bought with the bonus (for the UI / tests). */
   tempLevels(): Partial<Record<UpgradeId, number>> {
     return { ...this.temp };
