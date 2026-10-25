@@ -22,6 +22,10 @@ import { CameraRig } from '../fx/CameraRig';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
+import { ChallengeTracker, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
+import { Achievements } from '../meta/achievements';
+import { todaysDaily } from '../meta/daily';
+import type { GameEvents, KillSource } from './events';
 
 type State =
   | 'menu' | 'countdown' | 'playing' | 'shop' | 'paused' | 'wrecked' | 'gameover' | 'victory'
@@ -39,6 +43,19 @@ const COMBO_WINDOW = 2.5;
 const TUTORIAL_ZONE = { ...ZONES[0], coinMult: 0 };
 
 /** Boss intro subtitle: one boss -> its title; a pair (SLUSH & SLEET) -> one "NAME — title" line each. */
+/** Per-run tallies (reset at every run / match start). */
+interface RunTally {
+  kills: number;
+  coins: number;
+  biggestBall: number;
+  bestCombo: number;
+  bossDefeated: boolean;
+  killsBy: Record<KillSource, number>;
+  damage: number;
+  /** ctx.time when the run started (ctx.time only advances while the sim runs). */
+  start: number;
+}
+
 function bossIntroTitle(types: EnemyType[]): string {
   const uniq = [...new Set(types)].filter((t) => ENEMIES[t].isBoss);
   if (uniq.length <= 1) return uniq.length ? ENEMIES[uniq[0]].title : '';
@@ -58,7 +75,10 @@ export class Game {
   private wreckT = 0;
   private combo = 0;
   private comboT = 0;
-  private run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
+  private run: RunTally = this.newRun();
+  /** Current campaign run is the arena's Hard mode; current Survival run is the Daily. */
+  private hard = false;
+  private daily = false;
   private hud: HudState;
   private mode: Mode = 'campaign';
   private campaignEnemies: EnemyManager;
@@ -113,13 +133,14 @@ export class Game {
     ctx.pickups = new Pickups(ctx);
 
     const handlers: UIHandlers = {
-      onStartZone: (i) => this.startRun(i),
+      onStartZone: (i, hard) => this.startRun(i, hard),
       onStartBrawl: (d) => this.startBrawl(d),
       onResume: () => this.resume(),
       onQuitToMenu: () => this.toMenu(),
       onStartSurvival: () => this.startSurvival(),
+      onStartDaily: () => this.startSurvival(true),
       onStartTutorial: () => this.startTutorial(),
-      onRetry: () => (this.mode === 'survival' ? this.startSurvival() : this.startRun(this.zoneIndex)),
+      onRetry: () => (this.mode === 'survival' ? this.startSurvival(this.daily) : this.startRun(this.zoneIndex, this.hard)),
       onResetSave: () => {
         progression.resetSave();
         this.refreshStats();
@@ -128,6 +149,9 @@ export class Game {
     };
     ctx.ui = new UI(ctx, uiRoot, handlers);
     this.tutorial = new Tutorial(ctx, uiRoot, (next) => (next === 'arena' ? this.startRun(0) : this.toMenu()));
+    // Meta progression: both only listen to ctx.events (runFinished etc.).
+    new ChallengeTracker(ctx);
+    new Achievements(ctx);
 
     this.hud = this.blankHud();
     this.wireEvents();
@@ -201,15 +225,25 @@ export class Game {
     ctx.waves.clear();
   }
 
-  startRun(zoneIndex: number): void {
+  private newRun(): RunTally {
+    return {
+      kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false,
+      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0 }, damage: 0, start: this.ctx?.time ?? 0,
+    };
+  }
+
+  /** `hard`: the arena's Hard mode (needs hardUnlocked). */
+  startRun(zoneIndex: number, hard = false): void {
     const { ctx } = this;
     if (!ctx.progression.isZoneUnlocked(zoneIndex)) return;
+    if (hard && !hardUnlocked(ctx.progression, zoneIndex)) return;
     this.setMode('campaign');
     this.zoneIndex = zoneIndex;
+    this.hard = hard;
     this.roundIndex = 0;
-    this.run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
+    this.run = this.newRun();
     this.combo = 0;
-    ctx.zone = ZONES[zoneIndex];
+    ctx.zone = hard ? hardZone(ZONES[zoneIndex]) : ZONES[zoneIndex];
     this.refreshStats();
     this.clearArena();
     ctx.fx.clear();
@@ -228,7 +262,7 @@ export class Game {
     const { ctx } = this;
     this.brawlDifficulty = difficulty;
     this.setMode('brawl');
-    this.run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
+    this.run = this.newRun();
     this.combo = 0;
     this.refreshStats();
     this.clearArena();
@@ -251,8 +285,9 @@ export class Game {
     const { ctx } = this;
     this.setMode('campaign');
     this.zoneIndex = 0;
+    this.hard = false;
     this.roundIndex = 0;
-    this.run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
+    this.run = this.newRun();
     this.combo = 0;
     ctx.zone = TUTORIAL_ZONE;
     this.refreshStats();
@@ -271,15 +306,17 @@ export class Game {
     this.tutorial.start();
   }
 
-  /** Endless Survival: campaign bots in one arena, scaling waves, a boss every 5 (see SurvivalManager). */
-  startSurvival(): void {
+  /** Endless Survival: campaign bots in one arena, scaling waves, a boss every 5 (see SurvivalManager).
+   *  `daily`: today's seeded Daily run with its modifier (meta/daily.ts). */
+  startSurvival(daily = false): void {
     const { ctx } = this;
     if (!survivalUnlocked(ctx.progression)) return;
     this.setMode('survival');
+    this.daily = daily;
     this.roundIndex = 0;
-    this.run = { kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false };
+    this.run = this.newRun();
     this.combo = 0;
-    this.survival.reset();
+    this.survival.reset(daily ? todaysDaily() : null);
     this.refreshStats();
     this.clearArena();
     ctx.fx.clear();
@@ -353,6 +390,7 @@ export class Game {
     const sv = this.survival;
     this.state = 'gameover';
     const newBest = sv.finish(this.run.kills);
+    this.emitRunFinished({ mode: 'survival', won: false, wave: sv.wave, daily: this.daily });
     ctx.audio.play('gameOver');
     ctx.ui.setHudVisible(false);
     ctx.ui.showGameOver({
@@ -373,6 +411,10 @@ export class Game {
     ctx.audio.setPlowing(0);
     if (!result) return this.toMenu();
     ctx.progression.recordBrawl(result.placement, result.kills, result.bestStreak);
+    this.emitRunFinished({
+      mode: 'brawl', won: result.placement === 1, kills: result.kills, placement: result.placement,
+      bestStreak: result.bestStreak, brawlDifficulty: this.brawlDifficulty,
+    });
     ctx.audio.play(result.placement === 1 ? 'victory' : 'gameOver');
     ctx.ui.setHudVisible(false);
     ctx.ui.showBrawlResults(result);
@@ -443,8 +485,11 @@ export class Game {
     const { ctx } = this;
     this.state = 'victory';
     this.run.bossDefeated = true;
-    const firstClear = ctx.progression.recordRun(this.zoneIndex, ctx.zone.rounds.length, true, this.run.kills);
-    const reward = firstClear ? ctx.zone.clearReward : Math.round(ctx.zone.clearReward * 0.4);
+    // Hard mode never changes unlocks; it records its own clear (meta/challenges.ts) and pays its own reward.
+    const firstClear = ctx.progression.recordRun(this.zoneIndex, ctx.zone.rounds.length, !this.hard, this.run.kills) && !this.hard;
+    const reward = this.hard
+      ? recordHardClear(ctx.progression, this.zoneIndex)
+      : firstClear ? ctx.zone.clearReward : Math.round(ctx.zone.clearReward * 0.4);
     ctx.progression.addCoins(reward);
     this.run.coins += reward;
     const next = ZONES[this.zoneIndex + 1];
@@ -454,6 +499,7 @@ export class Game {
       clearReward: reward,
       unlockedZoneName: firstClear && next ? next.name : null,
     };
+    this.emitRunFinished({ mode: 'campaign', won: true, zoneIndex: this.zoneIndex, roundsCleared: ctx.zone.rounds.length, hard: this.hard });
     ctx.audio.setEngine(0, 0);
     ctx.audio.setPlowing(0);
     ctx.audio.play('victory');
@@ -476,13 +522,32 @@ export class Game {
     if (this.mode === 'survival') return this.survivalOver();
     this.state = 'gameover';
     ctx.progression.recordRun(this.zoneIndex, this.roundIndex, false, this.run.kills);
+    this.emitRunFinished({ mode: 'campaign', won: false, zoneIndex: this.zoneIndex, roundsCleared: this.roundIndex, hard: this.hard });
     ctx.audio.play('gameOver');
     ctx.ui.setHudVisible(false);
     ctx.ui.showGameOver({ ...this.summaryBase(this.roundIndex), firstClear: false, clearReward: 0, unlockedZoneName: null });
   }
 
+  /** Emit runFinished with this run's tallies (call after the result is recorded, before the results screen). */
+  private emitRunFinished(extra: Partial<GameEvents['runFinished']> & Pick<GameEvents['runFinished'], 'mode' | 'won'>): void {
+    const { ctx, run } = this;
+    ctx.events.emit('runFinished', {
+      plow: ctx.stats.plowKind,
+      kills: run.kills,
+      killsBy: { ...run.killsBy },
+      coins: run.coins,
+      bestCombo: run.bestCombo,
+      biggestBall: run.biggestBall,
+      duration: Math.max(0, ctx.time - run.start),
+      damageTaken: run.damage,
+      ...extra,
+    });
+  }
+
   private summaryBase(roundsCleared: number) {
     return {
+      hard: this.mode === 'campaign' && this.hard,
+      daily: this.mode === 'survival' && this.daily,
       zoneName: this.ctx.zone.name,
       bossName: this.ctx.zone.bossName,
       roundsCleared,
@@ -524,12 +589,17 @@ export class Game {
   private refreshStats(): void {
     const { ctx } = this;
     ctx.stats = ctx.progression.computeStats();
+    if (this.mode === 'survival') this.survival.adjustStats(ctx.stats);
     ctx.plow.applyStats(ctx.stats);
   }
 
   private wireEvents(): void {
     const { events, ui } = this.ctx;
-    events.on('enemyKilled', () => this.run.kills++);
+    events.on('enemyKilled', ({ source }) => {
+      this.run.kills++;
+      this.run.killsBy[source ?? 'other']++;
+    });
+    events.on('plowDamaged', ({ amount }) => (this.run.damage += amount));
     events.on('coinCollected', ({ amount }) => (this.run.coins += amount));
     events.on('enemyHit', () => {
       this.combo = this.comboT > 0 ? this.combo + 1 : 1;

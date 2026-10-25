@@ -1,10 +1,14 @@
 import type * as THREE from 'three';
-import type { EnemyHandle } from './types';
+import type { BrawlDifficulty, EnemyHandle } from './types';
+import type { PlowKind } from '../config/plows';
+
+/** How the player landed a killing blow (campaign / survival / tutorial; Brawl kills omit it). */
+export type KillSource = 'slam' | 'ram' | 'whirl' | 'other';
 
 /** Cross-cutting game events. Modules call ctx.audio / ctx.fx directly for their own feedback;
  *  events exist so Game/UI can track stats and show toasts without modules knowing about each other. */
 export interface GameEvents {
-  enemyKilled: { enemy: EnemyHandle; coins: number };
+  enemyKilled: { enemy: EnemyHandle; coins: number; source?: KillSource };
   enemyHit: { enemy: EnemyHandle; damage: number };
   /** The player slammed their snowball. */
   slam: { hits: number; radius: number; position: THREE.Vector3 };
@@ -18,6 +22,35 @@ export interface GameEvents {
   bossPhase: { enemy: EnemyHandle; name: string; label: string };
   bossDefeated: { enemy: EnemyHandle; name: string };
   roundStarted: { round: number; total: number; boss: boolean };
+  /** A campaign run, Survival run or Brawl match ended. Game emits it AFTER recording the result in the save.
+   *  Not emitted for the Tutorial. */
+  runFinished: {
+    mode: 'campaign' | 'survival' | 'brawl';
+    plow: PlowKind;
+    /** Campaign: arena cleared (boss beaten). Brawl: 1st place. Survival: always false. */
+    won: boolean;
+    kills: number;
+    /** Player kills by finishing blow (campaign / survival only; Brawl kills count as 'other'). */
+    killsBy: Record<KillSource, number>;
+    coins: number;
+    bestCombo: number;
+    biggestBall: number;
+    /** Seconds from the first countdown to the end, excluding pauses and shops. */
+    duration: number;
+    /** HP lost this run (after armor / shields). */
+    damageTaken: number;
+    /** Campaign: arena index, rounds cleared, Hard mode. */
+    zoneIndex?: number;
+    roundsCleared?: number;
+    hard?: boolean;
+    /** Survival: wave reached, and whether this was the Daily run. */
+    wave?: number;
+    daily?: boolean;
+    /** Brawl: placement (1 = win), best streak, lobby. */
+    placement?: number;
+    bestStreak?: number;
+    brawlDifficulty?: BrawlDifficulty;
+  };
   // ---- Brawl mode
   /** Kill feed entry. */
   brawlKill: {

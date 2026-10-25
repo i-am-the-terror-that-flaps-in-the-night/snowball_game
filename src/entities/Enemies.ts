@@ -7,6 +7,7 @@ import { createRig, debrisGeometry, debrisMaterials, disposeRig } from './enemie
 import { DecalPool } from './enemies/decals';
 import { MINION_AI, aroundAngle, clamp, initAI, orbit, resetAI, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
+import type { KillSource } from '../core/events';
 
 /* EnemyManager: owns every bot (minions + bosses) of Snowplow Showdown.
  *  - spawning through ENEMY_GATES (bots drive in through the gate opening, then stay clamped inside ARENA)
@@ -231,7 +232,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     ctx.events.emit('enemyHit', { enemy: e, damage: dmg });
     if (e.hp <= 0) {
       e.hp = 0;
-      this.kill(e);
+      this.kill(e, src);
       return true;
     }
     return false;
@@ -739,7 +740,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.ballR = 0;
   }
 
-  private kill(e: Bot): void {
+  private kill(e: Bot, source: KillSource = 'other'): void {
     const ctx = this.ctx;
     const def = e.def;
     e.alive = false;
@@ -781,7 +782,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
 
     const coins = Math.round(def.coins * ctx.zone.coinMult);
-    ctx.events.emit('enemyKilled', { enemy: e, coins });
+    ctx.events.emit('enemyKilled', { enemy: e, coins, source });
     if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: def.name });
     ctx.pickups?.spawnCoins(p.clone(), coins);
   }

@@ -14,6 +14,9 @@ import { BrawlHudView, fmtMult } from './BrawlHud';
 import { SettingsMenu } from './Settings';
 import { ACTIONS, keyLabel, type Action } from '../core/input';
 import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
+import { StyleShop } from './StyleShop';
+import { Trophies } from './Trophies';
+import { dailyButtonLabel } from '../meta/daily';
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
 
@@ -171,6 +174,10 @@ export class UI implements UIAPI {
   private settings!: SettingsMenu;
   private controlLists: HTMLElement[] = [];
   private survivalBtn!: HTMLButtonElement;
+  private dailyBtn!: HTMLButtonElement;
+  /** Paint shop (cosmetics) and Trophies (achievements + stats) overlays. */
+  private styleShop!: StyleShop;
+  private trophies!: Trophies;
 
   // zones
   private zoneGrid!: HTMLElement;
@@ -266,6 +273,8 @@ export class UI implements UIAPI {
       onSaveChanged: () => this.refreshMute(),
       onClose: () => this.refreshKeys(),
     });
+    this.styleShop = new StyleShop(ctx, this.rootEl);
+    this.trophies = new Trophies(ctx, this.rootEl);
     this.refreshKeys();
     this.toastBox = el('div', 'ss-toasts', undefined, this.rootEl);
     this.bigBox = el('div', 'ss-bigtoasts', undefined, this.rootEl);
@@ -395,6 +404,7 @@ export class UI implements UIAPI {
     this.survivalBtn.innerHTML = survivalUnlocked(p)
       ? `♾ SURVIVAL${sb > 0 ? ` <small>best wave ${sb}</small>` : ''}`
       : '🔒 SURVIVAL <small>beat arena 1</small>';
+    this.dailyBtn.innerHTML = survivalUnlocked(p) ? dailyButtonLabel(p) : '🔒 DAILY';
     this.refreshCards();
     if (this.current === 'zones') this.renderZones();
   }
@@ -468,14 +478,24 @@ export class UI implements UIAPI {
     const btns = el('div', 'ss-menu-btns', undefined, panel);
     this.btn('⚔ FIGHT', 'ss-primary ss-big', () => this.showZoneSelect(), btns).dataset.primary = '1';
     this.btn('🔥 BRAWL <span class="ss-new">NEW</span>', 'ss-hot ss-big', () => this.showBrawlLobby(), btns);
+    const modes = el('div', 'ss-menu-row', undefined, btns);
     this.survivalBtn = this.btn('', 'ss-ice', () => {
       if (survivalUnlocked(this.ctx.progression)) this.handlers.onStartSurvival?.();
       else this.toast(`Beat ${ZONES[0].name} to unlock Survival`, 'bad');
-    }, btns);
-    this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('menu'), btns);
-    this.btn('❓ HOW TO PLAY', 'ss-ice', () => this.show('howto'), btns);
-    this.btn('⚙ SETTINGS', 'ss-ice', () => this.settings.open(), btns, null);
-    this.btn('🎓 TUTORIAL', 'ss-ice', () => this.handlers.onStartTutorial?.(), btns);
+    }, modes);
+    this.dailyBtn = this.btn('', 'ss-ice', () => {
+      if (survivalUnlocked(this.ctx.progression)) this.handlers.onStartDaily?.();
+      else this.toast(`Beat ${ZONES[0].name} to unlock the Daily run`, 'bad');
+    }, modes);
+    const shops = el('div', 'ss-menu-row', undefined, btns);
+    this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('menu'), shops);
+    this.btn('🎨 PAINT SHOP', 'ss-ice', () => this.styleShop.open(), shops, null);
+    const info = el('div', 'ss-menu-row', undefined, btns);
+    this.btn('🏆 TROPHIES', 'ss-ice', () => this.trophies.open(), info, null);
+    this.btn('❓ HOW TO PLAY', 'ss-ice', () => this.show('howto'), info);
+    const misc = el('div', 'ss-menu-row', undefined, btns);
+    this.btn('⚙ SETTINGS', 'ss-ice', () => this.settings.open(), misc, null);
+    this.btn('🎓 TUTORIAL', 'ss-ice', () => this.handlers.onStartTutorial?.(), misc);
     const row = el('div', 'ss-menu-row', undefined, btns);
     const mute = this.btn('', 'ss-ice ss-small', () => {
       this.handlers.onToggleMute();

@@ -519,6 +519,9 @@ export interface RunSummary {
   firstClear: boolean;
   clearReward: number;
   unlockedZoneName: string | null;
+  /** Campaign run on the arena's Hard mode / Survival run was the Daily. */
+  hard?: boolean;
+  daily?: boolean;
   /** Survival run result (wave reached, best, new record); absent for campaign runs. */
   survival?: { wave: number; best: number; newBest: boolean };
 }
@@ -538,10 +541,13 @@ export interface SurvivalShopOpts {
 }
 
 export interface UIHandlers {
-  onStartZone(zoneIndex: number): void;
+  /** `hard`: the arena's Hard mode (meta/challenges.ts). */
+  onStartZone(zoneIndex: number, hard?: boolean): void;
   onStartBrawl(difficulty: BrawlDifficulty): void;
   /** Endless Survival mode (unlocked after arena 1). */
   onStartSurvival?(): void;
+  /** Today's seeded Daily Survival run (meta/daily.ts). */
+  onStartDaily?(): void;
   /** Guided tutorial in arena 1 (auto-runs on a fresh save; replayable from the menu). */
   onStartTutorial?(): void;
   onResume(): void;

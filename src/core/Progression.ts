@@ -29,6 +29,19 @@ export interface SaveData {
   plow: PlowKind;
   /** Survival mode: highest wave reached (optional — older saves lack it). */
   survivalBestWave?: number;
+  // ---- Meta progression (all optional: older saves lack them). Owned by src/meta/*.
+  /** Cosmetics (config/cosmetics.ts): owned item ids and the equipped item id per slot. */
+  cosmetics?: { owned: string[]; equipped: Record<string, string> };
+  /** Campaign challenges (meta/challenges.ts): zone id -> completed challenge ids (1 star each). */
+  challenges?: Record<string, string[]>;
+  /** Hard-mode campaign clears: zone id -> true. */
+  hardCleared?: Record<string, boolean>;
+  /** Achievements (meta/achievements.ts): id -> 1 once unlocked. */
+  achievements?: Record<string, number>;
+  /** Lifetime counters for achievements and the stats page (meta/achievements.ts), e.g. slams, bossKills. */
+  lifetime?: Record<string, number>;
+  /** Daily Survival (meta/daily.ts): day key 'YYYY-MM-DD' -> best wave that day. */
+  dailyBest?: Record<string, number>;
 }
 
 function freshSave(): SaveData {
@@ -82,6 +95,30 @@ function sanitizeSave(raw: unknown): SaveData | null {
   out.brawlBestKills = num(p.brawlBestKills);
   out.plow = typeof p.plow === 'string' && PLOWS[p.plow as PlowKind] ? (p.plow as PlowKind) : 'classic';
   if (p.survivalBestWave !== undefined) out.survivalBestWave = num(p.survivalBestWave, 0, 9999);
+  // Meta progression: only well-formed entries survive.
+  const strList = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && x.length <= 64))] : []);
+  const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+  const numMap = (v: unknown, max = Number.MAX_SAFE_INTEGER) => {
+    const m: Record<string, number> = {};
+    if (isObj(v)) for (const [k, x] of Object.entries(v)) if (typeof x === 'number' && isFinite(x)) m[k] = num(x, 0, max);
+    return m;
+  };
+  if (isObj(p.cosmetics)) {
+    const equipped: Record<string, string> = {};
+    if (isObj(p.cosmetics.equipped)) for (const [k, x] of Object.entries(p.cosmetics.equipped)) if (typeof x === 'string') equipped[k] = x;
+    out.cosmetics = { owned: strList(p.cosmetics.owned), equipped };
+  }
+  if (isObj(p.challenges)) {
+    out.challenges = {};
+    for (const [k, x] of Object.entries(p.challenges)) out.challenges[k] = strList(x);
+  }
+  if (isObj(p.hardCleared)) {
+    out.hardCleared = {};
+    for (const [k, x] of Object.entries(p.hardCleared)) if (x === true) out.hardCleared[k] = true;
+  }
+  if (p.achievements !== undefined) out.achievements = numMap(p.achievements, 1);
+  if (p.lifetime !== undefined) out.lifetime = numMap(p.lifetime);
+  if (p.dailyBest !== undefined) out.dailyBest = numMap(p.dailyBest, 9999);
   return out;
 }
 
@@ -124,6 +161,11 @@ export class Progression {
   private changed(): void {
     this.save();
     for (const fn of this.listeners) fn();
+  }
+
+  /** Save + notify listeners after a meta module (src/meta/*) edits `data` directly. */
+  commit(): void {
+    this.changed();
   }
 
   get coins(): number {

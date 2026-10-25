@@ -3,6 +3,8 @@ import type { Progression } from '../core/Progression';
 import type { RoundDef, SpawnGroup } from '../config/zones';
 import { ZONES } from '../config/zones';
 import { ENEMIES, type EnemyType } from '../config/enemies';
+import type { PlayerStats } from '../core/types';
+import type { DailySpec } from '../meta/daily';
 
 /* SURVIVAL: endless post-campaign mode in one arena. Each wave is generated into a one-round ZoneDef
  * (zone.rounds[0]) so the regular WaveDirector / EnemyManager run it unchanged; per-wave scaling is
@@ -88,7 +90,16 @@ export class SurvivalManager {
   }
 
   /** Fresh run. */
-  reset(): void {
+  /** Today's Daily spec while this run is the Daily (seeded waves + modifier), else null. */
+  daily: DailySpec | null = null;
+
+  /** Daily modifiers that touch the player (e.g. glass cannon). Called by Game after every computeStats. */
+  adjustStats(stats: PlayerStats): void {
+    void stats;
+  }
+
+  reset(daily: DailySpec | null = null): void {
+    this.daily = daily;
     this.wave = 0;
     this.cleared = 0;
     this.prevBest = survivalBest(this.ctx.progression);
