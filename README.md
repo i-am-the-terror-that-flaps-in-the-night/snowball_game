@@ -66,9 +66,9 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 - **🤺 Duel** (online 1v1) — a quick best-of-3 against a friend in a Frostbite Yard-size arena, no bots. **HOST** shows a
   5-letter room code (copy button); your friend types it under **JOIN**. Spawns face each other, a countdown starts each
   round, and a round ends on a wreck or after 90 s (higher HP% wins). Each player brings their **own garage** and Paint
-  Shop look (pilot perks included). Before the match both get a 45 s **DUEL GARAGE** (30 s before a rematch): the
-  weaker garage gets **catch-up coins** = the gap in garage power (coins spent on upgrades + coins on hand, capped at
-  50,000), spent first on duel-only levels that never touch the save; after that you can buy permanent upgrades with
+  Shop look (pilot perks included). Before the match both get a 90 s **DUEL GARAGE** (60 s before a rematch): the
+  weaker garage gets **catch-up coins** = the gap in garage power (coins spent on upgrades + coins on hand, the full
+  gap with no cap; the stronger garage never gets any), spent first on duel-only levels that never touch the save; after that you can buy permanent upgrades with
   your own coins. Hits use the Brawl hit cap at 60% of PvE damage, so nothing one-shots. Pausing opens the menu but
   the match keeps running; leaving ends it for both. REMATCH needs both players. Duels pay no coins.
   Networking: PeerJS (WebRTC data channels, the free public PeerJS signalling server, Google STUN). Add `?duel=local`

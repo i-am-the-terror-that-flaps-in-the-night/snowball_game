@@ -173,10 +173,18 @@ describe('catch-up coins', () => {
     expect(some).toBe(none - 400);
   });
 
-  it('is capped for a fresh save against a monster garage', () => {
+  it('covers the full gap, uncapped, for a fresh save against a monster garage', () => {
     const maxed = garageSpent(Object.fromEntries(UPGRADES.map((u) => [u.id, Math.min(u.maxLevel, 40)])));
-    expect(maxed).toBeGreaterThan(CATCHUP_MAX);
-    expect(catchUpBonus(0, maxed)).toBe(CATCHUP_MAX);
+    expect(CATCHUP_MAX).toBe(Infinity);
+    expect(catchUpBonus(0, maxed)).toBe(Math.round(maxed));
+  });
+
+  it('never pays the stronger (or equal) side anything', () => {
+    for (const [a, b] of [[1000, 400], [5e6, 0], [777, 777]]) {
+      expect(catchUpBonus(a, b)).toBe(0);
+      const both = catchUp(a, b);
+      expect(Math.min(both.a, both.b)).toBe(0);
+    }
   });
 
   it('garageSpent sums the shop prices of every level', () => {

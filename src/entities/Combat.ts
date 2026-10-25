@@ -40,8 +40,8 @@ const STORM_FIELD_FRAC = 0.25;
 const CLAP_BACKLASH = 6;
 const CLAP_HEAT_DECAY = 2.5;
 /** Ground Pound (F on BRUTUS): hop length (s) and peak height (m); damage falls off to this share at the rim. */
-const POUND_HOP_SECONDS = 0.36;
-const POUND_HOP_HEIGHT = 1.5;
+const POUND_HOP_SECONDS = 0.85;
+const POUND_HOP_HEIGHT = 5;
 const POUND_RIM_FRAC = 0.6;
 /** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
  *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
@@ -443,9 +443,10 @@ export class Combat implements CombatAPI {
     }
     if (this.poundT >= 0) {
       this.poundT += dt;
-      // Quick rise, then an accelerating drop into the ground.
+      // A full leap: launch, hang at the top, then a hard accelerating slam back down.
       const u = Math.min(1, this.poundT / POUND_HOP_SECONDS);
-      hopper!.hop = POUND_HOP_HEIGHT * (u < 0.55 ? Math.sin((u / 0.55) * Math.PI * 0.5) : Math.cos(((u - 0.55) / 0.45) * Math.PI * 0.5));
+      const rise = 0.6;
+      hopper!.hop = POUND_HOP_HEIGHT * (u < rise ? 1 - (1 - u / rise) ** 2 : 1 - ((u - rise) / (1 - rise)) ** 2.6);
       if (u >= 1) {
         hopper!.hop = 0;
         this.poundT = -1;

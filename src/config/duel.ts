@@ -23,8 +23,8 @@ export const DUEL_ROUND_END_DELAY = 1.8;
 /** Seconds on the round-result card before the next round. */
 export const DUEL_BETWEEN_ROUNDS = 3;
 /** Pre-match DUEL GARAGE (s): first match / every rematch. */
-export const DUEL_GARAGE_SECONDS = 45;
-export const DUEL_REMATCH_GARAGE_SECONDS = 30;
+export const DUEL_GARAGE_SECONDS = 90;
+export const DUEL_REMATCH_GARAGE_SECONDS = 60;
 /** Every player-vs-player hit is scaled by this before the Brawl hit cap (brawlHit). Bot-tuned kits (Thunderclap
  *  storms, Inferno burn, saw / aura ticks) shred a single human target, so PvP runs at a fraction of PvE damage. */
 export const DUEL_DAMAGE_SCALE = 0.6;
@@ -43,9 +43,10 @@ export const DUEL_COIN_REWARD = 0;
 /** Sanity cap on any one upgrade level that comes over the wire. */
 export const MAX_NET_LEVEL = 999;
 
-/** Catch-up: share of the garage-power gap paid to the weaker player, and the cap. */
+/** Catch-up: share of the garage-power gap paid to the weaker player. No cap: the full gap is covered. The
+ *  stronger (or equal) side never gets catch-up coins. */
 export const CATCHUP_FRAC = 1.0;
-export const CATCHUP_MAX = 50000;
+export const CATCHUP_MAX = Infinity;
 
 /** Total coins spent on a set of upgrade levels (the sum of every level's price, from the shop cost curves).
  *  Computed from the levels themselves, not from purchase history. */
@@ -62,8 +63,8 @@ export function garageSpent(levels: Partial<Record<UpgradeId, number>>): number 
 /** What a garage could be worth if every coin were spent. */
 export const duelPower = (spent: number, coins: number) => Math.max(0, spent) + Math.max(0, coins);
 
-/** Catch-up coins for the player with `ownPower` against `oppPower`: the gap x CATCHUP_FRAC, capped; 0 for the
- *  stronger (or equal) side. */
+/** Catch-up coins for the player with `ownPower` against `oppPower`: the gap x CATCHUP_FRAC (uncapped by default);
+ *  always 0 for the stronger (or equal) side. */
 export function catchUpBonus(ownPower: number, oppPower: number, frac = CATCHUP_FRAC, max = CATCHUP_MAX): number {
   const gap = (oppPower - ownPower) * frac;
   if (!(gap > 0)) return 0;
