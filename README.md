@@ -53,7 +53,10 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
   outward knockback, short stun) — get out of the amber ring.
 - **Survival** (unlocked by beating arena 1) — endless waves in the Frozen Foundry. Bot HP, damage and coins scale
   every wave, a boss arrives every 5th wave (cycling the campaign bosses, with escorts on later loops), and you
-  get a short breather plus a partial repair between waves. Your best wave is saved.
+  get a short breather plus a partial repair between waves. Named special waves (Swarm, Thief Raid, Blitz,
+  Saw Storm, Heavy Metal, Elite Squad) break up the mix about twice per boss cycle and pay extra, and the
+  between-wave pit stop previews what's next. **🏁 END RUN** at the pit stop banks the run on the wave you just
+  cleared. Your best wave is saved.
 - **Daily run** (📅 DAILY, unlocked with Survival) — one seeded Survival run per day: the same wave lineup for
   everyone on that date, plus one of 8 modifiers (Deep Snow, Whiteout, Swarm, Thief Night, Boss Rush, Heavy
   Hitters, Glass Cannon, Overclocked) that rotate so none repeats two days running. Pays ×1.25 coins. Your best

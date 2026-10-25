@@ -905,7 +905,8 @@ export class UI implements UIAPI {
     w.classList.remove('hidden');
     w.classList.toggle('boss', !!o.nextBoss);
     const t = el('div', 'ss-rp-title', undefined, w);
-    t.innerHTML = `Wave <b>${next}</b> next${o.nextBoss ? ` · ☠ BOSS: ${o.nextBoss}` : ''}`;
+    t.innerHTML = `Wave <b>${next}</b> next${o.nextBoss ? ` · ☠ BOSS: ${o.nextBoss}` : o.nextSpecial ? ` · ${o.nextSpecial.icon} ${o.nextSpecial.name}` : ''}`;
+    if (o.nextSpecial && !o.nextBoss) el('div', 'ss-sv-special', o.nextSpecial.blurb, w);
     const daily = activeDaily();
     if (daily) renderDailyShopTag(w, daily);
     const row = el('div', 'ss-sv-shoprow', undefined, w);
@@ -916,6 +917,7 @@ export class UI implements UIAPI {
       this.refreshRepair();
     }, row, null);
     el('span', 'ss-foot-hint', 'Upgrades apply to your plow right now. The next wave waits for you.', row);
+    this.btn(`🏁 END RUN · bank wave ${o.cleared}`, 'ss-ice ss-sv-end', () => o.onEndRun(), row, null);
   }
 
   private openGarage(back: 'menu' | 'quit'): void {
@@ -1011,17 +1013,17 @@ export class UI implements UIAPI {
     p.textContent = '';
     p.classList.toggle('win', win);
     p.classList.toggle('lose', !win);
-    el('div', 'ss-result-emoji', win ? '🏆' : '💥', p);
-    el('h2', 'ss-h2 ss-result-title', win ? `${sum.bossName} DESTROYED!` : 'WRECKED!', p);
+    el('div', 'ss-result-emoji', win ? '🏆' : sum.survival?.endedEarly ? '🏁' : '💥', p);
+    el('h2', 'ss-h2 ss-result-title', win ? `${sum.bossName} DESTROYED!` : sum.survival?.endedEarly ? 'RUN BANKED!' : 'WRECKED!', p);
     el(
       'div',
       'ss-sub',
       win
         ? `${sum.zoneName} cleared! The arena is yours.`
         : sum.survival && sum.daily
-          ? `Scrapped on wave ${sum.survival.wave}. Same lineup all day, so retry and push your best!`
+          ? `${sum.survival.endedEarly ? 'Banked' : 'Scrapped on'} wave ${sum.survival.wave}. Same lineup all day, so retry and push your best!`
           : sum.survival
-          ? `Scrapped on wave ${sum.survival.wave}. ${sum.survival.newBest ? '🌟 NEW BEST!' : `Best: wave ${sum.survival.best}.`} Coins are kept, so upgrade and go again!`
+          ? `${sum.survival.endedEarly ? 'Banked' : 'Scrapped on'} wave ${sum.survival.wave}. ${sum.survival.newBest ? '🌟 NEW BEST!' : `Best: wave ${sum.survival.best}.`} Coins are kept, so upgrade and go again!`
           : `Your plow got scrapped in ${sum.zoneName}. Coins are kept, so upgrade and get back in there!`,
       p,
     );
@@ -1062,7 +1064,9 @@ export class UI implements UIAPI {
     if (win) {
       const nextIdx = (this.ctx.zone?.index ?? 0) + 1;
       if (nextIdx < ZONES.length && this.ctx.progression.isZoneUnlocked(nextIdx)) {
-        this.btn('NEXT ARENA ▶', 'ss-primary ss-big', () => this.handlers.onStartZone(nextIdx), btns).dataset.primary = '1';
+        // A Hard win carries on in Hard if the next arena has Hard open (it needs a normal clear first).
+        const hard = !!sum.hard && hardUnlocked(this.ctx.progression, nextIdx);
+        this.btn(hard ? 'NEXT ARENA · 💀 HARD ▶' : 'NEXT ARENA ▶', 'ss-primary ss-big', () => this.handlers.onStartZone(nextIdx, hard), btns).dataset.primary = '1';
       } else if (nextIdx >= ZONES.length) {
         btns.before(el('div', 'ss-unlock', '🌟 Every arena conquered. You are the Snowplow Champion!'));
       }

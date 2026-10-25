@@ -49,6 +49,29 @@ const BOSS_CYCLE: { types: EnemyType[]; name: string }[] = [
   { types: ['omega'], name: 'MEGAPLOW Ω' },
 ];
 
+/** Named special waves: one roughly every other wave between bosses (see specialFor), each with its own
+ *  lineup and tuning so the run doesn't feel like the same mix scaled up. */
+export interface SpecialWave {
+  id: 'swarm' | 'thiefRaid' | 'sawStorm' | 'heavyMetal' | 'elite' | 'blitz';
+  name: string;
+  icon: string;
+  blurb: string;
+  /** First wave it may show up on. */
+  from: number;
+  /** Multipliers on the wave's bot hp and coins. */
+  hp: number;
+  coins: number;
+}
+
+export const SPECIAL_WAVES: readonly SpecialWave[] = [
+  { id: 'swarm', name: 'SWARM', icon: '🐝', blurb: 'A flood of flimsy scrappers. Whirlwind them!', from: 3, hp: 0.45, coins: 0.8 },
+  { id: 'thiefRaid', name: 'THIEF RAID', icon: '🦝', blurb: 'Snow thieves everywhere. Guard your ball.', from: 3, hp: 0.9, coins: 1.2 },
+  { id: 'blitz', name: 'BLITZ', icon: '⚡', blurb: 'The whole wave drops in at once.', from: 4, hp: 0.85, coins: 1.25 },
+  { id: 'sawStorm', name: 'SAW STORM', icon: '🪚', blurb: 'Buzzsaws only. Keep moving.', from: 6, hp: 0.9, coins: 1.3 },
+  { id: 'heavyMetal', name: 'HEAVY METAL', icon: '🛡️', blurb: 'Brute dozers, and nothing else.', from: 7, hp: 1, coins: 1.4 },
+  { id: 'elite', name: 'ELITE SQUAD', icon: '💀', blurb: 'A few tough bots. Double coins.', from: 8, hp: 2.2, coins: 2 },
+];
+
 /** Enemy hp multiplier for wave w (1-based): linear early, gently exponential late. */
 export const waveHpMult = (w: number) => (1 + 0.1 * (w - 1)) * Math.pow(1.02, w - 1);
 /** Enemy hit damage multiplier for wave w. */
@@ -134,6 +157,8 @@ export class SurvivalManager {
   private prevBest = 0;
   /** Wave-generation rng: seeded on the Daily, Math.random otherwise. */
   private rng: () => number = Math.random;
+  /** Rotates which special wave comes when (rolled per run; seeded on the Daily). */
+  private specialOffset = 0;
   private fx: ModEffect = NEUTRAL;
   /** Pristine survival arena; every reset copies it back onto `zone` before applying a modifier. */
   private readonly base: ZoneDef;
@@ -188,6 +213,7 @@ export class SurvivalManager {
     this.wave = 0;
     this.cleared = 0;
     this.rng = daily ? mulberry32(daily.seed) : Math.random;
+    this.specialOffset = Math.floor(this.rng() * SPECIAL_WAVES.length);
     const mod = daily ? dailyModifier(daily) : null;
     this.fx = modEffect(mod?.id ?? null, this.base);
     this.prevBest = daily ? dailyBest(ctx.progression, daily.key) : survivalBest(ctx.progression);
@@ -226,6 +252,21 @@ export class SurvivalManager {
     return BOSS_CYCLE[(this.wave / this.bossEvery - 1) % BOSS_CYCLE.length];
   }
 
+  /** Special wave w is, if any: waves 3, 6, 8, 11, 13, ... (2 per 5-wave boss cycle, never a boss wave). */
+  specialFor(w: number): SpecialWave | null {
+    if (w < 3 || w % this.bossEvery === 0) return null;
+    const k = w % 5;
+    if (k !== 3 && !(k === 1 && w > 5)) return null;
+    const pool = SPECIAL_WAVES.filter((sw) => w >= sw.from);
+    const slot = Math.floor(w / 5) * 2 + (k === 3 ? 1 : 0);
+    return pool[(slot + this.specialOffset) % pool.length];
+  }
+
+  /** Special wave being played right now (null on normal and boss waves). */
+  get special(): SpecialWave | null {
+    return this.specialFor(this.wave);
+  }
+
   /** Coin multiplier on top of the wave scaling: the Daily bonus times the modifier's. */
   get coinBonus(): number {
     return this.daily ? DAILY_COIN_MULT * this.fx.coins : 1;
@@ -235,10 +276,11 @@ export class SurvivalManager {
   nextWave(): number {
     const w = ++this.wave;
     const z = this.zone;
-    z.enemyHpMult = waveHpMult(w) * this.fx.hp;
+    const sp = this.special;
+    z.enemyHpMult = waveHpMult(w) * this.fx.hp * (sp?.hp ?? 1);
     z.enemyDmgMult = waveDmgMult(w) * this.fx.dmg;
-    z.coinMult = waveCoinMult(w) * this.coinBonus;
-    const round: RoundDef = this.isBossWave ? this.bossRound(w) : this.minionRound(w);
+    z.coinMult = waveCoinMult(w) * this.coinBonus * (sp?.coins ?? 1);
+    const round: RoundDef = this.isBossWave ? this.bossRound(w) : sp ? this.specialRound(w, sp) : this.minionRound(w);
     z.rounds[0] = round;
     z.bossName = this.boss?.name ?? '';
     if (w === 1) return FIRST_WAVE_SECONDS;
@@ -324,6 +366,44 @@ export class SurvivalManager {
       delay += Math.min(8, count * interval * 0.5) + 1;
     }
     return { groups };
+  }
+
+  /** Lineup for a special wave (budget scales with w like normal waves). */
+  private specialRound(w: number, sp: SpecialWave): RoundDef {
+    const fx = this.fx;
+    const budget = (3 + w * 2.2) * fx.budget;
+    const cap = fx.maxBots;
+    const pace = Math.max(0.55, 2.4 - w * 0.08) / Math.sqrt(fx.budget);
+    const n = (cost: number, mult = 1) => Math.max(2, Math.min(cap, Math.round((budget / cost) * mult)));
+    switch (sp.id) {
+      case 'swarm':
+        return { groups: [{ type: 'scrapper', count: Math.max(8, Math.min(cap + 10, Math.round(budget * 2.2))), delay: 0.5, interval: pace * 0.3 }] };
+      case 'thiefRaid':
+        return { groups: [
+          { type: 'thief', count: n(1.4, 0.85), delay: 0.5, interval: pace * 0.6 },
+          { type: 'scrapper', count: 2, delay: 0, interval: 1 },
+        ] };
+      case 'sawStorm':
+        return { groups: [{ type: 'spinner', count: n(2, 0.9), delay: 0.5, interval: pace * 0.8 }] };
+      case 'heavyMetal':
+        return { groups: [{ type: 'brute', count: n(3, 0.85), delay: 0.5, interval: pace * 1.4 }] };
+      case 'elite': {
+        const k = Math.max(3, Math.round(n(1.8) * 0.4));
+        return { groups: [
+          { type: 'brute', count: Math.ceil(k / 3), delay: 0.5, interval: 2 },
+          { type: 'spinner', count: Math.ceil(k / 3), delay: 1.5, interval: 2 },
+          { type: 'scrapper', count: Math.ceil(k / 3), delay: 2.5, interval: 1.5 },
+        ] };
+      }
+      case 'blitz': {
+        const r = this.minionRound(w);
+        for (const g of r.groups) {
+          g.delay = 0.3;
+          g.interval = 0.12;
+        }
+        return r;
+      }
+    }
   }
 
   /** The cycle's boss(es); from the second lap on, escort minions join after a short delay. */

@@ -360,6 +360,7 @@ export class Game {
     ctx.ui.showSurvivalShop({
       cleared: wave,
       nextBoss: sv.bossNameFor(wave + 1),
+      nextSpecial: sv.specialFor(wave + 1),
       repairCost,
       canRepair: () => ctx.plow.hp < ctx.plow.maxHp - 0.5,
       onRepair: () => {
@@ -375,6 +376,11 @@ export class Game {
         ctx.input.clear();
         this.beginCountdown();
       },
+      onEndRun: () => {
+        if (this.state !== 'shop' || this.mode !== 'survival') return;
+        ctx.ui.hideOverlays();
+        this.survivalOver(true);
+      },
     });
   }
 
@@ -389,13 +395,14 @@ export class Game {
     this.updateHud();
   }
 
-  private survivalOver(): void {
+  /** Run over: wrecked, or `endedEarly` when the player banks it from the pit stop. */
+  private survivalOver(endedEarly = false): void {
     const { ctx } = this;
     const sv = this.survival;
     this.state = 'gameover';
     const newBest = sv.finish(this.run.kills);
     this.emitRunFinished({ mode: 'survival', won: false, wave: sv.wave, daily: this.daily });
-    ctx.audio.play('gameOver');
+    ctx.audio.play(endedEarly ? 'roundClear' : 'gameOver');
     ctx.ui.setHudVisible(false);
     ctx.ui.showGameOver({
       ...this.summaryBase(sv.cleared),
@@ -403,7 +410,7 @@ export class Game {
       firstClear: false,
       clearReward: 0,
       unlockedZoneName: null,
-      survival: { wave: sv.wave, best: sv.best, newBest },
+      survival: { wave: sv.wave, best: sv.best, newBest, endedEarly },
     });
   }
 
@@ -439,7 +446,13 @@ export class Game {
         const sub = bossIntroTitle(boss.types);
         ctx.ui.bossIntro(boss.name, boss.types.length > 1 ? `Wave ${this.survival.wave}\n${sub}` : `Wave ${this.survival.wave} · ${sub}`);
         ctx.audio.play('boss');
-      } else ctx.ui.toast(`Wave ${this.survival.wave} incoming…`, 'info');
+      } else {
+        const sp = this.survival.special;
+        if (sp) {
+          ctx.ui.bossIntro(`${sp.icon} ${sp.name}`, `Wave ${this.survival.wave} · ${sp.blurb}`);
+          ctx.audio.play('boss');
+        } else ctx.ui.toast(`Wave ${this.survival.wave} incoming…`, 'info');
+      }
     } else if (this.isBossRound) {
       this.countdown = BOSS_COUNTDOWN_SECONDS;
       ctx.ui.bossIntro(ctx.zone.bossName, bossIntroTitle(ctx.zone.rounds[this.roundIndex].groups.map((g) => g.type)));
@@ -552,7 +565,8 @@ export class Game {
     return {
       hard: this.mode === 'campaign' && this.hard,
       daily: this.mode === 'survival' && this.daily,
-      zoneName: this.ctx.zone.name,
+      // Hard runs: the results screen has its own 💀 HARD MODE badge, so use the plain arena name.
+      zoneName: this.mode === 'campaign' && this.hard ? ZONES[this.zoneIndex].name : this.ctx.zone.name,
       bossName: this.ctx.zone.bossName,
       roundsCleared,
       totalRounds: this.ctx.zone.rounds.length,

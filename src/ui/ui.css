@@ -1144,3 +1144,5 @@
 .ss-sv-repair { font-size: 16px; padding: 8px 16px; }
 .ss-sv-repair.poor { opacity: 0.6; }
 .ss-sv-repair:disabled { opacity: 0.45; cursor: default; }
+.ss-sv-end { font-size: 15px; padding: 8px 14px; margin-left: auto; }
+.ss-sv-special { font-size: 14px; font-weight: 700; color: #b8560f; margin: -2px 0 6px; }

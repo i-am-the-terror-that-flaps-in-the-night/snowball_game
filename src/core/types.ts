@@ -523,7 +523,7 @@ export interface RunSummary {
   hard?: boolean;
   daily?: boolean;
   /** Survival run result (wave reached, best, new record); absent for campaign runs. */
-  survival?: { wave: number; best: number; newBest: boolean };
+  survival?: { wave: number; best: number; newBest: boolean; endedEarly?: boolean };
 }
 
 export interface SurvivalShopOpts {
@@ -531,6 +531,8 @@ export interface SurvivalShopOpts {
   cleared: number;
   /** Boss lineup name if the next wave is a boss wave. */
   nextBoss: string | null;
+  /** Special wave coming next (Swarm, Blitz, ...), if any. */
+  nextSpecial: { name: string; icon: string; blurb: string } | null;
   /** Coins for a Full Repair. */
   repairCost: number;
   /** True while the plow is below max HP (repair offered). */
@@ -538,6 +540,8 @@ export interface SurvivalShopOpts {
   /** Attempt the repair; returns true if it went through. */
   onRepair(): boolean;
   onContinue(): void;
+  /** Bank the run here (records the wave cleared as the result) and go to the results screen. */
+  onEndRun(): void;
 }
 
 export interface UIHandlers {
