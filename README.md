@@ -72,7 +72,7 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 - **🏆 Trophies** — 46 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Garage & loot) paying
   25–500 coins each, plus a lifetime STATS page. Unlocks are re-checked from the save, so old saves and imports
   get credit for what they've already done. Tutorial fights don't count.
-- **🎨 Paint Shop** — 8 paints, 5 decals and 5 exhaust trails for your plow (all three starter plows), 250–6000
+- **🎨 Paint Shop** — 8 paints, 5 decals and 5 exhaust trails for your plow (all three starter plows), 150–2000
   coins. Purely visual; five premium items also need challenge stars or achievements. Hover or focus an item to
   preview it on the plow before buying.
 

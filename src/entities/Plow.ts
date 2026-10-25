@@ -318,7 +318,7 @@ export class Plow implements PlowAPI {
   private preview: Partial<Record<CosmeticSlot, string>> = {};
   private decals: THREE.Group | null = null;
   private decalMat = new THREE.MeshStandardMaterial({
-    roughness: 0.5, metalness: 0.1, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    roughness: 0.5, metalness: 0.1, emissive: 0xffffff, emissiveIntensity: 0.3, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
   });
   private trailT = 0;
 
@@ -808,7 +808,6 @@ export class Plow implements PlowAPI {
     this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : 0xffd23a);
     this.steelMat.emissive.setHex(volt ? 0x1a8cff : 0x000000);
     this.steelMat.emissiveIntensity = volt ? 0.6 : 0;
-    this.hubMat.color.setHex(volt ? 0x7fdcff : brute ? 0xffc21a : 0xffd23a);
     this.beaconMat.color.setHex(volt ? 0x7fdcff : 0xffb000);
     this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : 0xff9a00);
     this.classicParts.visible = !volt && !brute;
@@ -844,8 +843,8 @@ export class Plow implements PlowAPI {
     if (!force && key === this.lookKey) return;
     this.lookKey = key;
     this.look = look;
-    // Paint: body panels everywhere, the Classic's dump bed as trim. Accents (VOLT glow, BRUTUS hazard stripes,
-    // blade, hubs) keep their own materials.
+    // Paint: body panels everywhere, the Classic's dump bed as trim, wheel hubs as accent. VOLT glow, BRUTUS
+    // hazard stripes and the blade keep their own materials.
     const f = FACTORY_PAINT[this.kind];
     const p = look.paint;
     this.paintBase.setHex(p.body ?? f.body);
@@ -854,6 +853,8 @@ export class Plow implements PlowAPI {
     this.paintMat.roughness = p.roughness ?? 0.45;
     this.bedMat.metalness = p.metalness ?? 0.1;
     this.bedMat.roughness = p.roughness ?? 0.5;
+    const fh = this.kind === 'volt' ? 0x7fdcff : this.kind === 'brute' ? 0xffc21a : 0xffd23a;
+    this.hubMat.color.setHex(p.accent ?? fh);
     if (!this._dead) {
       this.paintMat.color.copy(this.paintBase);
       this.bedMat.color.copy(this.bedBase);
@@ -1545,6 +1546,7 @@ export class Plow implements PlowAPI {
     this.paintMat.color.lerpColors(this.paintBase, this.charColor, ch);
     this.bedMat.color.lerpColors(this.bedBase, this.charColor, ch * 0.85);
     this.decalMat.color.setScalar(1 - ch * 0.85);
+    this.decalMat.emissiveIntensity = 0.3 * (1 - ch);
     this.flash = Math.max(0, this.flash - dt * 3);
     this.paintMat.emissiveIntensity = this.flash * 1.4 + 0.25 * (0.5 + 0.5 * Math.sin(this.time * 23));
     this.bedMat.emissiveIntensity = this.flash * 1.4;

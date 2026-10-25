@@ -28,6 +28,8 @@ export interface PaintDef extends CosmeticBase {
   body: number | null;
   /** Secondary panels (the Classic's dump bed); null = factory. */
   trim: number | null;
+  /** Wheel hubs / BRUTUS hub parts; null = factory. */
+  accent?: number;
   metalness?: number;
   roughness?: number;
 }
@@ -56,28 +58,28 @@ export type CosmeticDef = PaintDef | DecalDef | TrailDef;
 export const COSMETICS: readonly CosmeticDef[] = [
   // ---- Paint
   { id: 'paint_stock', slot: 'paint', name: 'Factory', blurb: "Each plow's own colours.", price: 0, body: null, trim: null },
-  { id: 'paint_arctic', slot: 'paint', name: 'Arctic White', blurb: 'Clean as fresh powder.', price: 250, body: 0xeef4fa, trim: 0x9fb8cf },
-  { id: 'paint_red', slot: 'paint', name: 'Fire Engine', blurb: 'Loud, proud and red.', price: 400, body: 0xd81f2e, trim: 0xf2f2f2 },
-  { id: 'paint_lime', slot: 'paint', name: 'Toxic Lime', blurb: 'Visible from orbit.', price: 650, body: 0x7cd61c, trim: 0x3f7a12 },
-  { id: 'paint_purple', slot: 'paint', name: 'Midnight Grape', blurb: 'Deep purple, deeper menace.', price: 900, body: 0x5b2ca0, trim: 0xffc531 },
-  { id: 'paint_pink', slot: 'paint', name: 'Bubblegum', blurb: 'Pretty in pink. Brutal in practice.', price: 1300, body: 0xff5aa8, trim: 0xffe0ef },
-  { id: 'paint_black', slot: 'paint', name: 'Stealth Black', blurb: 'Matte black. No reflections, no mercy.', price: 1900, body: 0x22252b, trim: 0x44484f, roughness: 0.9, metalness: 0.05 },
-  { id: 'paint_chrome', slot: 'paint', name: 'Ice Chrome', blurb: 'Mirror-polished frost.', price: 3200, req: { stars: 6 }, body: 0xe8f6ff, trim: 0xa9cce4, metalness: 0.3, roughness: 0.14 },
-  { id: 'paint_gold', slot: 'paint', name: 'Champion Gold', blurb: 'For plows that have seen it all.', price: 6000, req: { achievements: 15 }, body: 0xffc93c, trim: 0xd99a22, metalness: 0.32, roughness: 0.22 },
+  { id: 'paint_arctic', slot: 'paint', name: 'Arctic White', blurb: 'Clean as fresh powder.', price: 150, body: 0xeef4fa, trim: 0x9fb8cf, accent: 0x3fa7f0 },
+  { id: 'paint_red', slot: 'paint', name: 'Fire Engine', blurb: 'Loud, proud and red.', price: 200, body: 0xd81f2e, trim: 0xf2f2f2, accent: 0xffd23a },
+  { id: 'paint_lime', slot: 'paint', name: 'Toxic Lime', blurb: 'Visible from orbit.', price: 300, body: 0x7cd61c, trim: 0x3f7a12, accent: 0x1d1f24 },
+  { id: 'paint_purple', slot: 'paint', name: 'Midnight Grape', blurb: 'Deep purple, deeper menace.', price: 400, body: 0x5b2ca0, trim: 0xffc531, accent: 0xffc531 },
+  { id: 'paint_pink', slot: 'paint', name: 'Bubblegum', blurb: 'Pretty in pink. Brutal in practice.', price: 550, body: 0xff5aa8, trim: 0xffe0ef, accent: 0xffffff },
+  { id: 'paint_black', slot: 'paint', name: 'Stealth Black', blurb: 'Matte black. No reflections, no mercy.', price: 750, body: 0x22252b, trim: 0x44484f, accent: 0xff3b2f, roughness: 0.9, metalness: 0.05 },
+  { id: 'paint_chrome', slot: 'paint', name: 'Ice Chrome', blurb: 'Mirror-polished frost.', price: 1200, req: { stars: 6 }, body: 0xe8f6ff, trim: 0xa9cce4, accent: 0x7fdcff, metalness: 0.3, roughness: 0.14 },
+  { id: 'paint_gold', slot: 'paint', name: 'Champion Gold', blurb: 'For plows that have seen it all.', price: 2000, req: { achievements: 15 }, body: 0xffc93c, trim: 0xd99a22, accent: 0xfff3c4, metalness: 0.32, roughness: 0.22 },
   // ---- Decal
   { id: 'decal_none', slot: 'decal', name: 'Clean', blurb: 'Nothing but paint.', price: 0, style: null },
-  { id: 'decal_stripes', slot: 'decal', name: 'Racing Stripes', blurb: 'Twin stripes nose to tail.', price: 350, style: 'stripes' },
-  { id: 'decal_flames', slot: 'decal', name: 'Hot Rod Flames', blurb: 'Flames down both flanks.', price: 900, style: 'flames' },
-  { id: 'decal_snowflake', slot: 'decal', name: 'Snowflake', blurb: 'A crisp six-point crest.', price: 1400, style: 'snowflake' },
-  { id: 'decal_checker', slot: 'decal', name: 'Checkered Flag', blurb: 'Finish-line bands all round.', price: 2200, req: { achievements: 5 }, style: 'checker' },
-  { id: 'decal_skull', slot: 'decal', name: 'Jolly Roger', blurb: 'Skull and crossbones. Bots, beware.', price: 3500, req: { stars: 9 }, style: 'skull' },
+  { id: 'decal_stripes', slot: 'decal', name: 'Racing Stripes', blurb: 'Twin stripes nose to tail.', price: 150, style: 'stripes' },
+  { id: 'decal_flames', slot: 'decal', name: 'Hot Rod Flames', blurb: 'Flames down both flanks.', price: 350, style: 'flames' },
+  { id: 'decal_snowflake', slot: 'decal', name: 'Snowflake', blurb: 'A crisp six-point crest.', price: 500, style: 'snowflake' },
+  { id: 'decal_checker', slot: 'decal', name: 'Checkered Flag', blurb: 'Finish-line bands all round.', price: 800, req: { achievements: 5 }, style: 'checker' },
+  { id: 'decal_skull', slot: 'decal', name: 'Jolly Roger', blurb: 'Skull and crossbones. Bots, beware.', price: 1200, req: { stars: 9 }, style: 'skull' },
   // ---- Trail
   { id: 'trail_none', slot: 'trail', name: 'No Trail', blurb: 'Just tyre tracks.', price: 0, style: null, colors: [] },
-  { id: 'trail_ice', slot: 'trail', name: 'Ice Sparkle', blurb: 'Glittering frost in your wake.', price: 500, style: 'ice', colors: [0xcff4ff, 0xffffff, 0x8fdcff] },
-  { id: 'trail_fire', slot: 'trail', name: 'Afterburner', blurb: 'Embers off the back. Dash to flare up.', price: 1200, style: 'fire', colors: [0xff4a12, 0xff8a1a, 0xffc23a] },
-  { id: 'trail_spark', slot: 'trail', name: 'Static Sparks', blurb: 'Crackling blue sparks.', price: 2000, req: { achievements: 8 }, style: 'spark', colors: [0x9fe8ff, 0xffffff, 0x4aa8ff] },
-  { id: 'trail_confetti', slot: 'trail', name: 'Party Mode', blurb: 'Every lap is a parade.', price: 2800, style: 'confetti', colors: [0xff4359, 0xffc531, 0x35c86b, 0x3fa7f0, 0xb05cf0, 0xff8a1f] },
-  { id: 'trail_rainbow', slot: 'trail', name: 'Rainbow Road', blurb: 'Leave a rainbow everywhere you go.', price: 5000, req: { stars: 12 }, style: 'rainbow', colors: [0xff4359, 0xffc531, 0x35c86b, 0x3fa7f0, 0xb05cf0] },
+  { id: 'trail_ice', slot: 'trail', name: 'Ice Sparkle', blurb: 'Glittering frost in your wake.', price: 200, style: 'ice', colors: [0xcff4ff, 0xffffff, 0x8fdcff] },
+  { id: 'trail_fire', slot: 'trail', name: 'Afterburner', blurb: 'Embers off the back. Dash to flare up.', price: 450, style: 'fire', colors: [0xff4a12, 0xff8a1a, 0xffc23a] },
+  { id: 'trail_spark', slot: 'trail', name: 'Static Sparks', blurb: 'Crackling blue sparks.', price: 700, req: { achievements: 8 }, style: 'spark', colors: [0x9fe8ff, 0xffffff, 0x4aa8ff] },
+  { id: 'trail_confetti', slot: 'trail', name: 'Party Mode', blurb: 'Every lap is a parade.', price: 900, style: 'confetti', colors: [0xff4359, 0xffc531, 0x35c86b, 0x3fa7f0, 0xb05cf0, 0xff8a1f] },
+  { id: 'trail_rainbow', slot: 'trail', name: 'Rainbow Road', blurb: 'Leave a rainbow everywhere you go.', price: 1500, req: { stars: 12 }, style: 'rainbow', colors: [0xff4359, 0xffc531, 0x35c86b, 0x3fa7f0, 0xb05cf0] },
 ];
 
 /** Free default per slot (owned by everyone, equipped on fresh / damaged saves). */

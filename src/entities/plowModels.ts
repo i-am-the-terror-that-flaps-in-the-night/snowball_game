@@ -578,29 +578,29 @@ interface DecalSpot {
 /** Decal spots on each starter plow's bodywork (model-local coordinates; see the builders above + Plow.ts). */
 const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
   classic: [
-    { face: 'top', at: [0, 1.53, 1.78], size: [0.85, 1.85], tags: ['stripe'] }, // hood
-    { face: 'top', at: [0, 2.28, 0.72], size: [1.45, 2.08], tags: ['stripe'] }, // cab roof
-    { face: 'top', at: [0, 1.88, -0.95], size: [2.2, 2.2], tags: ['stripe', 'emblem'], emblem: 1.3 }, // bed lid
-    { face: 'side', at: [1.05, 1.47, -0.95], size: [2.0, 0.58], tags: ['flame', 'emblem'], emblem: 0.52 }, // bed flank
+    { face: 'top', at: [0, 1.53, 1.78], size: [0.85, 1.85], tags: ['stripe', 'flame'] }, // hood
+    { face: 'top', at: [0, 2.28, 0.72], size: [1.45, 2.08], tags: ['stripe', 'emblem'], emblem: 1.2 }, // cab roof
+    { face: 'top', at: [0, 1.88, -0.95], size: [2.2, 2.2], tags: ['stripe', 'emblem', 'band'], emblem: 1.75 }, // bed lid
+    { face: 'side', at: [1.05, 1.47, -0.95], size: [2.0, 0.58], tags: ['flame', 'emblem', 'stripe'], emblem: 0.56 }, // bed flank
     { face: 'side', at: [1.05, 1.64, -0.95], size: [2.06, 0.2], tags: ['band'] },
-    { face: 'side', at: [0.925, 1.31, 1.78], size: [0.83, 0.4], tags: ['flame', 'band'] }, // hood flank
+    { face: 'side', at: [0.925, 1.31, 1.78], size: [0.83, 0.4], tags: ['flame', 'band', 'stripe'] }, // hood flank
     { face: 'rear', at: [0, 1.45, -2.0], size: [2.1, 0.62], tags: ['emblem'], emblem: 0.56 },
     { face: 'rear', at: [0, 1.66, -2.0], size: [2.1, 0.2], tags: ['band'] },
   ],
   volt: [
-    { face: 'top', at: [0, 1.157, 1.532], size: [1.5, 1.9], tags: ['stripe'], tilt: 0.2 }, // sloped nose
+    { face: 'top', at: [0, 1.157, 1.532], size: [1.5, 1.9], tags: ['stripe', 'flame', 'band'], tilt: 0.2 }, // sloped nose
     { face: 'top', at: [0, 1.087, 1.875], size: [0.72, 1.9], tags: ['emblem'], emblem: 0.66, tilt: 0.2 },
-    { face: 'top', at: [0, 1.27, -1.5], size: [0.9, 1.95], tags: ['stripe'] }, // rear deck
+    { face: 'top', at: [0, 1.27, -1.5], size: [0.9, 1.95], tags: ['stripe', 'flame', 'emblem'], emblem: 0.85 }, // rear deck
     { face: 'top', at: [0, 1.78, -1.8], size: [0.45, 2.1], tags: ['stripe', 'emblem'], emblem: 0.42 }, // wing
-    { face: 'side', at: [0.975, 1.165, -0.45], size: [2.9, 0.2], tags: ['flame', 'band'] },
+    { face: 'side', at: [0.975, 1.165, -0.45], size: [2.9, 0.2], tags: ['flame', 'band', 'stripe'] },
     { face: 'rear', at: [0, 0.93, -1.95], size: [1.95, 0.26], tags: ['band'] },
   ],
   brute: [
-    { face: 'top', at: [0, 2.26, 0.65], size: [1.1, 1.5], tags: ['stripe', 'emblem'], emblem: 0.95 }, // cab roof
-    { face: 'top', at: [0, 1.275, 1.75], size: [0.8, 1.75], tags: ['stripe'] }, // front deck
-    { face: 'top', at: [0, 2.012, -1.0], size: [1.9, 1.75], tags: ['stripe'] }, // over the engine vents
-    { face: 'top', at: [1.12, 1.06, 0.1], size: [4.0, 0.7], tags: ['flame'], pair: true }, // track guards
-    { face: 'side', at: [0.875, 1.78, -1.0], size: [1.85, 0.3], tags: ['band'] }, // engine flank
+    { face: 'top', at: [0, 2.26, 0.65], size: [1.1, 1.5], tags: ['stripe', 'emblem'], emblem: 1.05 }, // cab roof
+    { face: 'top', at: [0, 1.275, 1.75], size: [0.8, 1.75], tags: ['stripe', 'flame'] }, // front deck
+    { face: 'top', at: [0, 2.012, -1.0], size: [1.9, 1.75], tags: ['stripe', 'band', 'emblem'], emblem: 1.4 }, // over the engine vents
+    { face: 'top', at: [1.12, 1.06, 0.1], size: [4.0, 0.7], tags: ['flame', 'stripe', 'band'], pair: true }, // track guards
+    { face: 'side', at: [0.875, 1.78, -1.0], size: [1.85, 0.3], tags: ['band', 'stripe', 'flame'] }, // engine flank
     { face: 'rear', at: [0, 1.38, -1.95], size: [1.75, 0.95], tags: ['emblem'], emblem: 0.85 },
     { face: 'rear', at: [0, 1.84, -1.95], size: [1.75, 0.18], tags: ['band'] },
   ],
@@ -615,6 +615,7 @@ export function buildDecals(kind: PlowKind, style: DecalStyle, mat: THREE.MeshSt
   const group = new THREE.Group();
   group.name = 'decals';
   mat.map = getDecalTexture(style);
+  mat.emissiveMap = mat.map;
   mat.needsUpdate = true;
   const tag = DECAL_TAG[style];
   const [cw, ch] = DECAL_CANVAS[style];
@@ -676,20 +677,20 @@ export function emitTrail(fx: FxAPI, trail: TrailDef, at: THREE.Vector3, dash: b
   const c = trail.colors;
   switch (trail.style) {
     case 'ice':
-      fx.burst(at, { color: pick(c), count: dash ? 3 : 1, speed: dash ? 2.4 : 1.1, size: 0.11, gravity: 2, life: 0.9 });
+      fx.burst(at, { color: pick(c), count: dash ? 6 : 2, speed: dash ? 2.4 : 1.1, size: 0.16, gravity: 2, life: 1.2 });
       break;
     case 'fire':
-      fx.burst(at, { color: pick(c), count: dash ? 3 : 1, speed: dash ? 2.2 : 1.3, size: dash ? 0.3 : 0.22, gravity: -6, life: dash ? 0.55 : 0.4 });
+      fx.burst(at, { color: pick(c), count: dash ? 6 : 2, speed: dash ? 2.2 : 1.3, size: dash ? 0.45 : 0.33, gravity: -6, life: dash ? 0.75 : 0.54 });
       break;
     case 'spark':
-      fx.burst(at, { color: pick(c), count: dash ? 4 : 2, speed: dash ? 8 : 5, size: 0.06, gravity: 14, life: 0.24 });
+      fx.burst(at, { color: pick(c), count: dash ? 8 : 4, speed: dash ? 8 : 5, size: 0.09, gravity: 14, life: 0.32 });
       break;
     case 'confetti':
-      fx.burst(at, { color: pick(c), count: dash ? 3 : 1, speed: dash ? 4.5 : 3, size: 0.12, gravity: 6, life: 1.1 });
+      fx.burst(at, { color: pick(c), count: dash ? 6 : 2, speed: dash ? 4.5 : 3, size: 0.18, gravity: 6, life: 1.5 });
       break;
     case 'rainbow':
       _trailCol.setHSL((t * 0.45) % 1, 0.9, 0.58);
-      fx.burst(at, { color: _trailCol.getHex(), count: dash ? 4 : 2, speed: dash ? 1 : 0.4, size: dash ? 0.2 : 0.15, gravity: 0.3, life: 0.9 });
+      fx.burst(at, { color: _trailCol.getHex(), count: dash ? 8 : 4, speed: dash ? 1 : 0.4, size: dash ? 0.3 : 0.22, gravity: 0.3, life: 1.2 });
       break;
     default:
       break;

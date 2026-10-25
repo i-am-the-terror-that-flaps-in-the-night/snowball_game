@@ -39,7 +39,7 @@ describe('cosmetics catalog', () => {
     expect(COSMETIC_BY_ID.size).toBe(COSMETICS.length);
   });
 
-  it('every slot has a free default plus paid items in the 250..6000 range', () => {
+  it('every slot has a free default plus paid items in the 150..2000 range', () => {
     for (const slot of COSMETIC_SLOTS) {
       const def = COSMETIC_BY_ID.get(DEFAULT_COSMETICS[slot])!;
       expect(def.slot).toBe(slot);
@@ -47,8 +47,8 @@ describe('cosmetics catalog', () => {
       const paid = cosmeticsInSlot(slot).filter((c) => c.price > 0);
       expect(paid.length).toBeGreaterThanOrEqual(5);
       for (const c of paid) {
-        expect(c.price).toBeGreaterThanOrEqual(250);
-        expect(c.price).toBeLessThanOrEqual(6000);
+        expect(c.price).toBeGreaterThanOrEqual(150);
+        expect(c.price).toBeLessThanOrEqual(2000);
       }
     }
   });
