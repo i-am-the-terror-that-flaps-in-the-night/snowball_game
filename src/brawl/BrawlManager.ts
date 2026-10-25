@@ -1533,8 +1533,11 @@ export class BrawlManager implements BrawlAPI {
       ctx.fx.burst(_v, { color: 0xff8a2a, count: 26, speed: 12, size: 0.14, gravity: 18, life: 0.6 });
       ctx.fx.burst(_v, { color: 0x30343a, count: 16, speed: 5, size: 0.5, gravity: -2, life: 1.4 });
       ctx.fx.burst(_v, { color: 0xffffff, count: 18, speed: 8, size: 0.3, gravity: 14, life: 1 });
+      ctx.fx.fireball(_v, 1.2);
       _v.y = 0.1;
       ctx.fx.ring(_v, 5, 0xffb060);
+      ctx.fx.scorch(_v, 2.6);
+      ctx.fx.smolder(_v, { scale: 1.1, seconds: 2.5 });
       const k = this.hear(x, z);
       if (k > 0.1) ctx.fx.shake(0.15 + 0.5 * k);
       ctx.impact.hit('wreck', _v.set(x, 1.2, z), 1, { stop: false, falloff: k });

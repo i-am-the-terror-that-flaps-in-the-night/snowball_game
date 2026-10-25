@@ -354,8 +354,75 @@ export interface PickupsAPI {
   update(dt: number): void;
 }
 
+export interface SparkOpts {
+  count?: number;
+  /** Base colour (default hot orange). Sparks start white-hot and cool to it. */
+  color?: number;
+  speed?: number;
+  /** 0 = tight jet along `dir`, 1 = full sphere. Default 0.55 with a dir, 1 without. */
+  spread?: number;
+  /** Streak width in metres (default 0.08). */
+  size?: number;
+  /** Streak length as seconds of velocity (default 0.035; clamped to 1.6 m). */
+  length?: number;
+  gravity?: number;
+  life?: number;
+}
+
+export interface SmokeOpts {
+  count?: number;
+  color?: number;
+  /** Start radius in metres; the puff grows to size * grow over its life. */
+  size?: number;
+  grow?: number;
+  life?: number;
+  /** Random velocity magnitude (radial: outward speed in XZ). */
+  speed?: number;
+  /** Upward velocity bias. */
+  up?: number;
+  /** Buoyancy (m/s^2 up; negative settles). */
+  rise?: number;
+  drag?: number;
+  /** Spawn jitter radius. */
+  spread?: number;
+  opacity?: number;
+  /** 0 = normal alpha (smoke, dust, powder), 1 = additive glow (fire, flash). */
+  additive?: number;
+  /** Velocities fan out flat in XZ (ground shock clouds). */
+  radial?: boolean;
+  /** Added velocity bias. */
+  dir?: THREE.Vector3;
+}
+
+export interface PowderOpts {
+  /** Overall scale (1 = a plain slam). */
+  size?: number;
+  color?: number;
+}
+
+export interface SmolderOpts {
+  /** Emission time (default 2.5 s); the smoke itself lingers ~2 s longer. */
+  seconds?: number;
+  /** Size of the wreck (1 = a plow-sized bot). */
+  scale?: number;
+}
+
 export interface FxAPI {
+  /** Tumbling chunks. Routing: rising bursts (gravity < 0) render as soft puffs (saturated colours glow);
+   *  small (size <= 0.12), short (life <= 0.6), coloured bursts render as streak sparks. */
   burst(pos: THREE.Vector3, opts?: { color?: number; count?: number; speed?: number; size?: number; gravity?: number; life?: number }): void;
+  /** Thin additive streaks stretched along their velocity. `dir` biases them into a cone (null = upward sphere). */
+  sparks(pos: THREE.Vector3, dir: THREE.Vector3 | null, opts?: SparkOpts): void;
+  /** Soft camera-facing puffs that grow and fade (smoke, dust, steam, fire glow). */
+  smoke(pos: THREE.Vector3, opts?: SmokeOpts): void;
+  /** Snow powder cloud for impacts: an outward ground surge, a lazy column and fine flakes. */
+  powder(pos: THREE.Vector3, opts?: PowderOpts): void;
+  /** Fireball flash + a kick of dark smoke (explosions, wrecks). */
+  fireball(pos: THREE.Vector3, scale?: number): void;
+  /** Dark soot decal on the snow; fades over ~8 s. */
+  scorch(pos: THREE.Vector3, radius: number, strength?: number): void;
+  /** A wreck that keeps smoking: dark rising smoke column, flames and embers for `seconds`. */
+  smolder(pos: THREE.Vector3, opts?: SmolderOpts): void;
   /** Snow kicked up by a blade. `intensity` 0..1. Call every frame while plowing. */
   spray(pos: THREE.Vector3, dir: THREE.Vector3, intensity: number): void;
   /** Floating damage numbers / labels projected to screen. */

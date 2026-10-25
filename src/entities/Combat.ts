@@ -316,7 +316,7 @@ export class Combat implements CombatAPI {
     ctx.fx.ring(_q, R, 0x7fdcff);
     ctx.fx.ring(_q, R * 0.6, 0xffffff);
     ctx.fx.ring(_q, R * 1.15, 0x2fb8ff);
-    ctx.fx.burst(_q, { color: 0x9fe8ff, count: 40, speed: 14, size: 0.1, gravity: 8, life: 0.5 });
+    ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 40, speed: 16, size: 0.08, length: 0.05, gravity: 8, life: 0.5 });
     ctx.fx.burst(_q, { color: 0xffffff, count: 24, speed: 8, size: 0.3, gravity: 10, life: 0.6 });
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
@@ -753,7 +753,7 @@ export class Combat implements CombatAPI {
       0.9,
       (plow.position.z + _fwd.z * 2.4 + enemy.position.z) * 0.5,
     );
-    fx.burst(_p, { color: 0xffc04a, count: 10 + Math.round(Math.min(18, closingSpeed)), speed: 7 + closingSpeed * 0.3, size: 0.08, gravity: 22, life: 0.35 });
+    fx.sparks(_p, _fwd, { color: 0xffc04a, count: 10 + Math.round(Math.min(18, closingSpeed)), speed: 8 + closingSpeed * 0.35, spread: 0.85, gravity: 22, life: 0.35 });
     fx.burst(_p, { color: 0x9aa4b0, count: 4, speed: 4, size: 0.16, gravity: 20, life: 0.6 });
     if (r > 0) fx.burst(_p, { color: 0xffffff, count: 6, speed: 3.5, size: 0.18, gravity: 14, life: 0.6 });
     fx.shake(Math.min(0.4, 0.1 + closingSpeed * 0.015));
@@ -806,8 +806,8 @@ export class Combat implements CombatAPI {
       1.0,
       (plow.position.z + _fwd.z * 2.4 + enemy.position.z) * 0.5,
     );
-    fx.burst(_p, { color: 0xffa02a, count: 34, speed: 15, size: 0.1, gravity: 20, life: 0.45 });
-    fx.burst(_p, { color: 0xfff0a0, count: 14, speed: 10, size: 0.07, gravity: 26, life: 0.3 });
+    fx.sparks(_p, _fwd, { color: 0xffa02a, count: 40, speed: 18, spread: 0.7, size: 0.09, length: 0.04, gravity: 20, life: 0.5 });
+    fx.sparks(_p, null, { color: 0xfff0a0, count: 14, speed: 10, size: 0.07, gravity: 26, life: 0.3 });
     fx.burst(_p, { color: 0xffffff, count: 26, speed: 7, size: 0.28, gravity: 12, life: 0.8 });
     fx.burst(_p, { color: 0x9aa4b0, count: 8, speed: 5, size: 0.2, gravity: 18, life: 0.7 });
     _q.set(_p.x, 0.05, _p.z);
@@ -882,10 +882,11 @@ export class Combat implements CombatAPI {
     // Shatter the ball.
     const ground = ctx.snow ? ctx.snow.getDepth(x, z) : 0;
     _p.set(x, ground + r * 0.8, z);
-    fx.burst(_p, { color: 0xffffff, count: Math.round(24 + r * 34), speed: 5 + r * 3.5, size: 0.24 + r * 0.2, gravity: 14, life: 1.1 });
+    fx.burst(_p, { color: 0xffffff, count: Math.round(16 + r * 22), speed: 5.5 + r * 3.5, size: 0.17 + r * 0.13, gravity: 14, life: 1.1 });
     fx.burst(_p, { color: 0xcfe6ff, count: Math.round(10 + r * 12), speed: 3 + r * 2, size: 0.12 + r * 0.1, gravity: 7, life: 1.3 });
     if (freeze) fx.burst(_p, { color: 0x7fd4ff, count: Math.round(12 + r * 10), speed: 6 + r * 2, size: 0.14, gravity: 4, life: 0.9 });
     if (avalanche) fx.burst(_p, { color: 0xeaf4ff, count: Math.round(16 + r * 16), speed: 9 + r * 3, size: 0.3, gravity: 10, life: 1.0 });
+    fx.powder(_p, { size: 0.8 + r * 0.5 + (avalanche ? 0.6 : 0), color: freeze ? 0xc4e4ff : 0xd6e3f3 });
     ctx.snow?.addSnow(x, z, Math.max(1.2, r * 1.6), volume * 0.4);
     _p.y = ground;
     fx.ring(_p, zone, freeze ? 0x9fe6ff : 0xffffff);
@@ -1256,14 +1257,19 @@ export class Combat implements CombatAPI {
     ctx.fx.ring(_q, R, 0x7dff4a);
     ctx.fx.ring(_q, R * 1.15, 0xff8a1a);
     ctx.fx.burst(_q, { color: 0xffffff, count: 60, speed: 26, size: 0.4, gravity: 4, life: 0.6 });
-    ctx.fx.burst(_q, { color: 0xffb02e, count: 50, speed: 18, size: 0.5, gravity: 2, life: 0.9 });
-    for (let i = 0; i < 7; i++) {
-      _q.set(px, 1 + i * 1.6, pz);
-      ctx.fx.burst(_q, { color: i < 3 ? 0xffd24a : 0x9aa06a, count: 14, speed: 2.5, size: 0.9, gravity: -4 - i, life: 1.6 });
+    ctx.fx.smoke(_q, { count: 30, color: 0xffa030, additive: 0.3, size: 1.4, grow: 2.5, life: 0.9, speed: 16, up: 2, rise: 1, drag: 2.5, spread: 1.5, opacity: 0.95, radial: true });
+    ctx.fx.smoke(_q, { count: 2, color: 0xffffff, additive: 1, size: 9, grow: 1.6, life: 0.35, speed: 0, up: 0, rise: 0, spread: 0, opacity: 1 });
+    ctx.fx.smoke(_q, { count: 28, color: 0xd9d6c2, size: 1.6, grow: 2.6, life: 2.4, speed: 17, up: 1, rise: 0.4, drag: 1.6, spread: 2, opacity: 0.75, radial: true });
+    ctx.fx.scorch(_q, R * 0.4, 1);
+    for (let i = 0; i < 8; i++) {
+      _q.set(px, 0.8 + i * 1.1, pz);
+      const hot = i < 3;
+      ctx.fx.smoke(_q, { count: 5, color: hot ? 0xffa43a : i < 5 ? 0xb8b088 : 0x8f8f78, additive: hot ? 0.3 : 0, size: 1.3 + i * 0.1, grow: 2, life: 2.6 + i * 0.12, speed: 0.8, up: 5 - i * 0.5, rise: 1, drag: 0.9, spread: 0.9, opacity: hot ? 0.8 : 0.72 });
     }
-    _q.set(px, 12, pz);
-    ctx.fx.burst(_q, { color: 0xffe9a0, count: 50, speed: 9, size: 1.1, gravity: -1.5, life: 2 });
-    ctx.fx.burst(_q, { color: 0x7dff4a, count: 40, speed: 12, size: 0.8, gravity: -0.5, life: 2.2 });
+    _q.set(px, 9.5, pz);
+    ctx.fx.smoke(_q, { count: 30, color: 0xa8a48a, size: 2.2, grow: 2.3, life: 3.4, speed: 6, up: 1.8, rise: 0.5, drag: 0.8, spread: 2.2, opacity: 0.8, radial: true });
+    ctx.fx.smoke(_q, { count: 14, color: 0xffc860, additive: 0.35, size: 2, grow: 2, life: 1.6, speed: 3, up: 1, rise: 0.6, drag: 1, spread: 1.5, opacity: 0.75 });
+    ctx.fx.smoke(_q, { count: 10, color: 0x7dff4a, additive: 0.3, size: 1.6, grow: 2.2, life: 2.2, speed: 7, up: 0.6, rise: 0.2, drag: 1, spread: 2, opacity: 0.5, radial: true });
     ctx.fx.shake(1.8);
     ctx.impact.hit('nuke', _q.set(px, 2, pz));
     ctx.audio.play('explosion');
