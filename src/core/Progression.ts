@@ -1,5 +1,5 @@
-import { FX, ITEM_STATS, UPGRADES, UPGRADE_BY_ID, cooldown, ultPower, upgradeCost, type UpgradeId } from '../config/upgrades';
-import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, type GearSlot, type GearState } from '../config/gear';
+import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
+import { GEAR_BY_ID, GEAR_MAX_LEVEL, REMOVED_GEAR, gearCost, gearLevels, gearSpent, type GearDef, type GearSlot, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import type { PlayerStats } from './types';
 import { PLOWS, type PlowKind } from '../config/plows';
@@ -66,12 +66,30 @@ function migrateUpgrades<T>(ups: Record<string, T>): Record<string, T> {
   return out;
 }
 
-/** Stats that became gear (ITEM_STATS): old saves get every coin they spent on them back, once. */
+/** Stats that became gear (ITEM_STATS) or were cut (REMOVED_UPGRADES), and cut gear items (REMOVED_GEAR): old
+ *  saves get every coin they spent on them back, once (the levels / items are deleted as they're refunded). */
 function refundItemStats(d: SaveData): void {
   for (const id of ITEM_STATS) {
     const n = d.upgrades[id] ?? 0;
     for (let l = 0; l < Math.min(n, 999); l++) d.coins += upgradeCost(UPGRADE_BY_ID[id], l);
     delete d.upgrades[id];
+  }
+  const ups = d.upgrades as Record<string, number | undefined>;
+  for (const [id, curve] of Object.entries(REMOVED_UPGRADES)) {
+    const n = ups[id];
+    if (typeof n === 'number' && Number.isFinite(n)) for (let l = 0; l < Math.min(n, 999); l++) d.coins += upgradeCost(curve as UpgradeDef, l);
+    delete ups[id];
+  }
+}
+
+/** Refund + drop gear items that no longer exist (call on the RAW gear before cleanGear filters them out). */
+function refundRemovedGear(d: SaveData, raw: unknown): void {
+  const owned = raw && typeof raw === 'object' ? (raw as { owned?: unknown }).owned : undefined;
+  if (!owned || typeof owned !== 'object') return;
+  for (const [id, lv] of Object.entries(owned as Record<string, unknown>)) {
+    const old = REMOVED_GEAR[id];
+    if (!old || typeof lv !== 'number' || !Number.isFinite(lv) || lv < 1) continue;
+    d.coins += gearSpent(old as GearDef, Math.min(GEAR_MAX_LEVEL, Math.floor(lv)));
   }
 }
 
@@ -106,6 +124,8 @@ function sanitizeSave(raw: unknown): SaveData | null {
     for (const [id, lv] of Object.entries(migrateUpgrades(p.upgrades as Record<string, unknown>))) {
       const def = UPGRADE_BY_ID[id as UpgradeId];
       if (def && typeof lv === 'number') out.upgrades[id as UpgradeId] = num(lv, 0, def.maxLevel);
+      // Cut upgrades are kept just long enough for refundItemStats to pay them back.
+      else if (REMOVED_UPGRADES[id] && typeof lv === 'number') (out.upgrades as Record<string, number>)[id] = num(lv, 0, 999);
     }
   }
   out.unlockedZones = num(p.unlockedZones, 1, ZONES.length);
@@ -148,7 +168,10 @@ function sanitizeSave(raw: unknown): SaveData | null {
   if (p.achievements !== undefined) out.achievements = numMap(p.achievements, 1);
   if (p.lifetime !== undefined) out.lifetime = numMap(p.lifetime);
   if (p.dailyBest !== undefined) out.dailyBest = numMap(p.dailyBest, 9999);
-  if (p.gear !== undefined) out.gear = cleanGear(p.gear);
+  if (p.gear !== undefined) {
+    refundRemovedGear(out, p.gear);
+    out.gear = cleanGear(p.gear);
+  }
   refundItemStats(out);
   return out;
 }
@@ -169,7 +192,10 @@ export class Progression {
         const parsed = JSON.parse(raw) as SaveData;
         if (parsed && parsed.version === 1) {
           const d: SaveData = { ...freshSave(), ...parsed, upgrades: migrateUpgrades(parsed.upgrades ?? {}) };
-          if (d.gear) d.gear = cleanGear(d.gear);
+          if (d.gear) {
+            refundRemovedGear(d, d.gear);
+            d.gear = cleanGear(d.gear);
+          }
           refundItemStats(d);
           return d;
         }
@@ -487,7 +513,6 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,
     lifesteal: FX.lifesteal(L('salvage')),
     secondWindCd: FX.secondWindCd(L('secondWind')),
-    hitCapBonus: FX.hitCapBonus(L('wreckingBall')),
     killRecharge: FX.killRecharge(L('adrenaline')),
     lastStand: FX.lastStand(L('lastStand')),
     shardFrac: FX.shardFrac(L('classicShatter')),

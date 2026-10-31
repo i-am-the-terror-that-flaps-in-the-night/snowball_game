@@ -107,8 +107,6 @@ export interface PlayerStats {
   lifesteal: number;
   /** Seconds between Second Wind saves; Infinity when not owned. */
   secondWindCd: number;
-  /** Extra Brawl hit cap on the player's hits. */
-  hitCapBonus: number;
   /** Fraction of dash/whirl recharge refunded per kill. */
   killRecharge: number;
   /** Last Stand: bonus damage dealt (and half as much less taken) below LAST_STAND_HP; 0 = not owned. */

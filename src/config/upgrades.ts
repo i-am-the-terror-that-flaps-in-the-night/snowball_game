@@ -20,7 +20,6 @@ export type UpgradeId =
   // Pilot perks — player-only: Brawl rivals never roll these.
   | 'salvage'
   | 'secondWind'
-  | 'wreckingBall'
   | 'adrenaline'
   | 'lastStand'
   | 'overclock'
@@ -131,8 +130,6 @@ export const FX = {
   lifesteal: (L: number) => 0.03 * soft(L, 5),
   /** Seconds between Second Wind saves (Infinity = not owned). */
   secondWindCd: (L: number) => (L <= 0 ? Infinity : 30 + 60 * Math.exp(-(L - 1) / 4)),
-  /** Extra Brawl hit cap on YOUR hits (fraction of the target's max hp). */
-  hitCapBonus: (L: number) => 0.06 * soft(L, 5, 5 / 3),
   /** Fraction of the dash + whirl recharge refunded when you wreck something. */
   killRecharge: (L: number) => Math.min(1, 0.2 * soft(L, 4, 2)),
   /** Inferno (F on the Classic Plow, free at level 0): flame cone reach (m), burn damage per second, recharge (s). */
@@ -237,7 +234,6 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'magnet', name: 'Bolt Magnet', icon: '🧲', category: 'utility', description: 'Grab dropped coins from farther away.', pips: 3, maxLevel: ENDLESS, baseCost: 35, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.magnetRadius(l))} m reach` },
   { id: 'salvage', name: 'Salvage Rig', icon: '🔧', category: 'pilot', playerOnly: true, description: 'Every hit you land repairs your plow by a share of the damage.', pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.lifesteal(l) * 100)}% lifesteal` },
   { id: 'secondWind', name: 'Second Wind', icon: '💨', category: 'pilot', playerOnly: true, description: 'A lethal hit leaves you at 1 HP with 1.5s of invulnerability instead. Recharges.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => (l ? `every ${Math.round(FX.secondWindCd(l))}s` : 'Locked') },
-  { id: 'wreckingBall', name: 'Wrecking Ball', icon: '🏗️', category: 'pilot', playerOnly: true, description: 'BRAWL ONLY: your hits punch through the Brawl hit cap (bots stay capped at 60%).', details: 'Does nothing in Campaign, Survival or the Tutorial: only Snowdome Brawl caps how much one hit can take.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round((0.6 + FX.hitCapBonus(l)) * 100)}% max hit (Brawl)` },
   { id: 'adrenaline', name: 'Adrenaline', icon: '💉', category: 'pilot', playerOnly: true, description: 'Wrecking a bot instantly refunds part of your dash and whirl recharge.', pips: 4, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.killRecharge(l) * 100)}% refund on kill` },
   { id: 'lastStand', name: 'Last Stand', icon: '❤️‍🔥', category: 'pilot', playerOnly: true, description: `Below ${LAST_STAND_HP * 100}% HP you hit harder and take less damage.`, details: `While your plow is under ${LAST_STAND_HP * 100}% HP you deal the bonus damage and take half that much less damage.`, pips: 5, maxLevel: ENDLESS, baseCost: 90, costGrowth: 1.75, valueLabel: (l) => (l ? `+${Math.round(FX.lastStand(l) * 100)}% dmg, -${Math.round(FX.lastStand(l) * 50)}% taken` : 'Locked') },
   { id: 'overclock', name: 'Overclock', icon: '⏱️', category: 'pilot', playerOnly: true, description: 'Cuts every ability cooldown (slam, dash, whirl and your F ability) by 6% per level, up to -60%.', details: 'Applies to Inferno, Thunderclap and Ground Pound alike. Nothing ever recharges faster than 0.35s.', pips: 10, maxLevel: 10, baseCost: 150, costGrowth: 1.6, valueLabel: (l) => (l ? `-${Math.round((1 - FX.cooldownMult(l)) * 100)}% cooldowns` : 'No cut') },
@@ -270,9 +266,15 @@ export const UPGRADES: UpgradeDef[] = [
  *  (engine, armor, packedIce, hopper) and the plow lines; everything here comes from what you have equipped. */
 export const ITEM_STATS: readonly UpgradeId[] = [
   'blade', 'ramSpikes', 'nitro', 'whirl', 'compactor', 'plating', 'repairKit', 'snowMachine', 'magnet',
-  'salvage', 'secondWind', 'wreckingBall', 'adrenaline', 'lastStand', 'overclock', 'iceShield', 'frostCore', 'avalancheCore',
+  'salvage', 'secondWind', 'adrenaline', 'lastStand', 'overclock', 'iceShield', 'frostCore', 'avalancheCore',
 ];
 for (const u of UPGRADES) if (ITEM_STATS.includes(u.id)) u.itemOnly = true;
+
+/** Upgrades that were cut from the game, with the cost curve they were sold on, so old saves can be refunded. */
+export const REMOVED_UPGRADES: Record<string, Pick<UpgradeDef, 'pips' | 'baseCost' | 'costGrowth'>> = {
+  // Wrecking Ball: raised the player's Brawl hit cap. Replaced by a fixed BRAWL_PLAYER_HIT_CAP.
+  wreckingBall: { pips: 5, baseCost: 120, costGrowth: 1.8 },
+};
 
 /** Upgrades the Garage still sells. */
 export const SHOP_UPGRADES = UPGRADES.filter((u) => !u.itemOnly);

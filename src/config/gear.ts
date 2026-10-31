@@ -61,7 +61,6 @@ export const GEAR: GearDef[] = [
   { id: 'jetTurbine', name: 'Jet Turbine', icon: '✈️', slot: 'booster', rarity: 'epic', cost: 1200, description: 'Dash + whirlwind, and kills refund their recharge.', grants: [g('nitro', 1, 0.3), g('whirl', 1, 0.3), g('adrenaline', 1, 0.4)] },
   // ---- Core
   { id: 'packCompactor', name: 'Pack Compactor', icon: '🧊', slot: 'core', rarity: 'common', cost: 70, description: 'Packs plowed snow into your ball faster.', grants: [g('compactor', 1, 0.5)] },
-  { id: 'wreckerCore', name: 'Wrecker Core', icon: '🏗️', slot: 'core', rarity: 'rare', cost: 500, description: 'BRAWL: punch through the hit cap. Rams harder.', grants: [g('wreckingBall', 1, 0.6), g('ramSpikes', 1, 0.3)] },
   { id: 'overclockChip', name: 'Overclock Chip', icon: '⏱️', slot: 'core', rarity: 'legendary', cost: 1500, description: 'Cuts every ability cooldown, up to -60% at max level.', grants: [g('overclock', 1, 1)] },
   // ---- Charm
   { id: 'luckyMagnet', name: 'Lucky Magnet', icon: '🧲', slot: 'charm', rarity: 'common', cost: 50, description: 'Grab dropped coins from farther away.', grants: [g('magnet', 1, 0.5)] },
@@ -71,6 +70,11 @@ export const GEAR: GearDef[] = [
 ];
 
 export const GEAR_BY_ID: Record<string, GearDef> = Object.fromEntries(GEAR.map((d) => [d.id, d]));
+
+/** Items that were cut, with their base price, so old saves get back what they spent on them (see gearSpent). */
+export const REMOVED_GEAR: Record<string, Pick<GearDef, 'cost'>> = {
+  wreckerCore: { cost: 500 },
+};
 
 /** Levels of `grant.stat` an item at `level` gives (0 if not owned), capped by the stat's own max. */
 export function grantLevels(grant: GearGrant, level: number): number {

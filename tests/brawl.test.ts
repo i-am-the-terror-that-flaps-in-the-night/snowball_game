@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BRAWL_HIT_CAP, brawlHit, streakMult } from '../src/config/brawl';
+import { BRAWL_HIT_CAP, BRAWL_PLAYER_HIT_CAP, brawlHit, streakMult } from '../src/config/brawl';
 
 describe('brawlHit', () => {
   it('never exceeds the cap fraction of max hp', () => {
@@ -36,5 +36,13 @@ describe('streakMult', () => {
     expect(streakMult(5)).toBe(2);
     expect(streakMult(8)).toBe(3);
     expect(streakMult(99)).toBe(4);
+  });
+});
+
+describe('player hit cap', () => {
+  it('the player caps higher than bots, but still below a one-shot', () => {
+    expect(BRAWL_PLAYER_HIT_CAP).toBeGreaterThan(BRAWL_HIT_CAP);
+    expect(BRAWL_PLAYER_HIT_CAP).toBeLessThan(1);
+    expect(brawlHit(1e6, 100, BRAWL_PLAYER_HIT_CAP)).toBeLessThanOrEqual(BRAWL_PLAYER_HIT_CAP * 100);
   });
 });

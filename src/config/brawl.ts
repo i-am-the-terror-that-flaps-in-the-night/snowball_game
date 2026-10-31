@@ -11,6 +11,9 @@ export const BRAWL_SPAWN_PROTECT = 2;
 /** Brawl hit cap: one hit can take at most this fraction of the target's max hp (smooth taper — small hits
  *  are barely affected). Stops full-ball slams from one-shotting anyone, player or bot. */
 export const BRAWL_HIT_CAP = 0.6;
+/** The player's own hits on rivals cap a little higher, so a big upgraded slam still feels like one (this used to
+ *  be the Wrecking Ball perk's job). Bots, rivals and Duel hits all use BRAWL_HIT_CAP. */
+export const BRAWL_PLAYER_HIT_CAP = 0.75;
 export function brawlHit(raw: number, targetMaxHp: number, capFrac = BRAWL_HIT_CAP): number {
   const cap = capFrac * targetMaxHp;
   if (!(cap > 0) || !(raw > 0)) return 0;

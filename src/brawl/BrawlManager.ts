@@ -32,6 +32,7 @@ import {
   BRAWL_TAUNTS,
   BRAWL_TIME,
   BRAWL_HIT_CAP,
+  BRAWL_PLAYER_HIT_CAP,
   PLAYER_BRAWL_COLOR,
   brawlHit,
   STREAK_TIERS,
@@ -1394,8 +1395,8 @@ export class BrawlManager implements BrawlAPI {
   private hurtRival(r: Rival, amount: number, attacker: Fighter | null, method: Method, kx: number, kz: number, unblockable: boolean, fromX: number, fromZ: number): boolean {
     if (!r.targetable || this._over || amount <= 0) return false;
     // Brawl hit cap: nothing one-shots from full hp.
-    // Wrecking Ball (player-only perk) raises the cap on the player's own hits.
-    const capFrac = attacker === this.player ? BRAWL_HIT_CAP + this.ctx.stats.hitCapBonus : BRAWL_HIT_CAP;
+    // The player's own hits cap a bit higher than everyone else's.
+    const capFrac = attacker === this.player ? BRAWL_PLAYER_HIT_CAP : BRAWL_HIT_CAP;
     let dmg = brawlHit(amount, r.maxHp, capFrac) * r.s.damageTaken;
     // Ball shield on frontal hits.
     const br = r.ballR;

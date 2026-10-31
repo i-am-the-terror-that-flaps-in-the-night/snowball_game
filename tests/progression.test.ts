@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Progression } from '../src/core/Progression';
-import { FX, ITEM_STATS, MIN_COOLDOWN, SHOP_UPGRADES, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/config/upgrades';
-import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, grantLevels } from '../src/config/gear';
+import { FX, ITEM_STATS, MIN_COOLDOWN, REMOVED_UPGRADES, SHOP_UPGRADES, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeDef, type UpgradeId } from '../src/config/upgrades';
+import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, REMOVED_GEAR, gearCost, gearSpent, grantLevels, type GearDef } from '../src/config/gear';
 import { PLOWS, type PlowKind } from '../src/config/plows';
 import { ZONES } from '../src/config/zones';
 
@@ -126,11 +126,10 @@ describe('computeStats', () => {
 
   it('shared and pilot upgrades apply on every plow', () => {
     for (const kind of Object.keys(PLOWS) as PlowKind[]) {
-      const s = progWith({ armor: 3, lastStand: 2, salvage: 4, wreckingBall: 2, secondWind: 1, overclock: 5 }, kind).computeStats();
+      const s = progWith({ armor: 3, lastStand: 2, salvage: 4, secondWind: 1, overclock: 5 }, kind).computeStats();
       expect(s.maxHp).toBeCloseTo(FX.maxHp(3) * PLOWS[kind].hpMult);
       expect(s.lastStand).toBe(FX.lastStand(2));
       expect(s.lifesteal).toBe(FX.lifesteal(4));
-      expect(s.hitCapBonus).toBe(FX.hitCapBonus(2));
       expect(s.secondWindCd).toBe(FX.secondWindCd(1));
       expect(s.cooldownMult).toBeCloseTo(0.7);
     }
@@ -287,6 +286,30 @@ describe('save export / import', () => {
     expect(p.importSave(JSON.stringify({ version: 1, coins: 0, upgrades: { vitality: 2 }, unlockedZones: 1, zones: {} })).ok).toBe(true);
     expect(p.coins).toBe(cost(2));
     expect('vitality' in p.data.upgrades).toBe(false);
+  });
+
+  it('refunds the cut Wrecking Ball levels and Wrecker Core item (load and import)', () => {
+    const wb = REMOVED_UPGRADES.wreckingBall as UpgradeDef;
+    const wbCost = (n: number) => Array.from({ length: n }, (_, l) => upgradeCost(wb, l)).reduce((a, b) => a + b, 0);
+    const coreCost = gearSpent(REMOVED_GEAR.wreckerCore as GearDef, 3);
+    const keep = GEAR.find((d) => d.slot === 'charm')!;
+    const raw = {
+      version: 1, coins: 10, upgrades: { wreckingBall: 4, engine: 2 }, unlockedZones: 1, zones: {}, totalKills: 0, totalCoinsEarned: 10, muted: false,
+      gear: { owned: { wreckerCore: 3, [keep.id]: 2 }, equipped: { core: 'wreckerCore', charm: keep.id } },
+    };
+    store.set(SAVE_KEY, JSON.stringify(raw));
+    const a = new Progression();
+    expect(a.coins).toBe(10 + wbCost(4) + coreCost);
+    expect('wreckingBall' in a.data.upgrades).toBe(false);
+    expect(a.level('engine')).toBe(2);
+    expect(a.gear.owned).toEqual({ [keep.id]: 2 });
+    expect(a.gear.equipped).toEqual({ charm: keep.id });
+    expect(() => a.computeStats()).not.toThrow();
+    const p = new Progression();
+    expect(p.importSave(JSON.stringify(raw)).ok).toBe(true);
+    expect(p.coins).toBe(10 + wbCost(4) + coreCost);
+    expect('wreckingBall' in p.data.upgrades).toBe(false);
+    expect(p.gear.equipped.core).toBeUndefined();
   });
 
   it('round-trips meta progression fields (cosmetics, stars, hard clears, achievements, lifetime, daily)', () => {

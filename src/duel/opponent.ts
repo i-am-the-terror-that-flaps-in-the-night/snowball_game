@@ -60,7 +60,7 @@ const KNOCK_SCALE = 0.7;
 /**
  * The "enemy manager" a duel pilot's Combat attacks: just the opponent's plow. Damage is scaled by DUEL_DAMAGE_SCALE
  * (minigun rounds also by DUEL_ROUND_SCALE) and damped by the attacker's power (DUEL_POWER_DAMP), then takes the
- * Brawl hit cap (BRAWL_HIT_CAP + the attacker's Wrecking Ball, as in Brawl) so nothing one-shots, then goes through
+ * Brawl hit cap (BRAWL_HIT_CAP, the same for both pilots) so nothing one-shots, then goes through
  * the VICTIM's Combat.hitPlow, which applies their ball shield, dash / whirl reductions, armour, Iron Hide, Last Stand,
  * Battery Shield, Second Wind and i-frames — the same path bots use against the player.
  */
@@ -105,7 +105,7 @@ export class OpponentTarget implements EnemyManagerAPI {
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';
     if (other) scaled /= 1 + this.burst / (ABILITY_BURST_FRAC * victim.maxHp);
-    const raw = brawlHit(scaled, victim.maxHp, BRAWL_HIT_CAP + this.attackerStats().hitCapBonus);
+    const raw = brawlHit(scaled, victim.maxHp, BRAWL_HIT_CAP);
     // Direction: along the knockback if there is one, else away from the attacker.
     const k = opts?.knockback;
     const kmag = k ? Math.hypot(k.x, k.z) : 0;
