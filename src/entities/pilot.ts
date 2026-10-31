@@ -47,6 +47,8 @@ export interface PilotBinding {
   readonly authoritative: boolean;
   /** Paint Shop look to wear instead of the save's equipped one (a duel opponent's cosmetics), or null. */
   readonly look: Partial<Record<CosmeticSlot, string>> | null;
+  /** Equipped gear ids to show instead of the save's (a duel opponent's), or null. */
+  readonly gear?: readonly string[] | null;
 }
 
 /** The single-player pilot: everything comes from the GameContext (read lazily, so systems built later work). */

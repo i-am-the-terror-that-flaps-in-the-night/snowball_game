@@ -26,6 +26,7 @@ import { bakeGeometry, mergeBaked, mergeStatic } from '../render/mergeStatic';
 import { makeShadowProxy } from '../render/shadowProxy';
 import { getPaintEnvMap } from '../render/reflections';
 import { cosmeticsState, resolveLook, type EquippedLook } from '../meta/cosmetics';
+import { GearVisuals } from './gearVisuals';
 
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
 const BLADE_Z = 2.35;
@@ -284,6 +285,8 @@ export class Plow implements PlowAPI {
   private voltParts!: THREE.Group;
   /** ARSENAL: weapons platform parts, the yawing turret and its weapon mounts. */
   private arsenalParts!: THREE.Group;
+  /** Equipped gear attachments (entities/gearVisuals.ts). */
+  private gearVis!: GearVisuals;
   private turret!: THREE.Group;
   private minigun!: THREE.Group;
   /** Minigun barrel spin (rad/s), easing toward full speed while gunFiring. */
@@ -600,6 +603,7 @@ export class Plow implements PlowAPI {
     this.bladeArms = mergeStatic(this.bladeGroup, { keep: [this.bladeSheet, this.bladeCaps, ...this.saws.map((s) => s.group)] }).meshes[0];
     this.bladeGroup.position.set(0, 0, BLADE_Z - 0.1);
     this.body.add(this.bladeGroup);
+    this.gearVis = new GearVisuals(this.body, this.bladeGroup);
 
     this.spin.add(this.body);
     this.object.add(this.spin);
@@ -1075,7 +1079,6 @@ export class Plow implements PlowAPI {
     this.steelMat.emissiveIntensity = volt ? 0.6 : iso ? 0.35 : 0;
     this.beaconMat.color.setHex(volt ? 0x7fdcff : iso ? 0x7dff4a : 0xffb000);
     this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : iso ? 0x3dff1a : 0xff9a00);
-    this.flameMat.color.setHex(iso ? 0x7dff4a : 0xff8a1a);
     this.classicParts.visible = kind === 'classic';
     this.isoParts.visible = iso;
     this.arsenalParts.visible = ars;
@@ -1114,6 +1117,7 @@ export class Plow implements PlowAPI {
   /** Re-read the equipped Paint Shop look (+ any shop preview) and repaint / re-decal if it changed. Player plow
    *  only: Brawl rivals and campaign bots build their own materials. */
   private syncLook(force = false): void {
+    this.syncGear();
     const look = resolveLook({ ...(this.b.look ?? cosmeticsState(this.ctx.progression).equipped), ...this.preview });
     const key = `${this.kind}|${look.paint.id}|${look.decal.id}|${look.trail.id}|${look.blade.id}|${look.horn.id}|${look.kill.id}`;
     if (!force && key === this.lookKey) return;
@@ -1177,6 +1181,13 @@ export class Plow implements PlowAPI {
         this.body.add(this.decals);
       }
     }
+  }
+
+  /** Equipped gear on the model (duel opponents wear what they brought). The flame tint follows the booster. */
+  private syncGear(): void {
+    const ids = this.b.gear ?? GearVisuals.idsFrom(this.ctx.progression.gear.equipped);
+    this.gearVis.sync(this.kind, ids, this.bladeWidth);
+    this.flameMat.color.setHex(this.gearVis.flame ?? (this.kind === 'isotope' ? 0x7dff4a : 0xff8a1a));
   }
 
   /** Paint Shop: try an item on (null = back to the equipped one for that slot). */
@@ -1246,6 +1257,7 @@ export class Plow implements PlowAPI {
   private setBladeWidth(w: number): void {
     this.bladeWidth = w;
     this.bladeSheet.scale.x = w;
+    this.gearVis?.setWidth(w);
     if (w !== this.capsWidth) {
       this.capsWidth = w;
       const parts = [-w / 2, w / 2].map((x) => bakeGeometry(this.capGeo, _m.makeTranslation(x, 0.7, 0.1)));

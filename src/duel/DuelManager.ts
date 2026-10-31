@@ -1040,6 +1040,7 @@ export class DuelManager {
     if (op) {
       this.oppPilot.stats = computeStatsFor(op.levels, op.plow);
       this.oppPilot.look = op.look;
+      this.oppPilot.gear = Object.keys(op.gear);
       this.oppPlow!.bind(this.oppPilot);
       this.oppCombat!.bind(this.oppPilot);
     }
@@ -1110,6 +1111,7 @@ export class DuelManager {
     this.mePilot.stats = this.stats[me]!;
     this.oppPilot.stats = this.stats[op]!;
     this.oppPilot.look = this.profiles[op]?.look ?? null;
+    this.oppPilot.gear = this.profiles[op] ? Object.keys(this.profiles[op]!.gear) : null;
     ctx.stats = this.stats[me]!;
     (ctx.plow as Plow).bind(this.mePilot);
     (ctx.combat as Combat).bind(this.mePilot);

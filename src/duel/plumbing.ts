@@ -22,6 +22,8 @@ export class DuelPilot implements PilotBinding {
   audio: PilotAudio;
   events: EventSink;
   look: Partial<Record<CosmeticSlot, string>> | null = null;
+  /** Equipped gear ids to show on this plow (an opponent's), or null for the save's. */
+  gear: string[] | null = null;
 
   constructor(
     readonly local: boolean,
