@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "balance": "vitest run --config scripts/balance.config.ts --root ."
   },
   "dependencies": {
     "peerjs": "^1.5.5",

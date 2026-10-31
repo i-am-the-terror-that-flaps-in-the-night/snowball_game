@@ -5,10 +5,10 @@ import { ultBlast, type UltScript } from './ultimates';
 
 /** ORBITAL STRIKE (ARSENAL): marks up to ORBITAL_TARGETS top-priority bots within ORBITAL_RANGE, then after
  *  ORBITAL_DELAY a sky laser hits each — ORBITAL_MULT x missile damage in ORBITAL_RADIUS. */
-const ORBITAL_TARGETS = 5;
+const ORBITAL_TARGETS = 6;
 const ORBITAL_RANGE = 50;
 const ORBITAL_DELAY = 1;
-const ORBITAL_MULT = 4;
+const ORBITAL_MULT = 10;
 const ORBITAL_RADIUS = 4.5;
 /** ARSENAL: autocannon lock-on half-angle (80° either side of the nose, as a cos) and the burst a single press fires
  *  when the input source can't report held keys. */

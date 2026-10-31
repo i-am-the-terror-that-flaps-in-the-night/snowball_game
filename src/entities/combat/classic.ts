@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { FlameCone } from '../../fx/FlameCone';
-import type { EnemyHandle, PlowAPI } from '../../core/types';
+import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
+import { FX } from '../../config/upgrades';
 import { Kit, _fwd, _p, _q, _tip, type CombatHost } from './shared';
+import { ultCharge } from './ultimates';
 
 /** Inferno (F): flame duration, cone half-angle (cos), seconds between ignite checks, burn length + tick. */
 const FLAME_SECONDS = 1.4;
@@ -19,18 +21,23 @@ const BURN_TICK = 0.5;
 const FIREBALL_RADIUS = 4.5;
 const FIREBALL_MULT = 1.6;
 const FIREBALL_KNOCK = 12;
-/** FIRESTORM (Classic Plow's ultimate): fire damage you deal fills the 🔥 meter (this much fills it); then F
- *  unleashes a 360° fire nova — FIRESTORM_MULT x burn dps across FIRESTORM_RADIUS (falling off to 50% at the rim),
- *  big knockback — and leaves the ground burning for FIRE_FIELD_SECONDS, igniting anything that walks in. */
-const FIRESTORM_CHARGE = 700;
+/** FIRESTORM (Classic Plow's ultimate): fire damage you deal fills the 🔥 meter (this much on a fresh plow, see
+ *  ultCharge); then F unleashes a 360° fire nova — FIRESTORM_MULT x storm dps across FIRESTORM_RADIUS (falling off
+ *  to 50% at the rim), big knockback — and leaves the ground burning for FIRE_FIELD_SECONDS, igniting anything that
+ *  walks in. Storm dps grows with the pilot's ultimate power (stormDps), like the other ultimates, rather than
+ *  with Inferno's steeper burn curve. */
+const FIRESTORM_CHARGE = 870;
 const FIRESTORM_RADIUS = 13;
-const FIRESTORM_MULT = 3.5;
+const FIRESTORM_MULT = 3;
 const FIRESTORM_KNOCK = 18;
-const FIRE_FIELD_SECONDS = 4;
+const FIRE_FIELD_SECONDS = 3;
 const FIRE_FIELD_RADIUS = 10;
 const FIRE_FIELD_TICK = 0.3;
-/** Fire-field contact damage per second, as a share of burn dps (on top of the burn it keeps lit). */
+/** Fire-field contact damage per second, as a share of storm dps (on top of the burn it keeps lit). */
 const FIRE_FIELD_DPS = 0.35;
+
+/** FIRESTORM damage per second before the damage multiplier: fresh burn dps x the Inferno part of ultPower. */
+const stormDps = (st: PlayerStats) => FX.flameDps(0) * Math.max(1, (st.ultPower || 1) / (st.damageMult || 1));
 
 /** Classic Plow: Inferno flame cone + fireball finisher, burns, and the FIRESTORM with its burning ground. */
 export class ClassicKit extends Kit {
@@ -38,7 +45,7 @@ export class ClassicKit extends Kit {
   flameCharge = 1;
   flameT = 0;
   private flameIgniteT = 0;
-  /** Burning bots. `storm`: lit by the FIRESTORM (its burns don't refill the meter). */
+  /** Burning bots. `storm`: lit by the FIRESTORM (burns at storm dps and doesn't refill the meter). */
   readonly burns = new Map<EnemyHandle, { t: number; tickT: number; storm: boolean }>();
   /** FIRESTORM burning ground: disc mesh, time left, centre, tick timer. */
   private fireField!: THREE.Mesh;
@@ -149,7 +156,7 @@ export class ClassicKit extends Kit {
   feedFire(dealt: number): void {
     if (dealt <= 0 || this.b.stats.plowKind !== 'classic') return;
     const was = this.h.crit;
-    this.h.crit = Math.min(1, this.h.crit + dealt / FIRESTORM_CHARGE);
+    this.h.crit = Math.min(1, this.h.crit + dealt / ultCharge(this.b.stats, FIRESTORM_CHARGE));
     if (was < 1 && this.h.crit >= 1 && this.b.local) {
       this.ctx.ui.toast('🔥 FIRESTORM READY · F', 'info');
       this.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });
@@ -250,7 +257,7 @@ export class ClassicKit extends Kit {
     this.b.audio.play('explosion', { volume: 1, pitch: 0.6 });
     this.b.audio.play('roar', { volume: 0.7, pitch: 1.3 });
     this.b.snow?.melt(x, z, FIRE_FIELD_RADIUS, 1);
-    this.fireBlast(x, z, FIRESTORM_RADIUS, st.flameDps * FIRESTORM_MULT, FIRESTORM_KNOCK, 0.5, '🔥', false);
+    this.fireBlast(x, z, FIRESTORM_RADIUS, stormDps(st) * FIRESTORM_MULT, FIRESTORM_KNOCK, 0.5, '🔥', false);
     this.fireFieldT = FIRE_FIELD_SECONDS;
     this.fireFieldX = x;
     this.fireFieldZ = z;
@@ -287,7 +294,7 @@ export class ClassicKit extends Kit {
       if (!e.alive) continue;
       this.ignite(e, true);
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.flameDps * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+      const killed = this.b.enemies.damage(e, stormDps(st) * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e, false);
     }
@@ -298,7 +305,9 @@ export class ClassicKit extends Kit {
   updateBurns(dt: number): void {
     if (this.burns.size === 0) return;
     const ctx = this.ctx;
-    const dps = this.b.stats.flameDps;
+    const st = this.b.stats;
+    const dps = st.flameDps;
+    const storm = stormDps(st);
     for (const [e, b] of this.burns) {
       if (!e.alive || dps <= 0) {
         this.burns.delete(e);
@@ -318,7 +327,7 @@ export class ClassicKit extends Kit {
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;
         const hp0 = e.hp;
-        const killed = this.b.enemies.damage(e, dps * this.b.stats.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+        const killed = this.b.enemies.damage(e, (b.storm ? storm : dps) * st.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         if (!b.storm) this.feedFire(dealt);
         this.onPlayerHit(dealt, killed, e, false);

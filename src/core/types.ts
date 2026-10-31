@@ -176,6 +176,8 @@ export interface PlayerStats {
    *  dashCooldown / whirlCooldown / flameCooldown / clapCooldown / poundCooldown; Plow applies it to the slam cooldown. Every
    *  cooldown is floored at MIN_COOLDOWN (config/upgrades.ts) after the multiplier. */
   cooldownMult: number;
+  /** Pilot power (ultPower in config/upgrades.ts), 1 on a fresh plow: sizes the ultimate meters, damps Duel damage. */
+  ultPower: number;
   frostCore: boolean;
   avalancheCore: boolean;
 }

@@ -1,11 +1,16 @@
 import * as THREE from 'three';
-import type { PlowAPI } from '../../core/types';
+import type { PlayerStats, PlowAPI } from '../../core/types';
 import { _p, _q, _tip, type CombatHost, type UltKind } from './shared';
 
 /** Ultimates for VOLT-9 / BRUTUS / ARSENAL (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
- *  fills the meter (this much fills it). While an ultimate and its aftermath play out, nothing refills it. */
-const ULT_CHARGE = { volt: 900, brute: 900, arsenal: 1000 } as const;
+ *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
+ *  nothing refills it. */
+const ULT_CHARGE = { volt: 2300, brute: 1800, arsenal: 1700 } as const;
 const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🛰 ORBITAL STRIKE' } as const;
+/** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every
+ *  upgrade, so the meter grows with the pilot's power and with Overclock (faster abilities, more damage): it takes
+ *  about as long to fill at every stage of the game. */
+export const ultCharge = (st: PlayerStats, base: number) => (base * Math.max(1, st.ultPower || 1)) / Math.min(1, st.cooldownMult || 1);
 
 /** One plow's ultimate, driven by Ultimates. */
 export interface UltScript {
@@ -40,7 +45,7 @@ export class Ultimates {
     if (kind !== 'volt' && kind !== 'brute' && kind !== 'arsenal') return;
     if (this.lock > 0 || this.t >= 0) return;
     const was = h.crit;
-    h.crit = Math.min(1, h.crit + dealt / ULT_CHARGE[kind]);
+    h.crit = Math.min(1, h.crit + dealt / ultCharge(h.b.stats, ULT_CHARGE[kind]));
     if (was < 1 && h.crit >= 1 && h.b.local) {
       h.ctx.ui.toast(`${ULT_NAME[kind]} READY · F`, 'info');
       h.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });

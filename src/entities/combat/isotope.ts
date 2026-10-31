@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, _q, type CombatHost } from './shared';
+import { ultCharge } from './ultimates';
 
 /** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
  *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
@@ -9,12 +10,12 @@ const RAD_SECONDS = 3;
 const POOL_TICK = 0.3;
 const MAX_POOLS = 4;
 const CHAIN_RADIUS = 4;
-/** NUKE (ISOTOPE): Critical Mass fills from radiation damage dealt (this much fills it); the next F arms a
- *  NUKE that goes off instantly — NUKE_DMG_MULT x Meltdown damage across NUKE_RADIUS, falling
- *  off to NUKE_RIM_FRAC at the edge, plus a giant fallout pool. */
-const NUKE_CHARGE_DMG = 900;
+/** NUKE (ISOTOPE): Critical Mass fills from radiation damage dealt (this much on a fresh plow, see ultCharge); the
+ *  next F arms a NUKE that goes off instantly — NUKE_DMG_MULT x Meltdown damage across NUKE_RADIUS, falling off to
+ *  NUKE_RIM_FRAC at the edge, plus a giant fallout pool. */
+const NUKE_CHARGE_DMG = 1500;
 const NUKE_RADIUS = 18;
-const NUKE_DMG_MULT = 4;
+const NUKE_DMG_MULT = 2.6;
 const NUKE_RIM_FRAC = 0.35;
 const NUKE_KNOCK = 26;
 
@@ -31,6 +32,8 @@ export class IsotopeKit extends Kit {
   private radFxT = 0;
   private auraT = 0;
   private buf: EnemyHandle[] = [];
+  /** When each bot last took a pool tick (ctx.time). */
+  private poolHitAt = new Map<EnemyHandle, number>();
   /** Where the NUKE went off (detonate reads it). */
   private nukeX = 0;
   private nukeZ = 0;
@@ -59,7 +62,7 @@ export class IsotopeKit extends Kit {
     const hp0 = e.hp;
     const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-    this.h.crit = Math.min(1, this.h.crit + dealt / NUKE_CHARGE_DMG);
+    this.h.crit = Math.min(1, this.h.crit + dealt / ultCharge(this.b.stats, NUKE_CHARGE_DMG));
     this.onPlayerHit(dealt, killed, e, false, heal);
   }
 
@@ -195,7 +198,7 @@ export class IsotopeKit extends Kit {
     pl.x = px;
     pl.z = pz;
     pl.r = R * 0.55;
-    pl.life = pl.t = st.poolSeconds * 2;
+    pl.life = pl.t = st.poolSeconds * 1.5;
     pl.tickT = 0;
     pl.mesh.position.set(px, 0.06, pz);
     pl.mesh.scale.setScalar(pl.r);
@@ -206,8 +209,10 @@ export class IsotopeKit extends Kit {
   updatePools(dt: number): void {
     const ctx = this.ctx;
     const st = this.b.stats;
+    let active = false;
     for (const pl of this.pools) {
       if (pl.t <= 0) continue;
+      active = true;
       pl.t -= dt;
       if (pl.t <= 0) {
         pl.mesh.visible = false;
@@ -224,8 +229,15 @@ export class IsotopeKit extends Kit {
       ctx.fx.burst(_q, { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gravity: -3, life: 0.7 });
       if (st.poolDps <= 0 || st.meltDamage <= 0) continue;
       const hits = this.b.enemies.query(pl.x, pl.z, pl.r, this.buf);
-      for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.poolDps * POOL_TICK);
+      for (let i = 0; i < hits.length; i++) {
+        // Overlapping pools don't stack: one dose per bot per tick.
+        const e = hits[i];
+        if (ctx.time - (this.poolHitAt.get(e) ?? -1) < POOL_TICK * 0.9) continue;
+        this.poolHitAt.set(e, ctx.time);
+        this.radHit(e, st.poolDps * POOL_TICK);
+      }
     }
+    if (!active && this.poolHitAt.size) this.poolHitAt.clear();
   }
 
   /** Rad Aura (ISOTOPE): passive radiation that doses every bot near the plow. */
@@ -284,6 +296,7 @@ export class IsotopeKit extends Kit {
     this.meltCharge = 1;
     this.rads.clear();
     this.chainQueue.length = 0;
+    this.poolHitAt.clear();
     for (const pl of this.pools) {
       pl.t = 0;
       pl.mesh.visible = false;

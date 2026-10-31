@@ -8,10 +8,10 @@ import { ultBlast, type UltScript } from './ultimates';
 const SUPERCELL_RADIUS = 18;
 const SUPERCELL_WAVES = 3;
 const SUPERCELL_GAP = 0.5;
-const SUPERCELL_MULT = 1.1;
+const SUPERCELL_MULT = 1.2;
 /** Thunderclap storm: duration, extra sky strikes (each = share of clap damage), field dps share. */
 const STORM_SECONDS = 2.5;
-const STORM_STRIKES = 7;
+const STORM_STRIKES = 6;
 const STORM_STRIKE_FRAC = 0.4;
 const STORM_FIELD_FRAC = 0.25;
 /** Thunderclap backlash: a flat shock to the pilot, squared by Overload heat. Each clap adds 1 heat, which bleeds

@@ -1,4 +1,4 @@
-import { FX, ITEM_STATS, UPGRADES, UPGRADE_BY_ID, cooldown, upgradeCost, type UpgradeId } from '../config/upgrades';
+import { FX, ITEM_STATS, UPGRADES, UPGRADE_BY_ID, cooldown, ultPower, upgradeCost, type UpgradeId } from '../config/upgrades';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, type GearSlot, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import type { PlayerStats } from './types';
@@ -410,6 +410,9 @@ export class Progression {
   }
 }
 
+/** Each plow's F-ability upgrade (its ultimate meter grows with it, see ultPower). */
+const F_UPGRADE: Record<PlowKind, UpgradeId> = { classic: 'inferno', volt: 'voltClap', brute: 'brutePound', isotope: 'isoMeltdown', arsenal: 'armMissiles' };
+
 /** Stats for a garage given as upgrade levels + the driven plow. Pure: the save's computeStats and the Duel host
  *  (which computes BOTH players' stats from the levels they bring) share it. */
 export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plowKind: PlowKind): PlayerStats {
@@ -496,6 +499,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.
     flameCooldown: cooldown(FX.flameCooldown(L('inferno')), cd),
     cooldownMult: cd,
+    ultPower: ultPower(L('packedIce'), L(F_UPGRADE[plow.id])),
     frostCore: L('frostCore') > 0,
     avalancheCore: L('avalancheCore') > 0,
   };

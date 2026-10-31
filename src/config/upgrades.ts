@@ -137,8 +137,8 @@ export const FX = {
   killRecharge: (L: number) => Math.min(1, 0.2 * soft(L, 4, 2)),
   /** Inferno (F on the Classic Plow, free at level 0): flame cone reach (m), burn damage per second, recharge (s). */
   flameRange: (L: number) => 8.5 + 0.8 * soft(L, 5),
-  flameDps: (L: number) => 45 + 26 * grow(L, 5),
-  flameCooldown: (L: number) => 2.5 + 3.5 * Math.exp(-L / 4),
+  flameDps: (L: number) => 40 + 30 * grow(L, 5),
+  flameCooldown: (L: number) => 3.2 + 2.8 * Math.exp(-L / 8),
   /** Last Stand: below LAST_STAND_HP of max hp, you deal this much more damage and take half of it less. */
   lastStand: (L: number) => (L <= 0 ? 0 : 0.1 + 0.04 * soft(L, 5)),
   /** Overclock: multiplier on every ability cooldown (slam, dash, whirl, F ability). 10 levels, -6% each: 1 -> 0.4. */
@@ -160,16 +160,16 @@ export const FX = {
   fieldDps: (L: number) => (L <= 0 ? 0 : 10 + 6 * grow(L - 1, 4)),
   /** Thunderclap (F on VOLT-9, free at level 0): storm radius, damage (x your damage mult), shock seconds, recharge. */
   clapRadius: (L: number) => 10 + 0.8 * soft(L, 5),
-  clapDamage: (L: number) => 70 + 30 * grow(L, 5),
+  clapDamage: (L: number) => 70 + 26 * grow(L, 5),
   clapStun: (L: number) => 1.8 + 0.2 * soft(L, 5),
-  clapCooldown: (L: number) => 3 + 3 * Math.exp(-L / 4),
+  clapCooldown: (L: number) => 4.5 + 1.5 * Math.exp(-L / 4),
   /** Battery Shield: absorbs this much damage, recharging after 3s out of combat. */
   shieldMax: (L: number) => (L <= 0 ? 0 : 35 + 25 * grow(L - 1, 4)),
   // ---- BRUTUS line
   /** Ground Pound (F on BRUTUS, free at level 0): ring radius, damage (x your damage mult), stun s, outward
    *  knockback m/s, recharge. */
   poundRadius: (L: number) => 9.5 + 0.7 * soft(L, 5),
-  poundDamage: (L: number) => 160 + 55 * grow(L, 5),
+  poundDamage: (L: number) => 185 + 50 * grow(L, 5),
   poundStun: (L: number) => 1.2 + 0.15 * soft(L, 5),
   poundKnock: (L: number) => 12 + 1.5 * soft(L, 5),
   poundCooldown: (L: number) => 3 + 2.5 * Math.exp(-L / 4),
@@ -184,11 +184,11 @@ export const FX = {
   // ---- ISOTOPE line
   /** Meltdown (F on ISOTOPE, free at level 0): blast radius, blast damage (x your damage mult), recharge. */
   meltRadius: (L: number) => 7.5 + 0.6 * soft(L, 5),
-  meltDamage: (L: number) => 110 + 40 * grow(L, 5),
+  meltDamage: (L: number) => 125 + 44 * grow(L, 5),
   meltCooldown: (L: number) => 4 + 3 * Math.exp(-L / 4),
   /** Half-Life: the fallout pool Meltdown leaves behind — radius, damage per second, seconds it lasts. */
   poolRadius: (L: number) => 4.5 + 0.4 * soft(L, 5),
-  poolDps: (L: number) => 22 + 12 * grow(L, 5),
+  poolDps: (L: number) => 26 + 14 * grow(L, 5),
   poolSeconds: (L: number) => 4 + 0.8 * soft(L, 5),
   /** Rad Aura: passive radiation around the plow — reach (m) and damage per second (0 = not owned). */
   auraRadius: (L: number) => (L <= 0 ? 0 : 4 + 0.45 * soft(L, 5)),
@@ -197,20 +197,25 @@ export const FX = {
   chainBlast: (L: number) => (L <= 0 ? 0 : 35 + 18 * grow(L - 1, 4)),
   // ---- ARSENAL line (weapons are free at level 0; upgrades strengthen them)
   /** Autocannon (SPACE, hold): damage per round (x your damage mult), rounds per second, reach (m). */
-  gunDamage: (L: number) => 9 + 3.5 * grow(L, 5),
-  gunRate: (L: number) => 7 + 0.6 * soft(L, 5),
+  gunDamage: (L: number) => 4 + 1.3 * grow(L, 5),
+  gunRate: (L: number) => 6 + 0.4 * soft(L, 5),
   gunRange: (L: number) => 26 + 1.5 * soft(L, 5),
   /** Laser (E): beam dps (x your damage mult), reach (m), recharge (s). */
-  laserDps: (L: number) => 120 + 40 * grow(L, 5),
+  laserDps: (L: number) => 70 + 25 * grow(L, 5),
   laserRange: (L: number) => 24 + 2 * soft(L, 5),
-  laserCooldown: (L: number) => 3 + 3 * Math.exp(-L / 4),
+  laserCooldown: (L: number) => 5 + 2 * Math.exp(-L / 4),
   /** Missiles (F): missiles per salvo, damage each (x your damage mult), recharge (s). */
-  missileCount: (L: number) => Math.min(10, 4 + Math.floor(soft(L, 5, 4) / 1.5)),
-  missileDamage: (L: number) => 55 + 18 * grow(L, 5),
-  missileCooldown: (L: number) => 3.5 + 3 * Math.exp(-L / 4),
+  missileCount: (L: number) => Math.min(8, 4 + Math.floor(soft(L, 5, 4) / 2.5)),
+  missileDamage: (L: number) => 34 + 11 * grow(L, 5),
+  missileCooldown: (L: number) => 5.5 + 2 * Math.exp(-L / 4),
   /** Energy Barrier: a recharging shield (0 = not owned). */
   barrier: (L: number) => (L <= 0 ? 0 : 40 + 28 * grow(L - 1, 4)),
 };
+
+/** Pilot power, 1 on a fresh plow: the Packed Ice damage multiplier x a common per-level factor for the plow's
+ *  F-ability upgrade. Damage dealt grows about this fast with upgrades on every plow, so the ultimate meters are sized
+ *  by it (combat/ultimates.ts ultCharge), the FIRESTORM scales with it, and Duel damage is damped by it. */
+export const ultPower = (packedIce: number, fLevel: number) => FX.damageMult(packedIce) * (1 + 0.35 * grow(fLevel, 5));
 
 const owned = (l: number) => (l ? 'Installed' : 'Locked');
 const f1 = (n: number) => n.toFixed(1);
@@ -247,14 +252,14 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'brutePound', name: 'Ground Pound', icon: '💥', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'F: hop and slam down, a shockwave that damages, stuns and hurls back bots around you.', details: 'Free on BRUTUS. A full 5 m leap: you can\'t be hit while airborne, and the drop from height lands +30% harder and 20% wider. Upgrades make it wider, harder-hitting and faster to recharge. Any damage you deal fills the 🌍 EARTHQUAKE meter (under your HP): when full, F sends three shockwaves rolling out to 19 m, each damaging, stunning and hurling back what it sweeps.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.poundDamage(l) * 1.3)} dmg, ${f1(FX.poundRadius(l) * 1.2)} m, ${f1(FX.poundCooldown(l))}s` },
   { id: 'bruteHide', name: 'Iron Hide', icon: '🪖', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Take less damage the faster you are going.', details: 'Full effect from 70% of top speed (dashing counts); parked, you keep 40% of it. Stacks with Reinforced Frame.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => (l ? `-${Math.round((1 - FX.ironHide(l)) * 100)}% damage at speed` : 'Locked') },
   { id: 'bruteMomentum', name: 'Momentum', icon: '☄️', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Rams and dash strikes hit harder the faster you are going.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round(FX.momentum(l) * 1000)}% ram dmg at 10 m/s` : 'Locked') },
-  { id: 'isoMeltdown', name: 'Meltdown', icon: '☢️', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'F: vent the reactor. A toxic blast around you that leaves a glowing fallout pool behind.', details: 'Free on ISOTOPE. Bots caught in the blast or the pool get irradiated (they glow and take +15% damage from you). Radiation damage you deal fills Critical Mass (☢ bar under your HP); when it is full, F fires a NUKE instead: an instant huge blast and a giant fallout pool. The nuke hits 4× as hard as Meltdown, so upgrades boost it too.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.meltDamage(l))} dmg, ${f1(FX.meltRadius(l))} m, ${f1(FX.meltCooldown(l))}s` },
+  { id: 'isoMeltdown', name: 'Meltdown', icon: '☢️', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'F: vent the reactor. A toxic blast around you that leaves a glowing fallout pool behind.', details: 'Free on ISOTOPE. Bots caught in the blast or the pool get irradiated (they glow and take +15% damage from you). Radiation damage you deal fills Critical Mass (☢ bar under your HP); when it is full, F fires a NUKE instead: an instant huge blast and a giant fallout pool. The nuke hits 2.6× as hard as Meltdown, so upgrades boost it too.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.meltDamage(l))} dmg, ${f1(FX.meltRadius(l))} m, ${f1(FX.meltCooldown(l))}s` },
   { id: 'isoHalfLife', name: 'Half-Life', icon: '🧪', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Meltdown fallout pools are wider, burn hotter and linger longer.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.poolDps(l))} dps, ${f1(FX.poolRadius(l))} m, ${f1(FX.poolSeconds(l))}s` },
   { id: 'isoAura', name: 'Rad Aura', icon: '🟢', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Your reactor leaks: a radiation aura that hurts and irradiates every bot near you.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.auraDps(l))} dps, ${f1(FX.auraRadius(l))} m` : 'Locked') },
   { id: 'isoChain', name: 'Chain Reaction', icon: '💚', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Irradiated bots explode when wrecked, hurting and irradiating the bots around them.', details: 'Explosions can set off more explosions.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.chainBlast(l))} blast dmg` : 'Locked') },
   { id: 'bruteSaws', name: 'Buzzsaws', icon: '🪚', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Spinning saws on your blade ends shred bots in front of you and to the sides.', details: 'Speed and fury (damage you deal and take) spin them up, growing glowing halos that stretch their reach.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.sawDps(l))} dps, ${f1(FX.sawRadius(l))} m` : 'Locked') },
   { id: 'armCannon', name: 'Minigun', icon: '🔫', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'SPACE (hold): a six-barrel auto-aiming minigun. Harder-hitting, faster-firing, longer reach.', details: 'Free on ARSENAL. The turret locks onto bots up to 80° either side of your nose (closest to the nose and nearest first, and bots that have been hurting you jump the queue), otherwise fires straight ahead.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.gunDamage(l))} dmg × ${f1(FX.gunRate(l))}/s, ${Math.round(FX.gunRange(l))} m` },
   { id: 'armLaser', name: 'Laser Lance', icon: '🔴', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'E: a 1.5s laser beam that burns through every bot in a line.', details: 'Free on ARSENAL. The beam bends up to about 23° toward the most dangerous bot in front of you, but slowly: steer to sweep it further. It melts the snow it touches.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.laserDps(l))} dps, ${Math.round(FX.laserRange(l))} m, ${f1(FX.laserCooldown(l))}s` },
-  { id: 'armMissiles', name: 'Swarm Missiles', icon: '🚀', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'F: a salvo of homing missiles that hunt down different bots.', details: 'Free on ARSENAL. Bots that have dealt you the most damage lately are targeted first, and each target gets as many missiles as its HP needs to be finished off before the rest move on (leftovers pile onto the top threats). A missile whose target dies picks a new one. Each explodes in a small blast. Any damage you deal fills the 🛰 ORBITAL STRIKE meter (under your HP): when full, F paints up to five top threats and a second later sky lasers hit each one for 4× missile damage.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => `${FX.missileCount(l)} × ${Math.round(FX.missileDamage(l))} dmg, ${f1(FX.missileCooldown(l))}s` },
+  { id: 'armMissiles', name: 'Swarm Missiles', icon: '🚀', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'F: a salvo of homing missiles that hunt down different bots.', details: 'Free on ARSENAL. Bots that have dealt you the most damage lately are targeted first, and each target gets as many missiles as its HP needs to be finished off before the rest move on (leftovers pile onto the top threats). A missile whose target dies picks a new one. Each explodes in a small blast. Any damage you deal fills the 🛰 ORBITAL STRIKE meter (under your HP): when full, F paints up to six top threats and a second later sky lasers hit each one for 10× missile damage.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => `${FX.missileCount(l)} × ${Math.round(FX.missileDamage(l))} dmg, ${f1(FX.missileCooldown(l))}s` },
   { id: 'armBarrier', name: 'Energy Barrier', icon: '🟦', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'No snowball to hide behind: a shield soaks damage first, recharging after 3s without hits.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.75, valueLabel: (l) => (l ? `${Math.round(FX.barrier(l))} shield` : 'Locked') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },

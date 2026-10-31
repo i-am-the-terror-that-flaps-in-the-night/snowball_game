@@ -1,6 +1,6 @@
 import { PLOW_MASS, type DamageOpts, type EnemyHandle, type EnemyManagerAPI, type EnemyType, type PlayerStats } from '../core/types';
 import { BRAWL_HIT_CAP, brawlHit } from '../config/brawl';
-import { DUEL_DAMAGE_SCALE } from '../config/duel';
+import { DUEL_DAMAGE_SCALE, DUEL_POWER_DAMP, DUEL_ROUND_SCALE } from '../config/duel';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
 
@@ -52,16 +52,16 @@ export interface DuelHit {
 
 /** Ability damage diminishing returns: once this share of the victim's max HP landed recently, further ability hits
  *  do half; the memory decays with this time constant (s). */
-const ABILITY_BURST_FRAC = 0.2;
-const ABILITY_BURST_SECONDS = 1.5;
+const ABILITY_BURST_FRAC = 0.15;
+const ABILITY_BURST_SECONDS = 2;
 /** Scale from a bot-style knockback impulse to the plow push Combat.hitPlow applies. */
 const KNOCK_SCALE = 0.7;
 
 /**
- * The "enemy manager" a duel pilot's Combat attacks: just the opponent's plow. Damage is scaled by DUEL_DAMAGE_SCALE,
- * then takes the Brawl hit cap
- * (BRAWL_HIT_CAP + the attacker's Wrecking Ball, as in Brawl) so nothing one-shots, then goes through the VICTIM's
- * Combat.hitPlow, which applies their ball shield, dash / whirl reductions, armour, Iron Hide, Last Stand,
+ * The "enemy manager" a duel pilot's Combat attacks: just the opponent's plow. Damage is scaled by DUEL_DAMAGE_SCALE
+ * (minigun rounds also by DUEL_ROUND_SCALE) and damped by the attacker's power (DUEL_POWER_DAMP), then takes the
+ * Brawl hit cap (BRAWL_HIT_CAP + the attacker's Wrecking Ball, as in Brawl) so nothing one-shots, then goes through
+ * the VICTIM's Combat.hitPlow, which applies their ball shield, dash / whirl reductions, armour, Iron Hide, Last Stand,
  * Battery Shield, Second Wind and i-frames — the same path bots use against the player.
  */
 export class OpponentTarget implements EnemyManagerAPI {
@@ -99,7 +99,8 @@ export class OpponentTarget implements EnemyManagerAPI {
   damage(enemy: EnemyHandle, amount: number, opts?: DamageOpts): boolean {
     const victim = this.handle.plow;
     if (!this.enabled || enemy !== this.handle || victim.dead || !(amount > 0)) return false;
-    let scaled = amount * DUEL_DAMAGE_SCALE;
+    const power = Math.max(1, this.attackerStats().ultPower || 1);
+    let scaled = (amount * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';
