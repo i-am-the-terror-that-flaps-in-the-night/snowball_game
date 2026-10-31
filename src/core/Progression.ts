@@ -423,6 +423,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
   };
   const cd = FX.cooldownMult(L('overclock'));
   const fire = plow.fAbility === 'fire';
+  const arsenal = plow.id === 'arsenal';
   return {
     plowKind: plow.id,
     chainCount: FX.chainCount(L('voltChain')),
@@ -433,7 +434,15 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     clapDamage: plow.id === 'volt' ? FX.clapDamage(L('voltClap')) : 0,
     clapStun: FX.clapStun(L('voltClap')),
     clapCooldown: cooldown(FX.clapCooldown(L('voltClap')), cd),
-    shieldMax: FX.shieldMax(L('voltCell')),
+    shieldMax: arsenal ? FX.barrier(L('armBarrier')) : FX.shieldMax(L('voltCell')),
+    gunDamage: arsenal ? FX.gunDamage(L('armCannon')) : 0,
+    gunRate: FX.gunRate(L('armCannon')),
+    gunRange: FX.gunRange(L('armCannon')),
+    laserDps: arsenal ? FX.laserDps(L('armLaser')) : 0,
+    laserRange: FX.laserRange(L('armLaser')),
+    missileCount: FX.missileCount(L('armMissiles')),
+    missileDamage: arsenal ? FX.missileDamage(L('armMissiles')) : 0,
+    missileCooldown: cooldown(FX.missileCooldown(L('armMissiles')), cd),
     poundRadius: FX.poundRadius(L('brutePound')),
     poundDamage: plow.id === 'brute' ? FX.poundDamage(L('brutePound')) : 0,
     poundStun: FX.poundStun(L('brutePound')),
@@ -468,7 +477,8 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     dashPower: FX.dashPower(L('nitro')) * plow.dashPowerMult,
     whirlRadius: FX.whirlRadius(L('whirl')),
     whirlDamage: FX.whirlDamage(L('whirl')),
-    whirlCooldown: cooldown(FX.whirlCooldown(L('whirl')), cd),
+    // ARSENAL's E is the laser: its recharge rides on the whirl charge.
+    whirlCooldown: cooldown(arsenal ? FX.laserCooldown(L('armLaser')) : FX.whirlCooldown(L('whirl')), cd),
     snowRegen: FX.snowRegen(L('snowMachine')),
     magnetRadius: FX.magnetRadius(L('magnet')),
     shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,

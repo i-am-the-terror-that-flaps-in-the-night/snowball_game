@@ -388,3 +388,21 @@ describe('gear', () => {
     for (const id of ITEM_STATS) expect(GEAR.some((g) => g.grants.some((x) => x.stat === id)), id).toBe(true);
   });
 });
+
+describe('ARSENAL', () => {
+  it('has free weapons, no weapons on other plows, and its laser recharge rides on the whirl charge', () => {
+    const a = progWith({}, 'arsenal').computeStats();
+    expect(a.gunDamage).toBeCloseTo(FX.gunDamage(0));
+    expect(a.laserDps).toBeCloseTo(FX.laserDps(0));
+    expect(a.missileDamage).toBeCloseTo(FX.missileDamage(0));
+    expect(a.whirlCooldown).toBeCloseTo(FX.laserCooldown(0));
+    expect(a.shieldMax).toBe(0);
+    const c = progWith({ armCannon: 3, armBarrier: 2 }, 'classic').computeStats();
+    expect(c.gunDamage + c.laserDps + c.missileDamage).toBe(0);
+    expect(c.shieldMax).toBe(0);
+    const up = progWith({ armCannon: 3, armMissiles: 5, armBarrier: 2 }, 'arsenal').computeStats();
+    expect(up.gunDamage).toBeGreaterThan(a.gunDamage);
+    expect(up.missileCount).toBeGreaterThan(a.missileCount);
+    expect(up.shieldMax).toBeCloseTo(FX.barrier(2));
+  });
+});

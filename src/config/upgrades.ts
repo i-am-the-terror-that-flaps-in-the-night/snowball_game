@@ -42,9 +42,14 @@ export type UpgradeId =
   | 'isoMeltdown'
   | 'isoHalfLife'
   | 'isoAura'
-  | 'isoChain';
+  | 'isoChain'
+  // ARSENAL line (only active while driving ARSENAL; player-only).
+  | 'armCannon'
+  | 'armLaser'
+  | 'armMissiles'
+  | 'armBarrier';
 
-export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'isotope' | 'special';
+export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal' | 'special';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -190,6 +195,21 @@ export const FX = {
   auraDps: (L: number) => (L <= 0 ? 0 : 8 + 5 * grow(L - 1, 4)),
   /** Chain Reaction: irradiated bots explode on death — damage (x your damage mult) in CHAIN_RADIUS (0 = not owned). */
   chainBlast: (L: number) => (L <= 0 ? 0 : 35 + 18 * grow(L - 1, 4)),
+  // ---- ARSENAL line (weapons are free at level 0; upgrades strengthen them)
+  /** Autocannon (SPACE, hold): damage per round (x your damage mult), rounds per second, reach (m). */
+  gunDamage: (L: number) => 9 + 3.5 * grow(L, 5),
+  gunRate: (L: number) => 7 + 0.6 * soft(L, 5),
+  gunRange: (L: number) => 26 + 1.5 * soft(L, 5),
+  /** Laser (E): beam dps (x your damage mult), reach (m), recharge (s). */
+  laserDps: (L: number) => 120 + 40 * grow(L, 5),
+  laserRange: (L: number) => 24 + 2 * soft(L, 5),
+  laserCooldown: (L: number) => 3 + 3 * Math.exp(-L / 4),
+  /** Missiles (F): missiles per salvo, damage each (x your damage mult), recharge (s). */
+  missileCount: (L: number) => Math.min(10, 4 + Math.floor(soft(L, 5, 4) / 1.5)),
+  missileDamage: (L: number) => 55 + 18 * grow(L, 5),
+  missileCooldown: (L: number) => 3.5 + 3 * Math.exp(-L / 4),
+  /** Energy Barrier: a recharging shield (0 = not owned). */
+  barrier: (L: number) => (L <= 0 ? 0 : 40 + 28 * grow(L - 1, 4)),
 };
 
 const owned = (l: number) => (l ? 'Installed' : 'Locked');
@@ -232,6 +252,10 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'isoAura', name: 'Rad Aura', icon: '🟢', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Your reactor leaks: a radiation aura that hurts and irradiates every bot near you.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.auraDps(l))} dps, ${f1(FX.auraRadius(l))} m` : 'Locked') },
   { id: 'isoChain', name: 'Chain Reaction', icon: '💚', category: 'isotope', playerOnly: true, plowOnly: 'isotope', description: 'Irradiated bots explode when wrecked, hurting and irradiating the bots around them.', details: 'Explosions can set off more explosions.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.chainBlast(l))} blast dmg` : 'Locked') },
   { id: 'bruteSaws', name: 'Buzzsaws', icon: '🪚', category: 'brute', playerOnly: true, plowOnly: 'brute', description: 'Spinning saws on your blade ends shred bots in front of you and to the sides.', details: 'Speed and fury (damage you deal and take) spin them up, growing glowing halos that stretch their reach.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${Math.round(FX.sawDps(l))} dps, ${f1(FX.sawRadius(l))} m` : 'Locked') },
+  { id: 'armCannon', name: 'Autocannon', icon: '🔫', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'SPACE (hold): twin auto-aiming cannons. Harder-hitting, faster-firing, longer reach.', details: 'Free on ARSENAL. Locks onto the nearest bot in front of you (about ±25°), otherwise fires straight ahead.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.gunDamage(l))} dmg × ${f1(FX.gunRate(l))}/s, ${Math.round(FX.gunRange(l))} m` },
+  { id: 'armLaser', name: 'Laser Lance', icon: '🔴', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'E: a 1.5s laser beam that burns through every bot in a line.', details: 'Free on ARSENAL. Steer to sweep the beam. It melts the snow it touches.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.laserDps(l))} dps, ${Math.round(FX.laserRange(l))} m, ${f1(FX.laserCooldown(l))}s` },
+  { id: 'armMissiles', name: 'Swarm Missiles', icon: '🚀', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'F: a salvo of homing missiles that hunt down different bots.', details: 'Free on ARSENAL. Each missile picks its own target and explodes in a small blast.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => `${FX.missileCount(l)} × ${Math.round(FX.missileDamage(l))} dmg, ${f1(FX.missileCooldown(l))}s` },
+  { id: 'armBarrier', name: 'Energy Barrier', icon: '🟦', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'No snowball to hide behind: a shield soaks damage first, recharging after 3s without hits.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.75, valueLabel: (l) => (l ? `${Math.round(FX.barrier(l))} shield` : 'Locked') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },

@@ -1,7 +1,7 @@
 /** Starter plows. Picked in the Garage; all are free. Each multiplies the shared garage stats and has its own
  *  exclusive upgrade line (Classic: the 'classic' category, Inferno fire on F; VOLT-9: the 'volt' category, Thunderclap on F;
  *  BRUTUS: the 'brute' category, Ground Pound on F; ISOTOPE: the 'isotope' category, Meltdown on F). */
-export type PlowKind = 'classic' | 'volt' | 'brute' | 'isotope';
+export type PlowKind = 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal';
 
 export interface PlowDef {
   id: PlowKind;
@@ -16,7 +16,9 @@ export interface PlowDef {
   dashPowerMult: number;
   slamMult: number;
   /** What F does with this plow. */
-  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown';
+  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
+  /** No blade and no snowball (ARSENAL): Space / E fire weapons instead of slam / whirlwind. */
+  noBall?: boolean;
 }
 
 export const PLOWS: Record<PlowKind, PlowDef> = {
@@ -71,5 +73,19 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     dashPowerMult: 1,
     slamMult: 1,
     fAbility: 'meltdown',
+  },
+  arsenal: {
+    id: 'arsenal',
+    name: 'ARSENAL',
+    icon: '🎯',
+    tagline: 'Not a plow at all: a hover-tracked weapons platform. No blade, no snowball, all firepower.',
+    traits: ['No snowball: SPACE = autocannon (hold, auto-aims)', 'E = laser beam · F = homing missile salvo', '+10% speed, -10% HP'],
+    hpMult: 0.9,
+    speedMult: 1.1,
+    accelMult: 1.1,
+    dashPowerMult: 1,
+    slamMult: 1,
+    fAbility: 'missiles',
+    noBall: true,
   },
 };

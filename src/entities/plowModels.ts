@@ -364,6 +364,91 @@ export function buildIsotopeParts(m: IsotopePartsMats): IsotopeParts {
   return { group: ip, coreMat };
 }
 
+/* ------------------------------------------------------------------ ARSENAL */
+
+export interface ArsenalParts {
+  group: THREE.Group;
+  /** Turret (yaw only; the owner swings it toward the gun target). */
+  turret: THREE.Group;
+  /** Muzzle markers on the turret (left, right), the laser lens and the missile pod tubes (model-local). */
+  muzzles: THREE.Object3D[];
+  laser: THREE.Object3D;
+  pods: THREE.Object3D[];
+  /** Glowing lens / sensor material (pulsed by the owner). */
+  glowMat: THREE.MeshStandardMaterial;
+}
+
+/** ARSENAL: not a plow — a low armored weapons platform. Wedge hull, sensor mast, a yawing turret with twin
+ *  autocannons, a laser emitter under the nose and two 2x3 missile pods on the flanks. Rides on the shared chassis. */
+export function buildArsenalParts(m: IsotopePartsMats): ArsenalParts {
+  const ap = new THREE.Group();
+  const glowMat = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff1010, emissiveIntensity: 1.2, roughness: 0.2 });
+  const hazardTex = hazardTexture();
+  hazardTex.repeat.set(3, 1);
+  const hazardMat = new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.55, metalness: 0.2 });
+  // Hull: a flat armored deck with a sloped glacis up front.
+  add(new THREE.BoxGeometry(2.1, 0.6, 3.1), m.paint, 0, 1.08, -0.35, ap);
+  const glacis = add(new THREE.BoxGeometry(2.0, 0.5, 1.2), m.paint, 0, 1.0, 1.55, ap);
+  glacis.rotation.x = 0.35;
+  add(new THREE.BoxGeometry(2.16, 0.14, 3.2), m.dark, 0, 0.8, -0.35, ap);
+  for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.1, 0.4, 2.8), m.trim, sx * 1.07, 1.1, -0.35, ap);
+  add(new THREE.BoxGeometry(2.04, 0.18, 0.06), hazardMat, 0, 1.2, -1.92, ap, false);
+  for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.3, 0.14, 0.06), m.dark, sx * 0.7, 0.98, -1.93, ap, false);
+  // Laser emitter: a barrel under the nose with a glowing lens.
+  const lb = add(new THREE.CylinderGeometry(0.16, 0.2, 0.7, 12), m.dark, 0, 0.98, 2.15, ap);
+  lb.rotation.x = Math.PI / 2;
+  const lens = add(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), glowMat, 0, 0.98, 2.52, ap, false);
+  lens.rotation.x = Math.PI / 2;
+  const laser = new THREE.Object3D();
+  laser.position.set(0, 0.98, 2.6);
+  ap.add(laser);
+  // Wheel arches.
+  for (const [x, z] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const) {
+    add(new THREE.BoxGeometry(0.5, 0.1, 1.1), m.dark, x, 0.48 * 2 + 0.08, z, ap);
+  }
+  // Missile pods on the flanks: 2 x 3 tubes each, faces pointing forward.
+  const pods: THREE.Object3D[] = [];
+  for (const sx of [-1, 1]) {
+    add(new THREE.BoxGeometry(0.62, 0.48, 1.1), m.trim, sx * 1.32, 1.5, -0.6, ap);
+    add(new THREE.BoxGeometry(0.66, 0.06, 1.14), m.dark, sx * 1.32, 1.76, -0.6, ap);
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 3; c++) {
+        const x = sx * 1.32 + (c - 1) * 0.18;
+        const y = 1.4 + r * 0.2;
+        add(new THREE.BoxGeometry(0.13, 0.13, 0.04), m.dark, x, y, -0.04, ap, false);
+        const o = new THREE.Object3D();
+        o.position.set(x, y, 0);
+        ap.add(o);
+        pods.push(o);
+      }
+    }
+  }
+  // Sensor mast at the back.
+  add(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), m.chrome, -0.6, 1.8, -1.55, ap);
+  add(new THREE.BoxGeometry(0.4, 0.12, 0.12), m.dark, -0.6, 2.28, -1.55, ap);
+  // Turret: a ring, a faceted housing, a little visor and twin cannons. Kept separate so it can yaw.
+  const turret = new THREE.Group();
+  turret.position.set(0, 1.38, -0.2);
+  ap.add(turret);
+  add(new THREE.CylinderGeometry(0.78, 0.86, 0.16, 16), m.dark, 0, 0.02, 0, turret);
+  add(new THREE.BoxGeometry(1.3, 0.5, 1.4), m.paint, 0, 0.34, 0, turret);
+  const cheek = add(new THREE.BoxGeometry(1.1, 0.3, 0.5), m.paint, 0, 0.32, 0.86, turret);
+  cheek.rotation.x = -0.4;
+  add(new THREE.BoxGeometry(0.5, 0.12, 0.06), glowMat, 0.3, 0.5, 0.71, turret, false);
+  const muzzles: THREE.Object3D[] = [];
+  for (const sx of [-1, 1]) {
+    add(new THREE.BoxGeometry(0.22, 0.22, 0.5), m.dark, sx * 0.42, 0.3, 0.85, turret);
+    const barrel = add(new THREE.CylinderGeometry(0.06, 0.07, 1.5, 8), m.chrome, sx * 0.42, 0.3, 1.6, turret);
+    barrel.rotation.x = Math.PI / 2;
+    add(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 8), m.dark, 0, 0.72, 0, barrel);
+    const mz = new THREE.Object3D();
+    mz.position.set(sx * 0.42, 0.3, 2.4);
+    turret.add(mz);
+    muzzles.push(mz);
+  }
+  return { group: ap, turret, muzzles, laser, pods, glowMat };
+}
+
 /* ------------------------------------------------------------------ BRUTUS */
 
 export interface BrutePartsMats {
@@ -604,6 +689,7 @@ export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: numb
   volt: { body: 0x1f5fe0, trim: 0x18213a },
   brute: { body: 0x7d8794, trim: 0x4a525d },
   isotope: { body: 0xe8cf1f, trim: 0x3a4038 },
+  arsenal: { body: 0x4c5a3a, trim: 0x2a2f26 },
 };
 
 const INK = '#16181c';
@@ -826,6 +912,10 @@ interface DecalSpot {
 
 /** Decal spots on each starter plow's bodywork (model-local coordinates; see the builders above + Plow.ts). */
 const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
+  arsenal: [
+    { face: 'top', at: [0, 1.39, -1.35], size: [1.9, 1.0], tags: ['stripe', 'band', 'emblem'], emblem: 0.85 }, // rear deck
+    { face: 'side', at: [1.125, 1.12, -0.35], size: [2.6, 0.26], tags: ['band', 'stripe', 'flame'] }, // hull flank
+  ],
   classic: [
     { face: 'top', at: [0, 1.53, 1.78], size: [0.85, 1.85], tags: ['stripe', 'flame'] }, // hood
     { face: 'top', at: [0, 2.28, 0.72], size: [1.45, 2.08], tags: ['stripe', 'emblem'], emblem: 1.2 }, // cab roof
@@ -922,6 +1012,7 @@ export const TRAIL_REAR: Readonly<Record<PlowKind, { x: number; y: number; z: nu
   volt: { x: 0.75, y: 0.85, z: -2.1 },
   brute: { x: 1.1, y: 0.8, z: -2.3 },
   isotope: { x: 0.8, y: 0.85, z: -2.05 },
+  arsenal: { x: 0.85, y: 0.85, z: -2.05 },
 };
 
 const _trailCol = new THREE.Color();

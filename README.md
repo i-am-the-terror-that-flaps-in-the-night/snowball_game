@@ -21,10 +21,10 @@ npm test           # vitest unit tests (tests/*.test.ts)
 |---|---|---|
 | W / S (↑ / ↓) | Left stick / d-pad, RT / LT | Drive / reverse |
 | A / D (← / →) | Left stick / d-pad | Steer |
-| Space | A | **Slam** your snowball into whatever is in front (bigger ball = much more damage) |
+| Space | A | **Slam** your snowball into whatever is in front (bigger ball = much more damage); ARSENAL: hold to fire the autocannon |
 | Shift | B / RB | **Dash** — a long burst; hitting a bot mid-dash is a Dash Strike |
-| E | X | **Whirlwind** — spin, pull bots in, blast them out, suck up snow |
-| F | Y | **Inferno** fire cone (Classic Plow), **Thunderclap** lightning blast (VOLT-9; small self-shock that escalates fast if you chain-spam it — the meter over the F icon shows the next clap's cost) or **Ground Pound** hop-and-slam shockwave (BRUTUS), or **Meltdown** toxic blast + fallout pool (ISOTOPE) |
+| E | X | **Whirlwind** — spin, pull bots in, blast them out, suck up snow (ARSENAL: laser beam) |
+| F | Y | **Swarm Missiles** (ARSENAL), **Inferno** fire cone (Classic Plow), **Thunderclap** lightning blast (VOLT-9; small self-shock that escalates fast if you chain-spam it — the meter over the F icon shows the next clap's cost) or **Ground Pound** hop-and-slam shockwave (BRUTUS), or **Meltdown** toxic blast + fallout pool (ISOTOPE) |
 | Esc / P | Start | Pause |
 | M | | Mute |
 
@@ -87,7 +87,7 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 - **Hard mode** — opens once an arena is cleared: ×1.8 bot HP, ×1.5 bot damage, ~35% more minions, same boss,
   ×1.75 coins. The first Hard clear pays 2.5× the arena's clear reward (repeats 0.6×) and earns a 💀 badge on
   its card. Hard clears never change unlocks.
-- **🏆 Trophies** — 49 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Garage & loot) paying
+- **🏆 Trophies** — 50 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Garage & loot) paying
   25–500 coins each, plus a lifetime STATS page. Unlocks are re-checked from the save, so old saves and imports
   get credit for what they've already done. Tutorial fights don't count.
 - **🎨 Paint Shop** — 8 paints, 5 decals, 5 exhaust trails, 6 blade skins, 5 slam horns and 5 kill effects for your plow (all three starter plows), 150–2000
@@ -121,7 +121,11 @@ radioactive **ISOTOPE** ☢️ (+10% HP, +5% speed; bots it irradiates glow gree
 free Meltdown on F (a toxic blast that melts the snow and leaves a glowing fallout pool). Radiation damage fills
 its ☢ Critical Mass bar; when full, F fires a **NUKE** (an instant huge blast and a giant fallout pool). Its own line — Meltdown,
 Half-Life (bigger, hotter, longer pools), Rad Aura (passive radiation around you) and Chain Reaction (irradiated
-bots explode when wrecked, setting off their neighbours).
+bots explode when wrecked, setting off their neighbours). — or **ARSENAL** 🎯, which isn't a plow at all: a weapons platform with
+no blade and no snowball (+10% speed, -10% HP). Hold SPACE to fire twin **autocannons** that auto-aim at the nearest bot in
+front of you, E fires a 1.5 s **laser beam** that burns through everything in a line, and F launches a salvo of
+**homing missiles** that each hunt a different bot. Its own line: Autocannon, Laser Lance, Swarm Missiles and Energy
+Barrier (a recharging shield, since there's no ball to hide behind). The Tutorial always uses the Classic Plow.
 
 The Garage is split into tabs (Drive, Snowball, Defense, Pilot, and your current plow's own line), each with a
 count of upgrades you can afford; switch with Q / E or LB / RB. Hover a card for the full mechanics of that upgrade.

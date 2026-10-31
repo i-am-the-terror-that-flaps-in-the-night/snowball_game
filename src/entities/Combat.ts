@@ -86,6 +86,23 @@ const WHIRL_BLAST = 22;
 /** The player's whirl hits harder than the base kit (Brawl rivals keep the base numbers). */
 const WHIRL_PLAYER_BONUS = 1.35;
 
+/** ARSENAL: autocannon lock-on half-angle (cos) and burst length when only presses are known (duel net input). */
+const GUN_LOCK_COS = Math.cos(0.45);
+const GUN_BURST = 0.5;
+const GUN_KNOCK = 1.5;
+const TRACERS = 12;
+/** Laser beam: seconds it burns, hit width (m), damage tick. */
+const LASER_SECONDS = 1.5;
+const LASER_WIDTH = 0.9;
+const LASER_TICK = 0.1;
+/** Missiles: flight speed (m/s), turn rate (1/s), blast radius (m), splash share, fuse (s). */
+const MISSILES_MAX = 12;
+const MISSILE_SPEED = 26;
+const MISSILE_TURN = 5;
+const MISSILE_BLAST = 3.2;
+const MISSILE_SPLASH = 0.6;
+const MISSILE_FUSE = 3.5;
+
 /** Share of camera shake / kick a duel opponent's attacks cause on this screen (no hit-stop at all). */
 const REMOTE_SHAKE = 0.35;
 const REMOTE_IMPACT: ImpactOpts = { stop: false, falloff: 0.5 };
@@ -158,6 +175,17 @@ export class Combat implements CombatAPI {
   /** BRUTUS Ground Pound: recharge 0..1 and the hop timer (-1 = grounded). */
   private poundCharge = 1;
   private poundT = -1;
+  // ARSENAL state: autocannon timer + burst window, tracer pool, laser beam, missile pool + recharge.
+  private gunT = 0;
+  private gunBurstT = 0;
+  private gunSide = 0;
+  private tracers: { mesh: THREE.Mesh; t: number }[] = [];
+  private laserT = 0;
+  private laserTickT = 0;
+  private laserCore!: THREE.Mesh;
+  private laserGlow!: THREE.Mesh;
+  private missileCharge = 1;
+  private missiles: { mesh: THREE.Group; pos: THREE.Vector3; vel: THREE.Vector3; target: EnemyHandle | null; t: number; live: boolean }[] = [];
 
   constructor(ctx: GameContext, binding?: PilotBinding) {
     this.ctx = ctx;
@@ -174,6 +202,7 @@ export class Combat implements CombatAPI {
       ctx.scene.add(mesh);
       this.pools.push({ mesh, mat, x: 0, z: 0, r: 1, t: 0, life: 1, tickT: 0 });
     }
+    this.buildArsenalFx(ctx.scene);
   }
 
   /** Re-bind to another pilot (the online Duel), or back to the single-player singletons (null). */
@@ -213,6 +242,7 @@ export class Combat implements CombatAPI {
       else if (kind === 'brute') {
         if (this.poundT < 0) this.poundCharge = f;
       } else if (kind === 'isotope') this.meltCharge = f;
+      else if (kind === 'arsenal') this.missileCharge = f;
       else if (this.flameT <= 0) this.flameCharge = f;
     }
     this.shield = s[o + NP.shield];
@@ -224,7 +254,7 @@ export class Combat implements CombatAPI {
   /** Duel guest, the opponent's puppet: re-arm the F ability so the replayed press fires it (visuals only — this
    *  Combat's targets are empty). `nuke`: ISOTOPE's Critical Mass was full, so it is the NUKE. */
   armForReplay(nuke: boolean): void {
-    this.clapCharge = this.poundCharge = this.meltCharge = this.flameCharge = 1;
+    this.clapCharge = this.poundCharge = this.meltCharge = this.flameCharge = this.missileCharge = 1;
     this.flameT = 0;
     if (this.poundT >= 0) this.b.plow.hop = 0;
     this.poundT = -1;
@@ -1117,6 +1147,7 @@ export class Combat implements CombatAPI {
     if (st.plowKind === 'volt') return st.clapDamage > 0 ? this.clapCharge : -1;
     if (st.plowKind === 'brute') return st.poundDamage > 0 ? (this.poundT >= 0 ? 0 : this.poundCharge) : -1;
     if (st.plowKind === 'isotope') return st.meltDamage > 0 ? this.meltCharge : -1;
+    if (st.plowKind === 'arsenal') return st.missileDamage > 0 ? this.missileCharge : -1;
     return st.flameDps > 0 ? this.flameCharge : -1;
   }
 
@@ -1233,6 +1264,300 @@ export class Combat implements CombatAPI {
       }
       if (b.t <= 0 || !e.alive) this.burns.delete(e);
     }
+  }
+
+  /* ------------------------------------------------------------------ ARSENAL */
+
+  private buildArsenalFx(scene: THREE.Scene): void {
+    const trGeo = new THREE.BoxGeometry(0.07, 0.07, 1);
+    trGeo.translate(0, 0, 0.5);
+    const trMat = new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (let i = 0; i < TRACERS; i++) {
+      const mesh = new THREE.Mesh(trGeo, trMat);
+      mesh.visible = false;
+      scene.add(mesh);
+      this.tracers.push({ mesh, t: 0 });
+    }
+    const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
+    beamGeo.rotateX(Math.PI / 2);
+    beamGeo.translate(0, 0, 0.5);
+    this.laserCore = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xfff0f0, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.laserGlow = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }));
+    for (const m of [this.laserCore, this.laserGlow]) {
+      m.visible = false;
+      m.renderOrder = 3;
+      scene.add(m);
+    }
+    const bodyGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.7, 8);
+    bodyGeo.rotateX(Math.PI / 2);
+    const noseGeo = new THREE.ConeGeometry(0.09, 0.22, 8);
+    noseGeo.rotateX(Math.PI / 2);
+    noseGeo.translate(0, 0, 0.46);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8ecef, roughness: 0.4, metalness: 0.3 });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0xd8262a, roughness: 0.4 });
+    const fireMat = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    const fireGeo = new THREE.ConeGeometry(0.08, 0.5, 8);
+    fireGeo.rotateX(-Math.PI / 2);
+    fireGeo.translate(0, 0, -0.6);
+    for (let i = 0; i < MISSILES_MAX; i++) {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(noseGeo, noseMat), new THREE.Mesh(fireGeo, fireMat));
+      g.visible = false;
+      scene.add(g);
+      this.missiles.push({ mesh: g, pos: new THREE.Vector3(), vel: new THREE.Vector3(), target: null, t: 0, live: false });
+    }
+  }
+
+  /** Nearest living bot to (x, z) within `range`, optionally inside the cone `cos` around `heading`, skipping `skip`. */
+  private nearest(x: number, z: number, range: number, heading?: number, cos = -1, skip?: Set<EnemyHandle>): EnemyHandle | null {
+    const hits = this.collect(x, z, range);
+    const fx = heading === undefined ? 0 : Math.sin(heading);
+    const fz = heading === undefined ? 0 : Math.cos(heading);
+    let best: EnemyHandle | null = null;
+    let bestD = Infinity;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive || skip?.has(e)) continue;
+      const dx = e.position.x - x;
+      const dz = e.position.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > range + e.radius) continue;
+      if (heading !== undefined && d > e.radius && (dx * fx + dz * fz) / d < cos) continue;
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    this.targets.length = 0;
+    return best;
+  }
+
+  /** One weapon hit from ARSENAL (player credit). Returns damage dealt. */
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number): number {
+    if (!e.alive) return 0;
+    const dx = e.position.x - fromX;
+    const dz = e.position.z - fromZ;
+    const d = Math.hypot(dx, dz) || 1;
+    const hp0 = e.hp;
+    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), {
+      source: 'other',
+      knockback: new THREE.Vector3((dx / d) * knock, 0, (dz / d) * knock),
+      fromX,
+      fromZ,
+    });
+    const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+    this.onPlayerHit(dealt, killed, e);
+    return dealt;
+  }
+
+  /** Autocannon (SPACE, held): twin auto-aiming cannons, alternating muzzles. */
+  private updateGuns(dt: number): void {
+    for (const tr of this.tracers) {
+      if (tr.t <= 0) continue;
+      tr.t -= dt;
+      if (tr.t <= 0) tr.mesh.visible = false;
+    }
+    const st = this.b.stats;
+    const plow = this.b.plow;
+    if (st.gunDamage <= 0 || !plow) return;
+    if (this.gunT > 0) this.gunT -= dt;
+    if (plow.dead) return;
+    const input = this.b.input;
+    if (input.wasPressed('Space')) this.gunBurstT = GUN_BURST;
+    else if (this.gunBurstT > 0) this.gunBurstT -= dt;
+    const firing = input.isDown ? input.isDown('Space') || this.gunBurstT > 0 : this.gunBurstT > 0;
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    const target = this.nearest(px, pz, st.gunRange, plow.heading, GUN_LOCK_COS);
+    // Turret tracks the target (or settles forward).
+    plow.turretAim = target ? Math.atan2(target.position.x - px, target.position.z - pz) - plow.heading : 0;
+    if (!firing || this.gunT > 0) return;
+    this.gunT += 1 / Math.max(0.5, st.gunRate);
+    if (this.gunT < 0) this.gunT = 0;
+    const side = (this.gunSide = 1 - this.gunSide);
+    plow.mountWorld('muzzle', side, _p);
+    let ex: number;
+    let ez: number;
+    let ey = _p.y;
+    if (target) {
+      ex = target.position.x;
+      ez = target.position.z;
+      ey = target.position.y + Math.min(1.2, target.radius * 0.6);
+      this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK);
+      _q.set(ex, ey, ez);
+      this.ctx.fx.burst(_q, { color: 0xffd060, count: 4, speed: 6, size: 0.12, gravity: 10, life: 0.25 });
+    } else {
+      const h = plow.turretHeading;
+      ex = _p.x + Math.sin(h) * st.gunRange;
+      ez = _p.z + Math.cos(h) * st.gunRange;
+    }
+    const tr = this.tracers.find((t) => t.t <= 0) ?? this.tracers[0];
+    tr.t = 0.06;
+    tr.mesh.visible = true;
+    tr.mesh.position.copy(_p);
+    _q.set(ex, ey, ez);
+    tr.mesh.lookAt(_q);
+    tr.mesh.scale.set(1, 1, Math.max(0.5, _p.distanceTo(_q)));
+    this.ctx.fx.burst(_p, { color: 0xffe08a, count: 3, speed: 4, size: 0.18, gravity: 0, life: 0.08 });
+    this.b.audio.play('hit', { volume: 0.22, pitch: 1.7 + Math.random() * 0.2 });
+    if (this.b.local) this.ctx.fx.shake(0.04);
+  }
+
+  /** ARSENAL laser (E; the Plow pays the whirl charge). False if the laser can't fire. */
+  fireLaser(): boolean {
+    const st = this.b.stats;
+    if (st.laserDps <= 0 || this.laserT > 0) return false;
+    this.laserT = LASER_SECONDS;
+    this.laserTickT = 0;
+    this.b.audio.play('zap', { pitch: 0.45, volume: 0.9 });
+    this.b.audio.play('charge', { pitch: 1.6, volume: 0.5 });
+    return true;
+  }
+
+  private updateLaser(dt: number): void {
+    const plow = this.b.plow;
+    if (this.laserT <= 0) return;
+    this.laserT -= dt;
+    if (this.laserT <= 0 || !plow || plow.dead) {
+      this.laserT = 0;
+      this.laserCore.visible = this.laserGlow.visible = false;
+      return;
+    }
+    const st = this.b.stats;
+    const R = st.laserRange;
+    plow.mountWorld('laser', 0, _p);
+    const h = plow.heading;
+    const fx = Math.sin(h);
+    const fz = Math.cos(h);
+    _q.set(_p.x + fx * R, _p.y, _p.z + fz * R);
+    const flick = 0.85 + Math.random() * 0.3;
+    const fade = Math.min(1, this.laserT / 0.2, (LASER_SECONDS - this.laserT) / 0.08 + 0.2);
+    for (const [m, w] of [[this.laserCore, 0.09], [this.laserGlow, 0.32]] as const) {
+      m.visible = true;
+      m.position.copy(_p);
+      m.lookAt(_q);
+      m.scale.set(w * flick * fade, w * flick * fade, R);
+    }
+    // Sparks + scorched snow along the beam.
+    const k = Math.random();
+    _tip.set(_p.x + fx * R * k, 0.5, _p.z + fz * R * k);
+    this.ctx.fx.burst(_tip, { color: Math.random() < 0.5 ? 0xff4030 : 0xffd0c0, count: 2, speed: 4, size: 0.16, gravity: -3, life: 0.3 });
+    this.b.snow.melt(_p.x + fx * R * 0.5, _p.z + fz * R * 0.5, 1.2, 0.6 * dt);
+    this.b.snow.melt(_p.x + fx * R * k, _p.z + fz * R * k, 1.2, 1.2 * dt);
+    if (this.b.local) this.ctx.fx.shake(0.05);
+    this.laserTickT -= dt;
+    if (this.laserTickT > 0) return;
+    this.laserTickT = LASER_TICK;
+    const hits = this.collect(_p.x + fx * R * 0.5, _p.z + fz * R * 0.5, R * 0.5 + 2);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      const dx = e.position.x - _p.x;
+      const dz = e.position.z - _p.z;
+      const along = dx * fx + dz * fz;
+      if (along < -e.radius || along > R + e.radius) continue;
+      if (Math.abs(dx * fz - dz * fx) > LASER_WIDTH + e.radius) continue;
+      const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2);
+      if (dealt > 0 && Math.random() < 0.35) {
+        _tip.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
+        this.ctx.fx.floatText(_tip, `${Math.round(dealt)}`, '#ff6a5a', 0.7);
+      }
+    }
+    this.targets.length = 0;
+  }
+
+  /** Swarm Missiles (F on ARSENAL): a salvo from the pods, each homing on a different bot. */
+  private updateMissiles(dt: number): void {
+    const st = this.b.stats;
+    const plow = this.b.plow;
+    this.flyMissiles(dt);
+    if (st.missileDamage <= 0 || !plow || plow.dead) return;
+    if (this.missileCharge < 1) this.missileCharge = Math.min(1, this.missileCharge + (st.missileCooldown > 0 ? dt / st.missileCooldown : 1));
+    if (!this.b.input.wasPressed('KeyF')) return;
+    if (this.missileCharge < 1) {
+      this.b.audio.play('error');
+      return;
+    }
+    this.missileCharge = 0;
+    this.b.events.emit('ability', { nuke: false });
+    this.b.audio.play('burst', { pitch: 1.4, volume: 0.8 });
+    this.b.audio.play('dash', { pitch: 1.6, volume: 0.6 });
+    const n = Math.min(MISSILES_MAX, st.missileCount);
+    const taken = new Set<EnemyHandle>();
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    for (let i = 0; i < n; i++) {
+      const m = this.missiles.find((x) => !x.live);
+      if (!m) break;
+      // Spread over targets: a fresh bot each while there are any, then double up.
+      let target = this.nearest(px, pz, 40, undefined, -1, taken);
+      if (!target) {
+        taken.clear();
+        target = this.nearest(px, pz, 40);
+      }
+      if (target) taken.add(target);
+      plow.mountWorld('pod', i * 5 + (i >> 1), m.pos);
+      const side = m.pos.x - px;
+      const sideZ = m.pos.z - pz;
+      const sl = Math.hypot(side, sideZ) || 1;
+      m.vel.set((side / sl) * 6 + Math.sin(plow.heading) * 6, 11 + Math.random() * 3, (sideZ / sl) * 6 + Math.cos(plow.heading) * 6);
+      m.target = target;
+      m.t = 0;
+      m.live = true;
+      m.mesh.visible = true;
+      m.mesh.position.copy(m.pos);
+      this.ctx.fx.burst(m.pos, { color: 0xd8dde2, count: 4, speed: 3, size: 0.4, gravity: -1, life: 0.6 });
+    }
+  }
+
+  private flyMissiles(dt: number): void {
+    for (const m of this.missiles) {
+      if (!m.live) continue;
+      m.t += dt;
+      const tgt = m.target && m.target.alive ? m.target : null;
+      if (m.t > 0.25) {
+        if (tgt) {
+          _q.set(tgt.position.x, tgt.position.y + Math.min(1, tgt.radius * 0.5), tgt.position.z).sub(m.pos).normalize().multiplyScalar(MISSILE_SPEED);
+        } else {
+          // Lost its target: keep going and nose down.
+          _q.copy(m.vel).setY(0).normalize().multiplyScalar(MISSILE_SPEED);
+          _q.y = -8;
+        }
+        m.vel.lerp(_q, Math.min(1, MISSILE_TURN * dt * (0.4 + m.t)));
+      } else m.vel.y -= 10 * dt;
+      m.pos.addScaledVector(m.vel, dt);
+      _p.copy(m.pos).add(m.vel);
+      m.mesh.position.copy(m.pos);
+      m.mesh.lookAt(_p);
+      if (Math.random() < dt * 40) this.ctx.fx.burst(m.pos, { color: Math.random() < 0.3 ? 0xffa040 : 0xc8ccd2, count: 1, speed: 0.6, size: 0.35, gravity: -1.5, life: 0.5 });
+      const hitTarget = tgt && Math.hypot(tgt.position.x - m.pos.x, tgt.position.z - m.pos.z) < tgt.radius + 0.4 && m.pos.y < tgt.position.y + tgt.radius * 2 + 1;
+      if (hitTarget || m.pos.y <= 0.15 || m.t > MISSILE_FUSE) this.explodeMissile(m, tgt);
+    }
+  }
+
+  private explodeMissile(m: (typeof this.missiles)[number], direct: EnemyHandle | null): void {
+    m.live = false;
+    m.mesh.visible = false;
+    const st = this.b.stats;
+    const x = m.pos.x;
+    const z = m.pos.z;
+    _q.set(x, Math.max(0.5, m.pos.y), z);
+    this.ctx.fx.burst(_q, { color: 0xff8a20, count: 18, speed: 9, size: 0.35, gravity: -2, life: 0.5 });
+    this.ctx.fx.burst(_q, { color: 0x3a3634, count: 6, speed: 2, size: 0.8, gravity: -2, life: 1 });
+    this.ctx.fx.ring(_q.set(x, 0.15, z), MISSILE_BLAST, 0xffb040);
+    this.b.audio.play('explosion', { volume: 0.45, pitch: 1.2 + Math.random() * 0.2 });
+    this.shake(0.18);
+    this.b.snow.melt(x, z, MISSILE_BLAST * 0.6, 0.6);
+    const hits = this.collect(x, z, MISSILE_BLAST);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      const full = e === direct;
+      const dealt = this.weaponHit(e, st.missileDamage * (full ? 1 : MISSILE_SPLASH), x, z, full ? 9 : 6);
+      if (dealt > 0) {
+        _tip.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
+        this.ctx.fx.floatText(_tip, `🚀${Math.round(dealt)}`, '#ffb060', 0.9);
+      }
+    }
+    this.targets.length = 0;
   }
 
   /* ------------------------------------------------------------------ ISOTOPE */
@@ -1485,6 +1810,15 @@ export class Combat implements CombatAPI {
     this.flameCharge = 1;
     this.burns.clear();
     this.meltCharge = 1;
+    this.missileCharge = 1;
+    this.gunT = this.gunBurstT = 0;
+    this.laserT = 0;
+    this.laserCore.visible = this.laserGlow.visible = false;
+    for (const tr of this.tracers) tr.mesh.visible = false;
+    for (const m of this.missiles) {
+      m.live = false;
+      m.mesh.visible = false;
+    }
     if (!betweenRounds) this.critCharge = 0;
     this.rads.clear();
     this.chainQueue.length = 0;
@@ -1510,6 +1844,9 @@ export class Combat implements CombatAPI {
     this.updateField(dt);
     this.updateSaws(dt);
     this.updateMeltdown(dt);
+    this.updateGuns(dt);
+    this.updateLaser(dt);
+    this.updateMissiles(dt);
     this.updatePools(dt);
     this.updateAura(dt);
     this.updateRads(dt);

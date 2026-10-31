@@ -34,6 +34,7 @@ const F_INFO: Partial<Record<PlowDef['fAbility'], { title: string; text: string 
     text: 'Call down a lightning blast around your plow: damage, shock-slow and knockback. Each clap shocks you a little — spam it and the backlash escalates fast.',
   },
   meltdown: { title: 'Meltdown', text: 'Vent the reactor: a toxic blast around ISOTOPE that leaves a glowing fallout pool. Irradiated bots glow green and take extra damage from you. Fill the ☢ bar with radiation damage to unlock a NUKE.' },
+  missiles: { title: 'Swarm Missiles', text: 'Launch a salvo of homing missiles from the pods: each one hunts down its own bot and explodes.' },
   pound: { title: 'Ground Pound', text: 'Slam BRUTUS into the ground: a shockwave that hammers and shoves every bot around you.' },
 };
 

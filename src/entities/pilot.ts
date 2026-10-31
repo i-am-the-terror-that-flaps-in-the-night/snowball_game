@@ -10,6 +10,8 @@ export interface InputSource {
   readonly throttle: number;
   readonly steer: number;
   wasPressed(code: string): boolean;
+  /** Held right now (optional: network inputs only know presses; ARSENAL's autocannon then fires in bursts). */
+  isDown?(code: string): boolean;
 }
 
 /** Sound output a pilot's plow + combat use (the real AudioSystem, or a quieter proxy for the opponent). */

@@ -52,6 +52,10 @@ export class GatedInput implements InputSource {
   wasPressed(code: string): boolean {
     return this.gate() && this.src().wasPressed(code);
   }
+  isDown(code: string): boolean {
+    const s = this.src();
+    return this.gate() && !!s.isDown?.(code);
+  }
 }
 
 /** Host side: the guest's input, from the PressTracker. Call beginFrame() once per sim frame. */

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
-import { Progression } from './Progression';
+import { Progression, computeStatsFor } from './Progression';
 import { applyAllSettings, setBrawlPerf, settingsUi } from './settings';
 import { BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, GameContext, HudState, RunSummary, UIHandlers } from './types';
@@ -373,6 +373,11 @@ export class Game {
     this.combo = 0;
     ctx.zone = TUTORIAL_ZONE;
     this.refreshStats();
+    // The lessons are about plowing a snowball and slamming it: ARSENAL has neither, so training uses the Classic.
+    if (PLOWS[ctx.stats.plowKind].noBall) {
+      ctx.stats = computeStatsFor(ctx.progression.effectiveLevels(), 'classic');
+      ctx.plow.applyStats(ctx.stats);
+    }
     this.clearArena();
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);

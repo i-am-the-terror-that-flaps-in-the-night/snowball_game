@@ -56,7 +56,7 @@ type ShopTabId = 'core' | 'gear' | 'line';
 const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; groups: { cat: UpgradeCategory; title?: string }[] }[] = [
   { id: 'core', label: 'Core', icon: '⚙️', blurb: 'The four core upgrades: speed, slam power, ball size and HP. They never max out.', groups: [{ cat: 'plow' }, { cat: 'ball' }, { cat: 'defense' }] },
   { id: 'gear', label: 'Gear', icon: '🎒', blurb: 'Buy items, level them up to 10 and equip one per slot. Gear works on every plow.', groups: [] },
-  { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }] },
+  { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }, { cat: 'arsenal' }] },
 ];
 
 const ENEMY_ICON: Record<EnemyType, string> = {
@@ -405,9 +405,11 @@ export class UI implements UIAPI {
     setKey(this.h.dash, 'dash');
     setKey(this.h.whirl, 'whirl');
     setKey(this.h.flame, 'ability');
-    this.h.hint.textContent =
-      `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ${k('slam')} slam  ·  ` +
-      `${k('dash')} dash strike  ·  ${k('whirl')} whirlwind  ·  ${k('ability')} F-ability  ·  ESC pause`;
+    this.h.hint.textContent = PLOWS[this.ctx.stats.plowKind]?.noBall
+      ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  hold ${k('slam')} autocannon  ·  ` +
+        `${k('dash')} dash strike  ·  ${k('whirl')} laser  ·  ${k('ability')} missiles  ·  ESC pause`
+      : `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ${k('slam')} slam  ·  ` +
+        `${k('dash')} dash strike  ·  ${k('whirl')} whirlwind  ·  ${k('ability')} F-ability  ·  ESC pause`;
   }
 
   private coinPill(parent: HTMLElement, cls = ''): HTMLElement {
@@ -2036,8 +2038,14 @@ export class UI implements UIAPI {
       const zap = s.fAbility === 'zap';
       const pound = s.fAbility === 'pound';
       const melt = s.fAbility === 'meltdown';
-      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : '🔥';
-      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : 'FIRE';
+      const rockets = s.fAbility === 'missiles';
+      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : rockets ? '🚀' : '🔥';
+      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : rockets ? 'MISSILES' : 'FIRE';
+      // ARSENAL: E is the laser, and there is no ball to slam.
+      H.whirl.querySelector('.ss-ab-icon')!.textContent = rockets ? '🔴' : '🌀';
+      H.whirl.querySelector('.ss-ab-name')!.textContent = rockets ? 'LASER' : 'WHIRL';
+      H.gauge.classList.toggle('hidden', rockets);
+      this.refreshKeys();
       H.flame.classList.toggle('ss-ab-melt', melt);
       H.flame.classList.toggle('ss-ab-zap', zap);
       H.flame.classList.toggle('ss-ab-pound', pound);

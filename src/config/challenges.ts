@@ -29,7 +29,7 @@ export interface ChallengeDef {
 }
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-const PLOW_NAME: Record<PlowKind, string> = { classic: 'Classic Plow', volt: 'VOLT-9', brute: 'BRUTUS', isotope: 'ISOTOPE' };
+const PLOW_NAME: Record<PlowKind, string> = { classic: 'Classic Plow', volt: 'VOLT-9', brute: 'BRUTUS', isotope: 'ISOTOPE', arsenal: 'ARSENAL' };
 
 /* ---- challenge builders (one per flavour; arenas pick and tune them) */
 

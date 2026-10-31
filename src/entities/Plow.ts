@@ -19,7 +19,7 @@ import { cooldown } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
 import {
   buildBruteParts, buildIsotopeParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
-  FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS, bladeTexture,
+  FACTORY_PAINT, buildArsenalParts, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS, bladeTexture,
 } from './plowModels';
 import type { CosmeticSlot } from '../config/cosmetics';
 import { bakeGeometry, mergeBaked, mergeStatic } from '../render/mergeStatic';
@@ -280,6 +280,16 @@ export class Plow implements PlowAPI {
   private steelMat!: THREE.MeshStandardMaterial;
   private hubMat!: THREE.MeshStandardMaterial;
   private voltParts!: THREE.Group;
+  /** ARSENAL: weapons platform parts, the yawing turret and its weapon mounts. */
+  private arsenalParts!: THREE.Group;
+  private turret!: THREE.Group;
+  private muzzles: THREE.Object3D[] = [];
+  private laserMount!: THREE.Object3D;
+  private pods: THREE.Object3D[] = [];
+  private armGlowMat!: THREE.MeshStandardMaterial;
+  /** Turret yaw relative to the hull (rad) and where Combat wants it. */
+  private turretYaw = 0;
+  turretAim = 0;
   private coilMat = new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x2fb8ff, emissiveIntensity: 1.5, roughness: 0.3, metalness: 0.4 });
   private coilTops: THREE.Object3D[] = [];
   private arcT = 0;
@@ -465,6 +475,23 @@ export class Plow implements PlowAPI {
     this.isoParts.add(...makeShadowProxy(this.isoParts, this.isoParts));
     this.isoParts.visible = false;
     this.body.add(this.isoParts);
+
+    /* ---- ARSENAL: weapons platform — wedge hull, yawing twin-cannon turret, nose laser, missile pods. ---- */
+    const ars = buildArsenalParts({ paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat });
+    this.arsenalParts = ars.group;
+    this.turret = ars.turret;
+    this.muzzles = ars.muzzles;
+    this.laserMount = ars.laser;
+    this.pods = ars.pods;
+    this.armGlowMat = ars.glowMat;
+    add(chassisGeo, darkMat, 0, 0.62, 0.05, this.arsenalParts);
+    this.turret.removeFromParent();
+    mergeStatic(this.arsenalParts);
+    mergeStatic(this.turret);
+    this.arsenalParts.add(this.turret);
+    this.arsenalParts.add(...makeShadowProxy(this.arsenalParts, this.arsenalParts));
+    this.arsenalParts.visible = false;
+    this.body.add(this.arsenalParts);
 
     // Beacon light (colour/intensity per plow in update).
     this.beaconLight = new THREE.PointLight(0xffa020, 0, 7, 2);
@@ -897,6 +924,19 @@ export class Plow implements PlowAPI {
     return out.set(Math.sin(this.heading), 0, Math.cos(this.heading));
   }
 
+  /** ARSENAL weapon mounts in world space: a turret muzzle (i = 0 left / 1 right), the nose laser, or a missile
+   *  pod tube (i wraps). */
+  mountWorld(kind: 'muzzle' | 'laser' | 'pod', i: number, out: THREE.Vector3): THREE.Vector3 {
+    const o = kind === 'laser' ? this.laserMount : kind === 'muzzle' ? this.muzzles[i % this.muzzles.length] : this.pods[i % this.pods.length];
+    this.body.updateWorldMatrix(true, true);
+    return o.getWorldPosition(out);
+  }
+
+  /** World heading the ARSENAL turret is pointing (hull heading + turret yaw). */
+  get turretHeading(): number {
+    return this.heading + this.turretYaw;
+  }
+
   getBladeTip(out: THREE.Vector3): THREE.Vector3 {
     const s = Math.sin(this.heading);
     const c = Math.cos(this.heading);
@@ -1018,6 +1058,7 @@ export class Plow implements PlowAPI {
     const volt = kind === 'volt';
     const brute = kind === 'brute';
     const iso = kind === 'isotope';
+    const ars = kind === 'arsenal';
     // Body paint + decals follow the Paint Shop look (factory colours unless a paint is equipped).
     this.syncLook(true);
     this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : iso ? 0x9ad63a : 0xffd23a);
@@ -1028,6 +1069,9 @@ export class Plow implements PlowAPI {
     this.flameMat.color.setHex(iso ? 0x7dff4a : 0xff8a1a);
     this.classicParts.visible = kind === 'classic';
     this.isoParts.visible = iso;
+    this.arsenalParts.visible = ars;
+    // ARSENAL has no blade (and never holds a ball).
+    this.bladeGroup.visible = !ars;
     this.voltParts.visible = volt;
     this.bruteParts.visible = brute;
     this.bruteBlade.visible = brute;
@@ -1040,6 +1084,9 @@ export class Plow implements PlowAPI {
     } else if (brute) {
       this.exhaustTip.set(0.55, 3.1, -1.45);
       this.flame.rotation.set(0, 0, 0);
+    } else if (ars) {
+      this.exhaustTip.set(0, 1.1, -2.0);
+      this.flame.rotation.set(-Math.PI / 2, 0, 0);
     } else if (iso) {
       this.exhaustTip.set(0.55, 2.38, 0.12);
       this.flame.rotation.set(0, 0, 0);
@@ -1291,6 +1338,8 @@ export class Plow implements PlowAPI {
 
     // ---- abilities
     if (input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
+    const armed = this.kind === 'arsenal';
+    if (armed) this.slamBuffer = 0;
     if (this.slamBuffer > 0 && this.slamPhase === 0 && this.slamCd <= 0 && this.whirlT < 0) {
       this.slamBuffer = 0;
       if (this.heldBallRadius >= MIN_BALL_RADIUS) {
@@ -1302,7 +1351,12 @@ export class Plow implements PlowAPI {
       }
     }
     if (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight')) this.tryDash();
-    if (input.wasPressed('KeyE')) this.tryWhirl();
+    if (input.wasPressed('KeyE')) {
+      // ARSENAL: E fires the laser; its recharge rides on the whirl charge (stats.whirlCooldown = laser recharge).
+      if (!armed) this.tryWhirl();
+      else if (this.whirlCharge >= 1 && !this.dead && b.combat.fireLaser()) this.whirlCharge = 0;
+      else b.audio.play('error', { volume: 0.4 });
+    }
 
     // ---- slam state machine
     this.lungeVel = 0;
@@ -1365,7 +1419,7 @@ export class Plow implements PlowAPI {
     // ---- plowing
     let plowIntensity = 0;
     _right.set(Math.cos(this.heading), 0, -Math.sin(this.heading));
-    if (this.whirlT < 0 && vf > 0.5) {
+    if (this.whirlT < 0 && vf > 0.5 && !armed) {
       const dashing = this.dashT > 0;
       const bx = this.position.x + _fwd.x * BLADE_Z;
       const bz = this.position.z + _fwd.z * BLADE_Z;
@@ -2080,6 +2134,14 @@ export class Plow implements PlowAPI {
     this.beaconLight.intensity = 2 + pf * 8;
     this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : this.kind === 'isotope' ? 0x5dff3a : 0xffa020);
     // ISOTOPE: the reactor core breathes; it flickers hot while Meltdown recharges.
+    if (this.kind === 'arsenal') {
+      // Turret swings toward Combat's target (relative yaw, wrapped), sensor glow breathes.
+      let d = this.turretAim - this.turretYaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.turretYaw += d * Math.min(1, dt * 12);
+      this.turret.rotation.y = this.turretYaw;
+      this.armGlowMat.emissiveIntensity = 0.9 + 0.4 * Math.sin(this.ctx.time * 5);
+    }
     if (this.kind === 'isotope') {
       const ready = this.b.combat?.flameReady ?? 1;
       const flick = ready < 1 ? 0.5 + 0.5 * Math.sin(this.time * 25) : 0.5 + 0.5 * Math.sin(this.time * 3);

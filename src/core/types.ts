@@ -124,7 +124,17 @@ export interface PlayerStats {
   flameDps: number;
   flameCooldown: number;
   /** Which starter plow is being driven (config/plows.ts). */
-  plowKind: 'classic' | 'volt' | 'brute' | 'isotope';
+  plowKind: 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal';
+  /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = auto-aim autocannon (dmg per round, rounds/s,
+   *  reach m), E = laser beam (dps, reach m; recharge is whirlCooldown), F = homing missile salvo. */
+  gunDamage: number;
+  gunRate: number;
+  gunRange: number;
+  laserDps: number;
+  laserRange: number;
+  missileCount: number;
+  missileDamage: number;
+  missileCooldown: number;
   /** ISOTOPE line (meltDamage 0 on other plows): Meltdown blast, its fallout pool, the Rad Aura and Chain Reaction. */
   meltRadius: number;
   meltDamage: number;
@@ -531,7 +541,7 @@ export interface HudState {
   /** 0..1 F-ability recharge (Inferno or Thunderclap), or -1 when not owned. */
   flameReady: number;
   /** What F does right now (icon). */
-  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown';
+  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
   /** Battery Shield 0..1, or -1 when not owned. */
   shield: number;
   /** ISOTOPE Critical Mass 0..1 (1 = NUKE ready), or -1 on other plows. */
