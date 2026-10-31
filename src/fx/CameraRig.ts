@@ -28,6 +28,15 @@ const KICK_LIFT = 0.25;
 /** Impact FOV punch: seconds and cap (degrees). */
 const PUNCH_SECONDS = 0.32;
 const PUNCH_MAX = 10;
+/** Ultimate kill-cam: orbit radius / height (m) around the shot, and how far it swings (rad). */
+const CINE_RADIUS = 17;
+const CINE_HEIGHT = 12;
+const CINE_SWING = 0.7;
+/** Share of the shot spent easing in / out of the follow camera. */
+const CINE_IN = 0.25;
+const CINE_OUT = 0.35;
+
+const _cine = new THREE.Vector3();
 
 function damp(k: number, dt: number): number {
   return 1 - Math.exp(-k * dt);
@@ -75,6 +84,12 @@ export class CameraRig implements CameraRigAPI {
   private punchT = 0;
   private punchAmt = 0;
   private tmpAim = new THREE.Vector3();
+  /** Kill-cam: seconds left / total, focus point and the starting orbit angle. */
+  private cineT = 0;
+  private cineDur = 1;
+  private cineX = 0;
+  private cineZ = 0;
+  private cineA = 0;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -88,6 +103,7 @@ export class CameraRig implements CameraRigAPI {
       if (plow) this.heading = plow.heading;
     }
     this.kickT = 0;
+    this.cineT = 0;
     this.kickOff.set(0, 0, 0);
     this.kickVel.set(0, 0, 0);
     this.punchT = 0;
@@ -126,6 +142,16 @@ export class CameraRig implements CameraRigAPI {
     if (Math.abs(d) < Math.abs(cur)) return;
     this.punchAmt = d;
     this.punchT = PUNCH_SECONDS;
+  }
+
+  /** Ultimate kill-cam: swing out to frame (x, z) for `seconds` (real time), then ease back to the follow. */
+  cinematic(x: number, z: number, seconds: number): void {
+    if (this.mode !== 'follow' || seconds <= 0) return;
+    this.cineX = x;
+    this.cineZ = z;
+    this.cineDur = this.cineT = seconds;
+    // Start from roughly where the camera already is, so the swing reads as a move, not a cut.
+    this.cineA = Math.atan2(this.pos.x - x, this.pos.z - z);
   }
 
   /** Freeze the follow (not the shake) for `seconds` — impact hit-stop. */
@@ -170,10 +196,24 @@ export class CameraRig implements CameraRigAPI {
     const lift = Math.max(outX, outZ) * 0.5;
     this.tmpPos.set(x, p.y + up + lift, z);
     this.tmpLook.set(p.x + sx * AHEAD, p.y + 0.5, p.z + cz * AHEAD);
+    if (this.cineT > 0) this.blendCinematic();
+  }
+
+  /** Pull the follow target toward the kill-cam orbit (weight eases in, holds, eases out). */
+  private blendCinematic(): void {
+    const u = 1 - this.cineT / this.cineDur; // 0 -> 1
+    const w = u < CINE_IN ? u / CINE_IN : u > 1 - CINE_OUT ? (1 - u) / CINE_OUT : 1;
+    const k = w * w * (3 - 2 * w);
+    const a = this.cineA + CINE_SWING * u;
+    const cx = THREE.MathUtils.clamp(this.cineX + Math.sin(a) * CINE_RADIUS, ARENA.minX - WALL_SLACK, ARENA.maxX + WALL_SLACK);
+    const cz = THREE.MathUtils.clamp(this.cineZ + Math.cos(a) * CINE_RADIUS, ARENA.minZ - WALL_SLACK, ARENA.maxZ + WALL_SLACK);
+    this.tmpPos.lerp(_cine.set(cx, CINE_HEIGHT, cz), k);
+    this.tmpLook.lerp(_cine.set(this.cineX, 0.5, this.cineZ), k);
   }
 
   update(dt: number): void {
     this.t += dt;
+    if (this.cineT > 0) this.cineT = Math.max(0, this.cineT - dt);
     this.updateKick(dt);
     const plowD = this.ctx.plow;
     const dashingNow = this.mode === 'follow' && !!plowD && plowD.dashing;

@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('settings', () => {
   it('defaults when nothing is stored', async () => {
-    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, bloom: true, keys: {} });
+    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} });
   });
 
   it('defaults on corrupted storage', async () => {
@@ -28,6 +28,12 @@ describe('settings', () => {
     expect(s.shake).toBe(0.5);
     expect(s.quality).toBe('high');
     expect(s.keys).toEqual({});
+  });
+
+  it('the ultimate kill-cam defaults on and turns off only when stored false', async () => {
+    expect((await loadWith(JSON.stringify({}))).ultCam).toBe(true);
+    expect((await loadWith(JSON.stringify({ ultCam: false }))).ultCam).toBe(false);
+    expect((await loadWith(JSON.stringify({ ultCam: 0 }))).ultCam).toBe(true);
   });
 
   it('loads reduceFlash only when it is literally true', async () => {

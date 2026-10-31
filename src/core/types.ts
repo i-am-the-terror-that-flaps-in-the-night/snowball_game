@@ -471,6 +471,8 @@ export interface CameraRigAPI {
   kick(dx: number, dz: number, amount: number): void;
   /** Short impact FOV punch in degrees (negative = zoom in), separate from the dash kick. Scaled by the shake slider. */
   punchFov(degrees: number): void;
+  /** Ultimate kill-cam: swing out to frame (x, z) for `seconds` of real time, then ease back to the follow. */
+  cinematic(x: number, z: number, seconds: number): void;
   update(dt: number): void;
 }
 

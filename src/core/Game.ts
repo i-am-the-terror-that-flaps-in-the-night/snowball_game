@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
-import { applyAllSettings, setBrawlPerf, settingsUi } from './settings';
+import { applyAllSettings, setBrawlPerf, settings, settingsUi } from './settings';
 import { BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, GameContext, HudState, RunSummary, UIHandlers } from './types';
 import { BRAWL_ZONE, ZONES } from '../config/zones';
@@ -30,6 +30,7 @@ import { renderFrame } from '../render/post';
 import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
+import { ULT_CAM_SECONDS, ULT_CAM_TOAST_DELAY, UltKillCam, ultCamLabel } from '../fx/ultCam';
 import type { GameEvents, KillSource } from './events';
 import { DuelManager, type DuelRole } from '../duel/DuelManager';
 import { NO_TARGETS } from '../duel/opponent';
@@ -91,6 +92,11 @@ export class Game {
   private daily = false;
   private hud: HudState;
   private mode: Mode = 'campaign';
+  /** Ultimate kill-cam trigger (3+ kills from one ultimate -> slow-mo + camera swing). */
+  private ultCam = new UltKillCam();
+  /** Real seconds until the kill-cam banner shows (it waits a beat so the tally includes the same blast's kills). */
+  private ultToastT = 0;
+  private ultToastMin = 0;
   private campaignEnemies: EnemyManager;
   private brawlDifficulty: BrawlDifficulty = 'pro';
   private survival: SurvivalManager;
@@ -271,6 +277,8 @@ export class Game {
     this.mode = mode;
     setBrawlPerf(ctx, mode === 'brawl');
     setArenaHalfSize(mode === 'brawl' ? BRAWL_ARENA_HALF : CAMPAIGN_ARENA_HALF);
+    this.ultCam.reset();
+    this.ultToastT = 0;
     ctx.enemies = mode === 'brawl' ? ctx.brawl : mode === 'duel' ? NO_TARGETS : this.campaignEnemies;
     ctx.zone = mode === 'brawl' ? BRAWL_ZONE : mode === 'survival' ? this.survival.zone : mode === 'duel' ? DUEL_ZONE : ZONES[0];
     ctx.fx.clear();
@@ -702,8 +710,16 @@ export class Game {
     ctx.plow.applyStats(ctx.stats);
   }
 
+  /** Kill-cam only in single-player fights (not the Tutorial, not the networked Duel) and when the setting is on. */
+  private ultCamAllowed(): boolean {
+    return settings.ultCam && this.mode !== 'duel' && (this.state === 'playing' || this.state === 'brawl');
+  }
+
   private wireEvents(): void {
     const { events, ui } = this.ctx;
+    events.on('ability', ({ nuke }) => {
+      if (nuke && this.ultCamAllowed()) this.ultCam.onUlt();
+    });
     events.on('enemyKilled', ({ enemy, source }) => {
       // Paint Shop kill effect (player kills only: Brawl emits this just for the player's kills).
       const kill = equippedLook(this.ctx.progression).kill;
@@ -712,6 +728,13 @@ export class Game {
       this.run.killsBy[source ?? 'other']++;
       // Final-kill slow-mo: a boss, or the kill that clears a campaign round / Survival wave.
       if (this.mode !== 'brawl' && this.state === 'playing' && (enemy.isBoss || this.ctx.waves.done)) this.ctx.impact.slowMo();
+      const shot = this.ultCam.onKill(enemy.position.x, enemy.position.z);
+      if (shot && this.ultCamAllowed()) {
+        this.ctx.impact.slowMo(ULT_CAM_SECONDS);
+        this.ctx.cameraRig.cinematic(shot.x, shot.z, ULT_CAM_SECONDS);
+        this.ultToastT = ULT_CAM_TOAST_DELAY;
+        this.ultToastMin = shot.kills;
+      }
     });
     events.on('plowDamaged', ({ amount }) => (this.run.damage += amount));
     events.on('coinCollected', ({ amount }) => (this.run.coins += amount));
@@ -749,6 +772,7 @@ export class Game {
 
   /** Advance the simulation by dt seconds without rendering (also used by headless playtests). */
   tick(dt: number): void {
+    if (this.ultToastT > 0 && (this.ultToastT -= dt) <= 0) this.ctx.ui.toast(ultCamLabel(Math.max(this.ultToastMin, this.ultCam.kills)), 'big');
     if (this.state === 'duel') {
       this.tickDuel(dt);
       return;
@@ -772,6 +796,7 @@ export class Game {
       ctx.enemies.update(simDt);
       ctx.combat.update(simDt);
       ctx.pickups.update(simDt);
+      this.ultCam.update(simDt);
 
       if (this.comboT > 0) {
         this.comboT -= simDt;
@@ -823,6 +848,7 @@ export class Game {
     ctx.brawl.tickClock(dt - simDt);
     ctx.combat.update(simDt);
     ctx.pickups.update(simDt);
+    this.ultCam.update(simDt);
     if (this.comboT > 0) {
       this.comboT -= simDt;
       if (this.comboT <= 0) this.combo = 0;

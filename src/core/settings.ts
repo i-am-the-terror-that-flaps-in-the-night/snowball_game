@@ -20,12 +20,14 @@ export interface Settings {
   reduceFlash: boolean;
   /** Bloom post-processing (HIGH quality only). */
   bloom: boolean;
+  /** Slow-mo cinematic when an ultimate wipes 3+ bots. */
+  ultCam: boolean;
   /** Rebound primary key per action (KeyboardEvent.code). Missing = default. */
   keys: Partial<Record<Action, string>>;
 }
 
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, bloom: true, keys: {} };
+  return { master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -51,6 +53,7 @@ function load(): Settings {
       quality: p.quality === 'low' ? 'low' : 'high',
       reduceFlash: p.reduceFlash === true,
       bloom: p.bloom !== false,
+      ultCam: p.ultCam !== false,
       keys,
     };
   } catch {
