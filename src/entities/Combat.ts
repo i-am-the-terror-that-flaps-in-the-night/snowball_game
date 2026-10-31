@@ -548,6 +548,7 @@ export class Combat implements CombatAPI {
     this.shake(0.8);
     this.impactHit('clap', _q.set(px, 1, pz));
     this.b.audio.play('thunder');
+    this.smashProps(px, pz, R);
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -646,6 +647,7 @@ export class Combat implements CombatAPI {
     this.shake(0.9);
     this.impactHit('pound', _q.set(px, 0.5, pz));
     this.b.audio.play('thud');
+    this.smashProps(px, pz, R);
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -1110,6 +1112,7 @@ export class Combat implements CombatAPI {
     const freeze = stats.frostCore ? 3 : 0;
 
     plow.getForward(_fwd);
+    this.smashProps(x, z, zone);
     const hits = this.collect(x, z, zone);
     let count = 0;
     for (let i = 0; i < hits.length; i++) {
@@ -1228,6 +1231,7 @@ export class Combat implements CombatAPI {
     const stats = this.b.stats;
     const fx = ctx.fx;
     const dmg = (stats.whirlDamage + (ballR >= 0.2 ? 3 * ballR * ballR * stats.damageMult : 0)) * WHIRL_PLAYER_BONUS;
+    if (final) this.smashProps(x, z, radius);
     const hits = this.collect(x, z, radius);
     let count = 0;
     for (let i = 0; i < hits.length; i++) {
@@ -1283,6 +1287,11 @@ export class Combat implements CombatAPI {
   }
 
   /** Snapshot of living enemies overlapping a circle (copied: damage() may mutate manager lists). */
+  /** Break destructible props in a circle (player attacks; a duel guest's predicted attacks never do). */
+  private smashProps(x: number, z: number, r: number): void {
+    if (this.b.authoritative) this.ctx.world?.blastProps(x, z, r);
+  }
+
   private collect(x: number, z: number, radius: number): EnemyHandle[] {
     const enemies = this.b.enemies;
     const out = this.targets;
@@ -1379,6 +1388,7 @@ export class Combat implements CombatAPI {
     this.flameIgniteT -= dt;
     if (this.flameIgniteT > 0) return;
     this.flameIgniteT = FLAME_IGNITE_EVERY;
+    this.smashProps(_tip.x + _fwd.x * range * 0.55, _tip.z + _fwd.z * range * 0.55, range * 0.35);
     const hits = this.collect(_tip.x + _fwd.x * range * 0.5, _tip.z + _fwd.z * range * 0.5, range * 0.5 + 1);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -1427,6 +1437,7 @@ export class Combat implements CombatAPI {
   /** One fire blast: damage with falloff, knockback out from (x, z), ignite. `feed`: counts toward the FIRESTORM
    *  meter (the FIRESTORM's own blast doesn't, so it can't chain). Returns the bots hit. */
   private fireBlast(x: number, z: number, R: number, dmg: number, knock: number, rim: number, text: string, feed: boolean): number {
+    this.smashProps(x, z, R);
     const hits = this.collect(x, z, R);
     let n = 0;
     for (let i = 0; i < hits.length; i++) {
@@ -1675,6 +1686,7 @@ export class Combat implements CombatAPI {
 
   /** Hit every bot whose centre is between `inner` and `R` of (x, z). Returns how many. */
   private ultBlast(x: number, z: number, inner: number, R: number, dmg: number, o: { knock: number; stun?: number; freeze?: number; text: string; color: string; bolt?: boolean }): number {
+    this.smashProps(x, z, R);
     const hits = this.collect(x, z, R);
     let n = 0;
     for (let i = 0; i < hits.length; i++) {
@@ -1890,8 +1902,12 @@ export class Combat implements CombatAPI {
       this.ctx.fx.burst(_q, { color: 0xffd060, count: 4, speed: 6, size: 0.12, gravity: 10, life: 0.25 });
     } else {
       const h = plow.turretHeading;
-      ex = _p.x + Math.sin(h) * st.gunRange;
-      ez = _p.z + Math.cos(h) * st.gunRange;
+      const hx = Math.sin(h);
+      const hz = Math.cos(h);
+      const t = this.b.authoritative ? (this.ctx.world?.blastPropRay(_p.x, _p.z, hx, hz, st.gunRange) ?? -1) : -1;
+      const reach = t >= 0 ? t : st.gunRange;
+      ex = _p.x + hx * reach;
+      ez = _p.z + hz * reach;
     }
     const tr = this.tracers.find((t) => t.t <= 0) ?? this.tracers[0];
     tr.t = 0.06;
@@ -2008,6 +2024,7 @@ export class Combat implements CombatAPI {
     this.laserTickT -= dt;
     if (this.laserTickT > 0) return;
     this.laserTickT = LASER_TICK;
+    if (this.b.authoritative) this.ctx.world?.blastPropRay(_p.x, _p.z, fx, fz, R);
     const hits = this.collect(_p.x + fx * R * 0.5, _p.z + fz * R * 0.5, R * 0.5 + 2);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -2159,6 +2176,7 @@ export class Combat implements CombatAPI {
     this.b.audio.play('explosion', { volume: 0.45, pitch: 1.2 + Math.random() * 0.2 });
     this.shake(0.18);
     this.b.snow.melt(x, z, MISSILE_BLAST * 0.6, 0.6);
+    this.smashProps(x, z, MISSILE_BLAST);
     const hits = this.collect(x, z, MISSILE_BLAST);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -2220,6 +2238,7 @@ export class Combat implements CombatAPI {
     this.impactHit('meltdown', _q.set(px, 1, pz));
     this.b.audio.play('thud', { pitch: 0.7 });
     this.b.audio.play('zap', { volume: 0.6, pitch: 0.5 });
+    this.smashProps(px, pz, R);
     const hits = this.collect(px, pz, R);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -2264,6 +2283,7 @@ export class Combat implements CombatAPI {
     const px = this.nukeX;
     const pz = this.nukeZ;
     const R = NUKE_RADIUS;
+    this.smashProps(px, pz, R);
     // Flash, shockwave rings, a rising stem and a mushroom cap.
     _q.set(px, 0.2, pz);
     ctx.fx.ring(_q, R * 0.3, 0xffffff);

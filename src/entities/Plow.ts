@@ -30,6 +30,8 @@ import { cosmeticsState, resolveLook, type EquippedLook } from '../meta/cosmetic
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
 const BLADE_Z = 2.35;
 const TIP_Z = BLADE_Z + 0.15;
+/** Driving into a destructible prop faster than this (m/s), or dashing, smashes it. */
+const PROP_SMASH_SPEED = 6;
 const REAR_Z = 2.15;
 const WHEEL_R = 0.48;
 /** BRUTUS's taller, deeper blade (visual scale on Y / Z; width still follows bladeWidth). */
@@ -1684,8 +1686,11 @@ export class Plow implements PlowAPI {
     const world = this.ctx.world;
     const obs = world ? world.obstacles : null;
     if (!obs || obs.length === 0) return;
+    const b = this.b;
     const bladeR = Math.max(0.9, this.bladeWidth * 0.38);
     const bladeOff = TIP_Z - 0.55;
+    // Rams at speed and dashes smash straight through destructible props (they stop nothing).
+    const smashes = b.authoritative && (this.dashT > 0 || Math.abs(vf) > PROP_SMASH_SPEED);
     for (let i = 0; i < obs.length; i++) {
       const o = obs[i];
       const p = this.position;
@@ -1694,6 +1699,11 @@ export class Plow implements PlowAPI {
       const ddz = p.z - o.z;
       const reach = o.r + 4.5;
       if (ddx * ddx + ddz * ddz > reach * reach) continue;
+      if (o.breakable && smashes && ddx * ddx + ddz * ddz < (o.r + this.radius + 1.5) ** 2 && world!.breakObstacle(o)) {
+        this.kick = Math.max(this.kick, 0.3);
+        i--;
+        continue;
+      }
       for (let k = 0; k < 3; k++) {
         const off = k === 0 ? 0 : k === 1 ? bladeOff : -1.3;
         const cr = k === 0 ? this.radius : k === 1 ? bladeR : 1.1;

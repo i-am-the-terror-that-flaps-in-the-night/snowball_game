@@ -350,6 +350,7 @@ export class Game {
     this.clearArena();
     ctx.fx.clear();
     ctx.snow.reset(ctx.zone);
+    ctx.world.resetProps(true, false);
     ctx.brawl.start(difficulty);
     ctx.ui.hideOverlays();
     ctx.ui.setHudVisible(true);
@@ -521,6 +522,8 @@ export class Game {
   private beginCountdown(): void {
     const { ctx } = this;
     this.state = 'countdown';
+    // Destructible props stand back up every round / wave (campaign + Survival only).
+    ctx.world.resetProps(this.mode === 'campaign' || this.mode === 'survival', true);
     this.lastCountdownInt = -1;
     if (this.mode === 'survival') {
       this.countdown = this.survival.nextWave();

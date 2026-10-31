@@ -79,6 +79,12 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
 - **Tutorial** — a 7-step guided Training Yard (drive, snowball, slam, dash, whirlwind, your plow's F ability,
   ball-shield). Runs once on a fresh save; replay it from **🎓 TUTORIAL** on the main menu, Esc skips.
 
+**Destructible props:** campaign and Survival arenas have 14 wooden crates and ice blocks (the Brawl Snowdome has 26) that
+block movement until you break them. Ram one at speed or dash through it; slams, whirlwinds, every F ability and ultimate,
+missiles, the laser and stray minigun rounds smash them too. Broken crates drop a couple of coins (not in Brawl), and
+everything stands back up each round. Two states only (standing / broken): one InstancedMesh per prop type and a circle
+collider each, no physics. None in Duel or the Tutorial.
+
 ## Meta progression
 
 - **Challenge stars** — 3 per arena (18 total): slam kills, ball size, clear times, combos, damage limits,

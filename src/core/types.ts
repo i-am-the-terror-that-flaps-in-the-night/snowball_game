@@ -41,6 +41,8 @@ export interface Obstacle {
   x: number;
   z: number;
   r: number;
+  /** A destructible prop (world/Props.ts): rams, dashes and player attacks break it. */
+  breakable?: boolean;
 }
 export const PLOW_SPAWN = { x: 0, z: 18, heading: Math.PI } as const;
 /** Enemy entry points just OUTSIDE the walls; bots spawn here facing in and drive through the gate
@@ -212,6 +214,15 @@ export interface WorldAPI {
   /** Solid circle obstacles inside the ARENA (empty in the campaign; pillars/containers/rocks in Brawl).
    *  Every vehicle must collide with these. Rebuilt by setZone. */
   readonly obstacles: readonly Obstacle[];
+  /** Destructible props (crates / ice blocks; two states, standing or broken). resetProps rebuilds them all
+   *  standing (`on` false = none: Duel, Tutorial, menus); `coins`: broken props drop a couple of coins. */
+  resetProps(on: boolean, coins: boolean): void;
+  /** Break every standing prop overlapping the circle; returns how many broke. */
+  blastProps(x: number, z: number, r: number): number;
+  /** Break the first standing prop along a ray (unit dir) within range; returns its distance or -1. */
+  blastPropRay(x: number, z: number, dx: number, dz: number, range: number): number;
+  /** Break the prop owning this collider (ram / dash). False if it isn't a standing prop. */
+  breakObstacle(o: Obstacle): boolean;
 }
 
 /* ------------------------------------------------------------------ player */

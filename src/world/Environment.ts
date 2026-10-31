@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { GameContext, Obstacle, WorldAPI, ZoneDef } from '../core/types';
+import { Props } from './Props';
 import { StaticBatch } from '../render/mergeStatic';
 import { makeShadowProxy } from '../render/shadowProxy';
 import type { ShadowProxy } from '../render/shadowProxy';
@@ -420,6 +421,7 @@ export class Environment implements WorldAPI {
   private time = 0;
   private rnd: () => number = Math.random;
   private obstacleList: Obstacle[] = [];
+  private props: Props;
   /** Sun offset from its (player-following) target, and the light-space basis for texel snapping. */
   private sunOffset = new THREE.Vector3(45, 80, 55);
   private sunR = new THREE.Vector3();
@@ -466,8 +468,25 @@ export class Environment implements WorldAPI {
     return this.obstacleList;
   }
 
+  resetProps(on: boolean, coins: boolean): void {
+    this.props.reset(this.obstacleList, on, 777 + this.zone.index * 131, this.zone.theme === 'brawl', coins);
+  }
+
+  blastProps(x: number, z: number, r: number): number {
+    return this.props.blast(x, z, r);
+  }
+
+  blastPropRay(x: number, z: number, dx: number, dz: number, range: number): number {
+    return this.props.blastRay(x, z, dx, dz, range);
+  }
+
+  breakObstacle(o: Obstacle): boolean {
+    return this.props.breakObstacle(o);
+  }
+
   constructor(ctx: GameContext) {
     this.ctx = ctx;
+    this.props = new Props(ctx);
     this.zone = ctx.zone;
     const scene = ctx.scene;
 
@@ -832,6 +851,7 @@ export class Environment implements WorldAPI {
     const snowMat = this.std(zone.snowTint, { roughness: 0.85 });
     brawlMode = zone.theme === 'brawl';
     this.obstacleList = [];
+    this.props.clear();
 
     if (brawlMode) {
       this.buildWalls(G, snowMat);
