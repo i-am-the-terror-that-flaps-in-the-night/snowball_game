@@ -337,7 +337,7 @@ export interface DamageOpts {
   ballRadius?: number;
   /** Rapid weapon fire (ARSENAL): against a plow both kinds skip the hit i-frames (they land faster than the window).
    *  'round' (autocannon) also skips the Duel's area-ability diminishing returns; 'beam' (laser ticks) keeps them, so
-   *  one laser press can't melt a human opponent. */
+   *  one laser press can't melt a human opponent. Against bots both face only part of the armour (Enemies). */
   direct?: 'round' | 'beam';
 }
 
@@ -345,7 +345,7 @@ export interface EnemyManagerAPI {
   spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number }): EnemyHandle;
   /** Living enemies whose collision circle overlaps the given circle. Reuses `out` if provided. */
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[];
-  /** Callers pass RAW damage. The manager applies armor (min 1), directional armor, and vulnerability
+  /** Callers pass RAW damage. The manager applies armor (min 1; reduced for `direct` hits), directional armor, and vulnerability
    *  multipliers (stunned / overheated / dizzy / exposed). Returns true if this killed the enemy.
    *  On hit: emits 'enemyHit'. On kill: emits 'enemyKilled' (+ 'bossDefeated' for bosses), spawns coins
    *  via ctx.pickups.spawnCoins, plays fx/audio. */

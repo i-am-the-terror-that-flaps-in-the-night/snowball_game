@@ -178,8 +178,11 @@ because it scaled with Inferno's burn dps, the steepest curve in the game.
 
 ## Limits of the model
 
-- The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons (minigun
-  rounds, laser and burn ticks) lose more against armoured bots and bosses than the table shows.
+- The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more
+  against armoured bots and bosses than the table shows. The minigun nerf cut damage per round to 4 (from 9), which
+  against flat armour 3 to 8 would have left 1 per round, so minigun rounds and laser ticks (`DamageOpts.direct`) now
+  face only half a bot's armour (Enemies, DIRECT_ARMOR). That keeps them about as effective against armour, relative
+  to their raw damage, as before the nerf. Burn and pool ticks still face full armour.
 - Slam, whirl and dash come from the engagement model above, not from real driving. They are 10 to 30% of each snowball
   plow's damage, and they are the same model for all four.
 - The duel victim is parked and never fights back, dodges, dashes or blocks with a ball. Real duels run longer. The

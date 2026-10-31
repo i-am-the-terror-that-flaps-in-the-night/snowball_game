@@ -23,6 +23,8 @@ import type { KillSource } from '../core/events';
 const FLASH_T = 0.12;
 const ICE = new THREE.Color(0x8fd0ff);
 const MAX_DEBRIS = 180;
+/** Share of a bot's armour that rapid weapon hits (DamageOpts.direct: minigun rounds, laser ticks) still face. */
+const DIRECT_ARMOR = 0.5;
 const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff, donald: 0xffc400 };
 
 const _c = new THREE.Color();
@@ -190,7 +192,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       deflect = true;
     }
 
-    dmg = Math.max(1, dmg - e.def.armor);
+    // Rapid small hits (ARSENAL rounds, laser ticks) pierce part of the flat armour, which would otherwise gut them.
+    dmg = Math.max(1, dmg - (opts?.direct ? e.def.armor * DIRECT_ARMOR : e.def.armor));
     let vm = 1;
     if (e.stun > 0) vm = Math.max(vm, e.stunMult);
     if (e.vulnT > 0 && e.vuln !== Vuln.None) vm = Math.max(vm, e.vulnMult);

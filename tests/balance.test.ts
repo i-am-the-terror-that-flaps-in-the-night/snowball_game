@@ -27,8 +27,8 @@ describe('ultimate meters', () => {
 
   it.each(KINDS)('%s: fills in 20-35 s fresh, and no faster than 12 s late-game (in a fight or on a boss)', (kind) => {
     const fresh = ultFill(kind, 'fresh', 150);
-    expect(fresh).toBeGreaterThan(18);
-    expect(fresh).toBeLessThan(36);
+    expect(fresh).toBeGreaterThan(20);
+    expect(fresh).toBeLessThan(35);
     expect(ultFill(kind, 'high', 150)).toBeGreaterThan(12);
     expect(ultFillBoss(kind, 'high', 90)).toBeGreaterThan(12);
   });
