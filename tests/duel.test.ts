@@ -464,3 +464,24 @@ describe('duel garage gear', () => {
     expect(w.canBuyItem(common.id)).toBe(false);
   });
 });
+
+/* ------------------------------------------------------------------ ICE / TURN */
+
+import { buildIce } from '../src/net/transport';
+
+describe('ICE servers', () => {
+  it('STUN only by default', () => {
+    const { config, turn } = buildIce({});
+    expect(turn).toBe(false);
+    expect(config.iceServers!.length).toBeGreaterThan(0);
+    expect(JSON.stringify(config.iceServers)).not.toContain('turn:');
+  });
+
+  it('adds a TURN relay from the env, keeping only turn:/turns: URLs', () => {
+    const { config, turn } = buildIce({ VITE_TURN_URLS: ' turn:r.example.com:80 , turns:r.example.com:443?transport=tcp, http://nope ', VITE_TURN_USERNAME: 'u', VITE_TURN_CREDENTIAL: 'p' });
+    expect(turn).toBe(true);
+    const relay = config.iceServers!.find((s) => s.username === 'u')!;
+    expect(relay.urls).toEqual(['turn:r.example.com:80', 'turns:r.example.com:443?transport=tcp']);
+    expect(relay.credential).toBe('p');
+  });
+});

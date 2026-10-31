@@ -33,5 +33,12 @@ that you can keep buying with your own coins.
 - Transport: PeerJS (WebRTC data channels over the free public PeerJS signalling server, Google STUN). Add
   `?duel=local` to duel between two tabs of one browser instead (BroadcastChannel; `&lag=80&jitter=30&loss=0.05`
   fakes a bad link).
+- **NAT traversal / TURN.** Out of the box the game uses public STUN servers, which connect players as long as at
+  least one side has an ordinary home-router NAT. Two players on strict NATs (school, office and mobile-carrier
+  networks, some routers) will find each other's room but then fail with "couldn't connect to the host". Those need
+  a **TURN relay**: copy `.env.example` to `.env.local`, fill in a TURN server's URLs and credentials (any provider,
+  e.g. a free Metered Open Relay account, or your own coturn), and rebuild / restart `npm run dev`. Both players
+  must run a build that has the relay. Relay credentials end up in the page, so use relay-only ones. Quick
+  workaround without a relay: one player switches network (a phone hotspot usually works).
 - The wire format is in `src/net/protocol.ts`. Both sides must run the same `PROTOCOL_VERSION`; a mismatch is
   refused with a message.

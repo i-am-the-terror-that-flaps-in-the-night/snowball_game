@@ -262,9 +262,32 @@ type PeerMod = typeof import('peerjs');
 type PeerT = InstanceType<PeerMod['Peer']>;
 type ConnT = ReturnType<PeerT['connect']>;
 
-const ICE: RTCConfiguration = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
-};
+/** Build-time TURN relay settings (Vite env, e.g. in .env.local). See docs/duel.md. */
+export interface TurnEnv {
+  VITE_TURN_URLS?: string;
+  VITE_TURN_USERNAME?: string;
+  VITE_TURN_CREDENTIAL?: string;
+}
+
+const STUN: RTCIceServer[] = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+];
+
+/**
+ * ICE servers: public STUN (enough when at least one side has a simple home-router NAT) plus, when configured, a TURN
+ * relay. Without TURN, two players behind strict NATs (school / office / mobile-carrier networks) can find each
+ * other's room but never connect: the data has to be relayed. VITE_TURN_URLS is a comma-separated list such as
+ * "turn:relay.example.com:80,turns:relay.example.com:443?transport=tcp".
+ */
+export function buildIce(env: TurnEnv): { config: RTCConfiguration; turn: boolean } {
+  const urls = (env.VITE_TURN_URLS ?? '').split(',').map((u) => u.trim()).filter((u) => /^turns?:/.test(u));
+  const iceServers = [...STUN];
+  if (urls.length) iceServers.push({ urls, username: env.VITE_TURN_USERNAME ?? '', credential: env.VITE_TURN_CREDENTIAL ?? '' });
+  return { config: { iceServers }, turn: urls.length > 0 };
+}
+
+const { config: ICE, turn: HAS_TURN } = buildIce((import.meta.env ?? {}) as TurnEnv);
 
 let peerMod: Promise<PeerMod> | null = null;
 function loadPeer(): Promise<PeerMod> {
@@ -368,7 +391,15 @@ function bothOpen(a: ConnT, b: ConnT, timeoutMs: number, code: string): Promise<
   return new Promise((resolve, reject) => {
     let n = 0;
     const t = setTimeout(
-      () => reject(new NetError('timeout', `Found room ${code} but couldn't connect to the host (a firewall or NAT may be blocking peer-to-peer). Try another network.`)),
+      () =>
+        reject(
+          new NetError(
+            'timeout',
+            HAS_TURN
+              ? `Found room ${code} but couldn't connect to the host, even through the relay. A firewall may be blocking it: try another network.`
+              : `Found room ${code} but couldn't connect to the host: your networks block direct peer-to-peer links (strict NAT / firewall) and this build has no TURN relay set up. Try another network (a phone hotspot often works), or see docs/duel.md to add a relay.`,
+          ),
+        ),
       timeoutMs,
     );
     const one = () => {
@@ -463,7 +494,7 @@ function peerRoom(peer: PeerT, code: string): HostRoom {
   };
 }
 
-export async function joinPeer(code: string, timeoutMs = 20000): Promise<Transport> {
+export async function joinPeer(code: string, timeoutMs = HAS_TURN ? 30000 : 20000): Promise<Transport> {
   const { Peer } = await loadPeer();
   const peer = new Peer({ config: ICE, debug: 0 });
   try {
