@@ -45,28 +45,29 @@ export const GEAR_LEVEL_GROWTH = 1.35;
 const g = (stat: UpgradeId, base: number, per: number): GearGrant => ({ stat, base, per });
 
 export const GEAR: GearDef[] = [
+  // Every gear stat comes from exactly ONE item (its headline). Items whose headline is a one-time core (Frost,
+  // Avalanche, Ice Shield) get one small levelling secondary that no other item in their slot touches.
   // ---- Blade
-  { id: 'steelWedge', name: 'Steel Wedge', icon: '🔪', slot: 'blade', rarity: 'common', cost: 60, description: 'A wider blade that rams harder.', grants: [g('blade', 1, 0.5), g('ramSpikes', 1, 0.5)] },
-  { id: 'spikedShare', name: 'Spiked Plowshare', icon: '🦔', slot: 'blade', rarity: 'rare', cost: 320, description: 'Bristling with spikes: rams hurt a lot.', grants: [g('ramSpikes', 2, 0.8), g('blade', 1, 0.3)] },
-  { id: 'frostEdge', name: 'Frostbite Edge', icon: '❄️', slot: 'blade', rarity: 'epic', cost: 1000, description: 'Slams freeze bots for 3s; packs snow fast.', grants: [g('frostCore', 1, 0), g('compactor', 1, 0.5), g('blade', 1, 0.3)] },
-  { id: 'avalancheBlade', name: 'Avalanche Blade', icon: '🌋', slot: 'blade', rarity: 'legendary', cost: 1800, description: 'Slams hit 50% wider and send bots flying.', grants: [g('avalancheCore', 1, 0), g('blade', 2, 0.5), g('ramSpikes', 1, 0.4)] },
+  { id: 'steelWedge', name: 'Steel Wedge', icon: '🔪', slot: 'blade', rarity: 'common', cost: 60, description: 'A wider blade: slams hit a bigger area.', grants: [g('blade', 1, 0.6)] },
+  { id: 'spikedShare', name: 'Spiked Plowshare', icon: '🦔', slot: 'blade', rarity: 'rare', cost: 300, description: 'Bristling with spikes: rams and dash strikes hurt a lot more.', grants: [g('ramSpikes', 2, 0.8)] },
+  { id: 'frostEdge', name: 'Frostbite Edge', icon: '❄️', slot: 'blade', rarity: 'epic', cost: 1000, description: 'Slams freeze bots for 3s. Also a stronger whirlwind.', grants: [g('frostCore', 1, 0), g('whirl', 1, 0.3)] },
+  { id: 'avalancheBlade', name: 'Avalanche Blade', icon: '🌋', slot: 'blade', rarity: 'legendary', cost: 1600, description: 'Slams hit 50% wider and send bots flying. Also, snow piles back faster.', grants: [g('avalancheCore', 1, 0), g('snowMachine', 1, 0.3)] },
   // ---- Chassis
-  { id: 'rivetedFrame', name: 'Riveted Frame', icon: '🔩', slot: 'chassis', rarity: 'common', cost: 60, description: 'Take less damage from every hit.', grants: [g('plating', 1, 0.5)] },
-  { id: 'scrapRecycler', name: 'Scrap Recycler', icon: '🔧', slot: 'chassis', rarity: 'rare', cost: 420, description: 'Hits you land repair you; better repairs between rounds.', grants: [g('salvage', 1, 0.6), g('repairKit', 1, 0.3)] },
-  { id: 'glacierShell', name: 'Glacier Shell', icon: '🧱', slot: 'chassis', rarity: 'epic', cost: 900, description: 'Your snowball blocks 75% of frontal damage. Tough frame.', grants: [g('iceShield', 1, 0), g('plating', 1, 0.4)] },
-  { id: 'phoenixPlating', name: 'Phoenix Plating', icon: '❤️‍🔥', slot: 'chassis', rarity: 'legendary', cost: 1600, description: 'Survive a lethal hit; hit harder below 35% HP.', grants: [g('secondWind', 1, 0.6), g('lastStand', 1, 0.5), g('plating', 0, 0.3)] },
+  { id: 'rivetedFrame', name: 'Riveted Frame', icon: '🔩', slot: 'chassis', rarity: 'common', cost: 60, description: 'Take less damage from every hit.', grants: [g('plating', 1, 0.6)] },
+  { id: 'scrapRecycler', name: 'Scrap Recycler', icon: '🔧', slot: 'chassis', rarity: 'rare', cost: 380, description: 'Part of the damage you deal repairs your plow.', grants: [g('salvage', 1, 0.7)] },
+  { id: 'glacierShell', name: 'Glacier Shell', icon: '🧱', slot: 'chassis', rarity: 'epic', cost: 850, description: 'Your snowball blocks 75% of frontal damage. Also packs snow into it faster.', grants: [g('iceShield', 1, 0), g('compactor', 1, 0.3)] },
+  { id: 'phoenixPlating', name: 'Phoenix Plating', icon: '❤️‍🔥', slot: 'chassis', rarity: 'legendary', cost: 1600, description: 'Survive a lethal hit (Second Wind) and hit harder below 35% HP (Last Stand).', grants: [g('secondWind', 1, 0.6), g('lastStand', 1, 0.5)] },
   // ---- Booster
-  { id: 'nitroTank', name: 'Nitro Tank', icon: '🚀', slot: 'booster', rarity: 'common', cost: 80, description: 'Dash recharges faster and goes farther.', grants: [g('nitro', 1, 0.4)] },
-  { id: 'turbineFan', name: 'Turbine Fan', icon: '🌀', slot: 'booster', rarity: 'common', cost: 90, description: 'Bigger, harder-hitting whirlwind.', grants: [g('whirl', 1, 0.4)] },
-  { id: 'jetTurbine', name: 'Jet Turbine', icon: '✈️', slot: 'booster', rarity: 'epic', cost: 1200, description: 'Dash + whirlwind, and kills refund their recharge.', grants: [g('nitro', 1, 0.3), g('whirl', 1, 0.3), g('adrenaline', 1, 0.4)] },
+  { id: 'nitroTank', name: 'Nitro Tank', icon: '🚀', slot: 'booster', rarity: 'common', cost: 80, description: 'Dash recharges faster and goes farther.', grants: [g('nitro', 1, 0.5)] },
+  { id: 'turbineFan', name: 'Turbine Fan', icon: '🌀', slot: 'booster', rarity: 'common', cost: 90, description: 'Bigger, harder-hitting whirlwind that recharges faster.', grants: [g('whirl', 1, 0.5)] },
+  { id: 'jetTurbine', name: 'Jet Turbine', icon: '✈️', slot: 'booster', rarity: 'rare', cost: 550, description: 'Every kill refunds part of your dash + whirlwind recharge.', grants: [g('adrenaline', 1, 0.5)] },
   // ---- Core
-  { id: 'packCompactor', name: 'Pack Compactor', icon: '🧊', slot: 'core', rarity: 'common', cost: 70, description: 'Packs plowed snow into your ball faster.', grants: [g('compactor', 1, 0.5)] },
+  { id: 'packCompactor', name: 'Pack Compactor', icon: '🧊', slot: 'core', rarity: 'common', cost: 70, description: 'Packs plowed snow into your ball faster.', grants: [g('compactor', 1, 0.6)] },
   { id: 'overclockChip', name: 'Overclock Chip', icon: '⏱️', slot: 'core', rarity: 'legendary', cost: 1500, description: 'Cuts every ability cooldown, up to -60% at max level.', grants: [g('overclock', 1, 1)] },
   // ---- Charm
-  { id: 'luckyMagnet', name: 'Lucky Magnet', icon: '🧲', slot: 'charm', rarity: 'common', cost: 50, description: 'Grab dropped coins from farther away.', grants: [g('magnet', 1, 0.5)] },
-  { id: 'snowGlobe', name: 'Snow Globe', icon: '🌨️', slot: 'charm', rarity: 'common', cost: 70, description: 'Snow falls back onto plowed ground faster.', grants: [g('snowMachine', 1, 0.5)] },
-  { id: 'adrenalineShot', name: 'Adrenaline Shot', icon: '💉', slot: 'charm', rarity: 'rare', cost: 380, description: 'Kills refund dash + whirl; hit harder when low.', grants: [g('adrenaline', 1, 0.5), g('lastStand', 1, 0.3)] },
-  { id: 'repairDrone', name: 'Repair Drone', icon: '🧰', slot: 'charm', rarity: 'rare', cost: 340, description: 'Regenerates HP and repairs more between rounds.', grants: [g('repairKit', 1, 0.5)] },
+  { id: 'luckyMagnet', name: 'Lucky Magnet', icon: '🧲', slot: 'charm', rarity: 'common', cost: 50, description: 'Grab dropped coins from farther away.', grants: [g('magnet', 1, 0.6)] },
+  { id: 'snowGlobe', name: 'Snow Globe', icon: '🌨️', slot: 'charm', rarity: 'common', cost: 70, description: 'Snow falls back onto plowed ground faster.', grants: [g('snowMachine', 1, 0.6)] },
+  { id: 'repairDrone', name: 'Repair Drone', icon: '🧰', slot: 'charm', rarity: 'rare', cost: 340, description: 'Regenerates HP over time and repairs more between rounds.', grants: [g('repairKit', 1, 0.6)] },
 ];
 
 export const GEAR_BY_ID: Record<string, GearDef> = Object.fromEntries(GEAR.map((d) => [d.id, d]));
@@ -74,6 +75,8 @@ export const GEAR_BY_ID: Record<string, GearDef> = Object.fromEntries(GEAR.map((
 /** Items that were cut, with their base price, so old saves get back what they spent on them (see gearSpent). */
 export const REMOVED_GEAR: Record<string, Pick<GearDef, 'cost'>> = {
   wreckerCore: { cost: 500 },
+  // Its Adrenaline moved to the Jet Turbine and its Last Stand to the Phoenix Plating.
+  adrenalineShot: { cost: 380 },
 };
 
 /** Levels of `grant.stat` an item at `level` gives (0 if not owned), capped by the stat's own max. */

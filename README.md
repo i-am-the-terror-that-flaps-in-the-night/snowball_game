@@ -105,7 +105,7 @@ Coins from every mode buy two things in the Garage:
 - **Core upgrades** (Engine, Packed Ice, Mega Hopper, Armor Plating) plus your plow's own line. These are
   **endless**: full-strength gains up to the pips, then speed/size stats taper toward a ceiling while damage and HP
   keep growing.
-- **🎒 Gear** (Prodigy-style): 17 items in 5 slots (Blade, Chassis, Booster, Core, Charm), each common / rare /
+- **🎒 Gear** (Prodigy-style): 16 items in 5 slots (Blade, Chassis, Booster, Core, Charm), each common / rare /
   epic / legendary. Buy an item once, level it up to ★10, and equip one per slot (a new item goes straight into an
   empty slot). Gear carries everything that used to be a separate upgrade: wide blade, ram spikes, nitro, whirlwind,
   compactor, plating, repairs, snowfall, magnet, the old pilot perks (Salvage, Second Wind,
