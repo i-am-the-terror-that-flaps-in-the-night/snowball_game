@@ -22,7 +22,8 @@ const SHOTS = !process.argv.includes('--noshots');
 const LAG = Number((process.argv.find((a) => a.startsWith('--lag=')) || '').slice(6)) || 0;
 const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7).split(',').filter(Boolean);
 mkdirSync(out, { recursive: true });
-const port = 6500 + Math.floor(Math.random() * 300);
+// 6500-6800 includes ports Chromium refuses (6665-6669, 6697), so pick from a range with none.
+const port = 7100 + Math.floor(Math.random() * 300);
 const server = await createServer({ root: process.cwd(), server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
 const errors = [];
