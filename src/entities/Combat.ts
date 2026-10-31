@@ -86,8 +86,10 @@ const WHIRL_BLAST = 22;
 /** The player's whirl hits harder than the base kit (Brawl rivals keep the base numbers). */
 const WHIRL_PLAYER_BONUS = 1.35;
 
-/** ARSENAL: autocannon lock-on half-angle (cos) and burst length when only presses are known (duel net input). */
-const GUN_LOCK_COS = Math.cos(0.45);
+/** ARSENAL: autocannon lock-on half-angle (80° either side of the nose, as a cos) and the burst a single press fires
+ *  when the input source can't report held keys. */
+const GUN_LOCK_HALF = 1.4;
+const GUN_LOCK_COS = Math.cos(GUN_LOCK_HALF);
 const GUN_BURST = 0.5;
 const GUN_KNOCK = 1.5;
 const TRACERS = 12;
@@ -95,6 +97,9 @@ const TRACERS = 12;
 const LASER_SECONDS = 1.5;
 const LASER_WIDTH = 0.9;
 const LASER_TICK = 0.1;
+/** Laser tracking: the beam bends up to LASER_TRACK rad off the nose toward the top target, at LASER_SLEW rad/s. */
+const LASER_TRACK = 0.4;
+const LASER_SLEW = 1.6;
 /** Missiles: flight speed (m/s), turn rate (1/s), blast radius (m), splash share, fuse (s). */
 const MISSILES_MAX = 12;
 const MISSILE_SPEED = 26;
@@ -102,6 +107,13 @@ const MISSILE_TURN = 5;
 const MISSILE_BLAST = 3.2;
 const MISSILE_SPLASH = 0.6;
 const MISSILE_FUSE = 3.5;
+const MISSILE_RANGE = 45;
+/** A missile whose target dies looks for a new one within this many metres of itself. */
+const MISSILE_RETARGET = 25;
+/** Threat: damage each bot dealt you, decaying with this time constant (s). A hit is credited to the nearest bot
+ *  within THREAT_RADIUS of where it came from. */
+const THREAT_TAU = 10;
+const THREAT_RADIUS = 6;
 
 /** Share of camera shake / kick a duel opponent's attacks cause on this screen (no hit-stop at all). */
 const REMOTE_SHAKE = 0.35;
@@ -111,6 +123,9 @@ const _p = new THREE.Vector3();
 const _q = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _tip = new THREE.Vector3();
+
+/** Wrap an angle into (-PI, PI]. */
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** All melee damage math for the player and the bots lives here. */
 export class Combat implements CombatAPI {
@@ -185,6 +200,17 @@ export class Combat implements CombatAPI {
   private laserCore!: THREE.Mesh;
   private laserGlow!: THREE.Mesh;
   private missileCharge = 1;
+  /** Is the autocannon firing this frame (snapshot bit). Laser beam yaw off the nose. */
+  private gunsOn = false;
+  private laserOff = 0;
+  /** Recent damage each bot dealt this pilot (decays; ARSENAL targeting reads it). */
+  private threat = new Map<EnemyHandle, number>();
+  private threatBuf: EnemyHandle[] = [];
+  /** Duel guest: weapon state from host snapshots. netFire < 0 = not a puppet (own input drives the guns);
+   *  netTurret NaN = aim locally. */
+  private netFire = -1;
+  private netLaser = false;
+  private netTurret = NaN;
   private missiles: { mesh: THREE.Group; pos: THREE.Vector3; vel: THREE.Vector3; target: EnemyHandle | null; t: number; live: boolean }[] = [];
 
   constructor(ctx: GameContext, binding?: PilotBinding) {
@@ -208,6 +234,10 @@ export class Combat implements CombatAPI {
   /** Re-bind to another pilot (the online Duel), or back to the single-player singletons (null). */
   bind(binding: PilotBinding | null): void {
     this.b = binding ?? ctxPilot(this.ctx);
+    this.netFire = -1;
+    this.netLaser = false;
+    this.netTurret = NaN;
+    this.threat.clear();
   }
 
   /** Camera shake: full strength for the local pilot's own combat, a fraction for a duel opponent's. */
@@ -231,6 +261,18 @@ export class Combat implements CombatAPI {
     out[o + NP.flameT] = this.flameT;
     out[o + NP.poundT] = this.poundT;
     out[o + NP.stormT] = this.stormT;
+    out[o + NP.fire] = (this.gunsOn ? 1 : 0) | (this.laserT > 0 ? 2 : 0);
+    out[o + NP.turret] = this.b.plow ? this.b.plow.turretAim : 0;
+  }
+
+  /** Duel guest, the opponent's puppet: follow the host's autocannon / laser / turret (visuals only). */
+  readPuppet(s: Float32Array, o: number): void {
+    const bits = Math.round(s[o + NP.fire]);
+    this.netFire = bits;
+    this.netTurret = s[o + NP.turret];
+    const laser = (bits & 2) !== 0;
+    if (laser && !this.netLaser && this.laserT <= 0) this.fireLaser();
+    this.netLaser = laser;
   }
 
   /** Duel guest, own plow: adopt the host's meters. `keepF`: the pilot just pressed F locally (keep the prediction). */
@@ -249,6 +291,8 @@ export class Combat implements CombatAPI {
     this.critCharge = s[o + NP.crit];
     this.clapHeat = s[o + NP.heat];
     this.lastClapAt = this.ctx.time;
+    // The guest hits nothing locally, so its turret follows the host's aim.
+    this.netTurret = s[o + NP.turret];
   }
 
   /** Duel guest, the opponent's puppet: re-arm the F ability so the replayed press fires it (visuals only — this
@@ -682,7 +726,7 @@ export class Combat implements CombatAPI {
 
   /* ------------------------------------------------------------------ bots -> plow */
 
-  hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean }): number {
+  hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean; direct?: boolean }): number {
     const ctx = this.ctx;
     const plow = this.b.plow;
     const stats = this.b.stats;
@@ -734,9 +778,12 @@ export class Combat implements CombatAPI {
     }
     if (stats.shieldMax > 0) this.shieldDelay = 3;
 
-    // i-frames: overlapping hits only deal what exceeds the biggest hit of the window.
+    // i-frames: overlapping hits only deal what exceeds the biggest hit of the window. Direct weapon fire (ARSENAL
+    // rounds / laser ticks) neither opens a window nor is eaten by one.
     let final = dmg;
-    if (this.iframe > 0) {
+    if (opts?.direct) {
+      /* full damage */
+    } else if (this.iframe > 0) {
       final = Math.max(0, dmg - this.iframeDmg);
       this.iframeDmg = Math.max(this.iframeDmg, dmg);
     } else {
@@ -802,8 +849,49 @@ export class Combat implements CombatAPI {
       this.shake(0.12);
     }
 
+    if (final > 0) this.noteThreat(fromX, fromZ, final);
     this.b.events.emit('plowDamaged', { amount: final, blocked });
     return final;
+  }
+
+  /** Credit `dmg` to the bot nearest to where a hit came from (ARSENAL picks its targets by this). */
+  private noteThreat(fromX: number, fromZ: number, dmg: number): void {
+    const enemies = this.b.enemies;
+    if (!enemies) return;
+    const q = enemies.query(fromX, fromZ, THREAT_RADIUS, this.threatBuf);
+    let best: EnemyHandle | null = null;
+    let bestD = Infinity;
+    for (let i = 0; i < q.length; i++) {
+      const e = q[i];
+      if (!e.alive) continue;
+      const d = Math.hypot(e.position.x - fromX, e.position.z - fromZ) - e.radius;
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (best) this.threat.set(best, (this.threat.get(best) ?? 0) + dmg);
+  }
+
+  private updateThreat(dt: number): void {
+    if (this.threat.size === 0) return;
+    const k = Math.exp(-dt / THREAT_TAU);
+    for (const [e, v] of this.threat) {
+      const nv = v * k;
+      if (!e.alive || nv < 0.5) this.threat.delete(e);
+      else this.threat.set(e, nv);
+    }
+  }
+
+  /** Recent damage `e` dealt this pilot. */
+  threatOf(e: EnemyHandle): number {
+    return this.threat.get(e) ?? 0;
+  }
+
+  /** ARSENAL target priority: bots that have been hurting you first, then wounded ones, then close ones. */
+  private targetScore(e: EnemyHandle, x: number, z: number): number {
+    const d = Math.hypot(e.position.x - x, e.position.z - z);
+    return 3 * this.threatOf(e) + 10 * (1 - Math.max(0, e.hp) / Math.max(1, e.maxHp)) + 20 / (1 + d / 10);
   }
 
   /* ------------------------------------------------------------------ plow -> bots */
@@ -1308,32 +1396,9 @@ export class Combat implements CombatAPI {
     }
   }
 
-  /** Nearest living bot to (x, z) within `range`, optionally inside the cone `cos` around `heading`, skipping `skip`. */
-  private nearest(x: number, z: number, range: number, heading?: number, cos = -1, skip?: Set<EnemyHandle>): EnemyHandle | null {
-    const hits = this.collect(x, z, range);
-    const fx = heading === undefined ? 0 : Math.sin(heading);
-    const fz = heading === undefined ? 0 : Math.cos(heading);
-    let best: EnemyHandle | null = null;
-    let bestD = Infinity;
-    for (let i = 0; i < hits.length; i++) {
-      const e = hits[i];
-      if (!e.alive || skip?.has(e)) continue;
-      const dx = e.position.x - x;
-      const dz = e.position.z - z;
-      const d = Math.hypot(dx, dz);
-      if (d > range + e.radius) continue;
-      if (heading !== undefined && d > e.radius && (dx * fx + dz * fz) / d < cos) continue;
-      if (d < bestD) {
-        bestD = d;
-        best = e;
-      }
-    }
-    this.targets.length = 0;
-    return best;
-  }
-
-  /** One weapon hit from ARSENAL (player credit). Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number): number {
+  /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (rounds, laser ticks), see
+   *  DamageOpts.direct. Returns damage dealt. */
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct = false): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -1344,13 +1409,15 @@ export class Combat implements CombatAPI {
       knockback: new THREE.Vector3((dx / d) * knock, 0, (dz / d) * knock),
       fromX,
       fromZ,
+      direct,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);
     return dealt;
   }
 
-  /** Autocannon (SPACE, held): twin auto-aiming cannons, alternating muzzles. */
+  /** Autocannon (SPACE, held): twin auto-aiming cannons on a turret that locks up to 80° either side of the nose,
+   *  alternating muzzles. A duel puppet fires when the host's snapshot says so. */
   private updateGuns(dt: number): void {
     for (const tr of this.tracers) {
       if (tr.t <= 0) continue;
@@ -1359,18 +1426,26 @@ export class Combat implements CombatAPI {
     }
     const st = this.b.stats;
     const plow = this.b.plow;
+    this.gunsOn = false;
     if (st.gunDamage <= 0 || !plow) return;
     if (this.gunT > 0) this.gunT -= dt;
     if (plow.dead) return;
     const input = this.b.input;
-    if (input.wasPressed('Space')) this.gunBurstT = GUN_BURST;
-    else if (this.gunBurstT > 0) this.gunBurstT -= dt;
-    const firing = input.isDown ? input.isDown('Space') || this.gunBurstT > 0 : this.gunBurstT > 0;
+    let firing: boolean;
+    if (this.netFire >= 0) firing = (this.netFire & 1) !== 0;
+    else {
+      if (input.wasPressed('Space')) this.gunBurstT = GUN_BURST;
+      else if (this.gunBurstT > 0) this.gunBurstT -= dt;
+      firing = this.gunBurstT > 0 || !!input.isDown?.('Space');
+    }
+    this.gunsOn = firing;
     const px = plow.position.x;
     const pz = plow.position.z;
-    const target = this.nearest(px, pz, st.gunRange, plow.heading, GUN_LOCK_COS);
-    // Turret tracks the target (or settles forward).
-    plow.turretAim = target ? Math.atan2(target.position.x - px, target.position.z - pz) - plow.heading : 0;
+    const target = this.gunTarget(px, pz, plow.heading, st.gunRange);
+    // Turret tracks the target (or settles forward); a duel guest copies the host's aim.
+    if (!Number.isNaN(this.netTurret)) plow.turretAim = this.netTurret;
+    else if (target) plow.turretAim = wrapAngle(Math.atan2(target.position.x - px, target.position.z - pz) - plow.heading);
+    else plow.turretAim = 0;
     if (!firing || this.gunT > 0) return;
     this.gunT += 1 / Math.max(0.5, st.gunRate);
     if (this.gunT < 0) this.gunT = 0;
@@ -1383,7 +1458,7 @@ export class Combat implements CombatAPI {
       ex = target.position.x;
       ez = target.position.z;
       ey = target.position.y + Math.min(1.2, target.radius * 0.6);
-      this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK);
+      this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK, true);
       _q.set(ex, ey, ez);
       this.ctx.fx.burst(_q, { color: 0xffd060, count: 4, speed: 6, size: 0.12, gravity: 10, life: 0.25 });
     } else {
@@ -1403,15 +1478,68 @@ export class Combat implements CombatAPI {
     if (this.b.local) this.ctx.fx.shake(0.04);
   }
 
+  /** Autocannon target: inside the lock cone and range, favouring bots near the nose and close by, then threats. */
+  private gunTarget(x: number, z: number, heading: number, range: number): EnemyHandle | null {
+    const hits = this.collect(x, z, range);
+    const fx = Math.sin(heading);
+    const fz = Math.cos(heading);
+    let best: EnemyHandle | null = null;
+    let bestCost = Infinity;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - x;
+      const dz = e.position.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > range + e.radius) continue;
+      const cos = d > e.radius ? (dx * fx + dz * fz) / d : 1;
+      if (cos < GUN_LOCK_COS) continue;
+      // Off-nose bots cost up to 2x their distance; a bot that has been hurting you gets pulled forward.
+      const cost = d * (1.5 - 0.5 * cos) - 0.1 * this.threatOf(e);
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = e;
+      }
+    }
+    this.targets.length = 0;
+    return best;
+  }
+
   /** ARSENAL laser (E; the Plow pays the whirl charge). False if the laser can't fire. */
   fireLaser(): boolean {
     const st = this.b.stats;
     if (st.laserDps <= 0 || this.laserT > 0) return false;
     this.laserT = LASER_SECONDS;
     this.laserTickT = 0;
+    this.laserOff = 0;
     this.b.audio.play('zap', { pitch: 0.45, volume: 0.9 });
     this.b.audio.play('charge', { pitch: 1.6, volume: 0.5 });
     return true;
+  }
+
+  /** Where the laser wants to point, as a yaw off the nose: the top-priority bot within reach and LASER_TRACK (plus a
+   *  little slack so a bot just outside still pulls the beam to the edge), or straight ahead. */
+  private laserAim(x: number, z: number, heading: number, range: number): number {
+    const hits = this.collect(x, z, range);
+    let best = 0;
+    let bestScore = -Infinity;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - x;
+      const dz = e.position.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > range + e.radius || d < 0.5) continue;
+      const off = wrapAngle(Math.atan2(dx, dz) - heading);
+      if (Math.abs(off) > LASER_TRACK + 0.25) continue;
+      const score = this.targetScore(e, x, z);
+      if (score > bestScore) {
+        bestScore = score;
+        best = THREE.MathUtils.clamp(off, -LASER_TRACK, LASER_TRACK);
+      }
+    }
+    this.targets.length = 0;
+    return best;
   }
 
   private updateLaser(dt: number): void {
@@ -1426,7 +1554,11 @@ export class Combat implements CombatAPI {
     const st = this.b.stats;
     const R = st.laserRange;
     plow.mountWorld('laser', 0, _p);
-    const h = plow.heading;
+    // The beam bends toward its target, but only so far and so fast: steering still does most of the aiming.
+    const want = this.laserAim(_p.x, _p.z, plow.heading, R);
+    const step = LASER_SLEW * dt;
+    this.laserOff += THREE.MathUtils.clamp(want - this.laserOff, -step, step);
+    const h = plow.heading + this.laserOff;
     const fx = Math.sin(h);
     const fz = Math.cos(h);
     _q.set(_p.x + fx * R, _p.y, _p.z + fz * R);
@@ -1456,7 +1588,7 @@ export class Combat implements CombatAPI {
       const along = dx * fx + dz * fz;
       if (along < -e.radius || along > R + e.radius) continue;
       if (Math.abs(dx * fz - dz * fx) > LASER_WIDTH + e.radius) continue;
-      const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2);
+      const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2, true);
       if (dealt > 0 && Math.random() < 0.35) {
         _tip.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
         this.ctx.fx.floatText(_tip, `${Math.round(dealt)}`, '#ff6a5a', 0.7);
@@ -1465,7 +1597,46 @@ export class Combat implements CombatAPI {
     this.targets.length = 0;
   }
 
-  /** Swarm Missiles (F on ARSENAL): a salvo from the pods, each homing on a different bot. */
+  /** Damage one missile does to `e` (direct hit), for working out how many it takes. */
+  private missileHitOn(e: EnemyHandle): number {
+    return Math.max(1, this.b.stats.missileDamage * this.b.stats.damageMult * this.hitMult(e));
+  }
+
+  /** Live missiles already flying at `e`. */
+  private inFlight(e: EnemyHandle): number {
+    let n = 0;
+    for (const m of this.missiles) if (m.live && m.target === e) n++;
+    return n;
+  }
+
+  /**
+   * Target list for a salvo of `n` missiles. Bots are ranked by targetScore (damage they've dealt you first), and
+   * each gets as many missiles as its HP needs, minus the ones already flying at it; leftovers go round the ranked
+   * list again (overkill on the biggest threats). Several missiles can share a target.
+   */
+  planSalvo(n: number, x: number, z: number): (EnemyHandle | null)[] {
+    const hits = this.collect(x, z, MISSILE_RANGE);
+    const ranked: { e: EnemyHandle; score: number; need: number }[] = [];
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive || Math.hypot(e.position.x - x, e.position.z - z) > MISSILE_RANGE + e.radius) continue;
+      const per = this.missileHitOn(e);
+      const need = Math.max(0, Math.ceil(Math.max(0, e.hp) / per) - this.inFlight(e));
+      ranked.push({ e, score: this.targetScore(e, x, z), need });
+    }
+    this.targets.length = 0;
+    ranked.sort((a, b) => b.score - a.score);
+    const out: (EnemyHandle | null)[] = [];
+    for (const r of ranked) {
+      for (let k = 0; k < r.need && out.length < n; k++) out.push(r.e);
+      if (out.length >= n) break;
+    }
+    for (let i = 0; out.length < n && ranked.length; i++) out.push(ranked[i % ranked.length].e);
+    while (out.length < n) out.push(null);
+    return out;
+  }
+
+  /** Swarm Missiles (F on ARSENAL): a salvo from the pods, spread over targets by planSalvo. */
   private updateMissiles(dt: number): void {
     const st = this.b.stats;
     const plow = this.b.plow;
@@ -1481,26 +1652,18 @@ export class Combat implements CombatAPI {
     this.b.events.emit('ability', { nuke: false });
     this.b.audio.play('burst', { pitch: 1.4, volume: 0.8 });
     this.b.audio.play('dash', { pitch: 1.6, volume: 0.6 });
-    const n = Math.min(MISSILES_MAX, st.missileCount);
-    const taken = new Set<EnemyHandle>();
     const px = plow.position.x;
     const pz = plow.position.z;
-    for (let i = 0; i < n; i++) {
+    const plan = this.planSalvo(Math.min(MISSILES_MAX, st.missileCount), px, pz);
+    for (let i = 0; i < plan.length; i++) {
       const m = this.missiles.find((x) => !x.live);
       if (!m) break;
-      // Spread over targets: a fresh bot each while there are any, then double up.
-      let target = this.nearest(px, pz, 40, undefined, -1, taken);
-      if (!target) {
-        taken.clear();
-        target = this.nearest(px, pz, 40);
-      }
-      if (target) taken.add(target);
       plow.mountWorld('pod', i * 5 + (i >> 1), m.pos);
       const side = m.pos.x - px;
       const sideZ = m.pos.z - pz;
       const sl = Math.hypot(side, sideZ) || 1;
       m.vel.set((side / sl) * 6 + Math.sin(plow.heading) * 6, 11 + Math.random() * 3, (sideZ / sl) * 6 + Math.cos(plow.heading) * 6);
-      m.target = target;
+      m.target = plan[i];
       m.t = 0;
       m.live = true;
       m.mesh.visible = true;
@@ -1509,16 +1672,36 @@ export class Combat implements CombatAPI {
     }
   }
 
+  /** A missile lost its target: the best-scoring bot near it that still needs missiles, else the best near it. */
+  private retarget(m: (typeof this.missiles)[number]): EnemyHandle | null {
+    const hits = this.collect(m.pos.x, m.pos.z, MISSILE_RETARGET);
+    let best: EnemyHandle | null = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const covered = this.inFlight(e) * this.missileHitOn(e) >= e.hp;
+      const score = this.targetScore(e, m.pos.x, m.pos.z) - (covered ? 1000 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    this.targets.length = 0;
+    return best;
+  }
+
   private flyMissiles(dt: number): void {
     for (const m of this.missiles) {
       if (!m.live) continue;
       m.t += dt;
-      const tgt = m.target && m.target.alive ? m.target : null;
+      if (m.target && !m.target.alive) m.target = this.retarget(m);
+      const tgt = m.target;
       if (m.t > 0.25) {
         if (tgt) {
           _q.set(tgt.position.x, tgt.position.y + Math.min(1, tgt.radius * 0.5), tgt.position.z).sub(m.pos).normalize().multiplyScalar(MISSILE_SPEED);
         } else {
-          // Lost its target: keep going and nose down.
+          // Nothing to chase: keep going and nose down.
           _q.copy(m.vel).setY(0).normalize().multiplyScalar(MISSILE_SPEED);
           _q.y = -8;
         }
@@ -1812,7 +1995,11 @@ export class Combat implements CombatAPI {
     this.meltCharge = 1;
     this.missileCharge = 1;
     this.gunT = this.gunBurstT = 0;
+    this.gunsOn = false;
     this.laserT = 0;
+    this.laserOff = 0;
+    this.netLaser = false;
+    this.threat.clear();
     this.laserCore.visible = this.laserGlow.visible = false;
     for (const tr of this.tracers) tr.mesh.visible = false;
     for (const m of this.missiles) {
@@ -1844,6 +2031,7 @@ export class Combat implements CombatAPI {
     this.updateField(dt);
     this.updateSaws(dt);
     this.updateMeltdown(dt);
+    this.updateThreat(dt);
     this.updateGuns(dt);
     this.updateLaser(dt);
     this.updateMissiles(dt);

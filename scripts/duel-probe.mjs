@@ -8,6 +8,9 @@
 //   rematch  results -> REMATCH (both must accept) -> fresh garage -> Classic vs ISOTOPE: a NUKE pressed on the
 //            guest keyboard lands on the host, Inferno from the host keyboard; pause keeps the match running;
 //            LEAVE ends it for both; single-player still works afterwards.
+//   arsenal  ARSENAL vs ARSENAL: the guest HOLDING Space keeps its autocannon firing on the host (held keys travel in
+//            the input packet), well off the nose; its turret follows the host's aim; the host's guns and laser show
+//            on the guest's puppet; the guest's laser and missiles land on the host.
 // Each session runs in a fresh Chrome (the sandbox kills long-lived headless Chrome). The duel clock is sim time, so
 // both pages are fast-forwarded in lockstep (render loops paused except for screenshots).
 import { createServer } from 'vite';
@@ -48,7 +51,8 @@ async function session(name, fn, query, optIn = false) {
   console.log(`\n== ${name}`);
   T0 = Date.now();
   try {
-    browser = await chromium.launch({ channel: 'chrome', headless: true, args: [process.env.PROBE_GPU === '0' ? '--use-angle=swiftshader' : '--use-angle=metal', '--enable-unsafe-swiftshader'] });
+    // PW_EXE: a Chromium binary to use instead of installed Chrome (e.g. /opt/pw-browsers/chromium).
+    browser = await chromium.launch({ ...(process.env.PW_EXE ? { executablePath: process.env.PW_EXE } : { channel: 'chrome' }), headless: true, args: [process.env.PROBE_GPU === '0' ? '--use-angle=swiftshader' : '--use-angle=metal', '--enable-unsafe-swiftshader'] });
     context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const host = await open('host', query);
     const guest = await open('guest', query);
@@ -349,6 +353,73 @@ await session('rematch', async (host, guest) => {
   log('campaign after', sp);
   check(sp.state === 'playing' && !sp.opp && sp.statsKind === 'classic', 'campaign runs normally after a duel (second plow hidden, save stats back)', sp);
 });
+
+// ================================================================== ARSENAL: held fire over the wire
+await session('arsenal', async (host, guest) => {
+  for (const pg of [host, guest]) await pg.evaluate(() => { window.__game.ctx.progression.data.plow = 'arsenal'; });
+  await connect(host, guest);
+  await toFight(host, guest);
+  const [h] = await until(host, guest, (h, g) => h.phase === 'fight' && g.phase === 'fight', 8, 0.25);
+  check(h.stats[0].plowKind === 'arsenal' && h.stats[1].plowKind === 'arsenal', 'both drive ARSENAL', h.stats.map((s) => s.plowKind));
+  // Guest at (8, -4) facing +z; host at (0, 4): 45° off the guest's nose (outside the old ±25° lock).
+  const park = () => host.evaluate(() => {
+    const me = window.__game.ctx.plow, op = window.__game.duel.opponent;
+    me.position.set(0, 0, 4); me.heading = Math.PI; me.hp = me.maxHp;
+    op.position.set(8, 0, -4); op.heading = 0; op.hp = op.maxHp;
+  });
+  const hostHits = () => host.evaluate(() => ({ other: window.__game.duel.counters.bySource[1][3], hp: window.__game.ctx.plow.hp }));
+  await park();
+  await run(host, guest, 0.5);
+  let b0 = await hostHits();
+  await guest.keyboard.down('Space');
+  await run(host, guest, 1.0);
+  const aim = await guest.evaluate(() => window.__game.ctx.plow.turretAim);
+  await run(host, guest, 1.0);
+  await guest.keyboard.up('Space');
+  await run(host, guest, 0.3);
+  let b1 = await hostHits();
+  log('guest autocannon (held 2s)', { rounds: b1.other - b0.other, hostHp: [Math.round(b0.hp), Math.round(b1.hp)], guestTurret: +aim.toFixed(2) });
+  check(b1.other - b0.other >= 10, 'guest holding SPACE keeps the autocannon firing on the host (not a 0.5 s burst)', { b0, b1 });
+  check(Math.abs(aim + Math.PI / 4) < 0.35, "the guest's own turret follows the host's aim, 45° off the nose", aim);
+  // A single tap is still a short burst.
+  await park();
+  await run(host, guest, 0.3);
+  b0 = await hostHits();
+  await guest.keyboard.press('Space');
+  await run(host, guest, 1.5);
+  b1 = await hostHits();
+  check(b1.other - b0.other >= 1 && b1.other - b0.other <= 6, 'a tap fires a short burst', { b0, b1 });
+  // Host fires: the guest's puppet shows the guns, then the laser.
+  await park();
+  await host.keyboard.down('Space');
+  await run(host, guest, 0.6);
+  const seen = await guest.evaluate(() => ({ fire: window.__game.duel.opponentCombat.netFire, turret: window.__game.duel.opponentCombat.netTurret }));
+  await host.keyboard.up('Space');
+  check((seen.fire & 1) === 1, "the guest sees the host's autocannon firing", seen);
+  await host.keyboard.press('KeyE');
+  await run(host, guest, 0.4);
+  const laser = await guest.evaluate(() => window.__game.duel.opponentCombat.laserT);
+  check(laser > 0, "the guest sees the host's laser", laser);
+  await shot(guest, '17-guest-sees-arsenal');
+  await run(host, guest, 1.5);
+  // Guest laser + missiles land on the host. Face the host straight on for the laser.
+  await park();
+  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -6); op.heading = 0; });
+  await run(host, guest, 0.5);
+  b0 = await hostHits();
+  await guest.keyboard.press('KeyE');
+  await run(host, guest, 1.2);
+  b1 = await hostHits();
+  check(b1.other > b0.other && b1.hp < b0.hp, 'guest laser (E) burns the host', { b0, b1 });
+  await park();
+  await run(host, guest, 0.3);
+  b0 = await hostHits();
+  await guest.keyboard.press('KeyF');
+  await run(host, guest, 2.5);
+  b1 = await hostHits();
+  check(b1.other > b0.other && b1.hp < b0.hp, 'guest missiles (F) home in on the host', { b0, b1 });
+  await syncCheck(host, guest, 'arsenal');
+}, undefined, false);
 
 // ================================================================== real time over a bad link
 /** Wait in real time (pages run their own render loops) until `pred` holds. */

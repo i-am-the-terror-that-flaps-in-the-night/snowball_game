@@ -4,7 +4,7 @@ import type { CosmeticSlot } from '../config/cosmetics';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
 import type { EventSink, InputSource, PilotAudio, PilotBinding } from '../entities/pilot';
-import { NET_PLOW_LEN, NP, NP_ANGLE, NP_DISCRETE, PRESS_ACTIONS, PRESS_CODES, type PressAction, PressTracker } from '../net/protocol';
+import { HELD_BIT, NET_PLOW_LEN, NP, NP_ANGLE, NP_DISCRETE, PRESS_ACTIONS, PRESS_CODES, type PressAction, PressTracker } from '../net/protocol';
 import type { SnowField } from '../world/SnowField';
 
 /** Code -> press-action index (0 slam, 1 dash, 2 whirl, 3 ability). */
@@ -79,6 +79,11 @@ export class NetInput implements InputSource {
   wasPressed(code: string): boolean {
     const i = CODE_ACTION.get(code);
     return i !== undefined && this.now[i];
+  }
+  /** Held keys travel as a bitmask in every input packet (ARSENAL's autocannon fires while SPACE is held). */
+  isDown(code: string): boolean {
+    const i = CODE_ACTION.get(code);
+    return i !== undefined && this.enabled && (this.tracker.held & HELD_BIT(i)) !== 0;
   }
 }
 

@@ -2,16 +2,17 @@
  * DUEL wire protocol. Binary for the hot paths (guest input ~60 Hz, host snapshots ~30 Hz, snow patches), JSON
  * strings for everything else (handshake, garage, round flow, hit / slam / ability events, pings).
  *
- *   INPUT    guest -> host   9 bytes  [1][seq u16][throttle i8][steer i8][slam u8][dash u8][whirl u8][ability u8]
+ *   INPUT    guest -> host   10 bytes [1][seq u16][throttle i8][steer i8][slam u8][dash u8][whirl u8][ability u8][held u8]
  *            The four press fields are wrapping (mod 256) CUMULATIVE press counters: a lost or reordered packet never
  *            loses a press, because the next one still carries the total. The host turns counter deltas into presses.
+ *            `held` is a bitmask of the actions held down right now (PRESS_ACTIONS order; ARSENAL's autocannon).
  *   SNAP     host -> guest   [2][phase u8][seq u16][time f32][timer f32][round u8][scoreA u8][scoreB u8][flags u8]
  *            [inputAck u16][pad u16] then 2 x NET_PLOW_LEN f32 (host plow, then guest plow).
  *   SNOW     host -> guest   [3][flags u8][count u16] then per patch [x0 u16][z0 u16][w u16][h u16][w*h depth bytes]
  *            Depth is quantised to a byte over 0..SNOW_Q_MAX metres. flags & 1 = full-field keyframe.
  * ---------------------------------------------------------------------------------------------- */
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const MSG_INPUT = 1;
 export const MSG_SNAP = 2;
@@ -50,12 +51,15 @@ export const NP = {
   flameT: 26,
   poundT: 27,
   stormT: 28,
+  /** ARSENAL: weapons in use (bit 1 autocannon firing, bit 2 laser on) and the turret yaw relative to the hull. */
+  fire: 29,
+  turret: 30,
 } as const;
-export const NET_PLOW_LEN = 29;
+export const NET_PLOW_LEN = 31;
 
 /** Fields that are angles (interpolated the short way round) / discrete (taken from the newer snapshot). */
 export const NP_ANGLE = NP.heading;
-export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase];
+export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase, NP.fire];
 
 /* ------------------------------------------------------------------ input */
 
@@ -76,9 +80,14 @@ export interface InputFrame {
   steer: number;
   /** Cumulative press counters (mod 256), PRESS_ACTIONS order. */
   presses: [number, number, number, number];
+  /** Bitmask of actions held right now (PRESS_ACTIONS order). */
+  held?: number;
 }
 
-export const INPUT_BYTES = 9;
+export const INPUT_BYTES = 10;
+
+/** Bit for a held action in InputFrame.held. */
+export const HELD_BIT = (i: number) => 1 << i;
 
 export function encodeInput(f: InputFrame, out: DataView): void {
   out.setUint8(0, MSG_INPUT);
@@ -86,6 +95,7 @@ export function encodeInput(f: InputFrame, out: DataView): void {
   out.setInt8(3, Math.round(Math.max(-1, Math.min(1, f.throttle)) * 127));
   out.setInt8(4, Math.round(Math.max(-1, Math.min(1, f.steer)) * 127));
   for (let i = 0; i < 4; i++) out.setUint8(5 + i, f.presses[i] & 0xff);
+  out.setUint8(9, (f.held ?? 0) & 0x0f);
 }
 
 export function decodeInput(v: DataView, out: InputFrame): boolean {
@@ -94,6 +104,7 @@ export function decodeInput(v: DataView, out: InputFrame): boolean {
   out.throttle = v.getInt8(3) / 127;
   out.steer = v.getInt8(4) / 127;
   for (let i = 0; i < 4; i++) out.presses[i] = v.getUint8(5 + i);
+  out.held = v.getUint8(9) & 0x0f;
   return true;
 }
 
@@ -115,6 +126,8 @@ export class PressTracker {
   private lastSeq = -1;
   throttle = 0;
   steer = 0;
+  /** Held-action bitmask from the newest packet. */
+  held = 0;
 
   /** Feed one received packet. Older (reordered) packets still contribute presses but never rewind the axes. */
   receive(f: InputFrame): void {
@@ -132,6 +145,7 @@ export class PressTracker {
       this.lastSeq = f.seq;
       this.throttle = f.throttle;
       this.steer = f.steer;
+      this.held = f.held ?? 0;
     }
   }
 
@@ -151,6 +165,7 @@ export class PressTracker {
     this.pending.fill(0);
     this.lastSeq = -1;
     this.throttle = this.steer = 0;
+    this.held = 0;
   }
 }
 

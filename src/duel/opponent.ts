@@ -102,7 +102,7 @@ export class OpponentTarget implements EnemyManagerAPI {
     let scaled = amount * DUEL_DAMAGE_SCALE;
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.
-    const other = !opts?.source || opts.source === 'other';
+    const other = (!opts?.source || opts.source === 'other') && !opts?.direct;
     if (other) scaled /= 1 + this.burst / (ABILITY_BURST_FRAC * victim.maxHp);
     const raw = brawlHit(scaled, victim.maxHp, BRAWL_HIT_CAP + this.attackerStats().hitCapBonus);
     // Direction: along the knockback if there is one, else away from the attacker.
@@ -124,7 +124,7 @@ export class OpponentTarget implements EnemyManagerAPI {
     }
     const kb = kmag > 0.1 ? kmag * KNOCK_SCALE : 2;
     const hp0 = victim.hp;
-    const final = this.victimCombat().hitPlow(raw, fromX, fromZ, { knockback: kb, unblockable: opts?.source === 'whirl' });
+    const final = this.victimCombat().hitPlow(raw, fromX, fromZ, { knockback: kb, unblockable: opts?.source === 'whirl', direct: opts?.direct });
     if (other) this.burst += final;
     let stop = 0;
     if (final > 0 && !victim.dead) {

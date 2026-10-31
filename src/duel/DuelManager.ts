@@ -15,7 +15,7 @@ import { cosmeticsState } from '../meta/cosmetics';
 import type { SnowField } from '../world/SnowField';
 import type { Transport } from '../net/transport';
 import {
-  INPUT_BYTES, MSG_SNAP, MSG_SNOW, NET_PLOW_LEN, NP, PROTOCOL_VERSION, SNAP_BYTES, decodeInput, decodeSnap, decodeSnow,
+  HELD_BIT, INPUT_BYTES, MSG_SNAP, MSG_SNOW, NET_PLOW_LEN, NP, PROTOCOL_VERSION, SNAP_BYTES, decodeInput, decodeSnap, decodeSnow,
   encodeInput, encodeSnap, encodeSnow, fromJson, toJson, type InputFrame, type SnapHeader, type SnowPatch,
 } from '../net/protocol';
 import { DuelWallet } from './DuelWallet';
@@ -994,6 +994,9 @@ export class DuelManager {
     f.throttle = this.myInput.throttle;
     f.steer = this.myInput.steer;
     for (let i = 0; i < 4; i++) f.presses[i] = this.presses[i] & 0xff;
+    let held = 0;
+    for (let i = 0; i < 4; i++) if (this.myInput.isDown(PRESS_KEYS[i]) || (i === 1 && this.myInput.isDown('ShiftRight'))) held |= HELD_BIT(i);
+    f.held = held;
     encodeInput(f, this.inputView);
     t.send(this.inputView.buffer as ArrayBuffer, false);
   }
@@ -1268,6 +1271,7 @@ export class DuelManager {
       this.puppetInput.throttle = st[NP.throttle];
       this.puppetInput.steer = st[NP.steer];
       opp.updatePuppet(dt, st, 0);
+      this.oppCombat!.readPuppet(st, 0);
     }
     // Keep our predicted plow out of the opponent's body (the host resolves the real contact).
     if (!plow.dead && !opp.dead) {

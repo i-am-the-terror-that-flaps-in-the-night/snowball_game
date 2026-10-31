@@ -82,7 +82,7 @@ describe('snapshot encode / decode', () => {
 describe('input sequencing', () => {
   const frame = (seq: number, presses: [number, number, number, number], throttle = 0, steer = 0): InputFrame => ({ seq, throttle, steer, presses });
 
-  it('encodes into 9 bytes and back', () => {
+  it('encodes into INPUT_BYTES and back', () => {
     const v = new DataView(new ArrayBuffer(INPUT_BYTES));
     encodeInput(frame(70000, [1, 255, 256 + 3, 9], 1, -0.5), v);
     const f = frame(0, [0, 0, 0, 0]);
