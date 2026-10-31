@@ -396,10 +396,15 @@ await session('arsenal', async (host, guest) => {
   const seen = await guest.evaluate(() => ({ fire: window.__game.duel.opponentCombat.netFire, turret: window.__game.duel.opponentCombat.netTurret }));
   await host.keyboard.up('Space');
   check((seen.fire & 1) === 1, "the guest sees the host's autocannon firing", seen);
+  // Host laser with the guest ~20° off the host's nose: the beam bends, and the guest draws the same bend.
+  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(-3, 0, -4); });
+  await run(host, guest, 0.2);
   await host.keyboard.press('KeyE');
-  await run(host, guest, 0.4);
-  const laser = await guest.evaluate(() => window.__game.duel.opponentCombat.laserT);
-  check(laser > 0, "the guest sees the host's laser", laser);
+  await run(host, guest, 0.6);
+  const laser = await guest.evaluate(() => ({ t: window.__game.duel.opponentCombat.laserT, off: window.__game.duel.opponentCombat.laserOff }));
+  const hostOff = await host.evaluate(() => window.__game.ctx.combat.laserOff);
+  check(laser.t > 0, "the guest sees the host's laser", laser);
+  check(Math.abs(hostOff) > 0.1 && Math.abs(laser.off - hostOff) < 0.15, "the guest's view of the host laser bends like the host's", { hostOff, guest: laser.off });
   await shot(guest, '17-guest-sees-arsenal');
   await run(host, guest, 1.5);
   // Guest laser + missiles land on the host. Face the host straight on for the laser.

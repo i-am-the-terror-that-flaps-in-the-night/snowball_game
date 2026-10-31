@@ -211,6 +211,8 @@ export class Combat implements CombatAPI {
   private netFire = -1;
   private netLaser = false;
   private netTurret = NaN;
+  /** Duel guest: the host's laser bend (NaN = aim locally). */
+  private netLaserOff = NaN;
   private missiles: { mesh: THREE.Group; pos: THREE.Vector3; vel: THREE.Vector3; target: EnemyHandle | null; t: number; live: boolean }[] = [];
 
   constructor(ctx: GameContext, binding?: PilotBinding) {
@@ -237,6 +239,7 @@ export class Combat implements CombatAPI {
     this.netFire = -1;
     this.netLaser = false;
     this.netTurret = NaN;
+    this.netLaserOff = NaN;
     this.threat.clear();
   }
 
@@ -263,6 +266,7 @@ export class Combat implements CombatAPI {
     out[o + NP.stormT] = this.stormT;
     out[o + NP.fire] = (this.gunsOn ? 1 : 0) | (this.laserT > 0 ? 2 : 0);
     out[o + NP.turret] = this.b.plow ? this.b.plow.turretAim : 0;
+    out[o + NP.laser] = this.laserOff;
   }
 
   /** Duel guest, the opponent's puppet: follow the host's autocannon / laser / turret (visuals only). */
@@ -270,6 +274,7 @@ export class Combat implements CombatAPI {
     const bits = Math.round(s[o + NP.fire]);
     this.netFire = bits;
     this.netTurret = s[o + NP.turret];
+    this.netLaserOff = s[o + NP.laser];
     const laser = (bits & 2) !== 0;
     if (laser && !this.netLaser && this.laserT <= 0) this.fireLaser();
     this.netLaser = laser;
@@ -293,6 +298,7 @@ export class Combat implements CombatAPI {
     this.lastClapAt = this.ctx.time;
     // The guest hits nothing locally, so its turret follows the host's aim.
     this.netTurret = s[o + NP.turret];
+    this.netLaserOff = s[o + NP.laser];
   }
 
   /** Duel guest, the opponent's puppet: re-arm the F ability so the replayed press fires it (visuals only — this
@@ -726,7 +732,7 @@ export class Combat implements CombatAPI {
 
   /* ------------------------------------------------------------------ bots -> plow */
 
-  hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean; direct?: boolean }): number {
+  hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean; direct?: 'round' | 'beam'; attacker?: EnemyHandle }): number {
     const ctx = this.ctx;
     const plow = this.b.plow;
     const stats = this.b.stats;
@@ -849,12 +855,17 @@ export class Combat implements CombatAPI {
       this.shake(0.12);
     }
 
-    if (final > 0) this.noteThreat(fromX, fromZ, final);
+    if (final > 0) {
+      const a = opts?.attacker;
+      if (a) this.threat.set(a, (this.threat.get(a) ?? 0) + final);
+      else this.noteThreat(fromX, fromZ, final);
+    }
     this.b.events.emit('plowDamaged', { amount: final, blocked });
     return final;
   }
 
-  /** Credit `dmg` to the bot nearest to where a hit came from (ARSENAL picks its targets by this). */
+  /** Credit `dmg` to the bot nearest to where a hit came from, for callers that don't name the attacker (ARSENAL
+   *  picks its targets by this). */
   private noteThreat(fromX: number, fromZ: number, dmg: number): void {
     const enemies = this.b.enemies;
     if (!enemies) return;
@@ -1398,7 +1409,7 @@ export class Combat implements CombatAPI {
 
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (rounds, laser ticks), see
    *  DamageOpts.direct. Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct = false): number {
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam'): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -1458,7 +1469,7 @@ export class Combat implements CombatAPI {
       ex = target.position.x;
       ez = target.position.z;
       ey = target.position.y + Math.min(1.2, target.radius * 0.6);
-      this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK, true);
+      this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK, 'round');
       _q.set(ex, ey, ez);
       this.ctx.fx.burst(_q, { color: 0xffd060, count: 4, speed: 6, size: 0.12, gravity: 10, life: 0.25 });
     } else {
@@ -1555,7 +1566,8 @@ export class Combat implements CombatAPI {
     const R = st.laserRange;
     plow.mountWorld('laser', 0, _p);
     // The beam bends toward its target, but only so far and so fast: steering still does most of the aiming.
-    const want = this.laserAim(_p.x, _p.z, plow.heading, R);
+    // A duel guest hits nothing locally: it follows the host's bend instead of aiming.
+    const want = Number.isNaN(this.netLaserOff) ? this.laserAim(_p.x, _p.z, plow.heading, R) : this.netLaserOff;
     const step = LASER_SLEW * dt;
     this.laserOff += THREE.MathUtils.clamp(want - this.laserOff, -step, step);
     const h = plow.heading + this.laserOff;
@@ -1588,7 +1600,7 @@ export class Combat implements CombatAPI {
       const along = dx * fx + dz * fz;
       if (along < -e.radius || along > R + e.radius) continue;
       if (Math.abs(dx * fz - dz * fx) > LASER_WIDTH + e.radius) continue;
-      const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2, true);
+      const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2, 'beam');
       if (dealt > 0 && Math.random() < 0.35) {
         _tip.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
         this.ctx.fx.floatText(_tip, `${Math.round(dealt)}`, '#ff6a5a', 0.7);

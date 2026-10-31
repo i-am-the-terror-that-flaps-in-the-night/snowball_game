@@ -433,6 +433,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     return combat.hitPlow(dmg * e.dmgOutMult * (this.ctx.zone.enemyDmgMult ?? 1), opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, {
       knockback: opts?.knockback,
       unblockable: opts?.unblockable,
+      attacker: e,
     });
   }
 

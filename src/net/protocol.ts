@@ -54,8 +54,10 @@ export const NP = {
   /** ARSENAL: weapons in use (bit 1 autocannon firing, bit 2 laser on) and the turret yaw relative to the hull. */
   fire: 29,
   turret: 30,
+  /** ARSENAL laser beam yaw off the nose (it bends toward its target). */
+  laser: 31,
 } as const;
-export const NET_PLOW_LEN = 31;
+export const NET_PLOW_LEN = 32;
 
 /** Fields that are angles (interpolated the short way round) / discrete (taken from the newer snapshot). */
 export const NP_ANGLE = NP.heading;

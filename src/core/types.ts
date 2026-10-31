@@ -271,7 +271,7 @@ export interface CombatAPI {
    *  via plow.push away from (fromX, fromZ) scaled by opts.knockback (m/s, default 6), fx + audio + shake,
    *  emits 'plowDamaged'. `unblockable` skips the shield (shockwaves, spins). Returns 0 and does nothing while
    *  plow.invulnerable. Returns final damage. */
-  hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean; direct?: boolean }): number;
+  hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean; direct?: 'round' | 'beam'; attacker?: EnemyHandle }): number;
   /** The plow's front rammed `enemy` at `closingSpeed` m/s (called by the enemy manager on contact).
    *  Normal ram: stats.ramDamage * clamp(closingSpeed / 10, 0.3, 1.8) + ball bonus (6 * r^2 * damageMult).
    *  DASH STRIKE (plow.dashing): 25 + stats.ramDamage * 1.8 + ball bonus, huge knockback, big hit-stop/shake —
@@ -322,9 +322,10 @@ export interface DamageOpts {
   fromZ?: number;
   /** Radius of the player's slammed ball (for Frostbyte's ball CLASH). */
   ballRadius?: number;
-  /** Rapid single-target weapon fire (ARSENAL autocannon rounds, laser ticks): against a plow it skips the hit
-   *  i-frames (rounds land faster than the window) and the Duel's area-ability diminishing returns. */
-  direct?: boolean;
+  /** Rapid weapon fire (ARSENAL): against a plow both kinds skip the hit i-frames (they land faster than the window).
+   *  'round' (autocannon) also skips the Duel's area-ability diminishing returns; 'beam' (laser ticks) keeps them, so
+   *  one laser press can't melt a human opponent. */
+  direct?: 'round' | 'beam';
 }
 
 export interface EnemyManagerAPI {
