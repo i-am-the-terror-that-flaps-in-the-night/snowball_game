@@ -415,7 +415,7 @@ export class UI implements UIAPI {
     setKey(this.h.whirl, 'whirl');
     setKey(this.h.flame, 'ability');
     this.h.hint.textContent = PLOWS[this.ctx.stats.plowKind]?.noBall
-      ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  hold ${k('slam')} autocannon  ·  ` +
+      ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  hold ${k('slam')} minigun  ·  ` +
         `${k('dash')} dash strike  ·  ${k('whirl')} laser  ·  ${k('ability')} missiles  ·  ESC pause`
       : `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ${k('slam')} slam  ·  ` +
         `${k('dash')} dash strike  ·  ${k('whirl')} whirlwind  ·  ${k('ability')} F-ability  ·  ESC pause`;

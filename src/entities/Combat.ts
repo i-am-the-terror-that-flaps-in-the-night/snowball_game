@@ -1852,6 +1852,7 @@ export class Combat implements CombatAPI {
     const st = this.b.stats;
     const plow = this.b.plow;
     this.gunsOn = false;
+    if (plow) plow.gunFiring = false;
     if (st.gunDamage <= 0 || !plow) return;
     if (this.gunT > 0) this.gunT -= dt;
     if (plow.dead) return;
@@ -1864,6 +1865,7 @@ export class Combat implements CombatAPI {
       firing = this.gunBurstT > 0 || !!input.isDown?.('Space');
     }
     this.gunsOn = firing;
+    plow.gunFiring = firing;
     const px = plow.position.x;
     const pz = plow.position.z;
     const target = this.gunTarget(px, pz, plow.heading, st.gunRange);

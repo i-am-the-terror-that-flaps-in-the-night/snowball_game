@@ -21,7 +21,7 @@ npm test           # vitest unit tests (tests/*.test.ts)
 |---|---|---|
 | W / S (↑ / ↓) | Left stick / d-pad, RT / LT | Drive / reverse |
 | A / D (← / →) | Left stick / d-pad | Steer |
-| Space | A | **Slam** your snowball into whatever is in front (bigger ball = much more damage); ARSENAL: hold to fire the autocannon |
+| Space | A | **Slam** your snowball into whatever is in front (bigger ball = much more damage); ARSENAL: hold to fire the minigun |
 | Shift | B / RB | **Dash** — a long burst; hitting a bot mid-dash is a Dash Strike |
 | E | X | **Whirlwind** — spin, pull bots in, blast them out, suck up snow (ARSENAL: laser beam) |
 | F | Y | **Swarm Missiles** (ARSENAL), **Inferno** fire cone (Classic Plow), **Thunderclap** lightning blast (VOLT-9; small self-shock that escalates fast if you chain-spam it — the meter over the F icon shows the next clap's cost) or **Ground Pound** hop-and-slam shockwave (BRUTUS), or **Meltdown** toxic blast + fallout pool (ISOTOPE) |
@@ -122,9 +122,9 @@ free Meltdown on F (a toxic blast that melts the snow and leaves a glowing fallo
 its ☢ Critical Mass bar; when full, F fires a **NUKE** (an instant huge blast and a giant fallout pool). Its own line — Meltdown,
 Half-Life (bigger, hotter, longer pools), Rad Aura (passive radiation around you) and Chain Reaction (irradiated
 bots explode when wrecked, setting off their neighbours). — or **ARSENAL** 🎯, which isn't a plow at all: a weapons platform with
-no blade and no snowball (+10% speed, -10% HP). Hold SPACE to fire twin **autocannons** that auto-aim at the nearest bot in
+no blade and no snowball (+10% speed, -10% HP). Hold SPACE to fire a six-barrel **minigun** that auto-aims at the nearest bot in
 front of you, E fires a 1.5 s **laser beam** that burns through everything in a line, and F launches a salvo of
-**homing missiles** that each hunt a different bot. Its own line: Autocannon, Laser Lance, Swarm Missiles and Energy
+**homing missiles** that each hunt a different bot. Its own line: Minigun, Laser Lance, Swarm Missiles and Energy
 Barrier (a recharging shield, since there's no ball to hide behind).
 
 **Ultimates:** every plow has a meter under its HP bar; when it's full, F fires the plow's ultimate instead. Classic: fire damage fills **FIRESTORM** (a 360° fire nova + burning ground; Inferno also ends in a fireball). VOLT-9: any damage fills **SUPERCELL** (three waves of sky lightning on everything within 18 m, no Overload backlash). BRUTUS: **EARTHQUAKE** (three shockwaves rolling out to 19 m). ISOTOPE: radiation fills Critical Mass for the **NUKE**. ARSENAL: **ORBITAL STRIKE** (paints the five biggest threats, then sky lasers hit each one). An ultimate's own damage never refills its meter. The Tutorial always uses the Classic Plow.

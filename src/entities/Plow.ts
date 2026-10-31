@@ -283,6 +283,11 @@ export class Plow implements PlowAPI {
   /** ARSENAL: weapons platform parts, the yawing turret and its weapon mounts. */
   private arsenalParts!: THREE.Group;
   private turret!: THREE.Group;
+  private minigun!: THREE.Group;
+  /** Minigun barrel spin (rad/s), easing toward full speed while gunFiring. */
+  private minigunSpin = 0;
+  /** Set by Combat each frame: the ARSENAL autocannon is firing. */
+  gunFiring = false;
   private muzzles: THREE.Object3D[] = [];
   private laserMount!: THREE.Object3D;
   private pods: THREE.Object3D[] = [];
@@ -480,6 +485,7 @@ export class Plow implements PlowAPI {
     const ars = buildArsenalParts({ paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat });
     this.arsenalParts = ars.group;
     this.turret = ars.turret;
+    this.minigun = ars.rotor;
     this.muzzles = ars.muzzles;
     this.laserMount = ars.laser;
     this.pods = ars.pods;
@@ -487,7 +493,8 @@ export class Plow implements PlowAPI {
     add(chassisGeo, darkMat, 0, 0.62, 0.05, this.arsenalParts);
     this.turret.removeFromParent();
     mergeStatic(this.arsenalParts);
-    mergeStatic(this.turret);
+    mergeStatic(this.turret, { keep: [this.minigun] });
+    mergeStatic(this.minigun);
     this.arsenalParts.add(this.turret);
     this.arsenalParts.add(...makeShadowProxy(this.arsenalParts, this.arsenalParts));
     this.arsenalParts.visible = false;
@@ -2140,6 +2147,10 @@ export class Plow implements PlowAPI {
       d = Math.atan2(Math.sin(d), Math.cos(d));
       this.turretYaw += d * Math.min(1, dt * 12);
       this.turret.rotation.y = this.turretYaw;
+      // Minigun: spins up fast while firing, winds down slowly after.
+      const want = this.gunFiring ? 42 : 0;
+      this.minigunSpin += (want - this.minigunSpin) * Math.min(1, dt * (this.gunFiring ? 8 : 1.6));
+      this.minigun.rotation.z += this.minigunSpin * dt;
       this.armGlowMat.emissiveIntensity = 0.9 + 0.4 * Math.sin(this.ctx.time * 5);
     }
     if (this.kind === 'isotope') {
