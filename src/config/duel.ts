@@ -75,7 +75,7 @@ export function catchUpBonus(ownPower: number, oppPower: number, frac = CATCHUP_
 export function sharedMatchCost(own: Partial<Record<UpgradeId, number>>, opp: Partial<Record<UpgradeId, number>>): number {
   let total = 0;
   for (const def of UPGRADES) {
-    if (def.plowOnly) continue;
+    if (def.plowOnly || def.itemOnly) continue;
     const goal = Math.min(def.maxLevel, MAX_NET_LEVEL, Math.floor(opp[def.id] ?? 0));
     for (let l = Math.max(0, Math.floor(own[def.id] ?? 0)); l < goal; l++) total += upgradeCost(def, l);
   }

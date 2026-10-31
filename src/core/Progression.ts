@@ -1,4 +1,5 @@
-import { FX, UPGRADES, UPGRADE_BY_ID, cooldown, upgradeCost, type UpgradeId } from '../config/upgrades';
+import { FX, ITEM_STATS, UPGRADES, UPGRADE_BY_ID, cooldown, upgradeCost, type UpgradeId } from '../config/upgrades';
+import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, type GearSlot, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import type { PlayerStats } from './types';
 import { PLOWS, type PlowKind } from '../config/plows';
@@ -42,6 +43,8 @@ export interface SaveData {
   lifetime?: Record<string, number>;
   /** Daily Survival (meta/daily.ts): day key 'YYYY-MM-DD' -> best wave that day. */
   dailyBest?: Record<string, number>;
+  /** Gear (config/gear.ts): owned item levels and the equipped item per slot. */
+  gear?: GearState;
 }
 
 function freshSave(): SaveData {
@@ -59,6 +62,32 @@ function migrateUpgrades<T>(ups: Record<string, T>): Record<string, T> {
     if (!(from in out)) continue;
     if (!(to in out)) out[to] = out[from];
     delete out[from];
+  }
+  return out;
+}
+
+/** Stats that became gear (ITEM_STATS): old saves get every coin they spent on them back, once. */
+function refundItemStats(d: SaveData): void {
+  for (const id of ITEM_STATS) {
+    const n = d.upgrades[id] ?? 0;
+    for (let l = 0; l < Math.min(n, 999); l++) d.coins += upgradeCost(UPGRADE_BY_ID[id], l);
+    delete d.upgrades[id];
+  }
+}
+
+function cleanGear(raw: unknown): GearState {
+  const out: GearState = { owned: {}, equipped: {} };
+  if (!raw || typeof raw !== 'object') return out;
+  const r = raw as Record<string, unknown>;
+  if (r.owned && typeof r.owned === 'object') {
+    for (const [id, lv] of Object.entries(r.owned as Record<string, unknown>)) {
+      if (GEAR_BY_ID[id] && typeof lv === 'number' && Number.isFinite(lv) && lv >= 1) out.owned[id] = Math.min(GEAR_MAX_LEVEL, Math.floor(lv));
+    }
+  }
+  if (r.equipped && typeof r.equipped === 'object') {
+    for (const [slot, id] of Object.entries(r.equipped as Record<string, unknown>)) {
+      if (typeof id === 'string' && out.owned[id] && GEAR_BY_ID[id].slot === slot) out.equipped[slot as GearSlot] = id;
+    }
   }
   return out;
 }
@@ -119,6 +148,8 @@ function sanitizeSave(raw: unknown): SaveData | null {
   if (p.achievements !== undefined) out.achievements = numMap(p.achievements, 1);
   if (p.lifetime !== undefined) out.lifetime = numMap(p.lifetime);
   if (p.dailyBest !== undefined) out.dailyBest = numMap(p.dailyBest, 9999);
+  if (p.gear !== undefined) out.gear = cleanGear(p.gear);
+  refundItemStats(out);
   return out;
 }
 
@@ -136,7 +167,12 @@ export class Progression {
       const raw = localStorage.getItem(SAVE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as SaveData;
-        if (parsed && parsed.version === 1) return { ...freshSave(), ...parsed, upgrades: migrateUpgrades(parsed.upgrades ?? {}) };
+        if (parsed && parsed.version === 1) {
+          const d: SaveData = { ...freshSave(), ...parsed, upgrades: migrateUpgrades(parsed.upgrades ?? {}) };
+          if (d.gear) d.gear = cleanGear(d.gear);
+          refundItemStats(d);
+          return d;
+        }
       }
     } catch {
       /* corrupted save — start fresh */
@@ -212,6 +248,69 @@ export class Progression {
     this.data.upgrades[id] = this.level(id) + 1;
     this.changed();
     return true;
+  }
+
+  /* ---------------------------------------------------------------- gear */
+
+  get gear(): GearState {
+    return (this.data.gear ??= { owned: {}, equipped: {} });
+  }
+
+  /** Item level (0 = not owned). */
+  itemLevel(id: string): number {
+    return this.data.gear?.owned[id] ?? 0;
+  }
+
+  /** Price to buy (level 0) or level up an item; Infinity at max. */
+  itemCost(id: string): number {
+    const def = GEAR_BY_ID[id];
+    return def ? gearCost(def, this.itemLevel(id)) : Infinity;
+  }
+
+  canBuyItem(id: string): boolean {
+    return this.data.coins >= this.itemCost(id);
+  }
+
+  /** Buy an item (auto-equipped if its slot is empty) or raise its level. */
+  buyItem(id: string): boolean {
+    const def = GEAR_BY_ID[id];
+    if (!def || !this.canBuyItem(id)) return false;
+    this.data.coins -= this.itemCost(id);
+    const g = this.gear;
+    g.owned[id] = this.itemLevel(id) + 1;
+    if (!g.equipped[def.slot]) g.equipped[def.slot] = id;
+    this.changed();
+    return true;
+  }
+
+  isEquipped(id: string): boolean {
+    const def = GEAR_BY_ID[id];
+    return !!def && this.data.gear?.equipped[def.slot] === id;
+  }
+
+  /** Equip an owned item in its slot, or take it off if it's already equipped. */
+  toggleEquip(id: string): boolean {
+    const def = GEAR_BY_ID[id];
+    if (!def || !this.itemLevel(id)) return false;
+    const g = this.gear;
+    if (g.equipped[def.slot] === id) delete g.equipped[def.slot];
+    else g.equipped[def.slot] = id;
+    this.changed();
+    return true;
+  }
+
+  /** Garage levels + equipped gear: what the plow actually fights with. */
+  effectiveLevels(): Partial<Record<UpgradeId, number>> {
+    const out: Partial<Record<UpgradeId, number>> = { ...this.data.upgrades };
+    for (const [id, n] of Object.entries(gearLevels(this.data.gear)) as [UpgradeId, number][]) {
+      out[id] = Math.min(UPGRADE_BY_ID[id].maxLevel, (out[id] ?? 0) + n);
+    }
+    return out;
+  }
+
+  /** Effective level of one stat (Garage + gear). */
+  statLevel(id: UpgradeId): number {
+    return this.effectiveLevels()[id] ?? 0;
   }
 
   isZoneUnlocked(index: number): boolean {
@@ -295,7 +394,7 @@ export class Progression {
   }
 
   computeStats(): PlayerStats {
-    return computeStatsFor(this.data.upgrades, this.plow);
+    return computeStatsFor(this.effectiveLevels(), this.plow);
   }
 
 

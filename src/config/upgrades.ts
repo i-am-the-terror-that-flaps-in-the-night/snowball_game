@@ -69,6 +69,8 @@ export interface UpgradeDef {
   playerOnly?: boolean;
   /** Only takes effect while driving this starter plow (see config/plows.ts). */
   plowOnly?: PlowKind;
+  /** Not sold in the Garage any more: its levels come only from equipped gear (config/gear.ts). */
+  itemOnly?: boolean;
 }
 
 /** Cost multiplier per level beyond an upgrade's pips. */
@@ -234,6 +236,17 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },
 ];
+
+/** Stats that moved out of the Garage into gear items (config/gear.ts). The Garage keeps only the core four
+ *  (engine, armor, packedIce, hopper) and the plow lines; everything here comes from what you have equipped. */
+export const ITEM_STATS: readonly UpgradeId[] = [
+  'blade', 'ramSpikes', 'nitro', 'whirl', 'compactor', 'plating', 'repairKit', 'snowMachine', 'magnet',
+  'salvage', 'secondWind', 'wreckingBall', 'adrenaline', 'lastStand', 'overclock', 'iceShield', 'frostCore', 'avalancheCore',
+];
+for (const u of UPGRADES) if (ITEM_STATS.includes(u.id)) u.itemOnly = true;
+
+/** Upgrades the Garage still sells. */
+export const SHOP_UPGRADES = UPGRADES.filter((u) => !u.itemOnly);
 
 export const UPGRADE_BY_ID: Record<UpgradeId, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u])) as Record<UpgradeId, UpgradeDef>;
 

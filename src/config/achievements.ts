@@ -116,7 +116,9 @@ export function stars(p: Progression): number {
 /** Upgrade levels bought, summed over every upgrade. */
 export function upgradeLevels(p: Progression): number {
   const u = p.data.upgrades;
-  return isObj(u) ? Object.values(u).reduce<number>((s, v) => s + Math.max(0, fin(v)), 0) : 0;
+  const g = p.data.gear?.owned;
+  const sum = (o: unknown) => (isObj(o) ? Object.values(o).reduce<number>((s, v) => s + Math.max(0, fin(v)), 0) : 0);
+  return sum(u) + sum(g);
 }
 
 export function cosmeticsOwned(p: Progression): number {

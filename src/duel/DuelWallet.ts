@@ -102,8 +102,9 @@ export class DuelWallet implements ShopWallet {
   /** Saved + temporary levels: what this player fights with. */
   effectiveLevels(): Partial<Record<UpgradeId, number>> {
     const out: Partial<Record<UpgradeId, number>> = {};
+    const eff = this.p.effectiveLevels();
     for (const def of UPGRADES) {
-      const l = this.level(def.id);
+      const l = Math.min(def.maxLevel, (eff[def.id] ?? 0) + this.tempLevel(def.id));
       if (l > 0) out[def.id] = l;
     }
     return out;
@@ -116,7 +117,7 @@ export class DuelWallet implements ShopWallet {
     const lvl = new Map<UpgradeId, number>();
     let want = 0;
     for (const def of UPGRADES) {
-      if (def.plowOnly) continue;
+      if (def.plowOnly || def.itemOnly) continue;
       const goal = Math.min(def.maxLevel, target[def.id] ?? 0);
       const have = this.level(def.id);
       if (goal > have) {

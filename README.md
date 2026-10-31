@@ -94,12 +94,21 @@ copied to the clipboard), **IMPORT** (validated; a bad code leaves your save unt
   coins. Purely visual; five premium items also need challenge stars or achievements. Hover or focus an item to
   preview it on the plow before buying.
 
-Coins from every mode buy permanent upgrades in the Garage. Stat upgrades are **endless**: full-strength gains up
-to the pips, then speed/size/cooldown stats taper toward a ceiling while damage, HP and regen keep growing.
-**Pilot perks** (Salvage Rig, Second Wind, Wrecking Ball, Adrenaline, Last Stand, Overclock) are player-only:
-Brawl bots never roll them into their garages. Wrecking Ball only matters in Brawl (it raises the Brawl hit cap).
-Last Stand makes you hit harder and take less damage below 35% HP. Overclock cuts every cooldown — slam, dash,
-whirl and your plow's F ability — by up to -60%, and no ability ever recharges faster than 0.35s.
+Coins from every mode buy two things in the Garage:
+
+- **Core upgrades** (Engine, Packed Ice, Mega Hopper, Armor Plating) plus your plow's own line. These are
+  **endless**: full-strength gains up to the pips, then speed/size stats taper toward a ceiling while damage and HP
+  keep growing.
+- **🎒 Gear** (Prodigy-style): 18 items in 5 slots (Blade, Chassis, Booster, Core, Charm), each common / rare /
+  epic / legendary. Buy an item once, level it up to ★10, and equip one per slot (a new item goes straight into an
+  empty slot). Gear carries everything that used to be a separate upgrade: wide blade, ram spikes, nitro, whirlwind,
+  compactor, plating, repairs, snowfall, magnet, the old pilot perks (Salvage, Second Wind, Wrecking Ball,
+  Adrenaline, Last Stand, Overclock) and the one-time cores (Ice Shield on the Glacier Shell, Frost Core on the
+  Frostbite Edge, Avalanche Core on the Avalanche Blade). Gear works on every plow. Brawl bots roll garages around
+  your equipped levels (never the pilot-perk stats), and Duel sends what you have equipped. Gear is bought with
+  your own coins only, never with Duel catch-up coins.
+
+Old saves get back every coin they spent on upgrades that became gear.
 
 **Starter plows** (picked in the Garage): the **Classic Plow** (+25% HP, free Inferno fire on F) with its own line — Inferno Exhaust
 (hotter, faster fire), Shatter Slam (slams throw ice shards at bots around the impact), Snow Reserve (keep part of

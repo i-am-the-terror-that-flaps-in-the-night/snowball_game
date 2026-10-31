@@ -3,7 +3,8 @@ import './brawl.css';
 import './challenges.css';
 import type { BrawlDifficulty, BrawlEntry, BrawlResult, GameContext, HudBoss, HudState, RunSummary, SoundName, SurvivalShopOpts, UIAPI, UIHandlers } from '../core/types';
 import { MIN_BALL_RADIUS } from '../core/types';
-import { UPGRADES, type UpgradeCategory, type UpgradeDef } from '../config/upgrades';
+import { SHOP_UPGRADES, type UpgradeCategory, type UpgradeDef } from '../config/upgrades';
+import { GEAR, GEAR_MAX_LEVEL, GEAR_SLOTS, RARITY_COLOR, grantLabel, type GearDef, type GearSlot } from '../config/gear';
 import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES, type ZoneDef } from '../config/zones';
 import { ENEMIES, type EnemyDef, type EnemyType } from '../config/enemies';
@@ -48,15 +49,13 @@ function restart(e: HTMLElement, cls: string, ...others: string[]): void {
   e.classList.add(cls);
 }
 
-type ShopTabId = 'drive' | 'ball' | 'defense' | 'pilot' | 'line';
+type ShopTabId = 'core' | 'gear' | 'line';
 
 /** Garage tabs, each listing one or more upgrade categories. 'line' only shows the driven plow's own line
  *  (category id === PlowKind), and takes that plow's name and icon. */
 const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; groups: { cat: UpgradeCategory; title?: string }[] }[] = [
-  { id: 'drive', label: 'Drive', icon: '🏁', blurb: 'Speed, blade, rams, dash and whirlwind.', groups: [{ cat: 'plow' }] },
-  { id: 'ball', label: 'Snowball', icon: '⚪', blurb: 'Your weapon and your shield: pack it faster, bigger and harder.', groups: [{ cat: 'ball' }, { cat: 'special', title: 'One-time cores' }] },
-  { id: 'defense', label: 'Defense', icon: '🛡️', blurb: 'Hit points, armor and repairs.', groups: [{ cat: 'defense' }, { cat: 'utility', title: 'Utility' }] },
-  { id: 'pilot', label: 'Pilot', icon: '🧑‍✈️', blurb: "Pilot perks work on every plow, and Brawl bots can't copy them.", groups: [{ cat: 'pilot' }] },
+  { id: 'core', label: 'Core', icon: '⚙️', blurb: 'The four core upgrades: speed, slam power, ball size and HP. They never max out.', groups: [{ cat: 'plow' }, { cat: 'ball' }, { cat: 'defense' }] },
+  { id: 'gear', label: 'Gear', icon: '🎒', blurb: 'Buy items, level them up to 10 and equip one per slot. Gear works on every plow.', groups: [] },
   { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }] },
 ];
 
@@ -152,6 +151,15 @@ interface CardRefs {
   buy: HTMLButtonElement;
 }
 
+interface GearCardRefs {
+  def: GearDef;
+  root: HTMLElement;
+  lvl: HTMLElement;
+  grants: HTMLElement;
+  buy: HTMLButtonElement;
+  equip: HTMLButtonElement;
+}
+
 interface BossSlot {
   /** '' = free. */
   key: string;
@@ -212,7 +220,9 @@ export class UI implements UIAPI {
   private shopHint!: HTMLElement;
   private cards: CardRefs[] = [];
   /** Garage tabs: open tab, tab buttons, their panes and the plow-line sections (one per plow). */
-  private shopTab: ShopTabId = 'drive';
+  private shopTab: ShopTabId = 'core';
+  private gearCards: GearCardRefs[] = [];
+  private gearSlotLabels = new Map<GearSlot, HTMLElement>();
   private tabBtns = new Map<ShopTabId, { btn: HTMLButtonElement; icon: HTMLElement; label: HTMLElement; badge: HTMLElement }>();
   private tabPanes = new Map<ShopTabId, HTMLElement>();
   private lineSections = new Map<UpgradeCategory, HTMLElement>();
@@ -763,9 +773,10 @@ export class UI implements UIAPI {
         const sec = el('section', `ss-cat ss-cat-${g.cat}`, undefined, pane);
         if (g.title) el('h3', 'ss-cat-title', g.title, sec);
         const grid = el('div', 'ss-card-grid', undefined, sec);
-        for (const def of UPGRADES.filter((u) => u.category === g.cat)) this.cards.push(this.buildCard(def, t.id, grid));
+        for (const def of SHOP_UPGRADES.filter((u) => u.category === g.cat)) this.cards.push(this.buildCard(def, t.id, grid));
         if (t.id === 'line') this.lineSections.set(g.cat, sec);
       }
+      if (t.id === 'gear') this.buildGear(pane);
     }
     this.setShopTab(this.shopTab);
 
@@ -817,6 +828,9 @@ export class UI implements UIAPI {
       if (c.tab === 'line' && c.def.category !== plow.id) continue;
       if (!p.isMaxed(c.def.id) && p.canBuy(c.def.id)) affordable.set(c.tab, (affordable.get(c.tab) ?? 0) + 1);
     }
+    // Gear is always bought with your own coins (never duel catch-up coins).
+    const prog = this.ctx.progression;
+    for (const g of this.gearCards) if (prog.itemCost(g.def.id) < Infinity && prog.canBuyItem(g.def.id)) affordable.set('gear', (affordable.get('gear') ?? 0) + 1);
     for (const [tid, t] of this.tabBtns) {
       const n = affordable.get(tid) ?? 0;
       t.badge.textContent = n ? String(n) : '';
@@ -861,6 +875,79 @@ export class UI implements UIAPI {
     return { def, tab, root, pips, lvl, cur, next, arrow, buy };
   }
 
+  /** Gear tab: one section per slot, each with its items. */
+  private buildGear(pane: HTMLElement): void {
+    for (const slot of GEAR_SLOTS) {
+      const sec = el('section', `ss-cat ss-gear-slot ss-gear-${slot.id}`, undefined, pane);
+      const h = el('h3', 'ss-cat-title', `${slot.icon} ${slot.name}`, sec);
+      this.gearSlotLabels.set(slot.id, el('span', 'ss-gear-eq', '', h));
+      const grid = el('div', 'ss-card-grid', undefined, sec);
+      for (const def of GEAR.filter((d) => d.slot === slot.id)) this.gearCards.push(this.buildGearCard(def, grid));
+    }
+  }
+
+  private buildGearCard(def: GearDef, parent: HTMLElement): GearCardRefs {
+    const root = el('div', `ss-card ss-gear-card ss-rarity-${def.rarity}`, undefined, parent);
+    root.style.setProperty('--acc', RARITY_COLOR[def.rarity]);
+    root.dataset.id = def.id;
+    el('div', 'ss-card-icon', def.icon, root);
+    const info = el('div', 'ss-card-info', undefined, root);
+    const name = el('div', 'ss-card-name', def.name, info);
+    el('span', 'ss-gear-rarity', def.rarity.toUpperCase(), name);
+    el('div', 'ss-card-desc', def.description, info);
+    const lvl = el('div', 'ss-gear-lvl', '', info);
+    const grants = el('div', 'ss-card-val', '', info);
+    const btns = el('div', 'ss-gear-btns', undefined, root);
+    const buy = el('button', 'ss-btn ss-buy', '', btns) as HTMLButtonElement;
+    buy.type = 'button';
+    buy.addEventListener('click', () => {
+      const p = this.ctx.progression;
+      if (!p.buyItem(def.id)) {
+        this.sfx('error');
+        restart(root, 'shake');
+        return;
+      }
+      this.sfx('buy');
+      restart(root, 'bought');
+    });
+    const equip = el('button', 'ss-btn ss-ice ss-gear-equip', '', btns) as HTMLButtonElement;
+    equip.type = 'button';
+    equip.addEventListener('click', () => {
+      if (this.ctx.progression.toggleEquip(def.id)) this.sfx('click');
+    });
+    return { def, root, lvl, grants, buy, equip };
+  }
+
+  private refreshGear(): void {
+    const p = this.ctx.progression;
+    for (const slot of GEAR_SLOTS) {
+      const id = p.gear.equipped[slot.id];
+      const def = id ? GEAR.find((d) => d.id === id) : undefined;
+      this.gearSlotLabels.get(slot.id)!.textContent = def ? ` · equipped: ${def.icon} ${def.name}` : ' · empty slot';
+    }
+    for (const c of this.gearCards) {
+      const lvl = p.itemLevel(c.def.id);
+      const cost = p.itemCost(c.def.id);
+      const maxed = cost === Infinity;
+      const afford = !maxed && p.canBuyItem(c.def.id);
+      const on = p.isEquipped(c.def.id);
+      c.lvl.innerHTML = lvl ? `${'★'.repeat(lvl)}<span class="ss-gear-off">${'★'.repeat(GEAR_MAX_LEVEL - lvl)}</span> LV ${lvl}` : 'Not owned';
+      const now = grantLabel(c.def, lvl || 1);
+      const next = lvl && !maxed ? grantLabel(c.def, lvl + 1) : '';
+      c.grants.textContent = next && next !== now ? `${now}  →  ${next}` : now;
+      c.root.classList.toggle('owned', lvl > 0);
+      c.root.classList.toggle('equipped', on);
+      c.root.classList.toggle('maxed', maxed);
+      c.root.classList.toggle('poor', !maxed && !afford);
+      c.root.classList.toggle('afford', afford);
+      c.buy.innerHTML = maxed ? '★ MAXED' : `${lvl ? '⬆ ' : ''}<span class="ss-coin sm"></span>${fmt(cost)}`;
+      c.buy.title = lvl ? 'Level up' : 'Buy';
+      c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
+      c.equip.classList.toggle('hidden', !lvl);
+      c.equip.textContent = on ? '✓ EQUIPPED' : 'EQUIP';
+    }
+  }
+
   private onBuy(def: UpgradeDef, card: HTMLElement): void {
     const p = this.shop;
     if (p.isMaxed(def.id) || !p.canBuy(def.id)) {
@@ -879,6 +966,7 @@ export class UI implements UIAPI {
     const dw = this.duelWallet;
     if (dw) this.shopCoins.textContent = fmt(dw.coins);
     this.refreshRepair();
+    this.refreshGear();
     const plow = p.plow;
     for (const [id, card] of this.plowCards) card.classList.toggle('on', id === plow);
     for (const c of this.cards) {
@@ -950,7 +1038,7 @@ export class UI implements UIAPI {
     this.shopStart.innerHTML = '⚔ FIGHT ▶';
     this.shopHint.textContent = 'Press ENTER to fight';
     this.shopTitle.textContent = 'GARAGE';
-    this.shopSub.textContent = 'Spend your coins on permanent upgrades. They never max out — keep stacking past the pips.';
+    this.shopSub.textContent = 'Core upgrades never max out. Gear: buy items, level them up and equip one per slot.';
     this.shopPreview.classList.add('hidden');
     this.plowPick.classList.remove('hidden');
     this.shopBack.classList.remove('hidden');

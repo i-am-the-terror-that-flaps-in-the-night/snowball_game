@@ -395,7 +395,8 @@ export class DuelManager {
 
   private myProfile(): DuelProfile {
     const p = this.ctx.progression;
-    const levels = cleanLevels(p.data.upgrades);
+    // Gear counts: send what the plow fights with (Garage + equipped items).
+    const levels = cleanLevels(p.effectiveLevels());
     return { name: this.playerName ?? duelName(), plow: p.plow, look: { ...cosmeticsState(p).equipped }, levels, coins: p.coins, spent: garageSpent(levels) };
   }
 

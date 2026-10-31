@@ -519,10 +519,8 @@
 .ss-tab:hover { background: rgba(255, 255, 255, 0.55); color: var(--ink); }
 .ss-tab.on { background: #fff; color: var(--ink); box-shadow: inset 0 -3px 0 var(--acc), 0 3px 0 rgba(120, 175, 220, 0.5), 0 6px 12px rgba(30, 80, 140, 0.12); }
 .ss-tab:focus-visible { outline: 4px solid rgba(255, 200, 60, 0.95); outline-offset: 2px; }
-.ss-tab-drive { --acc: #ff8a1f; }
-.ss-tab-ball { --acc: #3fa7f0; }
-.ss-tab-defense { --acc: #35c86b; }
-.ss-tab-pilot { --acc: #b05cf0; }
+.ss-tab-core { --acc: #ff8a1f; }
+.ss-tab-gear { --acc: #b05cf0; }
 .ss-tab-line[data-plow='classic'] { --acc: #ff8a1a; }
 .ss-tab-line[data-plow='volt'] { --acc: #2fb8ff; }
 .ss-tab-line[data-plow='brute'] { --acc: #e0a800; }
@@ -1215,3 +1213,15 @@
 /* Duel garage: leave room at the top for DuelUI's timer / READY strip. */
 .ss-duel-garage-screen { padding-top: 96px; }
 .ss-duel-garage-screen .ss-shop { height: min(860px, 100%); }
+
+/* ------------------------------------------------------------ gear */
+.ss-gear-eq { font-family: var(--body, inherit); font-size: 13px; font-weight: 800; color: var(--ink-soft); letter-spacing: 0; text-transform: none; }
+.ss-gear-rarity { margin-left: 8px; padding: 1px 7px; border-radius: 999px; font-size: 10px; letter-spacing: 0.08em; color: #fff; background: var(--acc); vertical-align: 2px; }
+.ss-gear-lvl { margin-top: 5px; font-size: 12px; font-weight: 900; color: color-mix(in srgb, var(--acc) 80%, #1b2b40); letter-spacing: 0.04em; }
+.ss-gear-off { color: rgba(120, 160, 200, 0.35); }
+.ss-gear-btns { display: flex; flex-direction: column; gap: 8px; }
+.ss-gear-equip { font-size: 13px; padding: 7px 10px; }
+.ss-gear-card { border-color: color-mix(in srgb, var(--acc) 35%, white); }
+.ss-gear-card:not(.owned) .ss-card-icon { filter: grayscale(0.6); opacity: 0.75; }
+.ss-gear-card.equipped { border-color: var(--acc); box-shadow: 0 4px 0 color-mix(in srgb, var(--acc) 60%, #234), 0 0 14px color-mix(in srgb, var(--acc) 45%, transparent); }
+.ss-rarity-legendary.owned .ss-card-icon { animation: ss-glow 2.4s ease-in-out infinite; }

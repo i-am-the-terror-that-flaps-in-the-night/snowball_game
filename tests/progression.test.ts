@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Progression } from '../src/core/Progression';
-import { FX, MIN_COOLDOWN, UPGRADES, type UpgradeId } from '../src/config/upgrades';
+import { FX, ITEM_STATS, MIN_COOLDOWN, SHOP_UPGRADES, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/config/upgrades';
+import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, grantLevels } from '../src/config/gear';
 import { PLOWS, type PlowKind } from '../src/config/plows';
 import { ZONES } from '../src/config/zones';
 
@@ -180,7 +181,8 @@ describe('save export / import', () => {
   function sample(): Progression {
     const p = new Progression();
     p.data.coins = 1234;
-    p.data.upgrades = { engine: 7, overclock: 4, voltChain: 2, brutePound: 3 };
+    p.data.upgrades = { engine: 7, voltChain: 2, brutePound: 3 };
+    p.data.gear = { owned: { overclockChip: 4, steelWedge: 1 }, equipped: { core: 'overclockChip' } };
     p.data.unlockedZones = 3;
     p.data.zones = { [ZONES[0].id]: { cleared: true, bestRound: 4 } };
     p.data.totalKills = 99;
@@ -240,8 +242,11 @@ describe('save export / import', () => {
       hacked: true,
     };
     expect(p.importSave(JSON.stringify(raw)).ok).toBe(true);
-    expect(p.data.coins).toBe(50);
-    expect(p.data.upgrades).toEqual({ engine: 3, overclock: 10 });
+    // overclock is gear now: its 10 (clamped) levels are refunded, not kept.
+    let refund = 0;
+    for (let l = 0; l < 10; l++) refund += upgradeCost(UPGRADE_BY_ID.overclock, l);
+    expect(p.data.coins).toBe(50 + refund);
+    expect(p.data.upgrades).toEqual({ engine: 3 });
     expect(p.data.unlockedZones).toBe(ZONES.length);
     expect(p.data.zones).toEqual({});
     expect(p.data.brawlWins).toBe(2);
@@ -271,12 +276,16 @@ describe('save export / import', () => {
     expect(p.computeStats().maxHp).toBeCloseTo(FX.maxHp(1) * PLOWS.classic.hpMult);
   });
 
-  it('carries old Vitality Core levels over to Last Stand', () => {
-    store.set(SAVE_KEY, JSON.stringify({ version: 1, coins: 5, upgrades: { vitality: 3 }, unlockedZones: 1, zones: {}, totalKills: 0, totalCoinsEarned: 5, muted: false }));
-    expect(new Progression().level('lastStand')).toBe(3);
+  it('refunds old Vitality / Last Stand levels now that Last Stand is gear', () => {
+    const cost = (n: number) => Array.from({ length: n }, (_, l) => upgradeCost(UPGRADE_BY_ID.lastStand, l)).reduce((a, b) => a + b, 0);
+    store.set(SAVE_KEY, JSON.stringify({ version: 1, coins: 5, upgrades: { vitality: 3, engine: 1 }, unlockedZones: 1, zones: {}, totalKills: 0, totalCoinsEarned: 5, muted: false }));
+    const a = new Progression();
+    expect(a.level('lastStand')).toBe(0);
+    expect(a.level('engine')).toBe(1);
+    expect(a.coins).toBe(5 + cost(3));
     const p = new Progression();
     expect(p.importSave(JSON.stringify({ version: 1, coins: 0, upgrades: { vitality: 2 }, unlockedZones: 1, zones: {} })).ok).toBe(true);
-    expect(p.level('lastStand')).toBe(2);
+    expect(p.coins).toBe(cost(2));
     expect('vitality' in p.data.upgrades).toBe(false);
   });
 
@@ -324,5 +333,58 @@ describe('save export / import', () => {
     const p = new Progression();
     expect(p.coins).toBe(0);
     expect(p.data.unlockedZones).toBe(1);
+  });
+});
+
+describe('gear', () => {
+  it('buys, levels, equips and feeds equipped gear into stats', () => {
+    const p = new Progression();
+    p.data.coins = 100000;
+    const base = p.computeStats();
+    expect(p.buyItem('nitroTank')).toBe(true);
+    // Auto-equipped into the empty slot.
+    expect(p.isEquipped('nitroTank')).toBe(true);
+    expect(p.computeStats().dashCooldown).toBeLessThan(base.dashCooldown);
+    const c1 = p.itemCost('nitroTank');
+    expect(c1).toBe(gearCost(GEAR_BY_ID.nitroTank, 1));
+    for (let i = 1; i < GEAR_MAX_LEVEL; i++) expect(p.buyItem('nitroTank')).toBe(true);
+    expect(p.itemLevel('nitroTank')).toBe(GEAR_MAX_LEVEL);
+    expect(p.buyItem('nitroTank')).toBe(false);
+    expect(p.effectiveLevels().nitro).toBe(grantLevels(GEAR_BY_ID.nitroTank.grants[0], GEAR_MAX_LEVEL));
+    // A second booster replaces the first only when equipped.
+    expect(p.buyItem('turbineFan')).toBe(true);
+    expect(p.isEquipped('turbineFan')).toBe(false);
+    expect(p.toggleEquip('turbineFan')).toBe(true);
+    expect(p.isEquipped('nitroTank')).toBe(false);
+    expect(p.effectiveLevels().nitro ?? 0).toBe(0);
+    expect(p.effectiveLevels().whirl).toBe(1);
+    // Unequip.
+    p.toggleEquip('turbineFan');
+    expect(p.computeStats()).toEqual(base);
+  });
+
+  it('one-time specials come from gear and cap at 1', () => {
+    const p = new Progression();
+    p.data.coins = 100000;
+    p.buyItem('glacierShell');
+    expect(p.computeStats().shieldBlock).toBe(0.75);
+    p.buyItem('frostEdge');
+    expect(p.computeStats().frostCore).toBe(true);
+    for (let i = 0; i < 9; i++) p.buyItem('frostEdge');
+    expect(p.effectiveLevels().frostCore).toBe(1);
+  });
+
+  it('sanitizes imported gear', () => {
+    const p = new Progression();
+    const raw = { version: 1, coins: 0, upgrades: {}, unlockedZones: 1, zones: {}, gear: { owned: { nitroTank: 99, bogus: 3, luckyMagnet: 0 }, equipped: { booster: 'nitroTank', charm: 'luckyMagnet', core: 'nitroTank' } } };
+    expect(p.importSave(JSON.stringify(raw)).ok).toBe(true);
+    expect(p.data.gear).toEqual({ owned: { nitroTank: GEAR_MAX_LEVEL }, equipped: { booster: 'nitroTank' } });
+  });
+
+  it('the Garage only sells the core upgrades and plow lines', () => {
+    for (const u of SHOP_UPGRADES) expect(u.itemOnly).toBeFalsy();
+    expect(SHOP_UPGRADES.filter((u) => !u.plowOnly).map((u) => u.id).sort()).toEqual(['armor', 'engine', 'hopper', 'packedIce']);
+    // Every item-only stat is reachable through some gear.
+    for (const id of ITEM_STATS) expect(GEAR.some((g) => g.grants.some((x) => x.stat === id)), id).toBe(true);
   });
 });

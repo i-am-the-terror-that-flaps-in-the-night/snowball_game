@@ -580,7 +580,8 @@ export class BrawlManager implements BrawlAPI {
   private captureGear(): void {
     this.playerLevels = {};
     // Endless upgrades only, minus Pilot perks (player-only — rivals never copy those).
-    for (const u of UPGRADES) if (u.maxLevel === Infinity && !u.playerOnly) this.playerLevels[u.id] = this.ctx.progression.level(u.id);
+    const eff = this.ctx.progression.effectiveLevels();
+    for (const u of UPGRADES) if (u.maxLevel === Infinity && !u.playerOnly) this.playerLevels[u.id] = eff[u.id] ?? 0;
   }
 
   /** A rival's own garage: every upgrade rolled around the player's level for this lobby, then turned into
@@ -601,8 +602,8 @@ export class BrawlManager implements BrawlAPI {
     // Perks: a rival may own the same one-time specials the player owns.
     const prog = this.ctx.progression;
     const perkP = elite ? d.perkChance.elite : d.perkChance.regular;
-    const iceShield = prog.level('iceShield') > 0 && Math.random() < perkP;
-    const avalanche = prog.level('avalancheCore') > 0 && Math.random() < perkP;
+    const iceShield = prog.statLevel('iceShield') > 0 && Math.random() < perkP;
+    const avalanche = prog.statLevel('avalancheCore') > 0 && Math.random() < perkP;
     // Some rivals roll the VOLT-9 or BRUTUS plow (more often in harder lobbies and among elites): their stat
     // multipliers only — the Volt / Brute upgrade lines are player-only; they get a fixed bot Thunderclap /
     // Ground Pound instead. One roll; if the two chances add past 90% they're scaled down to leave some Classics.
