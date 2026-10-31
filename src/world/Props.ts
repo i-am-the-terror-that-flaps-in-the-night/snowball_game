@@ -159,7 +159,7 @@ export class Props {
   }
 
   /** Break one prop: hide its instance, drop its collider, debris + sound (+ a couple of coins). */
-  private smash(p: Prop): void {
+  private smash(p: Prop, coins = true): void {
     if (!p.alive) return;
     p.alive = false;
     const mesh = this.meshes[p.kind];
@@ -181,7 +181,7 @@ export class Props {
     }
     fx.smoke(_v, { count: 2, color: 0xe2ecf8, size: 0.8, grow: 2.5, life: 0.7, speed: 1.5, up: 1, rise: -0.5, drag: 2, spread: 0.5, opacity: 0.45 });
     this.ctx.audio?.play('wallHit', { volume: 0.55, pitch: p.kind === 'ice' ? 1.35 : 0.9 });
-    if (this.coins) this.ctx.pickups?.spawnCoins(_v.set(p.x, 0.5, p.z), PROP_COINS);
+    if (coins && this.coins) this.ctx.pickups?.spawnCoins(_v.set(p.x, 0.5, p.z), PROP_COINS);
   }
 
   /** Break every standing prop overlapping the circle. Returns how many broke. */
@@ -220,12 +220,13 @@ export class Props {
     return bestT;
   }
 
-  /** Break the prop that owns this collider (rams / dashes). False if it isn't a standing prop. */
-  breakObstacle(o: Obstacle): boolean {
+  /** Break the prop that owns this collider (rams / dashes / bots). False if it isn't a standing prop. `coins`
+   *  false skips the coin drop (a bot broke it on its own). */
+  breakObstacle(o: Obstacle, coins = true): boolean {
     if (!o.breakable) return false;
     const p = this.props.find((q) => q.obs === o);
     if (!p || !p.alive) return false;
-    this.smash(p);
+    this.smash(p, coins);
     return true;
   }
 

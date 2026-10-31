@@ -64,3 +64,55 @@ describe('destructible props', () => {
     expect(props.standing).toBe(0);
   });
 });
+
+/* ------------------------------------------------------------------ bots vs props */
+
+import { EnemyManager } from '../src/entities/Enemies';
+
+describe('bots smashing props', () => {
+  /** EnemyManager.pushOutObstacles on a bare manager (no scene needed) against a real Props layout. */
+  function botRig() {
+    const { props, coins } = rig();
+    const obstacles: Obstacle[] = [];
+    props.reset(obstacles, true, 11, false, true);
+    const world = { obstacles, breakObstacle: (o: Obstacle, c?: boolean) => props.breakObstacle(o, c) };
+    const mgr = Object.create(EnemyManager.prototype) as { ctx: unknown; pushOutObstacles(e: unknown): void };
+    mgr.ctx = { world };
+    const target = obstacles.find((o) => o.breakable)!;
+    const bot = (o: Partial<{ kvx: number; kvz: number; atk: boolean; speed: number; isBoss: boolean }>) => ({
+      position: new THREE.Vector3(target.x + 0.2, 0, target.z), radius: 1, kvx: 0, kvz: 0, atk: false, speed: 0, isBoss: false, ...o,
+    });
+    return { props, coins, obstacles, target, mgr, bot };
+  }
+
+  it('a boss mid-charge ploughs through a prop without dropping coins', () => {
+    const { props, coins, obstacles, target, mgr, bot } = botRig();
+    const n = props.standing;
+    const b = bot({ atk: true, speed: 14, isBoss: true });
+    mgr.pushOutObstacles(b);
+    expect(props.standing).toBe(n - 1);
+    expect(obstacles.includes(target)).toBe(false);
+    expect(coins.length).toBe(0);
+    // Not pushed out: it kept going.
+    expect(b.position.x).toBeCloseTo(target.x + 0.2);
+  });
+
+  it('a bot knocked flying into a prop breaks it and drops coins', () => {
+    const { props, coins, mgr, bot } = botRig();
+    const n = props.standing;
+    mgr.pushOutObstacles(bot({ kvx: 9 }));
+    expect(props.standing).toBe(n - 1);
+    expect(coins.length).toBe(1);
+  });
+
+  it('a bot walking into a prop is just pushed out', () => {
+    const { props, coins, obstacles, target, mgr, bot } = botRig();
+    const n = props.standing;
+    const b = bot({ speed: 5, kvx: 2 });
+    mgr.pushOutObstacles(b);
+    expect(props.standing).toBe(n);
+    expect(obstacles.includes(target)).toBe(true);
+    expect(coins.length).toBe(0);
+    expect(Math.hypot(b.position.x - target.x, b.position.z - target.z)).toBeCloseTo(target.r + 1);
+  });
+});

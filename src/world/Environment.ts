@@ -480,8 +480,8 @@ export class Environment implements WorldAPI {
     return this.props.blastRay(x, z, dx, dz, range);
   }
 
-  breakObstacle(o: Obstacle): boolean {
-    return this.props.breakObstacle(o);
+  breakObstacle(o: Obstacle, coins = true): boolean {
+    return this.props.breakObstacle(o, coins);
   }
 
   constructor(ctx: GameContext) {

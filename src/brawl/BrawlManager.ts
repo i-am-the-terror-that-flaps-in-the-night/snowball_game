@@ -85,6 +85,8 @@ type Mode = 'gather' | 'fight' | 'heal' | 'flee';
 
 // Rival kit. Base numbers (speed 10.5, accel 14, turn 2.6, collect 0.13, ball 1.4m, ram 14, dash +16 m/s every
 // 2.6s, whirl 4m+blade / 10 dmg every 6s) live in BrawlManager.rivalStats(), scaled per lobby and per rival.
+/** Rival speed (m/s, driving or knockback) above which it smashes destructible props rather than bumping off. */
+const RIVAL_PROP_SMASH_SPEED = 9;
 const RIVAL_R = 1.6;
 const RIVAL_MASS = 1.5;
 const SLAM_MIN_R = 0.55;
@@ -1699,12 +1701,20 @@ export class BrawlManager implements BrawlAPI {
     if (r.position.x > ARENA.maxX - lim) { r.position.x = ARENA.maxX - lim; r.kvx = -Math.abs(r.kvx) * 0.4; wall = true; }
     if (r.position.z < ARENA.minZ + lim) { r.position.z = ARENA.minZ + lim; r.kvz = Math.abs(r.kvz) * 0.4; wall = true; }
     if (r.position.z > ARENA.maxZ - lim) { r.position.z = ARENA.maxZ - lim; r.kvz = -Math.abs(r.kvz) * 0.4; wall = true; }
-    // Obstacles.
-    for (const o of ctx.world.obstacles) {
+    // Obstacles. A rival dashing, flying from a knockback or just going fast smashes destructible props instead.
+    const obs = ctx.world.obstacles;
+    const smash = r.dashing || Math.abs(r.speed) > RIVAL_PROP_SMASH_SPEED || r.kvx * r.kvx + r.kvz * r.kvz > RIVAL_PROP_SMASH_SPEED ** 2;
+    for (let i = 0; i < obs.length; i++) {
+      const o = obs[i];
       const dx = r.position.x - o.x;
       const dz = r.position.z - o.z;
       const d = Math.hypot(dx, dz);
       const need = o.r + RIVAL_R;
+      // breakObstacle splices it out of `obs`: step back so the next one isn't skipped.
+      if (d < need && o.breakable && smash && ctx.world.breakObstacle(o, false)) {
+        i--;
+        continue;
+      }
       if (d < need && d > 1e-4) {
         r.position.x = o.x + (dx / d) * need;
         r.position.z = o.z + (dz / d) * need;

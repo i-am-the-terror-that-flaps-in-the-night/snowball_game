@@ -222,8 +222,9 @@ export interface WorldAPI {
   blastProps(x: number, z: number, r: number): number;
   /** Break the first standing prop along a ray (unit dir) within range; returns its distance or -1. */
   blastPropRay(x: number, z: number, dx: number, dz: number, range: number): number;
-  /** Break the prop owning this collider (ram / dash). False if it isn't a standing prop. */
-  breakObstacle(o: Obstacle): boolean;
+  /** Break the prop owning this collider (ram / dash / a bot ploughing through). False if it isn't a standing prop.
+   *  `coins` false = no coin drop (a bot broke it under its own power). */
+  breakObstacle(o: Obstacle, coins?: boolean): boolean;
 }
 
 /* ------------------------------------------------------------------ player */

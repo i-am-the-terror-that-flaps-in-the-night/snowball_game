@@ -20,6 +20,10 @@ import type { KillSource } from '../core/events';
  *    freeze, knockback / mass, hit flash, minion HP bars, death explosions with flying debris
  *  - telegraph ground decals (charge stripes, warning rings) */
 
+/** Knockback speed (m/s) above which a flying bot smashes a destructible prop (cf. Plow's PROP_SMASH_SPEED). */
+const BOT_PROP_SMASH_SPEED = 6;
+/** Speed (m/s) above which a bot mid-attack (a heavy / boss charge) ploughs through props. */
+const BOT_PROP_CHARGE_SPEED = 8;
 const FLASH_T = 0.12;
 const ICE = new THREE.Color(0x8fd0ff);
 const MAX_DEBRIS = 180;
@@ -557,11 +561,16 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (!e.entering && e.type !== 'donald') this.pushOutObstacles(e);
   }
 
-  /** Solid circle obstacles (THE DONALD's walls / podium; empty in most arenas): push the bot out. */
+  /** Solid circle obstacles (THE DONALD's walls / podium, destructible props): push the bot out. A bot that is
+   *  flying from a knockback or charging (a heavy / boss mid-attack) smashes a destructible prop instead; only the
+   *  knocked-back case drops coins (the player sent it there). */
   private pushOutObstacles(e: Bot): void {
-    const obs = this.ctx.world?.obstacles;
+    const world = this.ctx.world;
+    const obs = world?.obstacles;
     if (!obs || obs.length === 0) return;
     const p = e.position;
+    const knocked = e.kvx * e.kvx + e.kvz * e.kvz > BOT_PROP_SMASH_SPEED * BOT_PROP_SMASH_SPEED;
+    const charging = !!e.atk && e.speed > BOT_PROP_CHARGE_SPEED;
     for (let i = 0; i < obs.length; i++) {
       const o = obs[i];
       const dx = p.x - o.x;
@@ -569,6 +578,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       const min = o.r + e.radius;
       const d2 = dx * dx + dz * dz;
       if (d2 >= min * min) continue;
+      // breakObstacle splices it out of `obs`: step back so the next obstacle isn't skipped.
+      if (o.breakable && (knocked || charging) && world!.breakObstacle(o, knocked)) {
+        i--;
+        continue;
+      }
       const d = Math.sqrt(d2) || 1e-3;
       p.x = o.x + (dx / d) * min;
       p.z = o.z + (dz / d) * min;
