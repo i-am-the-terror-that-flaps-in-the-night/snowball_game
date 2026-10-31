@@ -79,7 +79,7 @@ export class ArsenalKit extends Kit implements UltScript {
   }
 
   ultStart(x: number, z: number, plow: PlowAPI): number {
-    // Paint the targets: the top threats in range by targetScore, one mark each.
+    // Paint the targets: the top threats in range by Threat.score, one mark each.
     this.marks.length = 0;
     const ranked = this.collect(x, z, ORBITAL_RANGE)
       .filter((e) => e.alive)
@@ -399,7 +399,7 @@ export class ArsenalKit extends Kit implements UltScript {
   }
 
   /**
-   * Target list for a salvo of `n` missiles. Bots are ranked by targetScore (damage they've dealt you first), and
+   * Target list for a salvo of `n` missiles. Bots are ranked by Threat.score (damage they've dealt you first), and
    * each gets as many missiles as its HP needs, minus the ones already flying at it; leftovers go round the ranked
    * list again (overkill on the biggest threats). Several missiles can share a target.
    */
