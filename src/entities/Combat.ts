@@ -46,6 +46,27 @@ const FIRE_FIELD_RADIUS = 10;
 const FIRE_FIELD_TICK = 0.3;
 /** Fire-field contact damage per second, as a share of burn dps (on top of the burn it keeps lit). */
 const FIRE_FIELD_DPS = 0.35;
+/** Ultimates for VOLT-9 / BRUTUS / ARSENAL (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
+ *  fills the meter (this much fills it). While an ultimate and its aftermath play out, nothing refills it. */
+const ULT_CHARGE = { volt: 900, brute: 900, arsenal: 1000 } as const;
+/** SUPERCELL (VOLT-9): SUPERCELL_WAVES waves of sky strikes on every bot within SUPERCELL_RADIUS, SUPERCELL_GAP s
+ *  apart, each SUPERCELL_MULT x clap damage + a long shock. No Overload backlash. */
+const SUPERCELL_RADIUS = 18;
+const SUPERCELL_WAVES = 3;
+const SUPERCELL_GAP = 0.5;
+const SUPERCELL_MULT = 1.1;
+/** EARTHQUAKE (BRUTUS): QUAKE_RINGS shockwaves rolling outward, each hitting the band it sweeps for QUAKE_MULT x
+ *  pound damage + stun + knockback. */
+const QUAKE_RINGS = [8, 13, 19] as const;
+const QUAKE_GAP = 0.35;
+const QUAKE_MULT = 1.0;
+/** ORBITAL STRIKE (ARSENAL): marks up to ORBITAL_TARGETS top-priority bots within ORBITAL_RANGE, then after
+ *  ORBITAL_DELAY a sky laser hits each — ORBITAL_MULT x missile damage in ORBITAL_RADIUS. */
+const ORBITAL_TARGETS = 5;
+const ORBITAL_RANGE = 50;
+const ORBITAL_DELAY = 1;
+const ORBITAL_MULT = 4;
+const ORBITAL_RADIUS = 4.5;
 /** Thunderclap storm: duration, extra sky strikes (each = share of clap damage), field dps share. */
 const STORM_SECONDS = 2.5;
 const STORM_STRIKES = 7;
@@ -132,6 +153,8 @@ const MISSILE_RETARGET = 25;
 const THREAT_TAU = 10;
 const THREAT_RADIUS = 6;
 
+const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🛰 ORBITAL STRIKE' } as const;
+
 /** Share of camera shake / kick a duel opponent's attacks cause on this screen (no hit-stop at all). */
 const REMOTE_SHAKE = 0.35;
 const REMOTE_IMPACT: ImpactOpts = { stop: false, falloff: 0.5 };
@@ -165,6 +188,15 @@ export class Combat implements CombatAPI {
   private fireFieldX = 0;
   private fireFieldZ = 0;
   private fireFieldTickT = 0;
+  /** Ultimate in progress (SUPERCELL / EARTHQUAKE / ORBITAL): elapsed time (-1 = none), centre, steps done, and
+   *  how long the meter stays locked. */
+  private ultT = -1;
+  private ultKind: 'volt' | 'brute' | 'arsenal' = 'volt';
+  private ultX = 0;
+  private ultZ = 0;
+  private ultStep = 0;
+  private ultLock = 0;
+  private ultMarks: { x: number; z: number; e: EnemyHandle | null }[] = [];
   private secondWindReadyAt = 0;
   /** Largest final damage already applied during the current i-frame window. */
   private iframeDmg = 0;
@@ -346,7 +378,11 @@ export class Combat implements CombatAPI {
   get critMass(): number {
     const st = this.b.stats;
     if (st.meltDamage > 0) return this.critCharge;
-    return st.plowKind === 'classic' && st.flameDps > 0 ? this.critCharge : -1;
+    if (st.plowKind === 'classic') return st.flameDps > 0 ? this.critCharge : -1;
+    if (st.plowKind === 'volt') return st.clapDamage > 0 ? this.critCharge : -1;
+    if (st.plowKind === 'brute') return st.poundDamage > 0 ? this.critCharge : -1;
+    if (st.plowKind === 'arsenal') return st.missileDamage > 0 ? this.critCharge : -1;
+    return -1;
   }
 
   get shieldFrac(): number {
@@ -482,6 +518,7 @@ export class Combat implements CombatAPI {
     if (st.clapDamage <= 0 || !plow) return;
     if (this.clapCharge < 1) this.clapCharge = Math.min(1, this.clapCharge + (st.clapCooldown > 0 ? dt / st.clapCooldown : 1));
     if (!this.b.input.wasPressed('KeyF') || plow.dead) return;
+    if (this.critCharge >= 1 && this.ultT < 0) return this.startUlt('volt', plow);
     if (this.clapCharge < 1) {
       this.b.audio.play('error');
       return;
@@ -573,6 +610,7 @@ export class Combat implements CombatAPI {
     }
     if (this.poundCharge < 1) this.poundCharge = Math.min(1, this.poundCharge + (st.poundCooldown > 0 ? dt / st.poundCooldown : 1));
     if (!this.b.input.wasPressed('KeyF')) return;
+    if (this.critCharge >= 1 && this.ultT < 0) return this.startUlt('brute', plow);
     if (this.poundCharge < 1) {
       this.b.audio.play('error');
       return;
@@ -1263,6 +1301,7 @@ export class Combat implements CombatAPI {
     const st = this.b.stats;
     if (plow.dead) return;
     if (dealt > 0) plow.feedSawFury(dealt, 0);
+    if (dealt > 0) this.feedUlt(dealt);
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.chainLightning(target, dealt, heal);
     if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
     if (killed && target && st.chainBlast > 0 && this.rads.has(target)) this.chainQueue.push({ x: target.position.x, z: target.position.z });
@@ -1547,6 +1586,197 @@ export class Combat implements CombatAPI {
       }
       if (b.t <= 0 || !e.alive) this.burns.delete(e);
     }
+  }
+
+  /* ------------------------------------------------------------------ ultimates (VOLT-9 / BRUTUS / ARSENAL) */
+
+  /** Damage you deal fills the VOLT-9 / BRUTUS / ARSENAL ultimate meter (Critical Mass slot + net field). */
+  private feedUlt(dealt: number): void {
+    const kind = this.b.stats.plowKind;
+    if (kind !== 'volt' && kind !== 'brute' && kind !== 'arsenal') return;
+    if (this.ultLock > 0 || this.ultT >= 0) return;
+    const was = this.critCharge;
+    this.critCharge = Math.min(1, this.critCharge + dealt / ULT_CHARGE[kind]);
+    if (was < 1 && this.critCharge >= 1 && this.b.local) {
+      this.ctx.ui.toast(`${ULT_NAME[kind]} READY · F`, 'info');
+      this.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });
+    }
+  }
+
+  private startUlt(kind: 'volt' | 'brute' | 'arsenal', plow: PlowAPI): void {
+    const ctx = this.ctx;
+    this.critCharge = 0;
+    this.b.events.emit('ability', { nuke: true });
+    this.ultKind = kind;
+    this.ultT = 0;
+    this.ultStep = 0;
+    this.ultX = plow.position.x;
+    this.ultZ = plow.position.z;
+    ctx.ui.toast(this.b.local ? `${ULT_NAME[kind]}!` : `INCOMING ${ULT_NAME[kind]}!`, 'big');
+    _q.set(this.ultX, 0.12, this.ultZ);
+    if (kind === 'volt') {
+      ctx.fx.ring(_q, SUPERCELL_RADIUS, 0x2fb8ff);
+      ctx.fx.ring(_q, SUPERCELL_RADIUS * 0.5, 0xbff0ff);
+      this.b.audio.play('thunder', { pitch: 0.7 });
+      this.ultLock = SUPERCELL_WAVES * SUPERCELL_GAP + 1;
+    } else if (kind === 'brute') {
+      ctx.fx.burst(_q, { color: 0x6b5a48, count: 30, speed: 6, size: 0.4, gravity: 14, life: 0.8 });
+      this.b.audio.play('roar', { pitch: 0.6, volume: 0.8 });
+      this.ultLock = QUAKE_RINGS.length * QUAKE_GAP + 1;
+    } else {
+      // Paint the targets: the top threats in range by targetScore, one mark each.
+      this.ultMarks.length = 0;
+      const ranked = this.collect(this.ultX, this.ultZ, ORBITAL_RANGE)
+        .filter((e) => e.alive)
+        .map((e) => ({ e, score: this.targetScore(e, this.ultX, this.ultZ) }))
+        .sort((p, q) => q.score - p.score);
+      this.targets.length = 0;
+      for (const { e } of ranked.slice(0, ORBITAL_TARGETS)) this.ultMarks.push({ x: e.position.x, z: e.position.z, e });
+      // Nothing to hit: strike straight ahead.
+      if (!this.ultMarks.length) {
+        plow.getForward(_fwd);
+        this.ultMarks.push({ x: this.ultX + _fwd.x * 12, z: this.ultZ + _fwd.z * 12, e: null });
+      }
+      this.b.audio.play('charge', { pitch: 1.3, volume: 0.8 });
+      this.ultLock = ORBITAL_DELAY + 1;
+    }
+  }
+
+  private updateUlt(dt: number): void {
+    if (this.ultLock > 0) this.ultLock -= dt;
+    if (this.ultT < 0) return;
+    this.ultT += dt;
+    if (this.ultKind === 'volt') {
+      while (this.ultStep < SUPERCELL_WAVES && this.ultT >= this.ultStep * SUPERCELL_GAP) this.supercellWave(this.ultStep++);
+      if (this.ultStep >= SUPERCELL_WAVES) this.ultT = -1;
+    } else if (this.ultKind === 'brute') {
+      while (this.ultStep < QUAKE_RINGS.length && this.ultT >= this.ultStep * QUAKE_GAP) this.quakeRing(this.ultStep++);
+      if (this.ultStep >= QUAKE_RINGS.length) this.ultT = -1;
+    } else {
+      // Reticles follow their targets and tighten until the strike lands.
+      const k = Math.min(1, this.ultT / ORBITAL_DELAY);
+      for (const m of this.ultMarks) {
+        if (m.e?.alive) {
+          m.x = m.e.position.x;
+          m.z = m.e.position.z;
+        }
+        if (Math.random() < dt * 14) {
+          _q.set(m.x, 0.12, m.z);
+          this.ctx.fx.ring(_q, ORBITAL_RADIUS * (1.6 - k), 0xff3030);
+        }
+      }
+      if (this.ultT >= ORBITAL_DELAY) {
+        for (const m of this.ultMarks) this.orbitalStrike(m.x, m.z);
+        this.ultMarks.length = 0;
+        this.ultT = -1;
+      }
+    }
+  }
+
+  /** Hit every bot whose centre is between `inner` and `R` of (x, z). Returns how many. */
+  private ultBlast(x: number, z: number, inner: number, R: number, dmg: number, o: { knock: number; stun?: number; freeze?: number; text: string; color: string; bolt?: boolean }): number {
+    const hits = this.collect(x, z, R);
+    let n = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - x;
+      const dz = e.position.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d + e.radius < inner) continue;
+      const nd = d || 1;
+      if (o.bolt) {
+        _p.set(e.position.x + (Math.random() - 0.5) * 3, 28, e.position.z + (Math.random() - 0.5) * 3);
+        _q.set(e.position.x, e.position.y + e.radius, e.position.z);
+        this.lightning.bolt(_p, _q, { life: 0.35, width: 0.6, jag: 2, color: 0xbff0ff });
+      }
+      const hp0 = e.hp;
+      const killed = this.b.enemies.damage(e, dmg * this.b.stats.damageMult * this.hitMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3((dx / nd) * o.knock, 0, (dz / nd) * o.knock),
+        stunSeconds: o.stun,
+        freezeSeconds: o.freeze,
+        fromX: x,
+        fromZ: z,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e, false, false);
+      if (dealt > 0) {
+        _tip.set(e.position.x, e.position.y + e.radius + 1.3, e.position.z);
+        this.ctx.fx.floatText(_tip, `${o.text}${Math.round(dealt)}`, o.color, 1.2);
+      }
+      n++;
+    }
+    this.targets.length = 0;
+    return n;
+  }
+
+  /** SUPERCELL wave: sky strikes on every bot in range (+ a few bare-ground strikes for show), ground rings. */
+  private supercellWave(i: number): void {
+    const ctx = this.ctx;
+    const st = this.b.stats;
+    const x = this.ultX;
+    const z = this.ultZ;
+    for (let k = 0; k < 6; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * SUPERCELL_RADIUS;
+      _q.set(x + Math.sin(a) * rr, 0.2, z + Math.cos(a) * rr);
+      _p.set(_q.x + (Math.random() - 0.5) * 4, 28, _q.z + (Math.random() - 0.5) * 4);
+      this.lightning.bolt(_p, _q, { life: 0.3, width: 0.45, jag: 2.2, color: 0x9fe8ff });
+      ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 10, speed: 9, size: 0.07, length: 0.05, gravity: 8, life: 0.4 });
+    }
+    _q.set(x, 0.12, z);
+    ctx.fx.ring(_q, SUPERCELL_RADIUS * (0.4 + 0.3 * i), 0xbff0ff);
+    this.shake(0.7);
+    this.impactHit('clap', _q.set(x, 1, z));
+    this.b.audio.play('thunder', { pitch: 0.85 + 0.15 * i });
+    this.ultBlast(x, z, 0, SUPERCELL_RADIUS, st.clapDamage * SUPERCELL_MULT, { knock: 8, freeze: st.clapStun * 1.5, text: '⚡', color: '#bff0ff', bolt: true });
+  }
+
+  /** EARTHQUAKE ring i: a shockwave sweeping from the last ring's radius out to this one, cracking the ground. */
+  private quakeRing(i: number): void {
+    const ctx = this.ctx;
+    const st = this.b.stats;
+    const x = this.ultX;
+    const z = this.ultZ;
+    const R = QUAKE_RINGS[i];
+    const inner = i > 0 ? QUAKE_RINGS[i - 1] - 1 : 0;
+    _q.set(x, 0.12, z);
+    ctx.fx.ring(_q, R, 0xffc21a);
+    ctx.fx.ring(_q, R * 0.92, 0xffffff);
+    const n = Math.round(R * 2);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + Math.random() * 0.2;
+      _q.set(x + Math.sin(a) * R, 0.3, z + Math.cos(a) * R);
+      ctx.fx.burst(_q, { color: Math.random() < 0.5 ? 0xffffff : 0x6b5a48, count: 4, speed: 7, size: 0.3, gravity: 18, life: 0.6 });
+    }
+    this.b.snow?.melt(x, z, R, 0.15);
+    this.shake(1 - i * 0.15);
+    this.impactHit('pound', _q.set(x, 0.5, z), 1 - i * 0.2);
+    this.b.audio.play('thud', { pitch: 0.75 - i * 0.1 });
+    this.ultBlast(x, z, inner, R, st.poundDamage * QUAKE_MULT, { knock: st.poundKnock * 1.2, stun: st.poundStun, text: '🌍', color: '#ffd23a' });
+  }
+
+  /** ORBITAL STRIKE: a sky laser column onto (x, z). */
+  private orbitalStrike(x: number, z: number): void {
+    const ctx = this.ctx;
+    const st = this.b.stats;
+    for (let k = 0; k < 3; k++) {
+      _p.set(x + (Math.random() - 0.5) * 0.6, 40, z + (Math.random() - 0.5) * 0.6);
+      _q.set(x, 0.1, z);
+      this.lightning.bolt(_p, _q, { life: 0.45, width: 1.4 - k * 0.4, jag: 0.15, color: k === 0 ? 0xff2020 : 0xffe0e0 });
+    }
+    _q.set(x, 0.12, z);
+    ctx.fx.ring(_q, ORBITAL_RADIUS, 0xff3030);
+    ctx.fx.ring(_q, ORBITAL_RADIUS * 1.3, 0xffb0a0);
+    _q.set(x, 1, z);
+    ctx.fx.burst(_q, { color: 0xff4020, count: 30, speed: 12, size: 0.35, gravity: -2, life: 0.6 });
+    ctx.fx.burst(_q, { color: 0x2c2628, count: 10, speed: 3, size: 1, gravity: -2.5, life: 1.2 });
+    this.b.snow?.melt(x, z, ORBITAL_RADIUS * 0.8, 1);
+    this.shake(0.6);
+    this.impactHit('nuke', _q, 0.6);
+    this.b.audio.play('explosion', { volume: 0.8, pitch: 1.1 });
+    this.ultBlast(x, z, 0, ORBITAL_RADIUS, st.missileDamage * ORBITAL_MULT, { knock: 14, text: '🛰', color: '#ff8a7a' });
   }
 
   /* ------------------------------------------------------------------ ARSENAL */
@@ -1840,6 +2070,7 @@ export class Combat implements CombatAPI {
     if (st.missileDamage <= 0 || !plow || plow.dead) return;
     if (this.missileCharge < 1) this.missileCharge = Math.min(1, this.missileCharge + (st.missileCooldown > 0 ? dt / st.missileCooldown : 1));
     if (!this.b.input.wasPressed('KeyF')) return;
+    if (this.critCharge >= 1 && this.ultT < 0) return this.startUlt('arsenal', plow);
     if (this.missileCharge < 1) {
       this.b.audio.play('error');
       return;
@@ -2190,6 +2421,9 @@ export class Combat implements CombatAPI {
     this.burns.clear();
     this.fireFieldT = 0;
     this.fireField.visible = false;
+    this.ultT = -1;
+    this.ultLock = 0;
+    this.ultMarks.length = 0;
     this.meltCharge = 1;
     this.missileCharge = 1;
     this.gunT = this.gunBurstT = 0;
@@ -2224,6 +2458,7 @@ export class Combat implements CombatAPI {
     this.updateFlame(dt);
     this.updateBurns(dt);
     this.updateFireField(dt);
+    this.updateUlt(dt);
     this.updateClap(dt);
     this.updatePound(dt);
     this.updateStorm(dt);

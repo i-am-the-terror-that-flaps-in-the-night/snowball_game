@@ -76,10 +76,11 @@ describe('Inferno', () => {
     expect(stats.plowKind).toBe('classic');
   });
 
-  it('no FIRESTORM meter on other plows', () => {
+  it('fire damage only fills the FIRESTORM meter on the Classic Plow', () => {
     const { c } = rig([]);
     (c as unknown as { b: { stats: unknown } }).b.stats = computeStatsFor({}, 'volt');
-    expect(c.critMass).toBe(-1);
+    (c as unknown as { feedFire(d: number): void }).feedFire(10_000);
+    expect(c.critMass).toBe(0);
   });
 });
 

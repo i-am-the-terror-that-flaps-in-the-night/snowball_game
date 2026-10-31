@@ -1145,10 +1145,10 @@
 .ss-crit.full .ss-crit-tag { display: inline; animation: ss-crit-pulse 0.6s ease-in-out infinite; }
 .ss-crit.full .ss-batt-fill { background: linear-gradient(90deg, #eaff6a, #fff); }
 @keyframes ss-crit-pulse { 50% { opacity: 0.45; } }
-.ss-crit-fire .ss-batt-bar { border-color: rgba(255, 170, 90, 0.9); background: rgba(40, 10, 0, 0.6); }
-.ss-crit-fire .ss-batt-fill { background: linear-gradient(90deg, #c2300a, #ffb040); box-shadow: 0 0 8px #ff6a10; }
-.ss-crit-fire .ss-crit-tag { color: #ffe070; text-shadow: 0 0 6px #ff6a10, 0 1px 2px #000; }
-.ss-crit-fire.full .ss-batt-fill { background: linear-gradient(90deg, #ffe070, #fff); }
+.ss-crit[data-ult='fire'] .ss-batt-bar { border-color: rgba(255, 170, 90, 0.9); background: rgba(40, 10, 0, 0.6); }
+.ss-crit[data-ult='fire'] .ss-batt-fill { background: linear-gradient(90deg, #c2300a, #ffb040); box-shadow: 0 0 8px #ff6a10; }
+.ss-crit[data-ult='fire'] .ss-crit-tag { color: #ffe070; text-shadow: 0 0 6px #ff6a10, 0 1px 2px #000; }
+.ss-crit[data-ult='fire'].full .ss-batt-fill { background: linear-gradient(90deg, #ffe070, #fff); }
 .ss-ab-nuke { --ac: #eaff6a; animation: ss-nuke-glow 0.6s ease-in-out infinite; }
 @keyframes ss-nuke-glow { 50% { filter: drop-shadow(0 0 12px #9dff5a) brightness(1.25); } }
 /* Thunderclap Overload meter: perched above the F icon; heat bar + the next clap's self-damage. */
@@ -1240,3 +1240,13 @@
 @media (max-width: 760px) {
   .ss-plow-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.ss-crit[data-ult='zap'] .ss-batt-bar { border-color: rgba(127, 220, 255, 0.9); background: rgba(0, 20, 40, 0.6); }
+.ss-crit[data-ult='zap'] .ss-batt-fill { background: linear-gradient(90deg, #1a6cd8, #9fe8ff); box-shadow: 0 0 8px #2fb8ff; }
+.ss-crit[data-ult='zap'] .ss-crit-tag { color: #dff6ff; text-shadow: 0 0 6px #2fb8ff, 0 1px 2px #000; }
+.ss-crit[data-ult='pound'] .ss-batt-bar { border-color: rgba(255, 210, 90, 0.9); background: rgba(40, 28, 0, 0.6); }
+.ss-crit[data-ult='pound'] .ss-batt-fill { background: linear-gradient(90deg, #8a5a10, #ffd23a); box-shadow: 0 0 8px #e0a800; }
+.ss-crit[data-ult='pound'] .ss-crit-tag { color: #fff0b0; text-shadow: 0 0 6px #e0a800, 0 1px 2px #000; }
+.ss-crit[data-ult='missiles'] .ss-batt-bar { border-color: rgba(255, 120, 110, 0.9); background: rgba(40, 0, 0, 0.6); }
+.ss-crit[data-ult='missiles'] .ss-batt-fill { background: linear-gradient(90deg, #8a1010, #ff6a5a); box-shadow: 0 0 8px #d8262a; }
+.ss-crit[data-ult='missiles'] .ss-crit-tag { color: #ffd8d0; text-shadow: 0 0 6px #d8262a, 0 1px 2px #000; }

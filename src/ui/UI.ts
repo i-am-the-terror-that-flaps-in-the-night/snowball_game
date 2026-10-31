@@ -59,6 +59,15 @@ const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; gr
   { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }, { cat: 'arsenal' }] },
 ];
 
+/** Ultimate meter + F-button labels per F ability (meter icon, READY tag, F icon/name when full, normal F icon/name). */
+const ULT_HUD: Record<HudState['fAbility'], { bar: string; tag: string; icon: string; name: string; baseIcon: string; baseName: string }> = {
+  fire: { bar: '🔥', tag: 'FIRESTORM', icon: '🌋', name: 'STORM', baseIcon: '🔥', baseName: 'FIRE' },
+  zap: { bar: '⚡', tag: 'SUPERCELL', icon: '🌩️', name: 'CELL', baseIcon: '⚡', baseName: 'CLAP' },
+  pound: { bar: '🌍', tag: 'EARTHQUAKE', icon: '🌍', name: 'QUAKE', baseIcon: '💥', baseName: 'POUND' },
+  meltdown: { bar: '☢', tag: 'NUKE', icon: '☢️', name: 'NUKE', baseIcon: '☢️', baseName: 'MELT' },
+  missiles: { bar: '🛰', tag: 'ORBITAL STRIKE', icon: '🛰️', name: 'ORBITAL', baseIcon: '🚀', baseName: 'MISSILES' },
+};
+
 const ENEMY_ICON: Record<EnemyType, string> = {
   scrapper: '🤖', brute: '🚧', spinner: '🪚', thief: '🦝',
   bulldoza: '🚜', frostbyte: '👾', grinder: '🔩', slush: '🔴', sleet: '🔵', omega: '💀', rival: '🚜', rallybot: '🧢', donald: '🍊',
@@ -2045,11 +2054,11 @@ export class UI implements UIAPI {
       H.whirl.querySelector('.ss-ab-icon')!.textContent = rockets ? '🔴' : '🌀';
       H.whirl.querySelector('.ss-ab-name')!.textContent = rockets ? 'LASER' : 'WHIRL';
       H.gauge.classList.toggle('hidden', rockets);
-      // The ultimate meter: ISOTOPE's ☢ Critical Mass, or the Classic Plow's 🔥 FIRESTORM.
-      const fireUlt = s.fAbility === 'fire';
-      H.crit.classList.toggle('ss-crit-fire', fireUlt);
-      H.crit.querySelector('.ss-batt-label')!.textContent = fireUlt ? '🔥' : '☢';
-      H.crit.querySelector('.ss-crit-tag')!.textContent = fireUlt ? 'FIRESTORM READY · F' : 'NUKE READY · F';
+      // The ultimate meter under the HP bar, one per plow.
+      const ult = ULT_HUD[s.fAbility];
+      H.crit.dataset.ult = s.fAbility;
+      H.crit.querySelector('.ss-batt-label')!.textContent = ult.bar;
+      H.crit.querySelector('.ss-crit-tag')!.textContent = `${ult.tag} READY · F`;
       this.refreshKeys();
       H.flame.classList.toggle('ss-ab-melt', melt);
       H.flame.classList.toggle('ss-ab-zap', zap);
@@ -2066,9 +2075,10 @@ export class UI implements UIAPI {
         H.flame.querySelector('.ss-ab-icon')!.textContent = '☢️';
         H.flame.querySelector('.ss-ab-name')!.textContent = full ? 'NUKE' : 'MELT';
         H.flame.classList.toggle('ss-ab-nuke', full);
-      } else if (s.fAbility === 'fire') {
-        H.flame.querySelector('.ss-ab-icon')!.textContent = full ? '🌋' : '🔥';
-        H.flame.querySelector('.ss-ab-name')!.textContent = full ? 'STORM' : 'FIRE';
+      } else {
+        const ult = ULT_HUD[s.fAbility];
+        H.flame.querySelector('.ss-ab-icon')!.textContent = full ? ult.icon : ult.baseIcon;
+        H.flame.querySelector('.ss-ab-name')!.textContent = full ? ult.name : ult.baseName;
         H.flame.classList.toggle('ss-ab-nuke', full);
       }
       L.crit = cm;
