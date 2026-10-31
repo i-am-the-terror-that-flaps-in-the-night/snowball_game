@@ -12,7 +12,7 @@
  *            Depth is quantised to a byte over 0..SNOW_Q_MAX metres. flags & 1 = full-field keyframe.
  * ---------------------------------------------------------------------------------------------- */
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const MSG_INPUT = 1;
 export const MSG_SNAP = 2;

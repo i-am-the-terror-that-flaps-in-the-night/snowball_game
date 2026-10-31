@@ -8,7 +8,7 @@ import type { UpgradeId } from '../config/upgrades';
 import {
   DUEL_BETWEEN_ROUNDS, DUEL_COUNTDOWN, DUEL_DRAW_EPS, DUEL_GARAGE_SECONDS, DUEL_MAX_ROUNDS, DUEL_REMATCH_GARAGE_SECONDS,
   DUEL_ROUND_END_DELAY, DUEL_ROUND_SECONDS, DUEL_ROUNDS_TO_WIN, DUEL_SNOW_REGEN, DUEL_SPAWNS, catchUp, cleanLevels,
-  duelPower, garageSpent, duelBonus } from '../config/duel';
+  duelPower, duelBonus, duelSpent, cleanDuelGear, type DuelGear } from '../config/duel';
 import { Plow } from '../entities/Plow';
 import { Combat } from '../entities/Combat';
 import { cosmeticsState } from '../meta/cosmetics';
@@ -36,6 +36,8 @@ export interface DuelProfile {
   look: Partial<Record<CosmeticSlot, string>>;
   /** Saved upgrade levels (the garage), coins on hand, and what those levels cost (from the cost curves). */
   levels: Partial<Record<UpgradeId, number>>;
+  /** Equipped gear (item id -> level); its grants are already inside `levels`. */
+  gear: DuelGear;
   coins: number;
   spent: number;
 }
@@ -397,7 +399,10 @@ export class DuelManager {
     const p = this.ctx.progression;
     // Gear counts: send what the plow fights with (Garage + equipped items).
     const levels = cleanLevels(p.effectiveLevels());
-    return { name: this.playerName ?? duelName(), plow: p.plow, look: { ...cosmeticsState(p).equipped }, levels, coins: p.coins, spent: garageSpent(levels) };
+    const eq: DuelGear = {};
+    for (const id of Object.values(p.gear.equipped)) if (id && p.itemLevel(id) > 0) eq[id] = p.itemLevel(id);
+    const gear = cleanDuelGear(eq);
+    return { name: this.playerName ?? duelName(), plow: p.plow, look: { ...cosmeticsState(p).equipped }, levels, gear, coins: p.coins, spent: duelSpent(levels, gear) };
   }
 
   private cleanProfile(raw: unknown): DuelProfile | null {
@@ -409,8 +414,9 @@ export class DuelManager {
     if (r.look && typeof r.look === 'object') for (const [k, v] of Object.entries(r.look as Record<string, unknown>)) if (typeof v === 'string' && v.length < 48) look[k as CosmeticSlot] = v;
     const coins = typeof r.coins === 'number' && Number.isFinite(r.coins) ? Math.max(0, Math.floor(r.coins)) : 0;
     const name = typeof r.name === 'string' && r.name.trim() ? r.name.trim().slice(0, 16) : 'Opponent';
-    // `spent` is recomputed from the levels, never trusted.
-    return { name, plow, look, levels, coins, spent: garageSpent(levels) };
+    const gear = cleanDuelGear(r.gear);
+    // `spent` is recomputed from the levels + gear, never trusted.
+    return { name, plow, look, levels, gear, coins, spent: duelSpent(levels, gear) };
   }
 
   /** Both plows at their spawns facing each other, nothing armed. */

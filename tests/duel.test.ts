@@ -3,7 +3,8 @@ import {
   INPUT_BYTES, NET_PLOW_LEN, NP, PressTracker, SNAP_BYTES, decodeInput, decodeSnap, decodeSnow, dequantDepth, encodeInput,
   encodeSnap, encodeSnow, fromJson, quantDepth, seqNewer, toJson, type InputFrame, type SnapHeader,
 } from '../src/net/protocol';
-import { CATCHUP_MAX, catchUp, catchUpBonus, cleanLevels, duelBonus, duelPower, garageSpent, sharedMatchCost } from '../src/config/duel';
+import { CATCHUP_MAX, catchUp, catchUpBonus, cleanDuelGear, cleanLevels, duelBonus, duelPower, duelSpent, garageSpent, sharedMatchCost } from '../src/config/duel';
+import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, gearSpent } from '../src/config/gear';
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/config/upgrades';
 import { Progression, computeStatsFor } from '../src/core/Progression';
 import { DuelWallet } from '../src/duel/DuelWallet';
@@ -378,5 +379,79 @@ describe('SnapBuffer (opponent interpolation)', () => {
     b.sample(9, 0, out);
     expect(out[NP.x]).toBeCloseTo(10);
     expect(out[NP.dead]).toBe(1);
+  });
+});
+
+/* ------------------------------------------------------------------ duel gear */
+
+describe('duel garage gear', () => {
+  const freshProg = (coins: number) => {
+    const p = new Progression();
+    p.data.coins = coins;
+    p.data.upgrades = {};
+    p.save();
+    return p;
+  };
+  const common = GEAR.find((d) => d.rarity === 'common')!;
+
+  it('duelSpent values equipped gear at its real price, not at the stat curves', () => {
+    const gear = { [common.id]: 3 };
+    const levels = { ...(gearLevels({ owned: gear, equipped: { [common.slot]: common.id } }) as Record<string, number>), engine: 2 };
+    expect(duelSpent(levels, gear)).toBe(garageSpent({ engine: 2 }) + gearSpent(common, 3));
+    expect(duelSpent({ engine: 2 }, {})).toBe(garageSpent({ engine: 2 }));
+  });
+
+  it('cleanDuelGear drops unknown ids, bad levels and second items in a slot', () => {
+    const sameSlot = GEAR.filter((d) => d.slot === common.slot);
+    const raw: Record<string, unknown> = { nope: 3, [sameSlot[0].id]: 99, [sameSlot[1].id]: 2, bad: 'x' };
+    const g = cleanDuelGear(raw);
+    expect(Object.keys(g)).toEqual([sameSlot[0].id]);
+    expect(g[sameSlot[0].id]).toBe(GEAR_MAX_LEVEL);
+    expect(cleanDuelGear(null)).toEqual({});
+  });
+
+  it('the bonus buys temporary gear that counts in effective levels and is committed at match start', () => {
+    const p = freshProg(0);
+    const before = store.get(SAVE_KEY);
+    const w = new DuelWallet(p, 1e6);
+    expect(w.paysItemWithBonus(common.id)).toBe(true);
+    expect(w.itemCost(common.id)).toBe(gearCost(common, 0));
+    expect(w.buyItem(common.id)).toBe(true);
+    expect(w.buyItem(common.id)).toBe(true);
+    expect(w.itemLevel(common.id)).toBe(2);
+    expect(w.isEquipped(common.id)).toBe(true);
+    const grants = gearLevels({ owned: { [common.id]: 2 }, equipped: { [common.slot]: common.id } });
+    expect(w.effectiveLevels()).toMatchObject(grants);
+    expect(w.bonus).toBe(1e6 - gearCost(common, 0) - gearCost(common, 1));
+    // Nothing reaches the save until the match starts...
+    expect(p.itemLevel(common.id)).toBe(0);
+    expect(store.get(SAVE_KEY)).toBe(before);
+    // ...then it's yours, equipped.
+    w.commitTemp();
+    expect(p.itemLevel(common.id)).toBe(2);
+    expect(p.isEquipped(common.id)).toBe(true);
+    expect(new Progression().itemLevel(common.id)).toBe(2);
+  });
+
+  it('falls back to real coins for gear once the bonus is short, and equip toggles work on bonus items', () => {
+    const p = freshProg(common.cost);
+    const w = new DuelWallet(p, 0);
+    expect(w.paysItemWithBonus(common.id)).toBe(false);
+    expect(w.buyItem(common.id)).toBe(true);
+    expect(p.itemLevel(common.id)).toBe(1);
+    expect(p.coins).toBe(0);
+    expect(w.toggleEquip(common.id)).toBe(true);
+    expect(w.isEquipped(common.id)).toBe(false);
+    expect(w.effectiveLevels()).toEqual({});
+    expect(w.canBuyItem(GEAR_BY_ID[common.id].id)).toBe(false);
+  });
+
+  it('stops at the max item level', () => {
+    const p = freshProg(0);
+    const w = new DuelWallet(p, 1e9);
+    for (let i = 0; i < GEAR_MAX_LEVEL + 3; i++) w.buyItem(common.id);
+    expect(w.itemLevel(common.id)).toBe(GEAR_MAX_LEVEL);
+    expect(w.itemCost(common.id)).toBe(Infinity);
+    expect(w.canBuyItem(common.id)).toBe(false);
   });
 });

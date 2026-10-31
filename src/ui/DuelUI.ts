@@ -102,7 +102,7 @@ export class DuelUI {
     this.lobby.setAttribute('aria-hidden', 'true');
     const lp = el('div', 'ss-panel ss-glass ss-icicles ss-duel-panel', undefined, this.lobby);
     el('h2', 'ss-h2', '⚔ DUEL', lp);
-    el('div', 'ss-sub', 'A quick 1v1 against a friend. Best of 3 rounds. Each of you brings your own garage, and the weaker garage gets catch-up coins.', lp);
+    el('div', 'ss-sub', 'A quick 1v1 against a friend. Best of 3 rounds. Each of you brings your own garage (upgrades + gear), and the weaker garage gets catch-up coins for upgrades or gear.', lp);
     this.lobbyChoose = el('div', 'ss-duel-choose', undefined, lp);
     const hostCol = el('div', 'ss-duel-col', undefined, this.lobbyChoose);
     el('div', 'ss-h3', 'Host', hostCol);

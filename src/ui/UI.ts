@@ -839,9 +839,7 @@ export class UI implements UIAPI {
       if (c.tab === 'line' && c.def.category !== plow.id) continue;
       if (!p.isMaxed(c.def.id) && p.canBuy(c.def.id)) affordable.set(c.tab, (affordable.get(c.tab) ?? 0) + 1);
     }
-    // Gear is always bought with your own coins (never duel catch-up coins).
-    const prog = this.ctx.progression;
-    for (const g of this.gearCards) if (prog.itemCost(g.def.id) < Infinity && prog.canBuyItem(g.def.id)) affordable.set('gear', (affordable.get('gear') ?? 0) + 1);
+    for (const g of this.gearCards) if (p.itemCost(g.def.id) < Infinity && p.canBuyItem(g.def.id)) affordable.set('gear', (affordable.get('gear') ?? 0) + 1);
     for (const [tid, t] of this.tabBtns) {
       const n = affordable.get(tid) ?? 0;
       t.badge.textContent = n ? String(n) : '';
@@ -912,7 +910,7 @@ export class UI implements UIAPI {
     const buy = el('button', 'ss-btn ss-buy', '', btns) as HTMLButtonElement;
     buy.type = 'button';
     buy.addEventListener('click', () => {
-      const p = this.ctx.progression;
+      const p = this.shop;
       if (!p.buyItem(def.id)) {
         this.sfx('error');
         restart(root, 'shake');
@@ -924,13 +922,14 @@ export class UI implements UIAPI {
     const equip = el('button', 'ss-btn ss-ice ss-gear-equip', '', btns) as HTMLButtonElement;
     equip.type = 'button';
     equip.addEventListener('click', () => {
-      if (this.ctx.progression.toggleEquip(def.id)) this.sfx('click');
+      if (this.shop.toggleEquip(def.id)) this.sfx('click');
     });
     return { def, root, lvl, grants, buy, equip };
   }
 
   private refreshGear(): void {
-    const p = this.ctx.progression;
+    const p = this.shop;
+    const dw = this.duelWallet;
     for (const slot of GEAR_SLOTS) {
       const id = p.gear.equipped[slot.id];
       const def = id ? GEAR.find((d) => d.id === id) : undefined;
@@ -951,8 +950,10 @@ export class UI implements UIAPI {
       c.root.classList.toggle('maxed', maxed);
       c.root.classList.toggle('poor', !maxed && !afford);
       c.root.classList.toggle('afford', afford);
-      c.buy.innerHTML = maxed ? '★ MAXED' : `${lvl ? '⬆ ' : ''}<span class="ss-coin sm"></span>${fmt(cost)}`;
-      c.buy.title = lvl ? 'Level up' : 'Buy';
+      const bonus = !!dw && !maxed && dw.paysItemWithBonus(c.def.id);
+      c.buy.classList.toggle('ss-bonus-buy', bonus);
+      c.buy.innerHTML = maxed ? '★ MAXED' : `${lvl ? '⬆ ' : ''}${bonus ? '🎁' : '<span class="ss-coin sm"></span>'}${fmt(cost)}`;
+      c.buy.title = bonus ? 'Paid with catch-up coins: yours to keep once the duel starts.' : lvl ? 'Level up' : 'Buy';
       c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
       c.equip.classList.toggle('hidden', !lvl);
       c.equip.textContent = on ? '✓ EQUIPPED' : 'EQUIP';
@@ -1000,7 +1001,7 @@ export class UI implements UIAPI {
       const bonus = !!dw && !maxed && dw.paysWithBonus(c.def.id);
       c.buy.classList.toggle('ss-bonus-buy', bonus);
       c.buy.innerHTML = maxed ? (c.def.maxLevel === 1 ? '✓ OWNED' : '★ MAXED') : `${bonus ? '🎁' : '<span class="ss-coin sm"></span>'}${fmt(p.cost(c.def.id))}`;
-      c.buy.title = bonus ? 'Paid with catch-up coins: this level is for this duel only.' : '';
+      c.buy.title = bonus ? 'Paid with catch-up coins: yours to keep once the duel starts.' : '';
       c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
     }
     this.refreshTabs();
@@ -1827,7 +1828,7 @@ export class UI implements UIAPI {
     this.shopTitle.textContent = 'DUEL GARAGE';
     this.shopSub.textContent =
       `Opponent garage: ${fmt(info.oppPower)} · Yours: ${fmt(info.ownPower)} · Catch-up: +${fmt(info.bonus)}. ` +
-      (info.bonus > 0 ? 'Catch-up coins are spent first and the upgrades are yours to keep; then your own coins buy upgrades as usual.' : 'Your own coins buy permanent upgrades as usual.');
+      (info.bonus > 0 ? 'Catch-up coins (🎁) pay first for upgrades or gear, and what they buy is yours to keep; then your own coins pay as usual.' : 'Your own coins buy permanent upgrades and gear as usual.');
     this.shopPreview.classList.add('hidden');
     this.plowPick.classList.add('hidden');
     this.shopBack.classList.add('hidden');

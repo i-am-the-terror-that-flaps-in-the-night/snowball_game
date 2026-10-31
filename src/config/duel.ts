@@ -1,10 +1,12 @@
 import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from './upgrades';
 import { ZONES, type ZoneDef } from './zones';
+import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearLevels, gearSpent, type GearSlot } from './gear';
 
 /* ------------------------------------------------------------------------------------------------
  * Online DUEL tuning: 1v1, best of 3 rounds in a campaign-size arena.
- * Each player fights with their OWN garage. Before the match both get a short DUEL GARAGE phase, and the weaker
- * garage gets CATCH-UP coins, spent first; what they buy is saved to the garage once the match starts.
+ * Each player fights with their OWN garage (core upgrades + equipped gear). Before the match both get a short DUEL
+ * GARAGE phase, and the weaker garage gets CATCH-UP coins, spent first on upgrades OR gear; what they buy is saved
+ * to the garage once the match starts. Garage value counts gear at what the items actually cost.
  * ---------------------------------------------------------------------------------------------- */
 
 /** The duel arena: Frostbite Yard's layout and size, no bots, no coins. */
@@ -63,6 +65,51 @@ export function garageSpent(levels: Partial<Record<UpgradeId, number>>): number 
     const raw = levels[def.id] ?? 0;
     const n = Number.isFinite(raw) ? Math.max(0, Math.min(def.maxLevel, MAX_NET_LEVEL, Math.floor(raw))) : 0;
     for (let l = 0; l < n; l++) total += upgradeCost(def, l);
+  }
+  return total;
+}
+
+/** Equipped gear as sent over the wire: item id -> item level (one item per slot). */
+export type DuelGear = Record<string, number>;
+
+/** Sanitise equipped gear received over the network: known ids only, levels 1..GEAR_MAX_LEVEL, one per slot. */
+export function cleanDuelGear(raw: unknown): DuelGear {
+  const out: DuelGear = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const slots = new Set<GearSlot>();
+  for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
+    const def = GEAR_BY_ID[id];
+    if (!def || slots.has(def.slot) || typeof v !== 'number' || !Number.isFinite(v) || v < 1) continue;
+    slots.add(def.slot);
+    out[id] = Math.min(GEAR_MAX_LEVEL, Math.floor(v));
+  }
+  return out;
+}
+
+/** Stat levels the equipped `gear` grants (same rules as the save's gearLevels). */
+export function duelGearLevels(gear: DuelGear): Partial<Record<UpgradeId, number>> {
+  const equipped: Partial<Record<GearSlot, string>> = {};
+  for (const id of Object.keys(gear)) {
+    const def = GEAR_BY_ID[id];
+    if (def) equipped[def.slot] = id;
+  }
+  return gearLevels({ owned: gear, equipped });
+}
+
+/** Garage value for the catch-up: core levels at the upgrade cost curves, plus the equipped items at what they
+ *  cost to buy and level. `levels` are EFFECTIVE levels (gear grants included); the grants are taken back out
+ *  first so gear isn't counted twice. */
+export function duelSpent(levels: Partial<Record<UpgradeId, number>>, gear: DuelGear): number {
+  const grants = duelGearLevels(gear);
+  const core: Partial<Record<UpgradeId, number>> = {};
+  for (const [id, n] of Object.entries(levels) as [UpgradeId, number][]) {
+    const l = n - (grants[id] ?? 0);
+    if (l > 0) core[id] = l;
+  }
+  let total = garageSpent(core);
+  for (const [id, lvl] of Object.entries(gear)) {
+    const def = GEAR_BY_ID[id];
+    if (def) total += gearSpent(def, lvl);
   }
   return total;
 }

@@ -1,5 +1,6 @@
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
+import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, type GearSlot, type GearState } from '../config/gear';
 import type { Progression } from '../core/Progression';
 
 /** What the Garage UI buys through: the save (Progression) or the pre-duel DuelWallet. */
@@ -11,6 +12,14 @@ export interface ShopWallet {
   cost(id: UpgradeId): number;
   canBuy(id: UpgradeId): boolean;
   buy(id: UpgradeId): boolean;
+  /** Gear (items): owned levels + what's equipped, as this wallet sees it. */
+  readonly gear: GearState;
+  itemLevel(id: string): number;
+  itemCost(id: string): number;
+  canBuyItem(id: string): boolean;
+  buyItem(id: string): boolean;
+  isEquipped(id: string): boolean;
+  toggleEquip(id: string): boolean;
 }
 
 /**
@@ -20,9 +29,16 @@ export interface ShopWallet {
  *
  * Effective level = saved level + temporary levels. A bonus purchase costs the price of the next EFFECTIVE level;
  * once the bonus can't cover that, the card falls back to a normal purchase at the saved level's price.
+ *
+ * Gear works the same way: the bonus buys temporary item levels (a new item or +1 level), and equipping in the duel
+ * garage edits a working copy of the loadout. Both are folded into the save by commitTemp() when the match starts.
  */
 export class DuelWallet implements ShopWallet {
   private temp: Partial<Record<UpgradeId, number>> = {};
+  /** Temporary item levels bought with the bonus. */
+  private tempGear: Record<string, number> = {};
+  /** Working copy of the equipped loadout (committed with the temp levels). */
+  private equipped: Partial<Record<GearSlot, string>>;
   private listeners = new Set<() => void>();
   /** Bonus coins handed out this garage phase / left to spend. */
   readonly bonusTotal: number;
@@ -33,6 +49,7 @@ export class DuelWallet implements ShopWallet {
     bonus: number,
   ) {
     this.bonusTotal = this.bonus = Math.max(0, Math.floor(bonus));
+    this.equipped = { ...p.gear.equipped };
   }
 
   onChange(fn: () => void): () => void {
@@ -99,15 +116,85 @@ export class DuelWallet implements ShopWallet {
     return true;
   }
 
-  /** Saved + temporary levels: what this player fights with. */
+  /** Saved + temporary levels + the working gear loadout: what this player fights with. */
   effectiveLevels(): Partial<Record<UpgradeId, number>> {
     const out: Partial<Record<UpgradeId, number>> = {};
-    const eff = this.p.effectiveLevels();
+    const fromGear = gearLevels(this.gear);
     for (const def of UPGRADES) {
-      const l = Math.min(def.maxLevel, (eff[def.id] ?? 0) + this.tempLevel(def.id));
+      const l = Math.min(def.maxLevel, this.p.level(def.id) + (fromGear[def.id] ?? 0) + this.tempLevel(def.id));
       if (l > 0) out[def.id] = l;
     }
     return out;
+  }
+
+  /* ---------------------------------------------------------------- gear */
+
+  get gear(): GearState {
+    const owned: Record<string, number> = { ...this.p.gear.owned };
+    for (const id of Object.keys(this.tempGear)) owned[id] = this.itemLevel(id);
+    return { owned, equipped: { ...this.equipped } };
+  }
+
+  tempItemLevel(id: string): number {
+    return this.tempGear[id] ?? 0;
+  }
+
+  itemLevel(id: string): number {
+    return Math.min(GEAR_MAX_LEVEL, this.p.itemLevel(id) + this.tempItemLevel(id));
+  }
+
+  /** Price of the next effective item level (what the bonus pays); Infinity at max / unknown id. */
+  bonusItemCost(id: string): number {
+    const def = GEAR_BY_ID[id];
+    return def ? gearCost(def, this.itemLevel(id)) : Infinity;
+  }
+
+  /** True if the next purchase of item `id` would come out of the bonus. */
+  paysItemWithBonus(id: string): boolean {
+    const c = this.bonusItemCost(id);
+    return c < Infinity && this.bonus >= c;
+  }
+
+  itemCost(id: string): number {
+    if (this.itemLevel(id) >= GEAR_MAX_LEVEL || !GEAR_BY_ID[id]) return Infinity;
+    return this.paysItemWithBonus(id) ? this.bonusItemCost(id) : this.p.itemCost(id);
+  }
+
+  canBuyItem(id: string): boolean {
+    if (this.itemCost(id) === Infinity) return false;
+    return this.paysItemWithBonus(id) || this.p.canBuyItem(id);
+  }
+
+  /** Buy (auto-equipped into an empty slot) or level up an item: bonus first, then real coins. */
+  buyItem(id: string): boolean {
+    const def = GEAR_BY_ID[id];
+    if (!def || !this.canBuyItem(id)) return false;
+    if (this.paysItemWithBonus(id)) {
+      this.bonus -= this.bonusItemCost(id);
+      this.tempGear[id] = this.tempItemLevel(id) + 1;
+    } else if (!this.p.buyItem(id)) return false;
+    if (!this.equipped[def.slot]) this.equipped[def.slot] = id;
+    this.changed();
+    return true;
+  }
+
+  isEquipped(id: string): boolean {
+    const def = GEAR_BY_ID[id];
+    return !!def && this.equipped[def.slot] === id;
+  }
+
+  toggleEquip(id: string): boolean {
+    const def = GEAR_BY_ID[id];
+    if (!def || !this.itemLevel(id)) return false;
+    if (this.equipped[def.slot] === id) delete this.equipped[def.slot];
+    else this.equipped[def.slot] = id;
+    this.changed();
+    return true;
+  }
+
+  /** Temporary item levels bought with the bonus (for the UI / tests). */
+  tempItemLevels(): Record<string, number> {
+    return { ...this.tempGear };
   }
 
   /** MATCH OPPONENT: raise every shared (non plow-specific) upgrade to the opponent's level, paid only from the
@@ -159,7 +246,7 @@ export class DuelWallet implements ShopWallet {
     return buys.length;
   }
 
-  /** Keep the duel garage's catch-up levels: fold them into the save (called when the match starts). */
+  /** Keep the duel garage's catch-up levels and gear loadout: fold them into the save (called when the match starts). */
   commitTemp(): void {
     let any = false;
     for (const [id, n] of Object.entries(this.temp) as [UpgradeId, number][]) {
@@ -168,6 +255,18 @@ export class DuelWallet implements ShopWallet {
       any = true;
     }
     this.temp = {};
+    const g = this.p.gear;
+    for (const [id, n] of Object.entries(this.tempGear)) {
+      if (!n) continue;
+      g.owned[id] = Math.min(GEAR_MAX_LEVEL, (g.owned[id] ?? 0) + n);
+      any = true;
+    }
+    this.tempGear = {};
+    const eq = this.equipped;
+    if (equipChanged(g.equipped, eq)) {
+      g.equipped = { ...eq };
+      any = true;
+    }
     if (any) this.p.commit();
   }
 
@@ -175,4 +274,10 @@ export class DuelWallet implements ShopWallet {
   tempLevels(): Partial<Record<UpgradeId, number>> {
     return { ...this.temp };
   }
+}
+
+function equipChanged(a: Partial<Record<GearSlot, string>>, b: Partial<Record<GearSlot, string>>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as GearSlot[]);
+  for (const k of keys) if (a[k] !== b[k]) return true;
+  return false;
 }
