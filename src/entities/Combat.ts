@@ -29,6 +29,23 @@ const BURN_VULN = 1.2;
 const FLAME_IGNITE_EVERY = 0.12;
 const BURN_SECONDS = 4;
 const BURN_TICK = 0.5;
+/** Inferno finisher: when the flames run out, the cone bursts in a fireball at its far half — radius (m), damage as a
+ *  multiple of burn dps (x your damage mult), knockback (m/s). */
+const FIREBALL_RADIUS = 4.5;
+const FIREBALL_MULT = 1.6;
+const FIREBALL_KNOCK = 12;
+/** FIRESTORM (Classic Plow's ultimate): fire damage you deal fills the 🔥 meter (this much fills it); then F
+ *  unleashes a 360° fire nova — FIRESTORM_MULT x burn dps across FIRESTORM_RADIUS (falling off to 50% at the rim),
+ *  big knockback — and leaves the ground burning for FIRE_FIELD_SECONDS, igniting anything that walks in. */
+const FIRESTORM_CHARGE = 700;
+const FIRESTORM_RADIUS = 13;
+const FIRESTORM_MULT = 3.5;
+const FIRESTORM_KNOCK = 18;
+const FIRE_FIELD_SECONDS = 4;
+const FIRE_FIELD_RADIUS = 10;
+const FIRE_FIELD_TICK = 0.3;
+/** Fire-field contact damage per second, as a share of burn dps (on top of the burn it keeps lit). */
+const FIRE_FIELD_DPS = 0.35;
 /** Thunderclap storm: duration, extra sky strikes (each = share of clap damage), field dps share. */
 const STORM_SECONDS = 2.5;
 const STORM_STRIKES = 7;
@@ -139,7 +156,15 @@ export class Combat implements CombatAPI {
   private flameCharge = 1;
   private flameT = 0;
   private flameIgniteT = 0;
-  private burns = new Map<EnemyHandle, { t: number; tickT: number }>();
+  /** Burning bots. `storm`: lit by the FIRESTORM (its burns don't refill the meter). */
+  private burns = new Map<EnemyHandle, { t: number; tickT: number; storm: boolean }>();
+  /** FIRESTORM burning ground: disc mesh, time left, centre, tick timer. */
+  private fireField!: THREE.Mesh;
+  private fireFieldMat!: THREE.MeshBasicMaterial;
+  private fireFieldT = 0;
+  private fireFieldX = 0;
+  private fireFieldZ = 0;
+  private fireFieldTickT = 0;
   private secondWindReadyAt = 0;
   /** Largest final damage already applied during the current i-frame window. */
   private iframeDmg = 0;
@@ -231,6 +256,11 @@ export class Combat implements CombatAPI {
       this.pools.push({ mesh, mat, x: 0, z: 0, r: 1, t: 0, life: 1, tickT: 0 });
     }
     this.buildArsenalFx(ctx.scene);
+    this.fireFieldMat = new THREE.MeshBasicMaterial({ color: 0xff5a10, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.fireField = new THREE.Mesh(poolGeo, this.fireFieldMat);
+    this.fireField.visible = false;
+    this.fireField.renderOrder = 2;
+    ctx.scene.add(this.fireField);
   }
 
   /** Re-bind to another pilot (the online Duel), or back to the single-player singletons (null). */
@@ -312,8 +342,11 @@ export class Combat implements CombatAPI {
     this.clapHeat = 0;
   }
 
+  /** ISOTOPE Critical Mass, or the Classic Plow's FIRESTORM meter (same slot: both mean "the next F is the ultimate"). */
   get critMass(): number {
-    return this.b.stats.meltDamage > 0 ? this.critCharge : -1;
+    const st = this.b.stats;
+    if (st.meltDamage > 0) return this.critCharge;
+    return st.plowKind === 'classic' && st.flameDps > 0 ? this.critCharge : -1;
   }
 
   get shieldFrac(): number {
@@ -1262,7 +1295,8 @@ export class Combat implements CombatAPI {
     }
     if (this.flameT <= 0 && this.flameCharge < 1) this.flameCharge = Math.min(1, this.flameCharge + (st.flameCooldown > 0 ? dt / st.flameCooldown : 1));
     if (this.b.input.wasPressed('KeyF') && !plow.dead) {
-      if (this.flameCharge >= 1 && this.flameT <= 0) {
+      if (this.critCharge >= 1) this.firestorm(plow);
+      else if (this.flameCharge >= 1 && this.flameT <= 0) {
         this.flameCharge = 0;
         this.flameT = FLAME_SECONDS;
         this.b.events.emit('ability', { nuke: false });
@@ -1282,6 +1316,7 @@ export class Combat implements CombatAPI {
       this.flameT = 0;
       return;
     }
+    if (this.flameT <= 0) this.fireball(plow);
     const fx = ctx.fx;
     // Embers, sparks and smoke on top of the shader cone, plus melted snow underneath.
     for (let i = 0; i < 4; i++) {
@@ -1312,9 +1347,7 @@ export class Combat implements CombatAPI {
       const dz = e.position.z - _tip.z;
       const d = Math.hypot(dx, dz);
       if (d > range + e.radius || (d > e.radius && (dx * _fwd.x + dz * _fwd.z) / d < FLAME_COS)) continue;
-      const b = this.burns.get(e);
-      if (b) b.t = BURN_SECONDS;
-      else this.burns.set(e, { t: BURN_SECONDS, tickT: 0.1 });
+      this.ignite(e, false);
       // Scorch: direct damage + a shove away from the blade while caught in the cone.
       const nd = d || 1;
       const hp0 = e.hp;
@@ -1324,7 +1357,157 @@ export class Combat implements CombatAPI {
         fromX: e.position.x,
         fromZ: e.position.z,
       });
-      this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false);
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.feedFire(dealt);
+      this.onPlayerHit(dealt, killed, e, false);
+    }
+    this.targets.length = 0;
+  }
+
+  /** Fire damage fills the Classic Plow's FIRESTORM meter (shares ISOTOPE's Critical Mass slot + net field). */
+  private feedFire(dealt: number): void {
+    if (dealt <= 0 || this.b.stats.plowKind !== 'classic') return;
+    const was = this.critCharge;
+    this.critCharge = Math.min(1, this.critCharge + dealt / FIRESTORM_CHARGE);
+    if (was < 1 && this.critCharge >= 1 && this.b.local) {
+      this.ctx.ui.toast('🔥 FIRESTORM READY · F', 'info');
+      this.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });
+    }
+  }
+
+  /** Ignite `e` (or refresh its burn). */
+  private ignite(e: EnemyHandle, storm: boolean): void {
+    if (!e.alive) return;
+    const b = this.burns.get(e);
+    if (b) {
+      b.t = BURN_SECONDS;
+      b.storm = storm;
+    } else this.burns.set(e, { t: BURN_SECONDS, tickT: 0.1, storm });
+  }
+
+  /** One fire blast: damage with falloff, knockback out from (x, z), ignite. `feed`: counts toward the FIRESTORM
+   *  meter (the FIRESTORM's own blast doesn't, so it can't chain). Returns the bots hit. */
+  private fireBlast(x: number, z: number, R: number, dmg: number, knock: number, rim: number, text: string, feed: boolean): number {
+    const hits = this.collect(x, z, R);
+    let n = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - x;
+      const dz = e.position.z - z;
+      const d = Math.hypot(dx, dz);
+      const nd = d || 1;
+      const fall = 1 - (1 - rim) * Math.min(1, d / R);
+      this.ignite(e, !feed);
+      const hp0 = e.hp;
+      const killed = this.b.enemies.damage(e, dmg * fall * this.b.stats.damageMult * this.hitMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3((dx / nd) * knock, 0, (dz / nd) * knock),
+        fromX: x,
+        fromZ: z,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      if (feed) this.feedFire(dealt);
+      this.onPlayerHit(dealt, killed, e, false);
+      if (dealt > 0) {
+        _tip.set(e.position.x, e.position.y + e.radius + 1.3, e.position.z);
+        this.ctx.fx.floatText(_tip, `${text}${Math.round(dealt)}`, '#ffb040', 1.1);
+      }
+      n++;
+    }
+    this.targets.length = 0;
+    return n;
+  }
+
+  /** Inferno finisher: the cone's far half bursts in a fireball as the flames run out. */
+  private fireball(plow: PlowAPI): void {
+    const st = this.b.stats;
+    const ctx = this.ctx;
+    plow.getForward(_fwd);
+    plow.getBladeTip(_tip);
+    const k = st.flameRange * 0.6;
+    const x = _tip.x + _fwd.x * k;
+    const z = _tip.z + _fwd.z * k;
+    _q.set(x, 1.2, z);
+    ctx.fx.burst(_q, { color: 0xff6a10, count: 36, speed: 12, size: 0.42, gravity: -3, life: 0.6 });
+    ctx.fx.burst(_q, { color: 0xffe070, count: 18, speed: 7, size: 0.3, gravity: -6, life: 0.5 });
+    ctx.fx.burst(_q, { color: 0x2c2628, count: 10, speed: 3, size: 0.9, gravity: -2.5, life: 1.2 });
+    _q.set(x, 0.15, z);
+    ctx.fx.ring(_q, FIREBALL_RADIUS, 0xff8a20);
+    ctx.fx.ring(_q, FIREBALL_RADIUS * 0.55, 0xffe070);
+    this.shake(0.45);
+    this.impactHit('meltdown', _q.set(x, 1, z), 0.7);
+    this.b.audio.play('explosion', { volume: 0.7, pitch: 0.85 });
+    this.b.snow?.melt(x, z, FIREBALL_RADIUS * 0.8, 1);
+    this.fireBlast(x, z, FIREBALL_RADIUS, st.flameDps * FIREBALL_MULT, FIREBALL_KNOCK, 0.6, '💥', true);
+  }
+
+  /** FIRESTORM: meter full + F — a 360° fire nova around the plow, then burning ground. */
+  private firestorm(plow: PlowAPI): void {
+    const st = this.b.stats;
+    const ctx = this.ctx;
+    this.critCharge = 0;
+    this.b.events.emit('ability', { nuke: true });
+    const x = plow.position.x;
+    const z = plow.position.z;
+    ctx.ui.toast(this.b.local ? '🔥 FIRESTORM!' : '🔥 INCOMING FIRESTORM!', 'big');
+    _q.set(x, 0.15, z);
+    for (const [r, c] of [[0.35, 0xfff0a0], [0.65, 0xffb040], [1, 0xff5a10], [1.12, 0x8a1a00]] as const) ctx.fx.ring(_q, FIRESTORM_RADIUS * r, c);
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      for (const k of [0.35, 0.7, 1]) {
+        _q.set(x + Math.sin(a) * FIRESTORM_RADIUS * k, 0.8, z + Math.cos(a) * FIRESTORM_RADIUS * k);
+        ctx.fx.burst(_q, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 4, speed: 5, size: 0.45, gravity: -6, life: 0.7 });
+      }
+    }
+    _q.set(x, 2.5, z);
+    ctx.fx.burst(_q, { color: 0xffe070, count: 60, speed: 16, size: 0.35, gravity: -2, life: 0.8 });
+    ctx.fx.burst(_q, { color: 0x2c2628, count: 24, speed: 5, size: 1.2, gravity: -2.5, life: 1.6 });
+    this.shake(1);
+    this.impactHit('nuke', _q.set(x, 1, z));
+    this.b.audio.play('explosion', { volume: 1, pitch: 0.6 });
+    this.b.audio.play('roar', { volume: 0.7, pitch: 1.3 });
+    this.b.snow?.melt(x, z, FIRE_FIELD_RADIUS, 1);
+    this.fireBlast(x, z, FIRESTORM_RADIUS, st.flameDps * FIRESTORM_MULT, FIRESTORM_KNOCK, 0.5, '🔥', false);
+    this.fireFieldT = FIRE_FIELD_SECONDS;
+    this.fireFieldX = x;
+    this.fireFieldZ = z;
+    this.fireFieldTickT = 0;
+    this.fireField.position.set(x, 0.07, z);
+    this.fireField.scale.setScalar(FIRE_FIELD_RADIUS);
+    this.fireField.visible = true;
+  }
+
+  /** FIRESTORM burning ground: flickers, keeps everything inside alight, small contact damage. */
+  private updateFireField(dt: number): void {
+    if (this.fireFieldT <= 0) return;
+    this.fireFieldT -= dt;
+    if (this.fireFieldT <= 0) {
+      this.fireField.visible = false;
+      return;
+    }
+    const ctx = this.ctx;
+    const fade = Math.min(1, this.fireFieldT / 0.8, (FIRE_FIELD_SECONDS - this.fireFieldT) / 0.2 + 0.3);
+    this.fireFieldMat.opacity = (0.3 + 0.1 * Math.sin(ctx.time * 11) + 0.05 * Math.random()) * fade;
+    for (let i = 0; i < 3; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * FIRE_FIELD_RADIUS;
+      _q.set(this.fireFieldX + Math.sin(a) * rr, 0.4, this.fireFieldZ + Math.cos(a) * rr);
+      ctx.fx.burst(_q, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 2, speed: 2, size: 0.35, gravity: -7, life: 0.5 });
+    }
+    this.fireFieldTickT -= dt;
+    if (this.fireFieldTickT > 0) return;
+    this.fireFieldTickT = FIRE_FIELD_TICK;
+    const st = this.b.stats;
+    const hits = this.collect(this.fireFieldX, this.fireFieldZ, FIRE_FIELD_RADIUS);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      this.ignite(e, true);
+      const hp0 = e.hp;
+      const killed = this.b.enemies.damage(e, st.flameDps * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e, false);
     }
     this.targets.length = 0;
   }
@@ -1355,6 +1538,7 @@ export class Combat implements CombatAPI {
         const hp0 = e.hp;
         const killed = this.b.enemies.damage(e, dps * this.b.stats.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+        if (!b.storm) this.feedFire(dealt);
         this.onPlayerHit(dealt, killed, e, false);
         if (dealt > 0) {
           _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
@@ -2004,6 +2188,8 @@ export class Combat implements CombatAPI {
     this.flameT = 0;
     this.flameCharge = 1;
     this.burns.clear();
+    this.fireFieldT = 0;
+    this.fireField.visible = false;
     this.meltCharge = 1;
     this.missileCharge = 1;
     this.gunT = this.gunBurstT = 0;
@@ -2037,6 +2223,7 @@ export class Combat implements CombatAPI {
     if (this.guardT > 0) this.guardT = Math.max(0, this.guardT - dt);
     this.updateFlame(dt);
     this.updateBurns(dt);
+    this.updateFireField(dt);
     this.updateClap(dt);
     this.updatePound(dt);
     this.updateStorm(dt);

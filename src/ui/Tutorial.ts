@@ -28,7 +28,7 @@ const PAD_LABEL: Partial<Record<Action, string>> = {
 
 /** F-ability lesson text per plow (PlowDef.fAbility). */
 const F_INFO: Partial<Record<PlowDef['fAbility'], { title: string; text: string }>> = {
-  fire: { title: 'Inferno', text: 'Breathe a cone of fire from the blade: it ignites bots and melts snow. Point it at the bot!' },
+  fire: { title: 'Inferno', text: 'Breathe a cone of fire from the blade: it ignites bots, melts snow and ends in a fireball. Point it at the bot! Fire damage fills the 🔥 bar: when it is full, F unleashes a FIRESTORM.' },
   zap: {
     title: 'Thunderclap',
     text: 'Call down a lightning blast around your plow: damage, shock-slow and knockback. Each clap shocks you a little — spam it and the backlash escalates fast.',

@@ -27,7 +27,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'Classic Plow',
     icon: '🚜',
     tagline: 'The trusty orange municipal plow. Tough, heavy-hitting, runs on diesel.',
-    traits: ['+25% HP', 'Full slam damage', 'F: Inferno fire cone (free)'],
+    traits: ['+25% HP', 'Full slam damage', 'F: Inferno fire cone + fireball finisher (free)', 'Fire damage builds FIRESTORM: full = 360° fire nova on F'],
     hpMult: 1.25,
     speedMult: 1,
     accelMult: 1,

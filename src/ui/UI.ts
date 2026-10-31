@@ -2045,6 +2045,11 @@ export class UI implements UIAPI {
       H.whirl.querySelector('.ss-ab-icon')!.textContent = rockets ? '🔴' : '🌀';
       H.whirl.querySelector('.ss-ab-name')!.textContent = rockets ? 'LASER' : 'WHIRL';
       H.gauge.classList.toggle('hidden', rockets);
+      // The ultimate meter: ISOTOPE's ☢ Critical Mass, or the Classic Plow's 🔥 FIRESTORM.
+      const fireUlt = s.fAbility === 'fire';
+      H.crit.classList.toggle('ss-crit-fire', fireUlt);
+      H.crit.querySelector('.ss-batt-label')!.textContent = fireUlt ? '🔥' : '☢';
+      H.crit.querySelector('.ss-crit-tag')!.textContent = fireUlt ? 'FIRESTORM READY · F' : 'NUKE READY · F';
       this.refreshKeys();
       H.flame.classList.toggle('ss-ab-melt', melt);
       H.flame.classList.toggle('ss-ab-zap', zap);
@@ -2060,6 +2065,10 @@ export class UI implements UIAPI {
       if (s.fAbility === 'meltdown') {
         H.flame.querySelector('.ss-ab-icon')!.textContent = '☢️';
         H.flame.querySelector('.ss-ab-name')!.textContent = full ? 'NUKE' : 'MELT';
+        H.flame.classList.toggle('ss-ab-nuke', full);
+      } else if (s.fAbility === 'fire') {
+        H.flame.querySelector('.ss-ab-icon')!.textContent = full ? '🌋' : '🔥';
+        H.flame.querySelector('.ss-ab-name')!.textContent = full ? 'STORM' : 'FIRE';
         H.flame.classList.toggle('ss-ab-nuke', full);
       }
       L.crit = cm;
