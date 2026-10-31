@@ -846,6 +846,7 @@ export class Plow implements PlowAPI {
     this.time += dt;
     if (stats.bladeWidth !== this.bladeWidth) this.setBladeWidth(stats.bladeWidth);
     if (stats.maxHp !== this.maxHp) this.applyStats(stats);
+    this.gearVis.update(this.time);
     const dead = s[o + NP.dead] > 0.5;
     const prevHeading = this.heading;
     this.position.x = s[o + NP.x];
@@ -2211,7 +2212,10 @@ export class Plow implements PlowAPI {
     if (dashing) {
       const s = 1.6 + Math.random() * 1.2;
       this.flame.scale.set(1.6, s, 1.6);
-      this.flameMat.color.setHSL(this.kind === 'volt' ? 0.53 + Math.random() * 0.04 : 0.06 + Math.random() * 0.05, 1, this.kind === 'volt' ? 0.65 : 0.55);
+      // Flicker; a booster item's tint (gear) replaces the plow's own hue.
+      const tint = this.gearVis.flame;
+      if (tint !== null) this.flameMat.color.setHex(tint).multiplyScalar(0.85 + Math.random() * 0.3);
+      else this.flameMat.color.setHSL(this.kind === 'volt' ? 0.53 + Math.random() * 0.04 : 0.06 + Math.random() * 0.05, 1, this.kind === 'volt' ? 0.65 : 0.55);
       this.ghostT -= dt;
       if (this.ghostT <= 0) {
         this.ghostT = 0.05;

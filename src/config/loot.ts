@@ -6,7 +6,7 @@ import { GEAR, GEAR_MAX_LEVEL, RARITY_COLOR, type GearDef, type Rarity } from '.
  * already ★10 -> coins instead. Works on GEAR generically (by rarity), never on specific ids.
  * ---------------------------------------------------------------------------------------------- */
 
-export type LootSource = 'bossFirst' | 'boss' | 'hard' | 'survivalBoss' | 'brawl1' | 'brawl2' | 'brawl3';
+export type LootSource = 'bossFirst' | 'boss' | 'hard' | 'hardRepeat' | 'survivalBoss' | 'brawl1' | 'brawl2' | 'brawl3';
 
 export interface LootRule {
   /** Chance (0..1) that this source drops anything. */
@@ -20,7 +20,9 @@ export interface LootRule {
 export const LOOT_RULES: Record<LootSource, LootRule> = {
   bossFirst: { chance: 1, weights: { common: 50, rare: 35, epic: 12, legendary: 3 }, label: 'First clear' },
   boss: { chance: 0.35, weights: { common: 60, rare: 30, epic: 8, legendary: 2 }, label: 'Boss drop' },
-  hard: { chance: 1, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'Hard clear' },
+  hard: { chance: 1, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'First Hard clear' },
+  // Repeat Hard clears keep the good odds but don't always drop (otherwise Hard arena 1 is a gear farm).
+  hardRepeat: { chance: 0.35, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'Hard clear' },
   survivalBoss: { chance: 0.3, weights: { common: 45, rare: 35, epic: 15, legendary: 5 }, label: 'Boss wave' },
   brawl1: { chance: 1, weights: { common: 35, rare: 40, epic: 18, legendary: 7 }, label: '1st place' },
   brawl2: { chance: 0.4, weights: { common: 55, rare: 32, epic: 10, legendary: 3 }, label: '2nd place' },

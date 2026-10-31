@@ -401,6 +401,15 @@ describe('duel garage gear', () => {
     expect(duelSpent({ engine: 2 }, {})).toBe(garageSpent({ engine: 2 }));
   });
 
+  it('duelSpent ignores claimed gear that does not match the levels', () => {
+    const fake = { [common.id]: 10 };
+    // Claims a ★10 item but fights with none of its stats: valued on the levels alone.
+    expect(duelSpent({ engine: 2 }, fake)).toBe(garageSpent({ engine: 2 }));
+    const grants = gearLevels({ owned: { [common.id]: 1 }, equipped: { [common.slot]: common.id } }) as Record<string, number>;
+    // Fights with ★1 stats but claims ★10: also rejected.
+    expect(duelSpent({ ...grants }, fake)).toBe(garageSpent(grants));
+  });
+
   it('cleanDuelGear drops unknown ids, bad levels and second items in a slot', () => {
     const sameSlot = GEAR.filter((d) => d.slot === common.slot);
     const raw: Record<string, unknown> = { nope: 3, [sameSlot[0].id]: 99, [sameSlot[1].id]: 2, bad: 'x' };

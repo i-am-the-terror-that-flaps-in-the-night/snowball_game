@@ -23,7 +23,7 @@ import { Impact } from '../fx/impact';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
-import { ChallengeTracker, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
+import { ChallengeTracker, hardCleared, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
 import { renderFrame } from '../render/post';
@@ -319,6 +319,9 @@ export class Game {
   }
 
   private newRun(): RunTally {
+    // A new run / match never inherits a half-open kill-cam window or a pending banner.
+    this.ultCam?.reset();
+    this.ultToastT = 0;
     return {
       kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false,
       killsBy: { slam: 0, ram: 0, whirl: 0, other: 0 }, damage: 0, start: this.ctx?.time ?? 0, loot: [],
@@ -571,6 +574,7 @@ export class Game {
     const { ctx } = this;
     this.state = 'playing';
     ctx.waves.start(ctx.zone, this.roundIndex);
+    this.ultCam.reset();
     ctx.events.emit('roundStarted', { round: this.roundIndex + 1, total: ctx.zone.rounds.length, boss: this.isBossRound });
     ctx.audio.play('roundStart');
     const label = this.mode === 'survival' ? `WAVE ${this.survival.wave}` : `ROUND ${this.roundIndex + 1}`;
@@ -608,12 +612,13 @@ export class Game {
     this.run.bossDefeated = true;
     // Hard mode never changes unlocks; it records its own clear (meta/challenges.ts) and pays its own reward.
     const firstClear = ctx.progression.recordRun(this.zoneIndex, ctx.zone.rounds.length, !this.hard, this.run.kills) && !this.hard;
+    const firstHard = this.hard && !hardCleared(ctx.progression, this.zoneIndex);
     const reward = this.hard
       ? recordHardClear(ctx.progression, this.zoneIndex)
       : firstClear ? ctx.zone.clearReward : Math.round(ctx.zone.clearReward * 0.4);
     ctx.progression.addCoins(reward);
     this.run.coins += reward;
-    const loot = ctx.progression.rollLoot(this.hard ? 'hard' : firstClear ? 'bossFirst' : 'boss');
+    const loot = ctx.progression.rollLoot(this.hard ? (firstHard ? 'hard' : 'hardRepeat') : firstClear ? 'bossFirst' : 'boss');
     if (loot) this.run.loot.push(loot);
     const next = ZONES[this.zoneIndex + 1];
     const summary: RunSummary = {
@@ -785,7 +790,7 @@ export class Game {
 
   /** Advance the simulation by dt seconds without rendering (also used by headless playtests). */
   tick(dt: number): void {
-    if (this.ultToastT > 0 && (this.ultToastT -= dt) <= 0) this.ctx.ui.toast(ultCamLabel(Math.max(this.ultToastMin, this.ultCam.kills)), 'big');
+    if (this.ultToastT > 0 && this.ultCamAllowed() && (this.ultToastT -= dt) <= 0) this.ctx.ui.toast(ultCamLabel(Math.max(this.ultToastMin, this.ultCam.kills)), 'big');
     if (this.state === 'duel') {
       this.tickDuel(dt);
       return;

@@ -17,7 +17,7 @@ Every arena has **3 challenge stars** and, once cleared, a **Hard mode**:
   clear pays 2.5× the arena's clear reward (repeats 0.6×) and earns a 💀 badge on its card. Hard clears never change
   unlocks.
 
-Boss clears drop gear: the first clear always does, repeat clears sometimes, and Hard clears always with better odds
+Boss clears drop gear: the first clear always does, repeat clears sometimes, and Hard clears with better odds (always on the first Hard clear)
 (see [progression.md](progression.md#loot)).
 
 ## Snowdome Brawl

@@ -517,6 +517,8 @@ export class DuelManager {
       }
       case 'loadout': {
         this.levels[1] = cleanLevels(m.levels);
+        // What the guest wears after the duel garage (shown on its plow; stats come from `levels`).
+        if (m.gear && this.profiles[1]) this.profiles[1].gear = cleanDuelGear(m.gear);
         if (m.final === true && this.garageClosing >= 0) this.hostStartMatch();
         return;
       }
@@ -550,6 +552,7 @@ export class DuelManager {
     if (this.garageClosing >= 0) return;
     this.garageClosing = 3;
     this.levels[0] = this.wallet ? this.wallet.effectiveLevels() : this.profiles[0]!.levels;
+    if (this.wallet) this.profiles[0]!.gear = walletGear(this.wallet);
     this.closeGarageUi();
     this.sendCtl({ t: 'garageEnd' });
   }
@@ -563,7 +566,7 @@ export class DuelManager {
     const lb = this.levels[1] ?? b.levels;
     // The host computes BOTH players' stats from the levels they bring: one source of truth.
     this.stats = [computeStatsFor(la, a.plow), computeStatsFor(lb, b.plow)];
-    this.sendCtl({ t: 'match', stats: this.stats, names: [a.name, b.name], plows: [a.plow, b.plow], looks: [a.look, b.look] });
+    this.sendCtl({ t: 'match', stats: this.stats, names: [a.name, b.name], plows: [a.plow, b.plow], looks: [a.look, b.look], gears: [a.gear, b.gear] });
     this.applyMatch();
     this.hostStartRound(1);
   }
@@ -816,7 +819,7 @@ export class DuelManager {
         this.refreshBanner();
         return;
       case 'garageEnd':
-        this.sendCtl({ t: 'loadout', levels: this.wallet ? this.wallet.effectiveLevels() : this.profiles[1]?.levels ?? {}, final: true });
+        this.sendCtl({ t: 'loadout', levels: this.wallet ? this.wallet.effectiveLevels() : this.profiles[1]?.levels ?? {}, gear: this.wallet ? walletGear(this.wallet) : this.profiles[1]?.gear ?? {}, final: true });
         this.closeGarageUi();
         return;
       case 'match': {
@@ -827,6 +830,8 @@ export class DuelManager {
         const looks = m.looks as Partial<Record<CosmeticSlot, string>>[] | undefined;
         if (this.profiles[0] && names) this.profiles[0].name = String(names[0]).slice(0, 16);
         if (this.profiles[0] && looks?.[0]) this.profiles[0].look = looks[0];
+        const gears = m.gears as unknown[] | undefined;
+        if (this.profiles[0] && gears?.[0]) this.profiles[0].gear = cleanDuelGear(gears[0]);
         this.applyMatch();
         return;
       }
@@ -1337,4 +1342,12 @@ export class DuelManager {
       haveSnap: this.haveSnap, buffered: this.buffer.size,
     };
   }
+}
+
+/** The equipped items (id -> level) a duel-garage wallet ends up with, sanitised like a network profile. */
+function walletGear(w: DuelWallet): DuelGear {
+  const g = w.gear;
+  const out: DuelGear = {};
+  for (const id of Object.values(g.equipped)) if (id && g.owned[id]) out[id] = g.owned[id];
+  return cleanDuelGear(out);
 }

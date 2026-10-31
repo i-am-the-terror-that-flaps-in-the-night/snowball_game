@@ -101,6 +101,11 @@ export function duelGearLevels(gear: DuelGear): Partial<Record<UpgradeId, number
  *  first so gear isn't counted twice. */
 export function duelSpent(levels: Partial<Record<UpgradeId, number>>, gear: DuelGear): number {
   const grants = duelGearLevels(gear);
+  // Item-only stats come from gear alone, so they must match what the claimed gear grants exactly. If they don't
+  // (a stale or tampered profile), ignore the gear and value the levels the pilot actually fights with.
+  for (const def of UPGRADES) {
+    if (def.itemOnly && (levels[def.id] ?? 0) !== (grants[def.id] ?? 0)) return garageSpent(levels);
+  }
   const core: Partial<Record<UpgradeId, number>> = {};
   for (const [id, n] of Object.entries(levels) as [UpgradeId, number][]) {
     const l = n - (grants[id] ?? 0);
