@@ -5,6 +5,7 @@ import type { ZoneDef } from '../config/zones';
 import type { EnemyType } from '../config/enemies';
 import type { UpgradeId } from '../config/upgrades';
 import type { Progression } from './Progression';
+import type { LootDrop } from '../config/loot';
 
 /* ------------------------------------------------------------------------------------------------
  * SNOWPLOW SHOWDOWN — PvE close-quarters arena brawler. The player's plow fights bot minions and
@@ -630,6 +631,8 @@ export interface BrawlResult {
   coinsEarned: number;
   placementBonus: number;
   leaderboard: BrawlEntry[];
+  /** Gear loot for the placement (filled in by Game, not the BrawlManager). */
+  loot?: LootDrop | null;
 }
 
 /** Brawl mode: the player + N named rival bot plows in a huge arena, everyone hunting everyone.
@@ -669,6 +672,8 @@ export interface RunSummary {
   daily?: boolean;
   /** Survival run result (wave reached, best, new record); absent for campaign runs. */
   survival?: { wave: number; best: number; newBest: boolean; endedEarly?: boolean };
+  /** Gear loot this run dropped (boss / Hard clear, Survival boss waves). */
+  loot?: LootDrop[];
 }
 
 export interface SurvivalShopOpts {
@@ -680,6 +685,8 @@ export interface SurvivalShopOpts {
   nextSpecial: { name: string; icon: string; blurb: string } | null;
   /** Coins for a Full Repair. */
   repairCost: number;
+  /** Gear the boss wave just cleared dropped, if any. */
+  loot?: LootDrop | null;
   /** True while the plow is below max HP (repair offered). */
   canRepair(): boolean;
   /** Attempt the repair; returns true if it went through. */

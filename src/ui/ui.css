@@ -1250,3 +1250,20 @@
 .ss-crit[data-ult='missiles'] .ss-batt-bar { border-color: rgba(255, 120, 110, 0.9); background: rgba(40, 0, 0, 0.6); }
 .ss-crit[data-ult='missiles'] .ss-batt-fill { background: linear-gradient(90deg, #8a1010, #ff6a5a); box-shadow: 0 0 8px #d8262a; }
 .ss-crit[data-ult='missiles'] .ss-crit-tag { color: #ffd8d0; text-shadow: 0 0 6px #d8262a, 0 1px 2px #000; }
+
+/* ---- Gear loot reveal (ui/LootReveal.ts) */
+.ss-loot { margin: 12px auto 4px; max-width: 460px; display: flex; flex-direction: column; gap: 6px; }
+.ss-loot-head { font-weight: 900; letter-spacing: 0.08em; font-size: 13px; color: #6b4fd8; text-align: center; }
+.ss-loot-card {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px;
+  background: #fff; border: 2px solid var(--acc, #8fa3b8); box-shadow: 0 3px 0 var(--acc, #8fa3b8), 0 0 18px color-mix(in srgb, var(--acc, #8fa3b8) 35%, transparent);
+  animation: ss-loot-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.ss-loot-icon { font-size: 30px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2)); }
+.ss-loot-info { flex: 1; min-width: 0; text-align: left; }
+.ss-loot-name { font-weight: 900; color: #1d2b3a; }
+.ss-loot-sub { font-size: 11px; font-weight: 700; color: var(--acc, #8fa3b8); letter-spacing: 0.04em; }
+.ss-loot-tag { font-weight: 900; font-size: 13px; padding: 3px 8px; border-radius: 8px; background: var(--acc, #8fa3b8); color: #fff; white-space: nowrap; }
+.ss-loot-coins { background: #e0a52a; }
+@keyframes ss-loot-pop { from { opacity: 0; transform: scale(0.6) translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ss-loot-card { animation: none; } }

@@ -1,6 +1,7 @@
 import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, REMOVED_GEAR, gearCost, gearLevels, gearSpent, type GearDef, type GearSlot, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
+import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
 import type { PlayerStats } from './types';
 import { PLOWS, type PlowKind } from '../config/plows';
 
@@ -323,6 +324,27 @@ export class Progression {
     else g.equipped[def.slot] = id;
     this.changed();
     return true;
+  }
+
+  /**
+   * Roll gear loot from `source` (config/loot.ts) and apply it: a new item (auto-equipped into an empty slot), +1
+   * item level, or coins for a ★10 item. `chance` overrides the source's own (Survival scales it by wave). Returns
+   * the drop, or null when the roll misses. Saves.
+   */
+  rollLoot(source: LootSource, rnd: Rng = Math.random, chance = LOOT_RULES[source].chance): LootDrop | null {
+    if (rnd() >= chance) return null;
+    const def = pickItem(rollRarity(LOOT_RULES[source].weights, rnd), rnd);
+    const drop = resolveDrop(source, def, this.itemLevel(def.id));
+    const g = this.gear;
+    if (drop.outcome === 'coins') {
+      this.data.coins += drop.coins;
+      this.data.totalCoinsEarned += drop.coins;
+    } else {
+      g.owned[def.id] = drop.level;
+      if (!g.equipped[def.slot]) g.equipped[def.slot] = def.id;
+    }
+    this.changed();
+    return drop;
   }
 
   /** Garage levels + equipped gear: what the plow actually fights with. */

@@ -30,6 +30,7 @@ import { renderFrame } from '../render/post';
 import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
+import { brawlLootSource, survivalLootChance, type LootDrop } from '../config/loot';
 import { ULT_CAM_SECONDS, ULT_CAM_TOAST_DELAY, UltKillCam, ultCamLabel } from '../fx/ultCam';
 import type { GameEvents, KillSource } from './events';
 import { DuelManager, type DuelRole } from '../duel/DuelManager';
@@ -65,6 +66,8 @@ interface RunTally {
   damage: number;
   /** ctx.time when the run started (ctx.time only advances while the sim runs). */
   start: number;
+  /** Gear loot dropped this run. */
+  loot: LootDrop[];
 }
 
 function bossIntroTitle(types: EnemyType[]): string {
@@ -318,7 +321,7 @@ export class Game {
   private newRun(): RunTally {
     return {
       kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false,
-      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0 }, damage: 0, start: this.ctx?.time ?? 0,
+      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0 }, damage: 0, start: this.ctx?.time ?? 0, loot: [],
     };
   }
 
@@ -431,16 +434,19 @@ export class Game {
     const { ctx } = this;
     ctx.pickups.collectAll();
     ctx.combat.clear(true);
-    if (this.survival.isBossWave) this.run.bossDefeated = true;
+    const bossWave = this.survival.isBossWave;
+    if (bossWave) this.run.bossDefeated = true;
     const bonus = this.survival.waveCleared();
     this.run.coins += bonus;
     ctx.audio.play('roundClear');
     ctx.ui.toast(`WAVE ${this.survival.wave} CLEARED! +${bonus}`, 'good');
-    this.openSurvivalShop();
+    const loot = bossWave ? ctx.progression.rollLoot('survivalBoss', Math.random, survivalLootChance(this.survival.wave)) : null;
+    if (loot) this.run.loot.push(loot);
+    this.openSurvivalShop(loot);
   }
 
   /** Between-wave PIT STOP: the sim is frozen (state 'shop') until NEXT WAVE, then the breather countdown runs. */
-  private openSurvivalShop(): void {
+  private openSurvivalShop(loot: LootDrop | null = null): void {
     const { ctx } = this;
     const sv = this.survival;
     const wave = sv.wave;
@@ -454,6 +460,7 @@ export class Game {
       nextBoss: sv.bossNameFor(wave + 1),
       nextSpecial: sv.specialFor(wave + 1),
       repairCost,
+      loot,
       canRepair: () => ctx.plow.hp < ctx.plow.maxHp - 0.5,
       onRepair: () => {
         if (ctx.plow.hp >= ctx.plow.maxHp - 0.5 || !ctx.progression.spend(repairCost)) return false;
@@ -503,6 +510,7 @@ export class Game {
       clearReward: 0,
       unlockedZoneName: null,
       survival: { wave: sv.wave, best: sv.best, newBest, endedEarly },
+      loot: this.run.loot,
     });
   }
 
@@ -514,13 +522,15 @@ export class Game {
     ctx.audio.setPlowing(0);
     if (!result) return this.toMenu();
     ctx.progression.recordBrawl(result.placement, result.kills, result.bestStreak);
+    const src = brawlLootSource(result.placement);
+    const loot = src ? ctx.progression.rollLoot(src) : null;
     this.emitRunFinished({
       mode: 'brawl', won: result.placement === 1, kills: result.kills, placement: result.placement,
       bestStreak: result.bestStreak, brawlDifficulty: this.brawlDifficulty,
     });
     ctx.audio.play(result.placement === 1 ? 'victory' : 'gameOver');
     ctx.ui.setHudVisible(false);
-    ctx.ui.showBrawlResults(result);
+    ctx.ui.showBrawlResults({ ...result, loot });
   }
 
   private get isBossRound(): boolean {
@@ -603,12 +613,15 @@ export class Game {
       : firstClear ? ctx.zone.clearReward : Math.round(ctx.zone.clearReward * 0.4);
     ctx.progression.addCoins(reward);
     this.run.coins += reward;
+    const loot = ctx.progression.rollLoot(this.hard ? 'hard' : firstClear ? 'bossFirst' : 'boss');
+    if (loot) this.run.loot.push(loot);
     const next = ZONES[this.zoneIndex + 1];
     const summary: RunSummary = {
       ...this.summaryBase(ctx.zone.rounds.length),
       firstClear,
       clearReward: reward,
       unlockedZoneName: firstClear && next ? next.name : null,
+      loot: this.run.loot,
     };
     this.emitRunFinished({ mode: 'campaign', won: true, zoneIndex: this.zoneIndex, roundsCleared: ctx.zone.rounds.length, hard: this.hard });
     ctx.audio.setEngine(0, 0);

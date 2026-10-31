@@ -20,6 +20,7 @@ import { StyleShop } from './StyleShop';
 import { Trophies } from './Trophies';
 import { activeDaily, dailyButtonLabel } from '../meta/daily';
 import { renderDailyResult, renderDailyShopTag } from './DailyResult';
+import { renderLoot } from './LootReveal';
 import {
   HARD, earnedIds, hardCleared, hardReward, hardUnlocked, lastChallengeReport, maxStars, starReward, zoneChallenges, zoneStars,
 } from '../meta/challenges';
@@ -1031,6 +1032,7 @@ export class UI implements UIAPI {
     if (o.nextSpecial && !o.nextBoss) el('div', 'ss-sv-special', o.nextSpecial.blurb, w);
     const daily = activeDaily();
     if (daily) renderDailyShopTag(w, daily);
+    if (o.loot) renderLoot(w, [o.loot]);
     const row = el('div', 'ss-sv-shoprow', undefined, w);
     this.repairBtn = this.btn('', 'ss-ice ss-sv-repair', () => {
       const ok = o.onRepair();
@@ -1176,6 +1178,7 @@ export class UI implements UIAPI {
       el('span', 'ss-coin', undefined, r);
       el('span', '', `+${fmt(sum.clearReward)} ${sum.firstClear ? 'first-clear reward!' : 'clear reward'}`, r);
     }
+    if (sum.loot?.length) renderLoot(p, sum.loot);
     if (win && sum.unlockedZoneName) {
       const u = el('div', 'ss-unlock', undefined, p);
       el('span', '', '🔓 New arena unlocked: ', u);
@@ -1395,6 +1398,7 @@ export class UI implements UIAPI {
     line('Total', r.coinsEarned, 'total');
 
     // final leaderboard
+    if (r.loot) renderLoot(p, [r.loot]);
     const tbl = el('div', 'ss-bres-board', undefined, p);
     const head = el('div', 'ss-bres-row head', undefined, tbl);
     for (const t of ['#', '', 'PLOWER', 'KILLS', 'DEATHS', 'BEST 🔥']) el('span', '', t, head);
