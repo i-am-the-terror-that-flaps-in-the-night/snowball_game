@@ -79,6 +79,18 @@ export const REMOVED_GEAR: Record<string, Pick<GearDef, 'cost'>> = {
   adrenalineShot: { cost: 380 },
 };
 
+/** Items whose price dropped in the one-item-per-stat reshape, with their old base price. Owners get the difference
+ *  for the levels they hold back once (Progression, GEAR_PRICE_REV). */
+export const REPRICED_GEAR: Record<string, number> = {
+  spikedShare: 320,
+  avalancheBlade: 1800,
+  scrapRecycler: 420,
+  glacierShell: 900,
+  jetTurbine: 1200,
+};
+/** Bump when REPRICED_GEAR gains a new round of price cuts. */
+export const GEAR_PRICE_REV = 1;
+
 /** Levels of `grant.stat` an item at `level` gives (0 if not owned), capped by the stat's own max. */
 export function grantLevels(grant: GearGrant, level: number): number {
   if (level <= 0) return 0;

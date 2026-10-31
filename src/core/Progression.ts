@@ -1,5 +1,5 @@
 import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
-import { GEAR_BY_ID, GEAR_MAX_LEVEL, REMOVED_GEAR, gearCost, gearLevels, gearSpent, type GearDef, type GearSlot, type GearState } from '../config/gear';
+import { GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_PRICE_REV, REMOVED_GEAR, REPRICED_GEAR, gearCost, gearLevels, gearSpent, type GearDef, type GearSlot, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
 import type { PlayerStats } from './types';
@@ -46,10 +46,12 @@ export interface SaveData {
   dailyBest?: Record<string, number>;
   /** Gear (config/gear.ts): owned item levels and the equipped item per slot. */
   gear?: GearState;
+  /** Gear price cuts already refunded (GEAR_PRICE_REV); missing = an older save. */
+  gearPrices?: number;
 }
 
 function freshSave(): SaveData {
-  return { version: 1, coins: 0, upgrades: {}, unlockedZones: 1, zones: {}, totalKills: 0, totalCoinsEarned: 0, muted: false, brawlMatches: 0, brawlWins: 0, brawlBestStreak: 0, brawlBestKills: 0, plow: 'classic' };
+  return { version: 1, coins: 0, upgrades: {}, unlockedZones: 1, zones: {}, totalKills: 0, totalCoinsEarned: 0, muted: false, brawlMatches: 0, brawlWins: 0, brawlBestStreak: 0, brawlBestKills: 0, plow: 'classic', gearPrices: GEAR_PRICE_REV };
 }
 
 const EXPORT_PREFIX = 'SPS1:';
@@ -81,6 +83,20 @@ function refundItemStats(d: SaveData): void {
     if (typeof n === 'number' && Number.isFinite(n)) for (let l = 0; l < Math.min(n, 999); l++) d.coins += upgradeCost(curve as UpgradeDef, l);
     delete ups[id];
   }
+}
+
+/** Gear price cuts (REPRICED_GEAR): pay owners the difference between what their item levels cost then and cost
+ *  now, once per GEAR_PRICE_REV. Call after cleanGear. */
+function refundRepricedGear(d: SaveData): void {
+  if ((d.gearPrices ?? 0) >= GEAR_PRICE_REV) return;
+  for (const [id, lvl] of Object.entries(d.gear?.owned ?? {})) {
+    const def = GEAR_BY_ID[id];
+    const old = REPRICED_GEAR[id];
+    if (!def || !old) continue;
+    const diff = gearSpent({ cost: old } as GearDef, lvl) - gearSpent(def, lvl);
+    if (diff > 0) d.coins += diff;
+  }
+  d.gearPrices = GEAR_PRICE_REV;
 }
 
 /** Refund + drop gear items that no longer exist (call on the RAW gear before cleanGear filters them out). */
@@ -173,6 +189,9 @@ function sanitizeSave(raw: unknown): SaveData | null {
     refundRemovedGear(out, p.gear);
     out.gear = cleanGear(p.gear);
   }
+  // An imported save without the field predates the price cuts (freshSave's default must not mask that).
+  out.gearPrices = typeof p.gearPrices === 'number' && Number.isFinite(p.gearPrices) ? Math.max(0, Math.floor(p.gearPrices)) : 0;
+  refundRepricedGear(out);
   refundItemStats(out);
   return out;
 }
@@ -193,10 +212,13 @@ export class Progression {
         const parsed = JSON.parse(raw) as SaveData;
         if (parsed && parsed.version === 1) {
           const d: SaveData = { ...freshSave(), ...parsed, upgrades: migrateUpgrades(parsed.upgrades ?? {}) };
+          // A stored save without the field predates the price cuts (freshSave's default must not mask that).
+          d.gearPrices = parsed.gearPrices ?? 0;
           if (d.gear) {
             refundRemovedGear(d, d.gear);
             d.gear = cleanGear(d.gear);
           }
+          refundRepricedGear(d);
           refundItemStats(d);
           return d;
         }

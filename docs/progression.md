@@ -100,4 +100,6 @@ There's no loot in the Tutorial or the Duel. Tables live in `src/config/loot.ts`
 ## Old saves
 
 Saves migrate on load and on import. Coins spent on upgrades that became gear, on the cut Wrecking Ball upgrade, and
-on removed gear items (Wrecker Core, Adrenaline Shot) are refunded once, and removed items are unequipped.
+on removed gear items (Wrecker Core, Adrenaline Shot) are refunded once, and removed items are unequipped. Items
+that got cheaper in the gear reshape (Spiked Plowshare, Avalanche Blade, Scrap Recycler, Glacier Shell, Jet Turbine)
+pay their owners the difference for the levels they hold, once.
