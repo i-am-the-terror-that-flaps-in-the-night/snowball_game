@@ -35,7 +35,8 @@ browser, and drives it at 60 Hz:
   fastest kill. The minigun line pads the victim's HP so it can't die, which is why the old numbers run past max HP.
 
 **Tiers.** Fresh is every level 0 with no gear. Mid is Engine / Armor / Packed Ice / Hopper at 4, the plow's own line
-at 3, and item level 3 commons and rares: Steel Wedge, Scrap Recycler, Turbine Fan, Pack Compactor, Adrenaline Shot.
+at 3, and item level 3 commons and rares: Steel Wedge, Scrap Recycler, Turbine Fan, Pack Compactor, Repair Drone (the Adrenaline Shot before the gear reshape
+below).
 High is the core four at 10, the line at 8, and item level 8 legendaries and epics: Avalanche Blade, Phoenix Plating,
 Jet Turbine, Overclock Chip, Repair Drone. Phoenix Plating gives everyone Second Wind at high tier. Duel TTKs there
 include that 1.5 s save. With it turned off, the fastest high-tier kill is 4.2 s (ARSENAL vs VOLT-9).
@@ -167,7 +168,7 @@ because it scaled with Inferno's burn dps, the steepest curve in the game.
 **Duel kills were too fast and uneven** (ARSENAL 0.8 s average at mid, classic 2.2 s fastest). The minigun's
 `direct: 'round'` skips i-frames and diminishing returns, and that fix for a real bug stays. Instead:
 
-- DUEL_ROUND_SCALE = 0.8 is applied to minigun rounds against a plow, on top of the rest. With the minigun nerf, 2 s of
+- DUEL_ROUND_SCALE = 0.8 (0.7 after the follow-up below) is applied to minigun rounds against a plow, on top of the rest. With the minigun nerf, 2 s of
   held fire takes 11 to 18% of a same-tier Classic (it was 49% to over 200%).
 - DUEL_DAMAGE_SCALE went from 0.6 to 0.45. Ability diminishing returns kick in at 15% of max HP (was 20%) and decay
   over 2 s (was 1.5 s). Tick-heavy kits (Inferno burns, saws, laser, storms) shred a lone human the most.
@@ -175,6 +176,51 @@ because it scaled with Inferno's burn dps, the steepest curve in the game.
   on about 3× the HP, so without it a late-game duel ended in under 3 s. Both duelists have equal garages after the
   catch-up, so it does not favour either side.
 - Result: average TTK 6.3 to 8.1 s at every tier, each plow within ±12% of the tier mean, fastest kill 4.8 s.
+
+## Follow-up: after the gear reshape
+
+The gear list was reshaped so each stat comes from exactly one item (see [progression.md](progression.md#gear)). That
+took the free plating off Phoenix Plating and the nitro / whirl off Jet Turbine, so high-tier plows got a little
+squishier and ARSENAL's fastest Duel kill dropped to 3.9 s (against VOLT-9), under the 4 s floor in
+`tests/balance.test.ts`. ARSENAL was already the fastest killer at that tier, so DUEL_ROUND_SCALE went from 0.8 to
+0.7 rather than putting plating back on a chassis item. The mid-tier sim loadout swaps the removed Adrenaline Shot
+for the Repair Drone. Current numbers:
+
+#### fresh
+
+| plow | HP | 1-target DPS (vs plow mean) | cluster DPS | ult fill: fight / boss (s) | ult dmg, bots hit (vs mean) | duel TTK avg (vs mean) / min (s) |
+|---|---|---|---|---|---|---|
+| classic | 150 | 78 (+14%) | 334 | 24.1 / 17.0 | 2722, 6 (+10%) | 6.3 (-11%) / 4.8 |
+| volt | 102 | 72 (+5%) | 275 | 24.1 / 32.1 | 2318, 8 (-6%) | 7.5 (+7%) / 6.3 |
+| brute | 162 | 65 (-6%) | 287 | 25.0 / 30.0 | 2664, 8 (+8%) | 6.8 (-3%) / 6.2 |
+| isotope | 132 | 60 (-13%) | 201 | 22.5 / 45.7 | 2592, 8 (+5%) | 6.8 (-3%) / 6.2 |
+| arsenal | 108 | 64 (-7%) | 100 | 22.7 / 26.4 | 2040, 6 (-17%) | 7.8 (+11%) / 6.9 |
+
+Duel minigun alone, 2 s held: 15 HP of a 150-HP Classic; 15 of a 108-HP ARSENAL mirror.
+
+#### mid
+
+| plow | HP | 1-target DPS (vs plow mean) | cluster DPS | ult fill: fight / boss (s) | ult dmg, bots hit (vs mean) | duel TTK avg (vs mean) / min (s) |
+|---|---|---|---|---|---|---|
+| classic | 325 | 436 (+15%) | 1716 | 23.4 / 9.7 | 11161, 6 (+9%) | 6.1 (-15%) / 5.2 |
+| volt | 221 | 338 (-11%) | 1604 | 22.7 / 29.5 | 9804, 8 (-5%) | 8.4 (+18%) / 6.1 |
+| brute | 351 | 409 (+8%) | 2093 | 13.9 / 18.7 | 9648, 8 (-6%) | 6.3 (-13%) / 5.9 |
+| isotope | 286 | 333 (-12%) | 1541 | 13.0 / 22.8 | 12735, 8 (+24%) | 7.6 (+6%) / 6.3 |
+| arsenal | 234 | 299 (-21%) | 498 | 26.0 / 23.9 | 8040, 6 (-22%) | 7.4 (+3%) / 6.7 |
+
+Duel minigun alone, 2 s held: 42 HP of a 325-HP Classic; 0 of a 234-HP ARSENAL mirror.
+
+#### high
+
+| plow | HP | 1-target DPS (vs plow mean) | cluster DPS | ult fill: fight / boss (s) | ult dmg, bots hit (vs mean) | duel TTK avg (vs mean) / min (s) |
+|---|---|---|---|---|---|---|
+| classic | 500 | 1259 (-4%) | 5188 | 21.6 / 14.5 | 27603, 6 (+9%) | 7.2 (+3%) / 6.3 |
+| volt | 340 | 1423 (+8%) | 8086 | 29.1 / 28.3 | 24522, 8 (-3%) | 7.4 (+5%) / 6.8 |
+| brute | 540 | 1447 (+10%) | 8277 | 24.4 / 24.9 | 22680, 8 (-11%) | 6.6 (-6%) / 5.3 |
+| isotope | 440 | 1136 (-14%) | 6398 | 20.3 / 27.7 | 32494, 8 (+28%) | 7.4 (+6%) / 6.3 |
+| arsenal | 360 | 1353 (+3%) | 2480 | 32.4 / 24.7 | 19584, 6 (-23%) | 6.5 (-8%) / 5.6 |
+
+Duel minigun alone, 2 s held: 86 HP of a 500-HP Classic; 0 of a 360-HP ARSENAL mirror.
 
 ## Limits of the model
 

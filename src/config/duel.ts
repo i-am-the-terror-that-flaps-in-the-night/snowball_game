@@ -32,7 +32,7 @@ export const DUEL_REMATCH_GARAGE_SECONDS = 60;
 export const DUEL_DAMAGE_SCALE = 0.45;
 /** ARSENAL minigun rounds skip the i-frames and the ability diminishing returns (they land faster than either), so
  *  they take this extra scale against a human plow on top of DUEL_DAMAGE_SCALE. */
-export const DUEL_ROUND_SCALE = 0.8;
+export const DUEL_ROUND_SCALE = 0.7;
 /** Upgrades multiply damage far faster than HP (a late garage hits ~20x harder on ~3x the HP), so PvP damage is
  *  also divided by the attacker's ultPower (PlayerStats) ^ DUEL_POWER_DAMP: late-game duels last nearly as long as
  *  fresh ones. */
