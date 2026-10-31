@@ -60,7 +60,7 @@ describe('Inferno', () => {
     const out = bot(40, 0);
     const { c, stats } = rig([behind, side, out]);
     expect(c.critMass).toBe(0);
-    (c as unknown as { feedFire(d: number): void }).feedFire(10_000);
+    (c as unknown as { classic: { feedFire(d: number): void } }).classic.feedFire(10_000);
     expect(c.critMass).toBe(1);
     (c as unknown as { b: { input: { wasPressed: (k: string) => boolean } } }).b.input.wasPressed = (k) => k === 'KeyF';
     c.update(1 / 60);
@@ -79,7 +79,7 @@ describe('Inferno', () => {
   it('fire damage only fills the FIRESTORM meter on the Classic Plow', () => {
     const { c } = rig([]);
     (c as unknown as { b: { stats: unknown } }).b.stats = computeStatsFor({}, 'volt');
-    (c as unknown as { feedFire(d: number): void }).feedFire(10_000);
+    (c as unknown as { classic: { feedFire(d: number): void } }).classic.feedFire(10_000);
     expect(c.critMass).toBe(0);
   });
 });
@@ -88,7 +88,7 @@ describe('FIRESTORM does not chain', () => {
   it('its blast, burning ground and the burns it lights never refill the meter', () => {
     const bots = [bot(0, -8), bot(9, 0), bot(-6, 3), bot(4, 7)];
     const { c } = rig(bots);
-    (c as unknown as { feedFire(d: number): void }).feedFire(10_000);
+    (c as unknown as { classic: { feedFire(d: number): void } }).classic.feedFire(10_000);
     const inp = (c as unknown as { b: { input: { wasPressed: (k: string) => boolean } } }).b.input;
     inp.wasPressed = (k) => k === 'KeyF';
     c.update(1 / 60);

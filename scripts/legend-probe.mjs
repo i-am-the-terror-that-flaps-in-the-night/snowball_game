@@ -45,8 +45,8 @@ for (let run = 0, tries = 0; run < runs; ) {
     // Damage dealt by the player; F-ability damage is tagged by wrapping the Combat methods that deal it.
     window.__inF = 0;
     c.events.on('enemyHit', (e) => { P.dmgDealt += e.damage; if (window.__inF) P.dmgF += e.damage; });
-    const proto = Object.getPrototypeOf(c.combat);
-    for (const m of ['updateFlame', 'updateBurns', 'updateClap', 'updateStorm', 'poundImpact']) {
+    for (const [kit, m] of [['classic', 'updateFlame'], ['classic', 'updateBurns'], ['volt', 'updateClap'], ['volt', 'updateStorm'], ['brute', 'poundImpact']]) {
+      const proto = Object.getPrototypeOf(c.combat[kit]);
       const orig = proto[m];
       if (!orig || orig.__wrapped) continue;
       proto[m] = function (...a) { window.__inF++; try { return orig.apply(this, a); } finally { window.__inF--; } };

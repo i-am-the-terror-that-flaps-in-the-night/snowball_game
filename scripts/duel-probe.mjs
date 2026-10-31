@@ -295,7 +295,7 @@ await session('rematch', async (host, guest) => {
     await run(host, guest, 0.1, 2);
     await guest.keyboard.up('KeyF');
     await run(host, guest, 0.8);
-    const b1 = await host.evaluate(() => ({ hp: window.__game.ctx.plow.hp, other: window.__game.duel.counters.bySource[1][3], melt: window.__game.duel.opponentCombat.meltCharge }));
+    const b1 = await host.evaluate(() => ({ hp: window.__game.ctx.plow.hp, other: window.__game.duel.counters.bySource[1][3], melt: window.__game.duel.opponentCombat.isotope.meltCharge }));
     log('meltdown', { hp: [Math.round(b0.hp), Math.round(b1.hp)], hits: [b0.other, b1.other], meltCharge: +b1.melt.toFixed(2) });
     check(b1.other > b0.other && b1.hp < b0.hp && b1.melt < 1, 'Meltdown (guest F) hits the host', { b0, b1 });
     await run(host, guest, 1.5);
@@ -393,7 +393,7 @@ await session('arsenal', async (host, guest) => {
   await park();
   await host.keyboard.down('Space');
   await run(host, guest, 0.6);
-  const seen = await guest.evaluate(() => ({ fire: window.__game.duel.opponentCombat.netFire, turret: window.__game.duel.opponentCombat.netTurret }));
+  const seen = await guest.evaluate(() => ({ fire: window.__game.duel.opponentCombat.arsenal.netFire, turret: window.__game.duel.opponentCombat.arsenal.netTurret }));
   await host.keyboard.up('Space');
   check((seen.fire & 1) === 1, "the guest sees the host's autocannon firing", seen);
   // Host laser with the guest ~20° off the host's nose: the beam bends, and the guest draws the same bend.
@@ -401,8 +401,8 @@ await session('arsenal', async (host, guest) => {
   await run(host, guest, 0.2);
   await host.keyboard.press('KeyE');
   await run(host, guest, 0.6);
-  const laser = await guest.evaluate(() => ({ t: window.__game.duel.opponentCombat.laserT, off: window.__game.duel.opponentCombat.laserOff }));
-  const hostOff = await host.evaluate(() => window.__game.ctx.combat.laserOff);
+  const laser = await guest.evaluate(() => ({ t: window.__game.duel.opponentCombat.arsenal.laserT, off: window.__game.duel.opponentCombat.arsenal.laserOff }));
+  const hostOff = await host.evaluate(() => window.__game.ctx.combat.arsenal.laserOff);
   check(laser.t > 0, "the guest sees the host's laser", laser);
   check(Math.abs(hostOff) > 0.1 && Math.abs(laser.off - hostOff) < 0.15, "the guest's view of the host laser bends like the host's", { hostOff, guest: laser.off });
   await shot(guest, '17-guest-sees-arsenal');
