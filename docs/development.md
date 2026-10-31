@@ -1,0 +1,72 @@
+# Development
+
+## Project layout
+
+```
+src/core           Game loop + mode switching, shared contracts (types.ts), events, input + gamepad, settings,
+                   save / progression (export / import, migrations)
+src/config         Tuning data: upgrades (FX curves), gear, loot tables, plows, campaign bots + arenas, Brawl, Duel
+src/entities       Player plow (Plow.ts), plow models, gear attachments (gearVisuals.ts), campaign bots / bosses,
+                   round director, and Combat.ts: the combat class the game talks to (damage in / out, ultimate
+                   meter, net sync), which delegates each plow's kit to src/entities/combat/
+src/entities/combat  Per-plow kits: melee.ts (slam / ram / dash / whirl), classic.ts, volt.ts, brute.ts, isotope.ts,
+                   arsenal.ts, ultimates.ts (SUPERCELL / EARTHQUAKE / ORBITAL STRIKE) and shared.ts (helpers, the
+                   threat map ARSENAL's targeting uses)
+src/brawl          Brawl mode: rival AI, VOLT-9 + BRUTUS rivals, streaks / coins, respawns, rival models, name tags
+src/survival       Survival mode: endless wave generator + scaling (seeded for the Daily run)
+src/duel           Online Duel: match flow + host-authoritative netcode (DuelManager), opponent adapter, duel garage
+                   wallet (catch-up coins for upgrades and gear)
+src/net            Duel wire protocol (binary snapshots / input / snow patches) and the PeerJS + BroadcastChannel
+                   transports
+src/meta           Meta progression: challenge stars + Hard mode, achievements + lifetime stats, Daily run, cosmetics
+src/world          Deformable snow field, arenas / Snowdome environment, destructible props (Props.ts)
+src/fx             Particles, camera rig (incl. the ultimate kill-cam swing), impact feel (hit-stop / slow-mo),
+                   kill-cam trigger (ultCam.ts), coin pickups
+src/render         Post-processing, static mesh merging, shadow proxies, reflections
+src/audio          WebAudio synth (SFX + music)
+src/ui             Menus, HUD, Garage (core / gear / plow line), loot reveal cards, Brawl HUD, Duel UI, Settings,
+                   Tutorial, Paint Shop, Trophies
+tests              vitest unit tests (pure logic, no browser)
+scripts            Headless playtest probes (Playwright)
+```
+
+## Tests
+
+`npm test` runs the vitest suite in `tests/` (no browser; `localStorage` is faked in memory). `npm run typecheck`
+runs `tsc --noEmit`. A few suites enforce data rules rather than behaviour, for example `tests/gear.test.ts` (every
+gear stat on exactly one item) and `tests/gearVisuals.test.ts` (every item has a look on every plow).
+
+## Headless playtests
+
+Each script boots Vite and drives the game in headless Chromium via `window.__game` (its `tick(dt)` advances the sim
+without waiting on real time). In environments with a preinstalled browser, point Playwright at it (for example
+`PW_EXE=/opt/pw-browsers/chromium` for the duel probe).
+
+```bash
+node scripts/smoke.mjs                 # campaign smoke test + screenshots
+node scripts/combat-probe.mjs          # slam / ram / boss numbers
+node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
+node scripts/meta-probe.mjs            # Paint Shop, Trophies, stars + Hard mode, Daily run + results screens
+node scripts/donald-probe.mjs          # arena 6 + THE DONALD: every attack, phase 2, model / stage / crowd shots
+node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
+node scripts/render-probe.mjs baseline    # deterministic render metrics + pixel-diff gate (then: compare)
+node scripts/duel-probe.mjs /tmp/duel-probe  # Duel: two pages over BroadcastChannel (lobby, catch-up garage,
+                                             # best of 3, rematch, NUKE / Inferno, ARSENAL, pause, leave, lag)
+node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real PeerJS cloud server (needs internet)
+```
+
+The realtime lagged-fight session of the duel probe needs a real GPU to keep frame rate; on software rendering it
+can fail even when nothing is wrong.
+
+## Balance harness
+
+`npm run balance` runs the headless balance sim (`scripts/balance/sim.ts`, its own vitest config
+`scripts/balance.config.ts`, so it is not part of `npm test`). For each plow at three garage tiers it reports
+single-target and cluster DPS, ultimate fill time and damage, and Duel time-to-kill. A few invariants from it (ultimate
+fill floors, Duel kill-time floor, minigun cap) run in `npm test` via `tests/balance.test.ts`. Results and reasoning
+are in [balance.md](balance.md).
+
+## History
+
+The original base-defense prototype this game grew out of is kept at the `base-defense-v1` git tag
+(`archive/base-defense-v1.tar.gz` in that commit).

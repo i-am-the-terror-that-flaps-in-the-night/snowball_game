@@ -11,7 +11,7 @@ export const ACTIONS: { id: Action; label: string }[] = [
   { id: 'slam', label: 'Slam snowball' },
   { id: 'dash', label: 'Dash strike' },
   { id: 'whirl', label: 'Whirlwind' },
-  { id: 'ability', label: 'F ability (Inferno / Thunderclap / Pound)' },
+  { id: 'ability', label: 'F ability / ultimate' },
   { id: 'pause', label: 'Pause' },
 ];
 

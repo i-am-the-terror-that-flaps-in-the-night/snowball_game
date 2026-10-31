@@ -1,10 +1,8 @@
 # Snowplow Showdown
 
-A Three.js + TypeScript browser brawler. Plow snow into a snowball on your blade — it's your weapon and your
-shield — then fight bots up close: slam the ball into them, ram them, dash-strike through them, and spin a
-whirlwind. No projectiles, no base to defend: just plows.
-
-Everything is procedural — models, textures, sound effects and music are generated in code, no asset files.
+A Three.js + TypeScript browser brawler. Plow snow into a snowball on your blade (it's your weapon and your shield),
+then fight bots up close: slam the ball into them, ram them, dash-strike through them and spin a whirlwind. Every
+model, texture, sound effect and music track is generated in code; there are no asset files.
 
 ## Run it
 
@@ -21,161 +19,34 @@ npm test           # vitest unit tests (tests/*.test.ts)
 |---|---|---|
 | W / S (↑ / ↓) | Left stick / d-pad, RT / LT | Drive / reverse |
 | A / D (← / →) | Left stick / d-pad | Steer |
-| Space | A | **Slam** your snowball into whatever is in front (bigger ball = much more damage); ARSENAL: hold to fire the minigun |
-| Shift | B / RB | **Dash** — a long burst; hitting a bot mid-dash is a Dash Strike |
-| E | X | **Whirlwind** — spin, pull bots in, blast them out, suck up snow (ARSENAL: laser beam) |
-| F | Y | **Swarm Missiles** (ARSENAL), **Inferno** fire cone (Classic Plow), **Thunderclap** lightning blast (VOLT-9; small self-shock that escalates fast if you chain-spam it — the meter over the F icon shows the next clap's cost) or **Ground Pound** hop-and-slam shockwave (BRUTUS), or **Meltdown** toxic blast + fallout pool (ISOTOPE) |
+| Space | A | **Slam** your snowball into whatever is in front (ARSENAL: hold to fire the minigun) |
+| Shift | B / RB | **Dash**: a long burst; hitting a bot mid-dash is a Dash Strike |
+| E | X | **Whirlwind**: spin, pull bots in, blast them out, suck up snow (ARSENAL: laser beam) |
+| F | Y | Your plow's **F ability**; when its meter is full, its **ultimate** |
 | Esc / P | Start | Pause |
 | M | | Mute |
 
 Keys can be rebound in **⚙ Settings** (arrows, right Shift and Esc stay as fixed alternates; Esc and M can't be
-bound). In menus the gamepad d-pad / stick moves, A selects and B goes back. The controls lists, HUD key labels
-and tutorial cards follow your bindings.
+bound). In menus the gamepad d-pad / stick moves, A selects and B goes back.
 
-## Settings & save
+## What's in it
 
-**⚙ Settings** (main menu or pause menu) has master / music / SFX volume, screen-shake strength, LOW / HIGH
-graphics (LOW = 1x pixel ratio, no shadows; Brawl on HIGH caps the pixel ratio at 1.5x, halves the shadow map and uses a cheaper snow shader for frame rate), key rebinding and save management: **EXPORT** (an `SPS1:` code,
-copied to the clipboard), **IMPORT** (validated; a bad code leaves your save untouched) and **RESET PROGRESS**
-(click twice). Settings live in localStorage separately from progress.
+- **Modes:** a six-arena Campaign with bosses and Hard mode, the 180 m **Snowdome Brawl** free-for-all against 8
+  rival plows, endless **Survival** with a seeded **Daily** run, an online 1v1 **Duel**, and a short Tutorial.
+- **Five plows**, each with its own F ability, upgrade line and ultimate: Classic (Inferno / FIRESTORM), VOLT-9
+  (Thunderclap / SUPERCELL), BRUTUS (Ground Pound / EARTHQUAKE), ISOTOPE (Meltdown / NUKE) and ARSENAL, a bladeless
+  weapons platform (minigun, laser, homing missiles / ORBITAL STRIKE). An ultimate that wipes 3+ bots plays a
+  slow-motion kill-cam.
+- **Garage and gear:** endless core upgrades, a per-plow line, and 16 Prodigy-style gear items in 5 slots that you
+  buy, level to ★10, equip and see on your plow. Bosses, Hard clears, Survival boss waves and Brawl podiums drop gear.
+- **Destructible props:** crates and ice blocks that you, a charging boss or a bot you knock flying can smash.
+- **Meta:** challenge stars, 50 trophies, a Paint Shop, lifetime stats, save export / import.
 
-## Modes
+## Docs
 
-- **Campaign** — six walled arenas. Each is a few rounds of bot minions (scrappers, brute dozers, buzzsaws,
-  snow thieves) and then a bot boss with telegraphed attacks: BULLDOZA, FROSTBYTE, THE GRINDER, SLUSH & SLEET,
-  MEGAPLOW Ω and, at the Golden Tower Plaza rally, THE DONALD (a gold-and-white caricature plow in a red cap:
-  it builds snow-brick walls you smash with slams or dashes, deports you to the far edge with a tractor beam,
-  rallies a ring of red-cap bots at its podium, and goes GOLD PLATED at half HP). Beating a boss unlocks the next arena. Every arena has **3 challenge stars** and, once cleared,
-  a **Hard mode** (see Meta progression).
-- **Snowdome Brawl** — a 180 m free-for-all against 8 named rival plows that hunt everyone, including each other.
-  Kill streaks multiply your coins (×1.5 → ×4), shutting down a streak pays a bounty, and placement pays a bonus.
-  Rookie / Pro / Legend lobbies; elite clan-tagged bots farm streaks, and every bot rolls its own garage around
-  your upgrade levels. Some rivals roll as VOLT-9s (⚡ name badge, VOLT wedge body) with a telegraphed bot
-  Thunderclap, others as BRUTUS (🦏 badge, tracked dozer) with a telegraphed hop-and-slam Ground Pound (damage ring,
-  outward knockback, short stun) — get out of the amber ring.
-- **Survival** (unlocked by beating arena 1) — endless waves in the Frozen Foundry. Bot HP, damage and coins scale
-  every wave, a boss arrives every 5th wave (cycling the campaign bosses, with escorts on later loops), and you
-  get a short breather plus a partial repair between waves. Named special waves (Swarm, Thief Raid, Blitz,
-  Saw Storm, Heavy Metal, Elite Squad) break up the mix about twice per boss cycle and pay extra, and the
-  between-wave pit stop previews what's next. **🏁 END RUN** at the pit stop banks the run on the wave you just
-  cleared. Your best wave is saved.
-- **Daily run** (📅 DAILY, unlocked with Survival) — one seeded Survival run per day: the same wave lineup for
-  everyone on that date, plus one of 8 modifiers (Deep Snow, Whiteout, Swarm, Thief Night, Boss Rush, Heavy
-  Hitters, Glass Cannon, Overclocked) that rotate so none repeats two days running. Pays ×1.25 coins. Your best
-  wave for each day is saved separately from normal Survival, and the game-over screen shows the last 7 days.
-- **🤺 Duel** (online 1v1) — a quick best-of-3 against a friend in a Frostbite Yard-size arena, no bots. **HOST** shows a
-  5-letter room code (copy button); your friend types it under **JOIN**. Spawns face each other, a countdown starts each
-  round, and a round ends on a wreck or after 90 s (higher HP% wins). Each player brings their **own garage** and Paint
-  Shop look (pilot perks included). Before the match both get a 90 s **DUEL GARAGE** (60 s before a rematch): the
-  weaker garage gets **catch-up coins**: enough to match the opponent's full garage value (everything they've spent,
-  plow lines included, plus their coins on hand) on top of what you've already spent, with no cap; the stronger garage
-  never gets any. Catch-up coins are spent first and what they buy is **yours to keep** once the match starts
-  (**⚖ MATCH OPPONENT** raises every shared, non plow-specific upgrade to the opponent's level in one click, and the
-  catch-up always covers it); after that you can buy permanent upgrades with
-  your own coins. Hits use the Brawl hit cap at 60% of PvE damage, so nothing one-shots. Pausing opens the menu but
-  the match keeps running; leaving ends it for both. REMATCH needs both players. Duels pay no coins.
-  Networking: PeerJS (WebRTC data channels, the free public PeerJS signalling server, Google STUN). Add `?duel=local`
-  to duel between two tabs of one browser instead (BroadcastChannel; `&lag=80&jitter=30&loss=0.05` fakes a bad link).
-- **Tutorial** — a 7-step guided Training Yard (drive, snowball, slam, dash, whirlwind, your plow's F ability,
-  ball-shield). Runs once on a fresh save; replay it from **🎓 TUTORIAL** on the main menu, Esc skips.
-
-**Destructible props:** campaign and Survival arenas have 14 wooden crates and ice blocks (the Brawl Snowdome has 26) that
-block movement until you break them. Ram one at speed or dash through it; slams, whirlwinds, every F ability and ultimate,
-missiles, the laser and stray minigun rounds smash them too. Broken crates drop a couple of coins (not in Brawl), and
-everything stands back up each round. Two states only (standing / broken): one InstancedMesh per prop type and a circle
-collider each, no physics. None in Duel or the Tutorial.
-
-## Meta progression
-
-- **Challenge stars** — 3 per arena (18 total): slam kills, ball size, clear times, combos, damage limits,
-  boss-fight speed and a few plow-specific goals. They're judged on any winning run (normal or Hard), shown on
-  the arena cards and the results screen, and each new star pays a one-time bonus (+75 to +800 by arena).
-- **Hard mode** — opens once an arena is cleared: ×1.8 bot HP, ×1.5 bot damage, ~35% more minions, same boss,
-  ×1.75 coins. The first Hard clear pays 2.5× the arena's clear reward (repeats 0.6×) and earns a 💀 badge on
-  its card. Hard clears never change unlocks.
-- **🏆 Trophies** — 50 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Garage & loot) paying
-  25–500 coins each, plus a lifetime STATS page. Unlocks are re-checked from the save, so old saves and imports
-  get credit for what they've already done. Tutorial fights don't count.
-- **🎨 Paint Shop** — 8 paints, 5 decals, 5 exhaust trails, 6 blade skins, 5 slam horns and 5 kill effects for your plow (all three starter plows), 150–2000
-  coins. Purely visual; five premium items also need challenge stars or achievements. Hover or focus an item to
-  preview it on the plow before buying.
-
-Coins from every mode buy two things in the Garage:
-
-- **Core upgrades** (Engine, Packed Ice, Mega Hopper, Armor Plating) plus your plow's own line. These are
-  **endless**: full-strength gains up to the pips, then speed/size stats taper toward a ceiling while damage and HP
-  keep growing.
-- **🎒 Gear** (Prodigy-style): 16 items in 5 slots (Blade, Chassis, Booster, Core, Charm), each common / rare /
-  epic / legendary. Buy an item once, level it up to ★10, and equip one per slot (a new item goes straight into an
-  empty slot). Gear carries everything that used to be a separate upgrade: wide blade, ram spikes, nitro, whirlwind,
-  compactor, plating, repairs, snowfall, magnet, the old pilot perks (Salvage, Second Wind,
-  Adrenaline, Last Stand, Overclock) and the one-time cores (Ice Shield on the Glacier Shell, Frost Core on the
-  Frostbite Edge, Avalanche Core on the Avalanche Blade). Gear works on every plow. Brawl bots roll garages around
-  your equipped levels (never the pilot-perk stats), and Duel sends what you have equipped. Gear is bought with
-  your own coins only, never with Duel catch-up coins.
-
-Old saves get back every coin they spent on upgrades that became gear.
-
-**Starter plows** (picked in the Garage): the **Classic Plow** (+25% HP, free Inferno fire on F) with its own line — Inferno Exhaust
-(hotter, faster fire), Shatter Slam (slams throw ice shards at bots around the impact), Snow Reserve (keep part of
-your ball after a slam) and Slam Combo (back-to-back slams hit harder, stacking up to 3 times) — or the
-electric **VOLT-9** (faster, more fragile) with its own upgrade line — Chain Lightning, Tesla Field, Thunderclap
-and Battery Shield — or the armored **BRUTUS** (+35% HP, +20% damage, bigger blade; sluggish to accelerate) with a free Ground Pound on F (a 5 m leap you can't be hit during, then an AoE damage ring, short knockback, stun) and its own line —
-Ground Pound, Iron Hide (less damage taken the faster you're going), Momentum (rams and dash strikes scale with
-speed) and Buzzsaws (spinning saws on the blade ends that shred every bot in front of and beside you) — or the
-radioactive **ISOTOPE** ☢️ (+10% HP, +5% speed; bots it irradiates glow green and take +15% damage from you) with a
-free Meltdown on F (a toxic blast that melts the snow and leaves a glowing fallout pool). Radiation damage fills
-its ☢ Critical Mass bar; when full, F fires a **NUKE** (an instant huge blast and a giant fallout pool). Its own line — Meltdown,
-Half-Life (bigger, hotter, longer pools), Rad Aura (passive radiation around you) and Chain Reaction (irradiated
-bots explode when wrecked, setting off their neighbours). — or **ARSENAL** 🎯, which isn't a plow at all: a weapons platform with
-no blade and no snowball (+10% speed, -10% HP). Hold SPACE to fire a six-barrel **minigun** that auto-aims at the nearest bot in
-front of you, E fires a 1.5 s **laser beam** that burns through everything in a line, and F launches a salvo of
-**homing missiles** that each hunt a different bot. Its own line: Minigun, Laser Lance, Swarm Missiles and Energy
-Barrier (a recharging shield, since there's no ball to hide behind).
-
-**Ultimates:** every plow has a meter under its HP bar; when it's full, F fires the plow's ultimate instead. Classic: fire damage fills **FIRESTORM** (a 360° fire nova + burning ground; Inferno also ends in a fireball). VOLT-9: any damage fills **SUPERCELL** (three waves of sky lightning on everything within 18 m, no Overload backlash). BRUTUS: **EARTHQUAKE** (three shockwaves rolling out to 19 m). ISOTOPE: radiation fills Critical Mass for the **NUKE**. ARSENAL: **ORBITAL STRIKE** (paints the five biggest threats, then sky lasers hit each one). An ultimate's own damage never refills its meter. The Tutorial always uses the Classic Plow.
-
-The Garage is split into tabs (Drive, Snowball, Defense, Pilot, and your current plow's own line), each with a
-count of upgrades you can afford; switch with Q / E or LB / RB. Hover a card for the full mechanics of that upgrade.
-
-## Project layout
-
-```
-src/core      Game loop + mode switching, shared contracts (types.ts), events, input + gamepad, settings,
-              save/progression (export / import)
-src/config    Tuning data: upgrades (FX curves), plows, campaign bots + arenas, Brawl difficulties
-src/entities  Player plow, melee combat resolution, campaign bots/bosses + round director
-src/brawl     Brawl mode: rival AI, VOLT-9 + BRUTUS rivals, streaks/coins, respawns, rival models, name tags
-src/survival  Survival mode: endless wave generator + scaling (seeded for the Daily run)
-src/duel      Online Duel: match flow + host-authoritative netcode (DuelManager), opponent adapter, duel garage wallet
-src/net       Duel wire protocol (binary snapshots / input / snow patches) and the PeerJS + BroadcastChannel transports
-src/meta      Meta progression: challenge stars + Hard mode, achievements + lifetime stats, Daily run, cosmetics
-src/world     Deformable snow field, arenas / Snowdome environment
-src/fx        Particles, camera rig, coin pickups
-src/audio     WebAudio synth (SFX + music)
-src/ui        Menus, HUD, shop/garage, Brawl HUD, Settings overlay, Tutorial, Paint Shop, Trophies
-tests         vitest unit tests: upgrade costs/curves, brawlHit, computeStats, save import/export, settings
-```
-
-## Tests
-
-`npm test` runs the vitest suite in `tests/` (pure logic, no browser; `localStorage` is faked in-memory).
-
-## Headless playtests
-
-Each script boots Vite and drives the game in headless Chrome via `window.__game`:
-
-```bash
-node scripts/smoke.mjs                 # campaign smoke test + screenshots
-node scripts/combat-probe.mjs          # slam / ram / boss numbers
-node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
-node scripts/meta-probe.mjs            # Paint Shop, Trophies, stars + Hard mode, Daily run + results screens
-node scripts/donald-probe.mjs          # arena 6 + THE DONALD: every attack, phase 2, model / stage / crowd shots
-node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
-node scripts/duel-probe.mjs /tmp/duel-probe  # Duel: two pages over BroadcastChannel — lobby, catch-up garage, best of 3,
-                                             # rematch, NUKE / Inferno, pause, leave, a lagged real-time fight
-node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real PeerJS cloud server (needs internet)
-```
-
-The original base-defense prototype this game grew out of is kept at the `base-defense-v1` git tag
-(`archive/base-defense-v1.tar.gz` in that commit).
+- [docs/modes.md](docs/modes.md): Campaign, Brawl, Survival + Daily, Tutorial, props, stars and Hard mode, settings
+- [docs/plows.md](docs/plows.md): every plow's abilities, upgrade line and ultimate, and the kill-cam
+- [docs/progression.md](docs/progression.md): the Garage, the full gear list, loot odds, trophies, Paint Shop, saves
+- [docs/duel.md](docs/duel.md): hosting / joining, the duel garage and catch-up, netcode
+- [docs/development.md](docs/development.md): project layout, tests, headless probes, the balance harness
+- [docs/balance.md](docs/balance.md): balance numbers and the reasoning behind them
