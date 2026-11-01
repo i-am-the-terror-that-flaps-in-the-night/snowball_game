@@ -309,8 +309,9 @@ export class Combat implements CombatAPI {
       this.iframeDmg = dmg;
     }
 
-    // Second Wind (pilot perk): a lethal hit leaves 1 HP and a short invulnerable window instead.
-    if (final >= plow.hp && plow.hp > 1 && Number.isFinite(stats.secondWindCd) && ctx.time >= this.secondWindReadyAt) {
+    // Second Wind (pilot perk): a lethal hit leaves 1 HP (or whatever sliver is left, if chip damage already took it
+    // below 1) and a short invulnerable window instead.
+    if (final >= plow.hp && plow.hp > 0 && Number.isFinite(stats.secondWindCd) && ctx.time >= this.secondWindReadyAt) {
       final = Math.max(0, plow.hp - 1);
       this.secondWindReadyAt = ctx.time + stats.secondWindCd;
       this.guardT = SECOND_WIND_GUARD;
