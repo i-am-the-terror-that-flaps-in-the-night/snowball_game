@@ -1,5 +1,6 @@
 // Arena 6 preview: renders The Omega Works structures from a few fixed cameras (no gameplay).
 // PW_EXE=/opt/pw-browsers/chromium node scripts/omega-preview.mjs <outdir>
+import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 const out = process.argv[2]; mkdirSync(out, { recursive: true });
