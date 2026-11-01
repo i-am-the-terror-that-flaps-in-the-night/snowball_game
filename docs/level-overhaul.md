@@ -22,8 +22,10 @@ a ball, slam bots, upgrade) stays.
 - **1 <-> 2 swap:** the slot keeps its rounds, difficulty multipliers, rewards, challenges and save id. Only the boss,
   look and name move. Arena 1 stays the intro (scrappers + a brute). No save migration.
 - **5 <-> 6 swap:** the Plaza's rounds use themed `rallybot`s and its challenges are Donald jokes, so its rounds,
-  challenges and save id (`plaza`) move with it to slot 5; Omega's move to slot 6 (`summit`). Safe: `unlockedZones` is a
-  prefix count and both slots are unlocked together or slot 5 alone.
+  challenges and save id (`plaza`) move with it to slot 5; Omega's move to slot 6 (`summit`). `unlockedZones` is a
+  prefix count, so a pre-Plaza save (5 arenas, Omega cleared, `unlockedZones` 5) would leave the cleared Works locked
+  past the prefix. Loading (localStorage and import) therefore opens every arena up to the highest cleared one:
+  `unlockedZones = max(unlockedZones, highestClearedIndex + 1)` (`openClearedArenas` in `src/core/Progression.ts`).
 - Boss HP already shifts with the slot multipliers (x1.0 / x1.2 / ... / x2.1 / x2.4):
   FROSTBYTE 960 -> 800 effective, BULLDOZA 650 -> 780, THE DONALD 6240 -> 5460, MEGAPLOW 5040 -> 5760. On top:
   FROSTBYTE speed 7 -> 6.5, ram 18 -> 16; BULLDOZA armour 3 -> 4, ram 26 -> 28. Verify with `npm run balance`.
@@ -121,3 +123,23 @@ are updated with the swaps. The render-probe baseline is re-recorded.
 
 Integration order: A lands first (small); B, C, D, E run in parallel on top of it; F builds on C's movement. Each track
 runs `npx tsc --noEmit`, `npx vitest run`, and its relevant probe before handing back.
+
+## Follow-ups
+
+Deferred from Track A (an independent check listed them); not implemented yet. Owner track in brackets.
+
+- **[B] Survival / Daily base zone:** `src/survival/SurvivalManager.ts` spreads `ZONES[2]` (Rust Basin) as its base, so
+  it will inherit that arena's terrain, low gravity and biome. Build it from an explicit neutral zone and pin biome /
+  terrain per 5-wave rotation (ground only). Fix the stale "Frozen Foundry scenery" comment; optionally start the boss
+  cycle with FROSTBYTE. `tests/daily.test.ts` also uses `ZONES[2]`.
+- **[C] `run.airtime` stat** (plus its lifetime counterpart in `src/meta/achievements.ts`), for the airtime challenge
+  and trophy.
+- **[D] `killsBy.lava` and `killsBy.airSlam`** (new `KillSource` values in `src/core/events.ts` plus lifetime stats),
+  for the lava / air-slam challenges and trophies.
+- **[E] Tutorial zone and menu backdrop:** `src/core/Game.ts` `TUTORIAL_ZONE`, the menu backdrop zone and the
+  menu / default `ctx.zone` spread `ZONES[0]` and will inherit the glacier's terrain and ice. Pin an explicit flat
+  tutorial zone (`terrain: undefined`, fixed look) and pick the backdrop from a random campaign biome per launch.
+- **[A, after C / D and terrain land] Challenges and trophies:** add the three biome challenges ("3 lava kills",
+  "2 s of airtime", "air-slam kill") and three trophies (airtime, lava kills, air-slam kills), then retune the
+  time-based challenges for terrain and arena 6's size (the `TODO`s in `src/config/challenges.ts`). Until then Inferno
+  Quarry's "Eviction Notice" (30 s boss kill) is temporarily loose: BULLDOZA dies in about 9-14 s on autopilot.

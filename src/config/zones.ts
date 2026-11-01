@@ -56,32 +56,35 @@ export interface ZoneDef {
 
 const g = (type: EnemyType, count: number, delay = 0, interval = 2.5): SpawnGroup => ({ type, count, delay, interval });
 
+/* Campaign order (docs/level-overhaul.md "Arenas"). Save ids, rounds, challenges and difficulty multipliers belong to
+ * the SLOT, except the Plaza and the Works, whose rallybot rounds / Donald challenges / ids moved with them (5 <-> 6
+ * swap). The visual block (sky ... theme) still travels with each boss until the biome pass restyles every arena. */
 export const ZONES: ZoneDef[] = [
   {
-    index: 0, id: 'yard', name: 'Frostbite Yard', tagline: 'A snowy scrapyard ruled by a very big bulldozer.', bossName: 'BULLDOZA',
+    index: 0, id: 'yard', name: 'Coldboot Glacier', tagline: 'A rogue AI froze the relay station solid.', bossName: 'FROSTBYTE',
     rounds: [
       { groups: [g('scrapper', 3, 0, 2.5)] },
       { groups: [g('scrapper', 4, 0, 2), g('brute', 1, 5, 1)] },
-      { boss: true, groups: [g('bulldoza', 1, 1, 1)] },
-    ],
-    enemyHpMult: 1, coinMult: 1, snowDepth: 0.5, snowRegenMult: 1, clearReward: 150,
-    skyTop: 0x4f8fd6, skyBottom: 0xdcefff, fogColor: 0xd6e9fb, fogNear: 60, fogFar: 170,
-    sunColor: 0xfff1d6, sunIntensity: 2.6, ambientColor: 0xbcd7ff, ambientIntensity: 0.9, snowTint: 0xffffff, snowfall: 0.25, theme: 'meadow',
-  },
-  {
-    index: 1, id: 'junkyard', name: 'Pine Junkyard', tagline: 'Thieves in the trees. A rogue AI in the plow shed.', bossName: 'FROSTBYTE',
-    rounds: [
-      { groups: [g('scrapper', 4, 0, 1.8), g('thief', 2, 4, 3)] },
-      { groups: [g('spinner', 2, 0, 4), g('scrapper', 3, 3, 2)] },
-      { groups: [g('brute', 2, 0, 5), g('thief', 2, 3, 2), g('spinner', 1, 8, 1)] },
       { boss: true, groups: [g('frostbyte', 1, 1, 1)] },
     ],
-    enemyHpMult: 1.2, coinMult: 1.2, snowDepth: 0.55, snowRegenMult: 1, clearReward: 300,
+    enemyHpMult: 1, coinMult: 1, snowDepth: 0.5, snowRegenMult: 1, clearReward: 150,
     skyTop: 0x2f5d8a, skyBottom: 0xf3d7b6, fogColor: 0xd9c9b8, fogNear: 45, fogFar: 150,
     sunColor: 0xffc890, sunIntensity: 2.2, ambientColor: 0xc9b9ff, ambientIntensity: 0.8, snowTint: 0xfff6ee, snowfall: 0.35, theme: 'pines',
   },
   {
-    index: 2, id: 'foundry', name: 'Frozen Foundry', tagline: 'Ice-locked ironworks. Something huge is drilling below.', bossName: 'THE GRINDER',
+    index: 1, id: 'junkyard', name: 'Inferno Quarry', tagline: 'The Yard Boss moved somewhere hotter.', bossName: 'BULLDOZA',
+    rounds: [
+      { groups: [g('scrapper', 4, 0, 1.8), g('thief', 2, 4, 3)] },
+      { groups: [g('spinner', 2, 0, 4), g('scrapper', 3, 3, 2)] },
+      { groups: [g('brute', 2, 0, 5), g('thief', 2, 3, 2), g('spinner', 1, 8, 1)] },
+      { boss: true, groups: [g('bulldoza', 1, 1, 1)] },
+    ],
+    enemyHpMult: 1.2, coinMult: 1.2, snowDepth: 0.55, snowRegenMult: 1, clearReward: 300,
+    skyTop: 0x4f8fd6, skyBottom: 0xdcefff, fogColor: 0xd6e9fb, fogNear: 60, fogFar: 170,
+    sunColor: 0xfff1d6, sunIntensity: 2.6, ambientColor: 0xbcd7ff, ambientIntensity: 0.9, snowTint: 0xffffff, snowfall: 0.25, theme: 'meadow',
+  },
+  {
+    index: 2, id: 'foundry', name: 'Rust Basin', tagline: 'Something huge is drilling under the red dust.', bossName: 'THE GRINDER',
     rounds: [
       { groups: [g('spinner', 3, 0, 3), g('scrapper', 4, 2, 1.5)] },
       { groups: [g('brute', 3, 0, 4), g('thief', 3, 4, 2)] },
@@ -93,7 +96,7 @@ export const ZONES: ZoneDef[] = [
     sunColor: 0xeaf6ff, sunIntensity: 2.4, ambientColor: 0xa9dcff, ambientIntensity: 1.0, snowTint: 0xeef9ff, snowfall: 0.15, theme: 'lake',
   },
   {
-    index: 3, id: 'bowl', name: 'Blizzard Bowl', tagline: 'Whiteout arena. Two bosses. One plan: flank you.', bossName: 'SLUSH & SLEET',
+    index: 3, id: 'bowl', name: 'The Thermal Divide', tagline: 'Twins. One runs hot, one runs cold.', bossName: 'SLUSH & SLEET',
     rounds: [
       { groups: [g('scrapper', 6, 0, 1), g('thief', 3, 3, 1.5)] },
       { groups: [g('spinner', 4, 0, 2), g('brute', 2, 4, 3)] },
@@ -105,28 +108,28 @@ export const ZONES: ZoneDef[] = [
     sunColor: 0xdfe8ff, sunIntensity: 1.4, ambientColor: 0xd5dde8, ambientIntensity: 1.3, snowTint: 0xf4f7fa, snowfall: 1.0, theme: 'blizzard',
   },
   {
-    index: 4, id: 'summit', name: 'Omega Summit', tagline: 'The factory at the top of the world. The final machine waits.', bossName: 'MEGAPLOW Ω',
-    rounds: [
-      { groups: [g('brute', 3, 0, 3), g('scrapper', 6, 2, 1)] },
-      { groups: [g('spinner', 4, 0, 2), g('thief', 4, 2, 1.5), g('brute', 2, 6, 3)] },
-      { groups: [g('scrapper', 8, 0, 0.8), g('spinner', 3, 3, 2), g('brute', 3, 6, 2.5)] },
-      { boss: true, groups: [g('omega', 1, 1, 1)] },
-    ],
-    enemyHpMult: 2.1, coinMult: 1.8, snowDepth: 0.6, snowRegenMult: 1.3, clearReward: 1200,
-    skyTop: 0x1b2347, skyBottom: 0xb46a8c, fogColor: 0x8a6f8f, fogNear: 40, fogFar: 140,
-    sunColor: 0xffa7a0, sunIntensity: 1.9, ambientColor: 0x8f8fd8, ambientIntensity: 0.9, snowTint: 0xf6ecff, snowfall: 0.5, theme: 'peak',
-  },
-  {
-    index: 5, id: 'plaza', name: 'Golden Tower Plaza', tagline: 'A very big rally. The biggest. Everybody says so.', bossName: 'THE DONALD',
+    index: 4, id: 'plaza', name: 'Golden Tower Plaza', tagline: 'A very big rally. The biggest. Everybody says so.', bossName: 'THE DONALD',
     rounds: [
       { groups: [g('rallybot', 7, 0, 0.8), g('brute', 2, 2, 3), g('thief', 3, 5, 1.5)] },
       { groups: [g('spinner', 4, 0, 1.8), g('rallybot', 6, 2, 0.9), g('brute', 3, 6, 2.5)] },
       { groups: [g('brute', 4, 0, 2.5), g('spinner', 3, 3, 1.8), g('thief', 3, 5, 1.2), g('rallybot', 7, 7, 0.7)] },
       { boss: true, groups: [g('donald', 1, 1, 1)] },
     ],
-    enemyHpMult: 2.4, coinMult: 2.0, snowDepth: 0.6, snowRegenMult: 1.4, clearReward: 1600,
+    enemyHpMult: 2.1, coinMult: 1.8, snowDepth: 0.6, snowRegenMult: 1.3, clearReward: 1200,
     skyTop: 0x2a3f8f, skyBottom: 0xffd59a, fogColor: 0xf0d6b0, fogNear: 50, fogFar: 160,
     sunColor: 0xffe2a8, sunIntensity: 2.4, ambientColor: 0xffe6c8, ambientIntensity: 0.95, snowTint: 0xfffaf0, snowfall: 0.2, theme: 'rally',
+  },
+  {
+    index: 5, id: 'summit', name: 'The Omega Works', tagline: 'The final machine builds itself.', bossName: 'MEGAPLOW Ω',
+    rounds: [
+      { groups: [g('brute', 3, 0, 3), g('scrapper', 6, 2, 1)] },
+      { groups: [g('spinner', 4, 0, 2), g('thief', 4, 2, 1.5), g('brute', 2, 6, 3)] },
+      { groups: [g('scrapper', 8, 0, 0.8), g('spinner', 3, 3, 2), g('brute', 3, 6, 2.5)] },
+      { boss: true, groups: [g('omega', 1, 1, 1)] },
+    ],
+    enemyHpMult: 2.4, coinMult: 2.0, snowDepth: 0.6, snowRegenMult: 1.4, clearReward: 1600,
+    skyTop: 0x1b2347, skyBottom: 0xb46a8c, fogColor: 0x8a6f8f, fogNear: 40, fogFar: 140,
+    sunColor: 0xffa7a0, sunIntensity: 1.9, ambientColor: 0x8f8fd8, ambientIntensity: 0.9, snowTint: 0xf6ecff, snowfall: 0.5, theme: 'peak',
   },
 ];
 

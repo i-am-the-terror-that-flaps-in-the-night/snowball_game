@@ -429,3 +429,87 @@ describe('ARSENAL', () => {
     expect(up.shieldMax).toBeCloseTo(FX.barrier(2));
   });
 });
+
+/* Level overhaul swaps (docs/level-overhaul.md "Swaps and saves"): arena 1/2 swapped bosses and looks only (the slots
+ * keep their save ids), and the Plaza (id 'plaza') moved to slot 5 while the Works (id 'summit') moved to slot 6.
+ * Saves store `unlockedZones` as a prefix count plus per-id records; the only migration is that loading opens every
+ * arena up to the highest cleared one (openClearedArenas in Progression.ts). */
+describe('level overhaul: old saves after the arena swaps', () => {
+  const idx = (id: string) => ZONES.findIndex((z) => z.id === id);
+  const oldSave = (unlockedZones: number, zones: Record<string, { cleared: boolean; bestRound: number }>, extra: object = {}) =>
+    JSON.stringify({ version: 1, coins: 100, upgrades: {}, unlockedZones, zones, totalKills: 0, totalCoinsEarned: 0, muted: false, ...extra });
+  const cleared = (...ids: string[]) => Object.fromEntries(ids.map((id) => [id, { cleared: true, bestRound: 4 }]));
+
+  it('slot order and save ids match the plan', () => {
+    expect(ZONES.map((z) => z.id)).toEqual(['yard', 'junkyard', 'foundry', 'bowl', 'plaza', 'summit']);
+    expect(ZONES.map((z) => z.bossName)).toEqual(['FROSTBYTE', 'BULLDOZA', 'THE GRINDER', 'SLUSH & SLEET', 'THE DONALD', 'MEGAPLOW Ω']);
+    ZONES.forEach((z, i) => expect(z.index).toBe(i));
+    // Difficulty stays positional: every slot is tougher and pays more than the one before.
+    for (let i = 1; i < ZONES.length; i++) {
+      expect(ZONES[i].enemyHpMult).toBeGreaterThan(ZONES[i - 1].enemyHpMult);
+      expect(ZONES[i].clearReward).toBeGreaterThan(ZONES[i - 1].clearReward);
+    }
+  });
+
+  it('a mid-campaign save (arenas 1-2 cleared) keeps the same slots, records and stars', () => {
+    const p = new Progression();
+    expect(p.importSave(oldSave(3, cleared('yard', 'junkyard'), { challenges: { yard: ['slam'], junkyard: ['combo'] } })).ok).toBe(true);
+    expect([0, 1, 2, 3].map((i) => p.isZoneUnlocked(i))).toEqual([true, true, true, false]);
+    expect(p.zoneRecord(ZONES[0].id).cleared).toBe(true);
+    expect(p.zoneRecord(ZONES[1].id).cleared).toBe(true);
+    expect(p.data.challenges).toEqual({ yard: ['slam'], junkyard: ['combo'] });
+  });
+
+  it('old 6-arena save, 5 unlocked (Omega Summit was slot 5, not yet cleared): the Plaza is now the playable slot', () => {
+    const p = new Progression();
+    expect(p.importSave(oldSave(5, cleared('yard', 'junkyard', 'foundry', 'bowl'))).ok).toBe(true);
+    expect(p.isZoneUnlocked(idx('plaza'))).toBe(true);
+    expect(p.isZoneUnlocked(idx('summit'))).toBe(false);
+    // Beating the Plaza opens the finale.
+    p.recordRun(idx('plaza'), ZONES[idx('plaza')].rounds.length, true, 10);
+    expect(p.isZoneUnlocked(idx('summit'))).toBe(true);
+    expect(p.data.unlockedZones).toBe(ZONES.length);
+  });
+
+  it('old save with all 6 unlocked and the Plaza not cleared: both late arenas stay open, records intact', () => {
+    const p = new Progression();
+    expect(p.importSave(oldSave(6, cleared('yard', 'junkyard', 'foundry', 'bowl', 'summit'), { hardCleared: { summit: true } })).ok).toBe(true);
+    expect(p.isZoneUnlocked(idx('plaza'))).toBe(true);
+    expect(p.isZoneUnlocked(idx('summit'))).toBe(true);
+    expect(p.zoneRecord('summit').cleared).toBe(true);
+    expect(p.zoneRecord('plaza').cleared).toBe(false);
+    expect(p.data.hardCleared).toEqual({ summit: true });
+    // Clearing the Plaza (now slot 5) never lowers the unlock count.
+    p.recordRun(idx('plaza'), 4, true, 5);
+    expect(p.data.unlockedZones).toBe(ZONES.length);
+  });
+
+  it('pre-Plaza save (5 arenas, Omega Summit cleared, 5 unlocked): every arena up to the cleared Works opens', () => {
+    // Before the Plaza existed, clearing the last arena capped unlockedZones at 5. After the swap the cleared Works sits
+    // in slot 6, past that prefix; loading opens every arena up to the highest cleared one, so it is playable (and its
+    // HARD button usable) right away, and the unbeaten Plaza is open too.
+    const p = new Progression();
+    expect(p.importSave(oldSave(5, cleared('yard', 'junkyard', 'foundry', 'bowl', 'summit'), { challenges: { summit: ['bossHp'] } })).ok).toBe(true);
+    expect(p.data.unlockedZones).toBe(ZONES.length);
+    expect(p.isZoneUnlocked(idx('plaza'))).toBe(true);
+    expect(p.isZoneUnlocked(idx('summit'))).toBe(true);
+    expect(p.zoneRecord('summit').cleared).toBe(true);
+    expect(p.zoneRecord('plaza').cleared).toBe(false);
+    expect(p.data.challenges?.summit).toEqual(['bossHp']);
+  });
+
+  it('pre-Plaza save in localStorage: the normal load path opens the cleared Works too', () => {
+    store.set(SAVE_KEY, oldSave(5, cleared('yard', 'junkyard', 'foundry', 'bowl', 'summit')));
+    const p = new Progression();
+    expect(p.data.unlockedZones).toBe(ZONES.length);
+    expect(p.isZoneUnlocked(idx('summit'))).toBe(true);
+  });
+
+  it('loading never lowers unlockedZones and never opens past the highest cleared arena + 1', () => {
+    const p = new Progression();
+    expect(p.importSave(oldSave(2, cleared('junkyard'))).ok).toBe(true);
+    expect(p.data.unlockedZones).toBe(2);
+    expect(p.importSave(oldSave(4, cleared('yard'))).ok).toBe(true);
+    expect(p.data.unlockedZones).toBe(4);
+  });
+});

@@ -1,6 +1,7 @@
 # Duel
 
-An online best-of-3 against a friend in a Frostbite Yard-size arena, with no bots.
+An online best-of-3 against a friend in the classic Frostbite Yard (arena 1's size and snow, its pre-overhaul look),
+with no bots.
 
 ## Playing
 

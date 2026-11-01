@@ -151,17 +151,21 @@ const metres = (cm: number) => `${(cm / 100).toFixed(2)} m`;
 /* ------------------------------------------------------------------ the list */
 
 const bossName = (type: EnemyType) => ENEMIES[type].name;
+/** THE DONALD's arena, found by save id (its slot moved in the level overhaul). */
+const PLAZA = ZONES.find((z) => z.id === 'plaza')!;
 
+/* Boss trophies run in campaign order (docs/level-overhaul.md "Arenas"): FROSTBYTE, BULLDOZA, THE GRINDER, then the
+ * twins, THE DONALD and the finale MEGAPLOW below. Rewards rise with the arena, so the finale pays the most. */
 const BOSS_ACH: [type: EnemyType, id: string, name: string, icon: string, reward: number][] = [
-  ['bulldoza', 'boss_bulldoza', 'Dozer Down', '🚜', 50],
-  ['frostbyte', 'boss_frostbyte', 'Ctrl+Alt+Defeat', '👾', 75],
+  ['frostbyte', 'boss_frostbyte', 'Ctrl+Alt+Defeat', '👾', 50],
+  ['bulldoza', 'boss_bulldoza', 'Dozer Down', '🚜', 75],
   ['grinder', 'boss_grinder', 'Grind to a Halt', '🔩', 100],
 ];
 
 export const ACHIEVEMENTS: AchievementDef[] = [
   // ---- Campaign
-  { id: 'clear_first', name: 'Yard Work', desc: `Clear ${ZONES[0].name}.`, icon: '🏗️', category: 'campaign', goal: 1, reward: 50, value: (p) => arenasCleared(p) },
-  { id: 'clear_all', name: 'Top of the World', desc: `Clear all ${ZONES.length} campaign arenas.`, icon: '🏔️', category: 'campaign', goal: ZONES.length, reward: 300, value: arenasCleared },
+  { id: 'clear_first', name: 'Cold Start', desc: `Clear ${ZONES[0].name}.`, icon: '🧊', category: 'campaign', goal: 1, reward: 50, value: (p) => arenasCleared(p) },
+  { id: 'clear_all', name: 'World Tour', desc: `Clear all ${ZONES.length} campaign arenas.`, icon: '🌍', category: 'campaign', goal: ZONES.length, reward: 300, value: arenasCleared },
   { id: 'clean_clear', name: 'Not a Scratch', desc: `Clear an arena losing under ${CLEAN_CLEAR_HP} HP.`, icon: '✨', category: 'campaign', goal: 1, reward: 200, value: (p) => life(p, LIFE.cleanClears) },
   { id: 'hard_one', name: 'Hard Mode? Hard Yes.', desc: 'Clear any arena on Hard.', icon: '🌶️', category: 'campaign', goal: 1, reward: 150, value: hardClears },
   { id: 'hard_all', name: 'Glutton for Punishment', desc: `Clear all ${ZONES.length} arenas on Hard.`, icon: '☠️', category: 'campaign', goal: ZONES.length, reward: 500, value: hardClears },
@@ -185,9 +189,9 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     id, name, icon, reward, desc: `Scrap ${bossName(type)}.`, category: 'bosses', goal: 1, value: (p) => life(p, lifeBoss(type)),
   })),
   { id: 'boss_twins', name: 'Sibling Rivalry', desc: 'Scrap both SLUSH and SLEET.', icon: '☯️', category: 'bosses', goal: 1, reward: 150, value: (p) => Math.min(life(p, lifeBoss('slush')), life(p, lifeBoss('sleet'))) },
-  { id: 'boss_donald', name: "You're Fired!", desc: `Scrap ${bossName('donald')} at Golden Tower Plaza.`, icon: '🍊', category: 'bosses', goal: 1, reward: 300, value: (p) => life(p, lifeBoss('donald')) },
-  { id: 'hard_donald', name: 'Hard Deal', desc: `Clear ${ZONES[5].name} on Hard.`, icon: '🏛️', category: 'campaign', goal: 1, reward: 400, value: (p) => (p.data.hardCleared?.[ZONES[5].id] === true ? 1 : 0) },
-  { id: 'boss_omega', name: 'Ω-mega Ouch', desc: `Scrap ${bossName('omega')}, the final machine.`, icon: '💀', category: 'bosses', goal: 1, reward: 250, value: (p) => life(p, lifeBoss('omega')) },
+  { id: 'boss_donald', name: "You're Fired!", desc: `Scrap ${bossName('donald')} at ${PLAZA.name}.`, icon: '🍊', category: 'bosses', goal: 1, reward: 250, value: (p) => life(p, lifeBoss('donald')) },
+  { id: 'hard_donald', name: 'Hard Deal', desc: `Clear ${PLAZA.name} on Hard.`, icon: '🏛️', category: 'campaign', goal: 1, reward: 400, value: (p) => (p.data.hardCleared?.[PLAZA.id] === true ? 1 : 0) },
+  { id: 'boss_omega', name: 'Ω-mega Ouch', desc: `Scrap ${bossName('omega')}, the final machine.`, icon: '💀', category: 'bosses', goal: 1, reward: 300, value: (p) => life(p, lifeBoss('omega')) },
   { id: 'boss_25', name: 'Boss Rush', desc: 'Scrap 25 bosses.', icon: '👑', category: 'bosses', goal: 25, reward: 300, value: (p) => life(p, LIFE.bossKills) },
 
   // ---- Brawl

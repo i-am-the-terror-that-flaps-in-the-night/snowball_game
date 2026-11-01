@@ -1,5 +1,6 @@
 // Headless playtest: node scripts/smoke.mjs [outDir]
-// Boots the Vite dev server, opens the game in headless Chrome, plows a ball, fights round 1, reports errors.
+// Boots the Vite dev server, opens the game in headless Chrome, plows a ball, fights round 1 of arena 1 (Coldboot
+// Glacier), jumps to its boss round (FROSTBYTE), reports errors.
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -9,13 +10,14 @@ mkdirSync(out, { recursive: true });
 const port = 5200 + Math.floor(Math.random() * 500);
 const server = await createServer({ server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+// PW_EXE=/path/to/chromium uses that browser instead of installed Chrome (CI / containers).
+const browser = await chromium.launch({ ...(process.env.PW_EXE ? { executablePath: process.env.PW_EXE } : { channel: 'chrome' }), headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !m.text().includes('GPU stall')) errors.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}\n${e.stack}`));
 const shot = (n) => page.screenshot({ path: `${out}/${n}.png` });
-const probe = () => page.evaluate(() => { const g = window.__game, c = g.ctx; return { state: g.state, ball: +c.plow.heldBallRadius.toFixed(2), hp: Math.round(c.plow.hp), pos: c.plow.position.toArray().map((v) => +v.toFixed(1)), alive: c.enemies.aliveCount(), remaining: c.waves.remaining, bosses: c.enemies.bosses.length, snow: +c.snow.totalSnowFraction().toFixed(3) }; });
+const probe = () => page.evaluate(() => { const g = window.__game, c = g.ctx; return { state: g.state, ball: +c.plow.heldBallRadius.toFixed(2), hp: Math.round(c.plow.hp), pos: c.plow.position.toArray().map((v) => +v.toFixed(1)), alive: c.enemies.aliveCount(), remaining: c.waves.remaining, bosses: c.enemies.bosses.length, boss: c.enemies.bosses[0]?.def?.name, snow: +c.snow.totalSnowFraction().toFixed(3) }; });
 try {
   await page.goto(`http://localhost:${port}/?debug`, { waitUntil: 'load' });
   await page.waitForTimeout(2000);

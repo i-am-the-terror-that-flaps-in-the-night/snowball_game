@@ -3,8 +3,9 @@ import {
   INPUT_BYTES, NET_PLOW_LEN, NP, PressTracker, SNAP_BYTES, decodeInput, decodeSnap, decodeSnow, dequantDepth, encodeInput,
   encodeSnap, encodeSnow, fromJson, quantDepth, seqNewer, toJson, type InputFrame, type SnapHeader,
 } from '../src/net/protocol';
-import { CATCHUP_MAX, catchUp, catchUpBonus, cleanDuelGear, cleanLevels, duelBonus, duelPower, duelSpent, garageSpent, sharedMatchCost } from '../src/config/duel';
+import { CATCHUP_MAX, DUEL_ZONE, catchUp, catchUpBonus, cleanDuelGear, cleanLevels, duelBonus, duelPower, duelSpent, garageSpent, sharedMatchCost } from '../src/config/duel';
 import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, gearSpent } from '../src/config/gear';
+import { ZONES } from '../src/config/zones';
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/config/upgrades';
 import { Progression, computeStatsFor } from '../src/core/Progression';
 import { DuelWallet } from '../src/duel/DuelWallet';
@@ -26,6 +27,23 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 /* ------------------------------------------------------------------ snapshots */
+
+/* DUEL_ZONE is built from an explicit field list so biome / terrain / hazard data added to arena 1 never leaks into
+ * Duel. Adding a field to this list is a deliberate choice (e.g. when Duel gets its biome pool). */
+describe('duel arena', () => {
+  it('pins its own fields and inherits nothing else from arena 1', () => {
+    expect(Object.keys(DUEL_ZONE).sort()).toEqual([
+      'ambientColor', 'ambientIntensity', 'bossName', 'clearReward', 'coinMult', 'enemyHpMult', 'fogColor', 'fogFar', 'fogNear',
+      'id', 'index', 'name', 'rounds', 'skyBottom', 'skyTop', 'snowDepth', 'snowRegenMult', 'snowTint', 'snowfall',
+      'sunColor', 'sunIntensity', 'tagline', 'terrain', 'theme',
+    ]);
+    expect(DUEL_ZONE.terrain).toBeUndefined();
+    expect('biome' in DUEL_ZONE).toBe(false);
+    expect(DUEL_ZONE.index).toBe(ZONES[0].index);
+    expect(DUEL_ZONE.rounds.every((r) => r.groups.length === 0)).toBe(true);
+    expect(DUEL_ZONE.coinMult).toBe(0);
+  });
+});
 
 describe('snapshot encode / decode', () => {
   it('round-trips the header and both plows exactly (float32)', () => {

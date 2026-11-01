@@ -60,11 +60,15 @@ describe('challenge definitions', () => {
     expect(ids(evaluateRun(p, run(2, { plow: 'volt' })))).toEqual([]);
     expect(ids(evaluateRun(p, run(2, { plow: 'volt', damageTaken: 99 })))).toEqual(['plow-volt']);
     expect(ids(evaluateRun(p, run(3, { killsBy: { slam: 0, ram: 0, whirl: 4, other: 0 } })))).toEqual(['whirl']);
-    // BRUTUS twist: the plow alone is not enough.
-    expect(ids(evaluateRun(p, run(4, { plow: 'brute' })))).toEqual([]);
-    expect(ids(evaluateRun(p, run(4, { plow: 'brute', killsBy: { slam: 0, ram: 12, whirl: 0, other: 0 } })))).toEqual(['plow-brute']);
-    expect(ids(evaluateRun(p, run(4, { bossDamage: 0 })))).toEqual(['bossHp']);
-    expect(ids(evaluateRun(p, run(4, { killsBy: { slam: 10, ram: 0, whirl: 0, other: 0 } })))).toEqual(['slam']);
+    // Golden Tower Plaza (slot 5 after the level-overhaul swap).
+    expect(ids(evaluateRun(p, run(4, { strikes: 3 })))).toEqual(['strike']);
+    expect(ids(evaluateRun(p, run(4, { bossDamage: 79 })))).toEqual(['bossHp']);
+    expect(ids(evaluateRun(p, run(4, { bestCombo: 40 })))).toEqual(['combo']);
+    // The Omega Works (slot 6). BRUTUS twist: the plow alone is not enough.
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute' })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute', killsBy: { slam: 0, ram: 12, whirl: 0, other: 0 } })))).toEqual(['plow-brute']);
+    expect(ids(evaluateRun(p, run(5, { bossDamage: 0 })))).toEqual(['bossHp']);
+    expect(ids(evaluateRun(p, run(5, { killsBy: { slam: 10, ram: 0, whirl: 0, other: 0 } })))).toEqual(['slam']);
   });
 
   it('losses, other modes and missing arenas earn nothing', () => {
@@ -143,7 +147,7 @@ describe('hard mode', () => {
       expect(bossTypes(h)).toEqual(bossTypes(z));
     }
     // The original arena is untouched.
-    expect(ZONES[0].name).toBe('Frostbite Yard');
+    expect(ZONES[0].name).toBe('Coldboot Glacier');
     expect(ZONES[0].rounds[0].groups[0].count).toBe(3);
   });
 

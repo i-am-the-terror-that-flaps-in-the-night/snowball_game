@@ -9,8 +9,18 @@ import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearLevels, gearSpent, type GearSlot } from
  * to the garage once the match starts. Garage value counts gear at what the items actually cost.
  * ---------------------------------------------------------------------------------------------- */
 
-/** The duel arena: Frostbite Yard's layout and size, no bots, no coins. */
-export const DUEL_ZONE: ZoneDef = { ...ZONES[0], id: 'duel', name: 'DUEL · Frostbite Yard', tagline: 'One on one.', bossName: '', rounds: [{ groups: [] }], coinMult: 0, clearReward: 0 };
+/** The duel arena: arena 1's slot (prop seed via `index`, snow) with the classic Frostbite Yard look, no bots, no coins.
+ *  Built from an explicit field list, NOT a spread of ZONES[0]: arena 1 became Coldboot Glacier in the level overhaul,
+ *  and anything the biome / terrain passes add to it (biome, terrain, hazard patches, gravity) must not leak into Duel
+ *  silently. Duel keeps its old flat venue until it gets its own biome pool (docs/level-overhaul.md "Other modes");
+ *  tests/duel.test.ts pins the key set. */
+export const DUEL_ZONE: ZoneDef = {
+  index: ZONES[0].index, id: 'duel', name: 'DUEL · Frostbite Yard', tagline: 'One on one.', bossName: '', rounds: [{ groups: [] }],
+  enemyHpMult: ZONES[0].enemyHpMult, coinMult: 0, snowDepth: ZONES[0].snowDepth, snowRegenMult: ZONES[0].snowRegenMult, clearReward: 0,
+  skyTop: 0x4f8fd6, skyBottom: 0xdcefff, fogColor: 0xd6e9fb, fogNear: 60, fogFar: 170,
+  sunColor: 0xfff1d6, sunIntensity: 2.6, ambientColor: 0xbcd7ff, ambientIntensity: 0.9, snowTint: 0xffffff, snowfall: 0.25, theme: 'meadow',
+  terrain: undefined,
+};
 
 /** Rounds needed to win the match (best of 3). */
 export const DUEL_ROUNDS_TO_WIN = 2;

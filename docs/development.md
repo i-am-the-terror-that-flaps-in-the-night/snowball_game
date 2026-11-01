@@ -40,7 +40,8 @@ gear stat on exactly one item) and `tests/gearVisuals.test.ts` (every item has a
 
 Each script boots Vite and drives the game in headless Chromium via `window.__game` (its `tick(dt)` advances the sim
 without waiting on real time). In environments with a preinstalled browser, point Playwright at it (for example
-`PW_EXE=/opt/pw-browsers/chromium` for the duel probe).
+`PW_EXE=/opt/pw-browsers/chromium` for the duel, smoke and donald probes; add `PROBE_GPU=0` for the donald probe off
+macOS).
 
 ```bash
 node scripts/smoke.mjs                 # campaign smoke test + screenshots
@@ -48,9 +49,10 @@ node scripts/ui-tour.mjs /tmp/ui       # screenshot every menu screen (hub tabs,
 node scripts/combat-probe.mjs          # slam / ram / boss numbers
 node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
 node scripts/meta-probe.mjs            # Paint Shop, Trophies, stars + Hard mode, Daily run + results screens
-node scripts/donald-probe.mjs          # arena 6 + THE DONALD: every attack, phase 2, model / stage / crowd shots
+node scripts/donald-probe.mjs          # arena 5 + THE DONALD: every attack, phase 2, model / stage / crowd shots
 node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
-node scripts/render-probe.mjs baseline    # deterministic render metrics + pixel-diff gate (then: compare)
+node scripts/render-probe.mjs baseline    # deterministic render metrics + pixel-diff gate (then: compare); the
+                                          # level overhaul renamed a5-* to a6-* (The Omega Works): re-record
 node scripts/duel-probe.mjs /tmp/duel-probe  # Duel: two pages over BroadcastChannel (lobby, catch-up garage,
                                              # best of 3, rematch, NUKE / Inferno, ARSENAL, pause, leave, lag)
 node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real PeerJS cloud server (needs internet)

@@ -72,28 +72,37 @@ const withPlow = (kind: PlowKind, name: string, extra?: { goal: string; test: (r
   test: (r) => r.plow === kind && (!extra || extra.test(r)),
 });
 
-/** Zone id -> its three challenges (card / results order). */
+/** Zone id -> its three challenges (card / results order). Keyed by save id, so a challenge follows its arena's id
+ *  (docs/level-overhaul.md "Swaps and saves"): ids never change, only titles get rethemed. */
 export const CHALLENGES: Record<string, ChallengeDef[]> = {
-  // Frostbite Yard: learn the basics: slam, max out a ball, keep moving.
+  // Coldboot Glacier (arena 1, FROSTBYTE): learn the basics: slam, max out a ball, keep moving.
+  // TODO(terrain retune): 'speed' (Quick Plow, 1:00) was tuned on the flat yard. With FROSTBYTE as the intro boss a
+  // light-garage autopilot clears in ~0:44 (was ~0:38 vs BULLDOZA), so 1:00 still holds; re-check once the glacier's
+  // ramps / bowl and ice sheets land.
   yard: [slamKills(3), ball(1.2, 'Big Ball Energy'), speed(60, 'Quick Plow')],
-  // Pine Junkyard: thieves and spinners; chain hits, dodge, rush the rogue AI.
-  junkyard: [combo(30), untouchable(90, 'Thief-Proof'), bossBlitz(30, 'Ctrl+Alt+Delete')],
-  // Frozen Foundry: brutes everywhere. Hit hard, hit many, survive it on the fragile electric plow.
+  // Inferno Quarry (arena 2, BULLDOZA): thieves and spinners; chain hits, dodge, scrap the Yard Boss fast.
+  // TODO(terrain retune): 'blitz' (30 s boss) — BULLDOZA dies in ~9-14 s to a light-garage autopilot on flat ground;
+  // re-check once the quarry pit, lava rivers and BULLDOZA's phase-2 leap land.
+  junkyard: [combo(30), untouchable(90, 'Thief-Proof'), bossBlitz(30, 'Eviction Notice')],
+  // Rust Basin (arena 3, THE GRINDER): brutes everywhere. Hit hard, hit many, survive it on the fragile electric plow.
   foundry: [
     ramKills(10),
     strikes(2),
     withPlow('volt', 'Live Wire', { goal: 'lose < 100 HP', test: (r) => r.damageTaken < 100 }),
   ],
-  // Blizzard Bowl: two bosses in a whiteout. Big balls, spin, and do it fast.
-  bowl: [ball(1.8, 'Glacier Maker'), whirlKills(4), speed(105, 'Whiteout Sprint')],
-  // Omega Summit: the finale. Tank it with BRUTUS, dodge the machine, bury the rest in snow.
+  // The Thermal Divide (arena 4, SLUSH & SLEET): a hot twin and a cold twin. Big balls, spin, and do it fast.
+  // TODO(terrain retune): 'speed' (Divide & Conquer, 1:45) — re-check once the central dip, ramps and vents land.
+  bowl: [ball(1.8, 'Cold Front'), whirlKills(4), speed(105, 'Divide & Conquer')],
+  // Golden Tower Plaza (arena 5, THE DONALD): break up the rally crowds, dodge the walls and the beam, keep the combo
+  // going bigly.
+  plaza: [strikes(3, 'Crowd Control'), bossClean(80, 'Fake Damage'), combo(40, 'Tremendous Combo')],
+  // The Omega Works (arena 6, MEGAPLOW Ω): the finale. Tank it with BRUTUS, dodge the machine, bury the rest in snow.
+  // No time-based goals here on purpose: the 160 m multi-level factory makes clear times swing with routing.
   summit: [
     withPlow('brute', 'Rhino Rampage', { goal: '12 ram kills', test: (r) => r.killsBy.ram >= 12 }),
     bossClean(60, 'Omega Dodger'),
     slamKills(10, 'Avalanche Artist'),
   ],
-  // Golden Tower Plaza: break up the rally crowds, dodge the walls and the beam, keep the combo going bigly.
-  plaza: [strikes(3, 'Crowd Control'), bossClean(80, 'Fake Damage'), combo(40, 'Tremendous Combo')],
 };
 
 /** Hard mode tuning (meta/challenges.ts hardZone / recordHardClear). */

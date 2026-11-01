@@ -190,16 +190,17 @@ function probeInit(opts = {}) {
       g().beginCountdown();
       run(countdownFrames() + 360, pilot({ whirl: true }));
     },
-    'a5-r3-classic': () => {
-      startCampaign(4, 2);
+    // a6-*: arena 6 (index 5), The Omega Works since the level-overhaul swap (was a5-*, Omega Summit as arena 5 / index 4).
+    'a6-r3-classic': () => {
+      startCampaign(5, 2);
       run(countdownFrames() + 420, pilot({ ability: true }));
     },
-    'a5-r3-brute': () => {
+    'a6-r3-brute': () => {
       setLoadout('brute', { bruteSaws: 3 }, {
         owned: ['paint_red', 'decal_flames', 'trail_fire'],
         equipped: { paint: 'paint_red', decal: 'decal_flames', trail: 'trail_fire' },
       });
-      startCampaign(4, 2);
+      startCampaign(5, 2);
       run(countdownFrames() + 420, pilot({ ability: true }));
     },
     'brute-look': () => {
@@ -208,7 +209,7 @@ function probeInit(opts = {}) {
         owned: ['paint_red', 'decal_flames', 'trail_fire'],
         equipped: { paint: 'paint_red', decal: 'decal_flames', trail: 'trail_fire' },
       });
-      startCampaign(4, 0);
+      startCampaign(5, 0);
       const inp = c().input;
       run(150, (i) => (inp.down.add('KeyW'), i > 40 && i < 70 ? inp.down.add('KeyA') : inp.down.delete('KeyA')));
     },
@@ -232,8 +233,8 @@ function probeInit(opts = {}) {
       run(24);
     },
     'bot-wreck': () => {
-      // Summit: a few bots right in front, one killed (debris mid-air), one mid hit-flash.
-      startCampaign(4, 0);
+      // The Omega Works: a few bots right in front, one killed (debris mid-air), one mid hit-flash.
+      startCampaign(5, 0);
       run(60);
       const bots = ['scrapper', 'brute', 'scrapper', 'spinner', 'brute'].map((t, i) => {
         const q = ahead(7 + (i % 2) * 3, -6 + i * 3);

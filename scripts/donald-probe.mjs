@@ -1,5 +1,5 @@
 // Headless THE DONALD probe: node scripts/donald-probe.mjs [outDir]
-// Golden Tower Plaza (arena 6): screenshots the arena / stage / crowd / flags, the zone select, the boss up close,
+// Golden Tower Plaza (arena 5, save id 'plaza'; looked up by id so a reorder never breaks the probe): screenshots the arena / stage / crowd / flags, the zone select, the boss up close,
 // and drives the boss round through every attack (BUILD THE WALL + a dash / slam smash, DEPORTATION, RALLY + its
 // break, GOLD PLATED + reflect + taunts) via window.__game. Fails on console errors.
 import { createServer } from 'vite';
@@ -11,7 +11,8 @@ mkdirSync(out, { recursive: true });
 const port = 6400 + Math.floor(Math.random() * 100);
 const server = await createServer({ root: process.cwd(), server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: [process.env.PROBE_GPU === '0' ? '--use-angle=swiftshader' : '--use-angle=metal', '--enable-unsafe-swiftshader'] });
+// PW_EXE=/path/to/chromium uses that browser instead of installed Chrome (pair it with PROBE_GPU=0 off macOS).
+const browser = await chromium.launch({ ...(process.env.PW_EXE ? { executablePath: process.env.PW_EXE } : { channel: 'chrome' }), headless: true, args: [process.env.PROBE_GPU === '0' ? '--use-angle=swiftshader' : '--use-angle=metal', '--enable-unsafe-swiftshader'] });
 const errors = [];
 const log = (...a) => console.log(...a);
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
@@ -70,13 +71,29 @@ const ev = (fn, arg) => page.evaluate(fn, arg);
 await ev(() => window.__game.toMenu());
 await page.waitForTimeout(300);
 {
-  const b = page.locator('button:visible', { hasText: 'FIGHT' }).first();
-  if (await b.count()) { await b.click(); await page.waitForTimeout(500); await shot('01-zone-select'); }
+  // Hub redesign: FIGHT is a tile on the PLAY tab. A miss fails the probe (like meta-probe / brawl-probe).
+  const tab = page.locator('.ss-hub-cat[data-cat="play"]');
+  if (await tab.count()) await tab.click();
+  const b = page.locator('.ss-tile[data-tile="fight"]:visible');
+  if (!(await b.count())) errors.push('[probe] no visible hub tile .ss-tile[data-tile="fight"] on the main menu');
+  else {
+    await b.click();
+    await page.waitForTimeout(500);
+    const screen = await ev(() => window.__game.ctx.ui.current);
+    if (screen !== 'zones') errors.push(`[probe] FIGHT tile opened "${screen}", expected the zone select`);
+    await shot('01-zone-select');
+  }
   await page.keyboard.press('Escape');
 }
 
 // ---- the arena: chase cam, stage, crowd, flags, gold tower
-await ev(() => { const g = window.__game; g.startRun(5); window.__p.tick(1); window.__p.render(); });
+await ev(async () => {
+  const { ZONES } = await import('/src/config/zones.ts');
+  const g = window.__game;
+  g.startRun(ZONES.findIndex((z) => z.id === 'plaza'));
+  window.__p.tick(1);
+  window.__p.render();
+});
 await shot('02-arena-chase');
 await ev(() => window.__p.ui(false));
 await ev(() => { window.__p.cam(0, 9, 8, 0, 6, -36, 55); window.__p.render(); });

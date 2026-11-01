@@ -3,10 +3,22 @@
 ## Campaign
 
 Six walled arenas. Each is a few rounds of bot minions (scrappers, brute dozers, buzzsaws, snow thieves) and then a
-bot boss with telegraphed attacks: BULLDOZA, FROSTBYTE, THE GRINDER, SLUSH & SLEET, MEGAPLOW Ω and, at the Golden
-Tower Plaza rally, THE DONALD (a gold-and-white caricature plow in a red cap: it builds snow-brick walls you smash
-with slams or dashes, deports you to the far edge with a tractor beam, rallies a ring of red-cap bots at its podium,
-and goes GOLD PLATED at half HP). Beating a boss unlocks the next arena.
+bot boss with telegraphed attacks. Beating a boss unlocks the next arena.
+
+| # | Arena | Boss |
+|---|---|---|
+| 1 | Coldboot Glacier: *A rogue AI froze the relay station solid.* | FROSTBYTE |
+| 2 | Inferno Quarry: *The Yard Boss moved somewhere hotter.* | BULLDOZA |
+| 3 | Rust Basin: *Something huge is drilling under the red dust.* | THE GRINDER |
+| 4 | The Thermal Divide: *Twins. One runs hot, one runs cold.* | SLUSH & SLEET |
+| 5 | Golden Tower Plaza: *A very big rally. The biggest. Everybody says so.* | THE DONALD |
+| 6 | The Omega Works: *The final machine builds itself.* | MEGAPLOW Ω |
+
+THE DONALD is a gold-and-white caricature plow in a red cap: it builds snow-brick walls you smash with slams or
+dashes, deports you to the far edge with a tractor beam, rallies a ring of red-cap bots at its podium, and goes GOLD
+PLATED at half HP. The arenas are mid-way through a biome overhaul (glacier, lava, Mars, hot / cold split, summer
+rally, neon factory; see [level-overhaul.md](level-overhaul.md)): names, bosses and order are final, the new looks and
+terrain are landing arena by arena.
 
 Every arena has **3 challenge stars** and, once cleared, a **Hard mode**:
 
@@ -33,7 +45,7 @@ own hits on rivals cap at 75%. 1st place always drops gear, 2nd and 3rd sometime
 
 ## Survival
 
-Unlocked by beating arena 1. Endless waves in the Frozen Foundry. Bot HP, damage and coins scale every wave, a boss
+Unlocked by beating arena 1. Endless waves in arena 3's layout (Rust Basin). Bot HP, damage and coins scale every wave, a boss
 arrives every 5th wave (cycling the campaign bosses, with escorts on later loops), and you get a short breather plus
 a partial repair between waves. Named special waves (Swarm, Thief Raid, Blitz, Saw Storm, Heavy Metal, Elite Squad)
 break up the mix about twice per boss cycle and pay extra, and the between-wave pit stop previews what's next.

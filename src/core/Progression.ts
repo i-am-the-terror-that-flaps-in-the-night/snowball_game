@@ -127,6 +127,16 @@ function cleanGear(raw: unknown): GearState {
   return out;
 }
 
+/** Open every arena up to the highest cleared one. `unlockedZones` is a prefix count, so an arena reorder can leave a
+ *  cleared arena past it: a pre-Plaza save that cleared Omega had 5 unlocked (the cap then), and the 5 <-> 6 swap
+ *  moved Omega to slot 6 (docs/level-overhaul.md "Swaps and saves"). A one-line migration, not a schema change. */
+function openClearedArenas(d: SaveData): void {
+  const zones = d.zones && typeof d.zones === 'object' ? d.zones : {};
+  const hi = ZONES.reduce((m, z, i) => (zones[z.id]?.cleared === true ? i : m), -1);
+  const cur = typeof d.unlockedZones === 'number' && Number.isFinite(d.unlockedZones) ? d.unlockedZones : 1;
+  d.unlockedZones = Math.max(cur, Math.min(ZONES.length, hi + 1));
+}
+
 /** Validate an imported save: every field type-checked and clamped; unknown keys dropped. Null if unusable. */
 function sanitizeSave(raw: unknown): SaveData | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -152,6 +162,7 @@ function sanitizeSave(raw: unknown): SaveData | null {
       if (r && typeof r === 'object') out.zones[z.id] = { cleared: r.cleared === true, bestRound: num(r.bestRound, 0, 999) };
     }
   }
+  openClearedArenas(out);
   out.totalKills = num(p.totalKills);
   out.totalCoinsEarned = num(p.totalCoinsEarned);
   out.muted = p.muted === true;
@@ -220,6 +231,7 @@ export class Progression {
           }
           refundRepricedGear(d);
           refundItemStats(d);
+          openClearedArenas(d);
           return d;
         }
       }
