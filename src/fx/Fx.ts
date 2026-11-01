@@ -5,6 +5,8 @@ import { MAX_PUFFS, MAX_RINGS, MAX_SCORCH, MAX_SPARKS, PuffBatch, RingBatch, Sco
 /* Pooled particle effects. Draw calls: chunks (lit icosahedra) + sparks + puffs + rings + scorch, each ONE
  * instanced batch with a fixed cap that is hidden while empty. Only the live prefix of each buffer is uploaded. */
 
+/** Particle chunks shrink to nothing within this many metres of the camera. */
+const CAM_CLEAR = 2.5;
 const MAX_P = 3000;
 const MAX_TEXT = 48;
 const MAX_SMOLDER = 24;
@@ -484,6 +486,7 @@ export class Fx implements FxAPI {
     const { px, py, pz, vx, vy, vz, age, life, size, grav, drag, rot, rotV, col } = this;
     const d = this.dummy;
     let i = 0;
+    const camP = this.ctx.camera.position;
     while (i < this.n) {
       age[i] += dt;
       if (age[i] >= life[i]) {
@@ -507,7 +510,14 @@ export class Fx implements FxAPI {
         }
       }
       const f = age[i] / life[i];
-      const s = size[i] * (f < 0.6 ? 1 : 1 - (f - 0.6) / 0.4) * Math.min(1, age[i] * 25 + 0.3);
+      let s = size[i] * (f < 0.6 ? 1 : 1 - (f - 0.6) / 0.4) * Math.min(1, age[i] * 25 + 0.3);
+      // Never let a chunk (dark explosion smoke rises) pass through the camera: flat faces right at the lens cover
+      // the screen with a hard-edged black block. Shrink to nothing within CAM_CLEAR m of it.
+      const cdx = px[i] - camP.x;
+      const cdy = py[i] - camP.y;
+      const cdz = pz[i] - camP.z;
+      const cd2 = cdx * cdx + cdy * cdy + cdz * cdz;
+      if (cd2 < (CAM_CLEAR + s) * (CAM_CLEAR + s)) s *= Math.max(0, (Math.sqrt(cd2) - s) / CAM_CLEAR);
       d.position.set(px[i], py[i], pz[i]);
       d.rotation.set(rot[i], rot[i] * 0.7, 0);
       d.scale.setScalar(Math.max(0.0001, s));

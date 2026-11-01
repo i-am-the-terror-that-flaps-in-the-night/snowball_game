@@ -36,6 +36,10 @@ const MAX_DEBRIS = 180;
 /** When the last boss of a fight dies, its summoned adds power down: the first after POWER_DOWN_DELAY s, then one every
  *  POWER_DOWN_GAP s (a quick chain of explosions instead of a mop-up hunt round the arena). */
 const POWER_DOWN_DELAY = 0.6;
+/** Wreck debris shrinks away within this many metres of the camera. */
+const DEBRIS_CAM_CLEAR = 3;
+const _dm = new THREE.Matrix4();
+const _dv = new THREE.Vector3();
 const POWER_DOWN_GAP = 0.15;
 /** Share of a bot's armour that rapid weapon hits (DamageOpts.direct: minigun rounds, laser ticks) still face. */
 const DIRECT_ARMOR = 0.5;
@@ -1309,6 +1313,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
    *  sphere so both passes still frustum-cull them. */
   private syncDebris(): void {
     for (const b of this.debrisBatches.values()) b.count = 0;
+    const cam = this.ctx.camera?.position;
     for (const d of this.debris) {
       if (!d.active) continue;
       const key = d.geo.uuid + d.mat.uuid;
@@ -1322,7 +1327,13 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         this.debrisBatches.set(key, b);
       }
       d.obj.updateMatrix();
-      b.setMatrixAt(b.count++, d.obj.matrix);
+      // A wreck piece flung past the camera (black tyres, treads) would cover the screen: shrink it to nothing
+      // within DEBRIS_CAM_CLEAR m of the lens.
+      const cd = cam ? d.obj.position.distanceTo(cam) : Infinity;
+      if (cd < DEBRIS_CAM_CLEAR) {
+        _dm.copy(d.obj.matrix).scale(_dv.setScalar(Math.max(1e-3, (cd - 0.5) / (DEBRIS_CAM_CLEAR - 0.5))));
+        b.setMatrixAt(b.count++, _dm);
+      } else b.setMatrixAt(b.count++, d.obj.matrix);
     }
     for (const b of this.debrisBatches.values()) {
       b.visible = b.count > 0;

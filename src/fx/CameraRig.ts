@@ -14,8 +14,11 @@ const BIG_UP = 12;
 const DASH_PULL = 3;
 const AHEAD = 4;
 const BASE_FOV = 60;
-/** How far outside the walls the camera may drift (walls are ~2.5m tall at the ARENA edges). */
-const WALL_SLACK = 5;
+/** How far outside the walls the camera may drift (walls are ~2.5m tall at the ARENA edges). Kept tiny: the stands
+ *  and venue sets start right behind the walls, and a camera out there sits inside them (a black screen). */
+const WALL_SLACK = 0.5;
+/** A camera that wanted to be outside the walls is held inside and lifted this much per metre it was pulled in. */
+const WALL_LIFT = 0.9;
 const MENU_RADIUS = 45;
 const MENU_HEIGHT = 26;
 const DASH_FOV_KICK = 12;
@@ -218,11 +221,11 @@ export class CameraRig implements CameraRigAPI {
     const hx = ARENA.maxX + WALL_SLACK;
     const lz = ARENA.minZ - WALL_SLACK;
     const hz = ARENA.maxZ + WALL_SLACK;
+    const outX = Math.max(0, lx - x, x - hx);
+    const outZ = Math.max(0, lz - z, z - hz);
     x = THREE.MathUtils.clamp(x, lx, hx);
     z = THREE.MathUtils.clamp(z, lz, hz);
-    const outX = Math.max(0, ARENA.minX - x, x - ARENA.maxX);
-    const outZ = Math.max(0, ARENA.minZ - z, z - ARENA.maxZ);
-    const lift = Math.max(outX, outZ) * 0.5;
+    const lift = Math.max(outX, outZ) * WALL_LIFT;
     // Height: flat arenas follow the plow's feet exactly as before; terrain arenas smooth it (a jump does not yank the
     // camera, a slope is followed quickly).
     const terr = this.ctx.terrain;
