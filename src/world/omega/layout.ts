@@ -145,12 +145,14 @@ export const OMEGA_SPAWN = { x: 0, z: 62, heading: Math.PI } as const;
  * player, so a 160 m arena never means a long drive to the next fight. `deck` = the surface the hatch sits on.
  */
 export const OMEGA_HATCHES: { x: number; z: number; deck: number }[] = [
-  // ground ring
+  // ground ring (about every 20 m, so there are always a few 9-35 m from the player)
   { x: 0, z: 70, deck: -1 }, { x: 36, z: 66, deck: -1 }, { x: -36, z: 66, deck: -1 },
+  { x: 18, z: 52, deck: -1 }, { x: -18, z: 52, deck: -1 }, { x: 22, z: 72, deck: -1 }, { x: -22, z: 72, deck: -1 },
   { x: 0, z: -70, deck: -1 }, { x: 36, z: -66, deck: -1 }, { x: -36, z: -66, deck: -1 },
-  { x: 70, z: 0, deck: -1 }, { x: 66, z: 36, deck: -1 }, { x: 66, z: -36, deck: -1 },
-  { x: -70, z: 0, deck: -1 }, { x: -66, z: 36, deck: -1 }, { x: -66, z: -36, deck: -1 },
-  { x: 36, z: 36, deck: -1 }, { x: -36, z: -36, deck: -1 },
+  { x: 18, z: -52, deck: -1 }, { x: -18, z: -52, deck: -1 },
+  { x: 70, z: 0, deck: -1 }, { x: 66, z: 36, deck: -1 }, { x: 66, z: -36, deck: -1 }, { x: 54, z: 18, deck: -1 },
+  { x: -70, z: 0, deck: -1 }, { x: -66, z: 36, deck: -1 }, { x: -66, z: -36, deck: -1 }, { x: -54, z: -18, deck: -1 },
+  { x: 36, z: 36, deck: -1 }, { x: -36, z: -36, deck: -1 }, { x: 36, z: 52, deck: -1 }, { x: -36, z: -52, deck: -1 },
   // undercroft
   { x: -6, z: 6, deck: -1 }, { x: 6, z: -6, deck: -1 },
   // Assembly Floor, platforms, tower
