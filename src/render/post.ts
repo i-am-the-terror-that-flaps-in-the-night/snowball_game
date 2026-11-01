@@ -101,6 +101,12 @@ uniform float smoothWidth;
 varying vec2 vUv;
 vec3 bright( vec2 uv ) {
 	vec3 c = texture2D( tDiffuse, uv ).rgb;
+	// A NaN / Inf / absurd pixel in the scene (any shader, any GPU) must not enter the blur chain: the separable blur
+	// would smear it into a hard-edged black block across the screen. Comparisons are false for NaN, so this catches
+	// it even where isnan() is optimised away.
+	float m0 = c.r + c.g + c.b;
+	if ( !( m0 >= 0.0 ) || !( m0 < 3000.0 ) ) c = vec3( 0.0 );
+	c = min( c, vec3( 64.0 ) );
 	float m = max( c.r, max( c.g, c.b ) );
 	float soft = clamp( m - luminosityThreshold + smoothWidth, 0.0, 2.0 * smoothWidth );
 	soft = soft * soft / ( 4.0 * smoothWidth + 1e-5 );
@@ -201,7 +207,11 @@ uniform float sceneMix;
 varying vec2 vUv;
 void main() {
 	vec3 s = min( texture2D( tScene, vUv ).rgb, vec3( 1.0 ) );
-	gl_FragColor = vec4( sceneMix * s + texture2D( tBloom, vUv ).rgb, 1.0 );
+	vec3 b = texture2D( tBloom, vUv ).rgb;
+	// Belt and braces (see bright()): never let a bad value through to the canvas.
+	if ( !( s.r + s.g + s.b >= 0.0 ) ) s = vec3( 0.0 );
+	if ( !( b.r + b.g + b.b >= 0.0 ) || !( b.r + b.g + b.b < 3000.0 ) ) b = vec3( 0.0 );
+	gl_FragColor = vec4( sceneMix * s + b, 1.0 );
 }`,
     depthTest: false,
     depthWrite: false,

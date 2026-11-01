@@ -263,9 +263,12 @@ export function getLavaMaterial(): THREE.ShaderMaterial {
         float bank = smoothstep(0.55, 1.0, abs(vUv.y));
         vec3 crust = vec3(0.16, 0.03, 0.015);
         vec3 hot = mix(vec3(1.0, 0.28, 0.04), vec3(1.0, 0.82, 0.25), smoothstep(0.62, 0.85, a));
-        vec3 c = mix(hot * 1.9, crust, (1.0 - crack) * 0.75 + bank * 0.65);
+        // Clamped: on the banks (1 - crack) * 0.75 + bank * 0.65 reaches 1.4, and mix() past 1 extrapolates to a NEGATIVE
+        // red channel; the sRGB output transform then takes pow() of it -> NaN, which the bloom blur smeared into
+        // hard-edged black blocks across the screen (Inferno Quarry, The Thermal Divide).
+        vec3 c = mix(hot * 1.9, crust, clamp((1.0 - crack) * 0.75 + bank * 0.65, 0.0, 1.0));
         c += vec3(0.25, 0.05, 0.0) * (0.6 + 0.4 * sin(uTime * 2.3 + vUv.x * 0.8));
-        gl_FragColor = vec4(c, 1.0);
+        gl_FragColor = vec4(max(c, vec3(0.0)), 1.0);
         #include <colorspace_fragment>
       }`,
     polygonOffset: true,
