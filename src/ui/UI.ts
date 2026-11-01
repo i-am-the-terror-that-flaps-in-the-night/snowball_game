@@ -1532,7 +1532,7 @@ export class UI implements UIAPI {
       el('span', 'ss-bh-dot', undefined, row).style.background = e.color;
       const n = el('span', 'ss-bres-n', e.name, row);
       // Rival paint darkened toward ink so yellow/pink names stay readable on the light results panel.
-      if (!e.isPlayer) n.style.color = `color-mix(in srgb, ${e.color} 62%, #10203a)`;
+      if (!e.isPlayer) n.style.color = `color-mix(in srgb, ${e.color} 62%, #fff)`;
       el('span', 'ss-bres-k', String(e.kills), row);
       el('span', '', String(e.deaths), row);
       el('span', '', e.bestStreak > 0 ? String(e.bestStreak) : '—', row);

@@ -1,4 +1,4 @@
-/* ============================================================ Tutorial step card */
+/* ============================================================ Tutorial step card (ROAD CREW; sits over the 3D scene) */
 .ss-tut {
   position: absolute;
   right: 18px;
@@ -13,27 +13,29 @@
 }
 .ss-tut.show { opacity: 1; transform: translate(0, -50%); pointer-events: auto; }
 .ss-tut-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.ss-tut-step { font-size: 11px; font-weight: 900; letter-spacing: 0.12em; opacity: 0.75; text-transform: uppercase; }
+.ss-tut-step { font-family: var(--display); font-size: 12px; font-weight: 900; letter-spacing: 0.16em; color: var(--ink-soft); text-transform: uppercase; }
 .ss-tut-skip {
   border: 0;
   background: none;
-  color: #fff;
-  opacity: 0.7;
+  color: var(--ink-soft);
   font-family: var(--display);
   font-weight: 800;
-  font-size: 12px;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 2px 6px;
+  outline: none;
 }
-.ss-tut-skip:hover { opacity: 1; text-decoration: underline; }
-.ss-tut-title { font-family: var(--display); font-weight: 900; font-size: 24px; margin: 4px 0 8px; color: #ffcf70; text-shadow: 0 2px 0 rgba(120, 50, 0, 0.5); }
+.ss-tut-skip:hover, .ss-tut-skip:focus-visible { background: var(--hazard); color: var(--ink-inv); }
+.ss-tut-title { font-family: var(--display); font-weight: 900; font-size: 28px; line-height: 1; letter-spacing: 0.03em; text-transform: uppercase; margin: 6px 0 8px; color: var(--hazard); }
 .ss-tut-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 9px; }
-.ss-tut-keys .ss-key-sep { color: #cfe6f7; }
-.ss-tut-text { font-size: 14px; font-weight: 600; line-height: 1.4; }
-.ss-tut-hint { margin-top: 7px; font-size: 12.5px; font-weight: 800; color: #ffd27a; min-height: 1em; }
-.ss-tut-bar { margin-top: 11px; height: 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
-.ss-tut-fill { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #7fdcff, #35c86b); transition: width 0.15s linear; }
-.ss-tut.done .ss-tut-title { color: #7dffa6; }
-.ss-tut.done .ss-tut-fill { background: #35c86b; }
+.ss-tut-keys .ss-key-sep { color: var(--ink-soft); }
+.ss-tut-text { font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.ss-tut-hint { margin-top: 7px; font-size: 12.5px; font-weight: 700; color: var(--orange); min-height: 1em; }
+.ss-tut-bar { margin-top: 11px; height: 8px; border-radius: 0; background: var(--slab-3); overflow: hidden; }
+.ss-tut-fill { height: 100%; width: 0; border-radius: 0; background: var(--hazard); transition: width 0.15s linear; }
+.ss-tut.done .ss-tut-title { color: var(--green); }
+.ss-tut.done .ss-tut-fill { background: var(--green); }
 .ss-tut-btns { display: flex; gap: 10px; margin-top: 14px; }
 .ss-tut-btns .ss-btn { flex: 1; padding: 10px 12px; font-size: 15px; }
