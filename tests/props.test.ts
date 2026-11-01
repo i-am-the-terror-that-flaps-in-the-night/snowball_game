@@ -116,3 +116,40 @@ describe('bots smashing props', () => {
     expect(Math.hypot(b.position.x - target.x, b.position.z - target.z)).toBeCloseTo(target.r + 1);
   });
 });
+
+/* ------------------------------------------------------------------ props on terrain */
+
+import { Terrain } from '../src/world/Terrain';
+import { ZONES } from '../src/config/zones';
+
+describe('props on biome terrain', () => {
+  it('stand on the ground height, never touch lava, and keep every ramp run-up / landing clear', () => {
+    for (const zone of ZONES.slice(0, 5)) {
+      const terrain = new Terrain(zone.terrain);
+      const ctx = { scene: new THREE.Scene(), fx: noop, audio: noop, terrain } as unknown as GameContext;
+      const props = new Props(ctx);
+      for (const seed of [1, 42, 777]) {
+        const obs: Obstacle[] = [];
+        props.reset(obs, true, seed, false, true);
+        const mine = obs.filter((o) => o.breakable);
+        expect(mine.length, zone.name).toBeGreaterThan(5);
+        for (const o of mine) {
+          for (let k = 0; k <= 8; k++) {
+            const a = (k * Math.PI) / 4;
+            const rr = k === 8 ? 0 : o.r;
+            expect(terrain.materialAt(o.x + Math.cos(a) * rr, o.z + Math.sin(a) * rr), `${zone.name} prop on lava`).not.toBe('lava');
+          }
+          for (const s of terrain.shapes) {
+            if (s.kind !== 'ramp') continue;
+            const dx = o.x - s.x;
+            const dz = o.z - s.z;
+            const v = dx * Math.sin(s.rot) + dz * Math.cos(s.rot);
+            const u = dx * Math.cos(s.rot) - dz * Math.sin(s.rot);
+            const inLane = Math.abs(u) < s.w / 2 + o.r && v > -4 && v < s.len + (s.fall ?? 1) + 6;
+            expect(inLane, `${zone.name} prop in a ramp lane`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+});

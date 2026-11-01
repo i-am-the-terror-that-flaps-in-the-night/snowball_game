@@ -3,6 +3,8 @@ import type { EnemyHandle, GameContext } from '../../core/types';
 import { ENEMIES, type EnemyDef, type EnemyType } from '../../config/enemies';
 import type { Rig } from './models';
 import type { Decal } from './decals';
+import { makeVert } from '../../world/terrainMotion';
+import type { GroundMaterial } from '../../world/Terrain';
 
 /** Status kinds that make a bot take extra damage (and stop moving). */
 export const Vuln = { None: 0, Overheat: 1, Dizzy: 2, Exposed: 3 } as const;
@@ -42,7 +44,32 @@ export class Bot implements EnemyHandle {
   wallNz = 0;
   entering = true;
   gate = -1;
+  /** Feet height actually drawn (= position.y): terrain surface + snow sink while grounded, the flight height in the
+   *  air. Telegraphs / fx use it. */
   groundY = 0;
+
+  // --- terrain (world/terrainMotion.ts): vertical state, snow sink, the surface under the bot last frame
+  readonly vert = makeVert();
+  /** Smoothed sink into the snow (m, the old groundY). */
+  sink = 0;
+  mat: GroundMaterial = 'snow';
+  gx = 0;
+  gz = 0;
+  /** 0..1 on ice (blends out after leaving it) and the drifting heading velocity it lags behind. */
+  ice = 0;
+  ivx = 0;
+  ivz = 0;
+  /** Lava: seconds until the next burn flash / sizzle. */
+  burnT = 0;
+  get airborne(): boolean {
+    return this.vert.airborne;
+  }
+  get vy(): number {
+    return this.vert.vy;
+  }
+  get deck(): number {
+    return this.vert.deck;
+  }
 
   // --- AI
   state = 'idle';

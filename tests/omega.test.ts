@@ -56,6 +56,10 @@ describe('The Omega Works layout', () => {
 
   it('spawns the player on open ground', () => {
     const s = terrain.surfaceAt(OMEGA_SPAWN.x, OMEGA_SPAWN.z, 0);
+    // Not on a conveyor (the ring loops run at z 60..64 / -64..-60): you'd drift during the countdown.
+    const belt = { x: 0, z: 0 };
+    terrain.conveyorAt(OMEGA_SPAWN.x, OMEGA_SPAWN.z, s.deck, belt);
+    expect(Math.hypot(belt.x, belt.z)).toBe(0);
     expect(s.deck).toBe(-1);
     expect(terrain.wallAt(OMEGA_SPAWN.x, OMEGA_SPAWN.z, s.y, PLOW_H, PLOW_R)).toBeNull();
   });

@@ -17,6 +17,17 @@ const DRIFT_PEAK = 1.3;
 const SPAWN_RING_R = 70;
 /** Max dirty rects tracked between flushes (several vehicles plow far apart in Brawl). */
 const MAX_RECTS = 16;
+/** Terrain materials: share of the normal snow depth that lies on ice (thin) and lava (none, and it melts). */
+const ICE_SNOW = 0.3;
+/** Depth (m) melted off lava vertices per regen tick (snow shoved onto lava vanishes in a second or two). */
+const LAVA_MELT = 0.06;
+
+/** Snow grid cell (m) for a field of `size` m: 0.5 on the campaign arenas, 1 on the big ones (Brawl, Omega). */
+export const snowCellFor = (size: number): number => (size <= 100 ? 0.5 : 1.0);
+/** Width (m) of the melt fringe around lava: snow thins smoothly from nothing at the lava edge to full depth this far
+ *  out, so a vent sits in a gentle hollow instead of a jagged, one-cell-high snow wall (GroundDecals lays a basalt
+ *  crust ring at least this wide over it). */
+export const lavaFringeFor = (cell: number): number => 0.9 + cell;
 
 const BARE_COLORS: Record<ZoneDef['theme'], number> = {
   meadow: 0x6f7a3f,
@@ -26,6 +37,7 @@ const BARE_COLORS: Record<ZoneDef['theme'], number> = {
   peak: 0x5a4e68,
   rally: 0x8a6a4a,
   brawl: 0x5d6478,
+  omega: 0x2a2633,
 };
 
 function hash2(x: number, y: number, seed: number): number {
@@ -54,6 +66,14 @@ const smooth = (e0: number, e1: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
+/** Distance from (x, z) to a material patch's axis (circle centre, or the capsule's segment). */
+function capsuleDist(p: { x: number; z: number; x2?: number; z2?: number }, x: number, z: number): number {
+  const vx = (p.x2 ?? p.x) - p.x;
+  const vz = (p.z2 ?? p.z) - p.z;
+  const l2 = vx * vx + vz * vz;
+  const t = l2 > 1e-9 ? Math.max(0, Math.min(1, ((x - p.x) * vx + (z - p.z) * vz) / l2)) : 0;
+  return Math.hypot(x - (p.x + vx * t), z - (p.z + vz * t));
+}
 
 export class SnowField implements SnowFieldAPI {
   private ctx: GameContext;
@@ -73,6 +93,16 @@ export class SnowField implements SnowFieldAPI {
 
   private depth = new Float32Array(0);
   private initial = new Float32Array(0);
+  /** Terrain ground height per vertex (ctx.terrain.ground; all 0 on flat arenas). The mesh sits at ground + depth;
+   *  depth queries stay "snow above the ground". */
+  private ground = new Float32Array(0);
+  /** 1 = lava vertex (no snow, anything pushed onto it melts). */
+  private lavaMask = new Uint8Array(0);
+  private anyLava = false;
+  /** Terrain arrays the ground was built from (rebuilt when ctx.terrain loads something else). */
+  private terrShapes: unknown = null;
+  private terrPatches: unknown = null;
+
   private sparkle = new Float32Array(0);
   private total = 0;
   private initialTotal = 1;
@@ -149,7 +179,7 @@ export class SnowField implements SnowFieldAPI {
 
   /** (Re)allocate the grid + meshes for the current ARENA size. */
   private build(size: number): void {
-    const cell = size <= 100 ? 0.5 : 1.0;
+    const cell = snowCellFor(size);
     const N = Math.round(size / cell);
     const V = N + 1;
     const CELL = size / N;
@@ -165,6 +195,9 @@ export class SnowField implements SnowFieldAPI {
     const count = V * V;
     this.depth = new Float32Array(count);
     this.initial = new Float32Array(count);
+    this.ground = new Float32Array(count);
+    this.lavaMask = new Uint8Array(count);
+    this.terrShapes = this.terrPatches = null;
     this.sparkle = new Float32Array(count);
     const pos = new Float32Array(count * 3);
     const nor = new Float32Array(count * 3);
@@ -240,7 +273,9 @@ export class SnowField implements SnowFieldAPI {
   /* ------------------------------------------------------------------ setup */
 
   reset(zone: ZoneDef): void {
-    this.mesh.material = zone.theme === 'brawl' ? this.fastMaterial : this.material;
+    // The big arenas (Snowdome, The Omega Works) use the cheaper snow shader.
+    const big = zone.theme === 'brawl' || zone.theme === 'omega';
+    this.mesh.material = big ? this.fastMaterial : this.material;
     const want = snowFieldSize();
     if (Math.abs(want - this.fieldSize) > 1e-6 || !this.geometry) this.build(want);
     const { V, CELL, HALF, INV_CELL, N } = this;
@@ -256,7 +291,7 @@ export class SnowField implements SnowFieldAPI {
     this.addCap = brawl ? base + DRIFT_PEAK + 0.3 : Math.max(base * 2.4, base + 0.6);
     const seed = (zone.index + 7) * 7919 + 13;
     // arena-edge points of the gates (no snow bank in the gate mouths) — campaign only
-    const gateEdges = brawl
+    const gateEdges = big
       ? []
       : ENEMY_GATES.map((g) => ({
         x: Math.min(ARENA.maxX, Math.max(ARENA.minX, g.x)),
@@ -267,7 +302,7 @@ export class SnowField implements SnowFieldAPI {
     const init = this.initial;
     let total = 0;
     // larger arena: stretch the noise a bit so features aren't tiny relative to the space
-    const nf = brawl ? 0.7 : 1;
+    const nf = big ? 0.7 : 1;
     for (let iz = 0; iz < V; iz++) {
       const z = -HALF + iz * CELL;
       for (let ix = 0; ix < V; ix++) {
@@ -317,11 +352,20 @@ export class SnowField implements SnowFieldAPI {
     this.total = total * this.CELL_AREA;
     this.initialTotal = Math.max(1e-6, this.total);
     this.regenTimer = 0;
+    // Terrain: ground heights under the field, no snow on lava, thin snow on ice.
+    this.terrShapes = this.terrPatches = null;
+    this.syncTerrain(true);
+    if (this.ctx.terrain && this.ctx.terrain.patches.length) {
+      // Lava / ice trimmed the fresh snow: recount the arena total from the trimmed field.
+      this.regen(0);
+      this.initialTotal = Math.max(1e-6, this.total);
+    }
 
-    // Color LUT: bare ground -> packed snow -> fresh snow
-    const snow = new THREE.Color(zone.snowTint);
-    const bare = new THREE.Color(BARE_COLORS[zone.theme] ?? 0x6f7a3f);
-    const packed = new THREE.Color(zone.snowTint).multiply(new THREE.Color(0xc4d2e6));
+    // Color LUT: bare ground -> packed snow -> fresh snow (biome colours when the zone has a biome).
+    const snowHex = zone.biome?.snowColor ?? zone.snowTint;
+    const snow = new THREE.Color(snowHex);
+    const bare = new THREE.Color(zone.biome?.groundColor ?? BARE_COLORS[zone.theme] ?? 0x6f7a3f);
+    const packed = new THREE.Color(snowHex).multiply(new THREE.Color(0xc4d2e6));
     const tmp = new THREE.Color();
     for (let j = 0; j < LUT_SIZE; j++) {
       const dep = (j / (LUT_SIZE - 1)) * LUT_MAX_DEPTH;
@@ -377,6 +421,100 @@ export class SnowField implements SnowFieldAPI {
       out.push({ x, z, c: Math.cos(ang), s: Math.sin(ang), irA: 1 / (R * elong), irB: 1 / (R / elong), peak: DRIFT_PEAK * (0.85 + 0.15 * hash2(tries, 6, seed)) });
     }
     return out;
+  }
+
+  /* ------------------------------------------------------------------ terrain */
+
+  /**
+   * (Re)build the per-vertex ground heights and the lava / ice snow caps from ctx.terrain when it changed (arena load,
+   * a dev terrain swapped in mid-run). `fresh` = called from reset(): the caps also apply to the initial depth there;
+   * mid-run they trim both depth and initial in place. Flat arenas with no patches cost one comparison per frame.
+   */
+  private syncTerrain(fresh: boolean): void {
+    const t = this.ctx.terrain;
+    if (!t) return;
+    if (t.shapes === this.terrShapes && t.patches === this.terrPatches) return;
+    this.terrShapes = t.shapes;
+    this.terrPatches = t.patches;
+    const { V, CELL, HALF } = this;
+    const g = this.ground;
+    const mask = this.lavaMask;
+    const d = this.depth;
+    const init = this.initial;
+    const shapes = t.shapes.length > 0;
+    const patches = t.patches.length > 0;
+    let lo = 0;
+    let hi = 0;
+    let lava = false;
+    let changed = false;
+    // melt fringe around lava: snow tapers to nothing over `fringe` m outside every lava patch
+    const lavaPatches = patches ? t.patches.filter((p) => p.material === 'lava') : [];
+    const fringe = lavaFringeFor(CELL);
+    for (let iz = 0; iz < V; iz++) {
+      const z = -HALF + iz * CELL;
+      for (let ix = 0; ix < V; ix++) {
+        const i = iz * V + ix;
+        const x = -HALF + ix * CELL;
+        const y = shapes ? t.ground(x, z) : 0;
+        if (g[i] !== y) changed = true;
+        g[i] = y;
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+        let m = 0;
+        if (patches) {
+          const mat = t.materialAt(x, z);
+          if (mat === 'lava') {
+            m = 1;
+            lava = true;
+            d[i] = 0;
+            init[i] = 0;
+            changed = true;
+          } else if (mat === 'ice') {
+            init[i] = Math.min(init[i], (fresh ? init[i] : this.ctx.zone.snowDepth) * ICE_SNOW);
+            if (d[i] > init[i]) d[i] = init[i];
+            changed = true;
+          }
+          if (m === 0 && lavaPatches.length) {
+            let e = fringe;
+            for (let k = 0; k < lavaPatches.length; k++) {
+              const de = capsuleDist(lavaPatches[k], x, z) - lavaPatches[k].r;
+              if (de < e) e = de;
+            }
+            if (e < fringe) {
+              const f = smooth(0, fringe, e);
+              init[i] = Math.min(init[i], (fresh ? init[i] : this.ctx.zone.snowDepth) * f);
+              if (d[i] > init[i]) d[i] = init[i];
+              changed = true;
+            }
+          }
+        }
+        mask[i] = m;
+      }
+    }
+    this.anyLava = lava;
+    if (this.geometry) {
+      const bb = this.geometry.boundingBox!;
+      bb.min.y = lo - 1;
+      bb.max.y = hi + 4;
+      this.geometry.boundingSphere!.radius = HALF * Math.SQRT2 + 3 + Math.max(-lo, hi);
+    }
+    if (changed && !fresh) {
+      // Mid-run swap: recount the arena total, push everything to the GPU.
+      this.regen(0);
+      this.initialTotal = Math.max(1e-6, this.total);
+      this.markDirty(0, V - 1, 0, V - 1);
+    }
+  }
+
+  /** Terrain ground height under the field at a vertex-interpolated point (0 outside / on flat arenas). */
+  groundAt(x: number, z: number): number {
+    const t = this.ctx.terrain;
+    return t && t.active ? t.ground(x, z) : 0;
+  }
+
+  /** World height of the snow top (terrain ground + depth): where things resting on the snow sit. */
+  topAt(x: number, z: number): number {
+    return this.groundAt(x, z) + this.getDepth(x, z);
   }
 
   /* ------------------------------------------------------------------ queries */
@@ -676,6 +814,7 @@ export class SnowField implements SnowFieldAPI {
   /* ------------------------------------------------------------------ update */
 
   update(dt: number): void {
+    this.syncTerrain(false);
     this.regenTimer += dt;
     if (this.regenTimer >= REGEN_INTERVAL) {
       const rate = (this.regenRate ?? this.ctx.stats.snowRegen) * this.ctx.zone.snowRegenMult;
@@ -691,6 +830,8 @@ export class SnowField implements SnowFieldAPI {
     const { V, AX0, AX1, AZ0, AZ1 } = this;
     const d = this.depth;
     const init = this.initial;
+    const mask = this.lavaMask;
+    const lavaOn = this.anyLava;
     let cx0 = V;
     let cx1 = -1;
     let cz0 = V;
@@ -704,7 +845,13 @@ export class SnowField implements SnowFieldAPI {
       for (let ix = EDGE; ix < V - EDGE; ix++) {
         const i = row + ix;
         let v = d[i];
-        if (step > 0) {
+        if (lavaOn && mask[i] && v > 0) {
+          // Lava eats any snow shoved onto it.
+          v = Math.max(0, v - LAVA_MELT);
+          d[i] = v;
+          if (ix < rx0) rx0 = ix;
+          rx1 = ix;
+        } else if (step > 0) {
           const cap = init[i];
           if (v < cap) {
             v += step;
@@ -752,6 +899,7 @@ export class SnowField implements SnowFieldAPI {
   private flushRect(x0: number, x1: number, z0: number, z1: number): void {
     const V = this.V;
     const d = this.depth;
+    const g = this.ground;
     const pos = this.posAttr.array as Float32Array;
     const nor = this.normAttr.array as Float32Array;
     const col = this.colAttr.array as Float32Array;
@@ -767,13 +915,16 @@ export class SnowField implements SnowFieldAPI {
         const i = row + ix;
         const h = d[i];
         const i3 = i * 3;
-        pos[i3 + 1] = h;
-        const hl = d[ix > 0 ? i - 1 : i];
-        const hr = d[ix < V - 1 ? i + 1 : i];
+        pos[i3 + 1] = g[i] + h;
+        const il0 = ix > 0 ? i - 1 : i;
+        const ir0 = ix < V - 1 ? i + 1 : i;
+        const hl = d[il0];
+        const hr = d[ir0];
         const hu = d[up + ix];
         const hd = d[dn + ix];
-        const nx = (hl - hr) * inv2c;
-        const nz = (hu - hd) * inv2c;
+        // Normals from the full surface (ground + snow); colour / curvature from the snow alone.
+        const nx = (g[il0] + hl - (g[ir0] + hr)) * inv2c;
+        const nz = (g[up + ix] + hu - (g[dn + ix] + hd)) * inv2c;
         const il = 1 / Math.sqrt(nx * nx + 1 + nz * nz);
         nor[i3] = nx * il;
         nor[i3 + 1] = il;

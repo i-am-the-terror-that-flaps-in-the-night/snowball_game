@@ -1,5 +1,5 @@
 import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from './upgrades';
-import { ZONES, type ZoneDef } from './zones';
+import { BIOME_ZONE, ZONES, zoneLook, type BiomeKey, type ZoneDef } from './zones';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearLevels, gearSpent, type GearSlot } from './gear';
 
 /* ------------------------------------------------------------------------------------------------
@@ -21,6 +21,36 @@ export const DUEL_ZONE: ZoneDef = {
   sunColor: 0xfff1d6, sunIntensity: 2.6, ambientColor: 0xbcd7ff, ambientIntensity: 0.9, snowTint: 0xffffff, snowfall: 0.25, theme: 'meadow',
   terrain: undefined,
 };
+
+/** Duel venues: the classic Frostbite Yard plus the five campaign biomes (their ground terrain; no decks). Both peers
+ *  pick the same one from the room code (duelZoneFor), so the choice needs no protocol message. This deviates from the
+ *  plan's "host picks or random" (docs/level-overhaul.md, Follow-ups): the room code is effectively a random pick, and
+ *  a later host choice can ride in the host's hello (a venue key) with duelVenueFor kept as the default. */
+export type DuelVenue = 'classic' | Exclude<BiomeKey, 'snowdome'>;
+export const DUEL_VENUES: readonly DuelVenue[] = ['classic', 'glacier', 'quarry', 'mars', 'divide', 'plaza'];
+const duelZones = new Map<DuelVenue, ZoneDef>();
+
+/** DUEL_ZONE dressed as a biome arena (cached). 'classic' = DUEL_ZONE itself. */
+export function duelZone(venue: DuelVenue): ZoneDef {
+  if (venue === 'classic') return DUEL_ZONE;
+  let z = duelZones.get(venue);
+  if (!z) {
+    const src = BIOME_ZONE[venue];
+    z = { ...DUEL_ZONE, ...zoneLook(src), name: `DUEL · ${src.name}`, biome: src.biome, terrain: src.terrain };
+    duelZones.set(venue, z);
+  }
+  return z;
+}
+
+/** Deterministic venue for a room code (FNV-1a over the upper-cased code): host and guest agree without a message. */
+export function duelVenueFor(code: string): DuelVenue {
+  let h = 0x811c9dc5;
+  const c = code.trim().toUpperCase();
+  for (let i = 0; i < c.length; i++) h = Math.imul(h ^ c.charCodeAt(i), 0x01000193) >>> 0;
+  return DUEL_VENUES[h % DUEL_VENUES.length];
+}
+
+export const duelZoneFor = (code: string): ZoneDef => duelZone(duelVenueFor(code));
 
 /** Rounds needed to win the match (best of 3). */
 export const DUEL_ROUNDS_TO_WIN = 2;

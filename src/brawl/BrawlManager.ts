@@ -73,6 +73,10 @@ import {
   attachBruteRig,
   type BruteRig,
 } from './bruteRival';
+import { makeSurface, type GroundMaterial } from '../world/Terrain';
+import {
+  AIR_STEER, ICE_ACCEL, ICE_GRIP, LAVA_DPS, LAVA_OUT, LavaCache, SLOPE_PULL, V_LANDED, bonkCeiling, launchVert, lavaAhead, makeVert, stepVertical, steerLava,
+} from '../world/terrainMotion';
 
 /* Snowdome Brawl: the player + BRAWL_BOTS rival AI plows in a huge arena, everyone hunting everyone.
  * Rivals carry the player's kit (plow a ball, slam, ram, dash strike, whirlwind). Implements
@@ -101,6 +105,13 @@ const COCOA_EVERY = 12;
 const COCOA_HEAL = 40;
 const KILL_CREDIT_WINDOW = 6;
 const HEARING = 70;
+/** Terrain: rival hull height (ceiling bonks / deck walls), ice grip linger (s). */
+const RIVAL_HEIGHT = 2.4;
+const RIVAL_ICE_LINGER = 0.4;
+const _surf = makeSurface();
+const _conv = { x: 0, z: 0 };
+const _lavaOut = { h: 0, v: 0 };
+const _wall = { x: 0, z: 0 };
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -199,6 +210,28 @@ class Rival implements EnemyHandle {
   readonly ballLocal = new THREE.Matrix4();
   wheelSpin = 0;
   lean = 0;
+  // terrain (world/terrainMotion.ts)
+  readonly vert = makeVert();
+  /** Smoothed snow ride height (m). */
+  sink = 0;
+  mat: GroundMaterial = 'snow';
+  gx = 0;
+  gz = 0;
+  ice = 0;
+  ivx = 0;
+  ivz = 0;
+  burnT = 0;
+  tiltP = 0;
+  tiltR = 0;
+  get airborne(): boolean {
+    return this.vert.airborne;
+  }
+  get vy(): number {
+    return this.vert.vy;
+  }
+  get deck(): number {
+    return this.vert.deck;
+  }
 
   // timers
   protectT = 0;
@@ -293,6 +326,8 @@ interface Debris {
 }
 
 export class BrawlManager implements BrawlAPI {
+  /** Lava patches of the current terrain (rival hazard avoidance). */
+  private lava = new LavaCache();
   private ctx: GameContext;
   private group = new THREE.Group();
   private rivals: Rival[] = [];
@@ -458,6 +493,12 @@ export class BrawlManager implements BrawlAPI {
     const r = this.makeRival(pick(BRAWL_BOT_NAMES), pick(BRAWL_COLORS), Math.floor(Math.random() * 6), pick(BRAWL_PERSONALITIES), opts?.hpMult);
     this.placeRival(r, x, z, opts?.heading ?? 0);
     return r;
+  }
+
+  launch(enemy: EnemyHandle, vy: number): void {
+    const r = enemy as Rival;
+    if (!(r instanceof Rival) || !r.alive) return;
+    launchVert(r.vert, vy);
   }
 
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[] {
@@ -698,6 +739,21 @@ export class BrawlManager implements BrawlAPI {
 
   private placeRival(r: Rival, x: number, z: number, heading: number): void {
     r.position.set(x, 0, z);
+    // Terrain: feet on the topmost surface (flat arenas: 0, as always).
+    const terr = this.ctx.terrain;
+    const v = r.vert;
+    v.surfaceY = terr.active ? terr.surfaceAt(x, z, Infinity, _surf).y : 0;
+    v.deck = terr.active ? _surf.deck : -1;
+    v.y = v.surfaceY;
+    v.vy = 0;
+    v.airborne = false;
+    v.airTime = 0;
+    r.position.y = v.y;
+    r.sink = 0;
+    r.ice = 0;
+    r.ivx = r.ivz = 0;
+    r.tiltP = r.tiltR = 0;
+    r.rig.root.rotation.order = 'YXZ';
     r.heading = heading;
     r.desH = heading;
     r.speed = 0;
@@ -1075,7 +1131,11 @@ export class BrawlManager implements BrawlAPI {
         }
         // DASH STRIKE when aligned at mid range.
         const tol = 0.1 + 0.3 * (1 - r.s.skill);
-        if (r.dashCd <= 0 && d > 5 && d < 15 && ang < tol && Math.random() < r.pers.dashLove * dt * 4) {
+        // (never a dash across lava: the dash ignores lava steering until it ends)
+        if (
+          r.dashCd <= 0 && d > 5 && d < 15 && ang < tol && Math.random() < r.pers.dashLove * dt * 4 &&
+          !(this.lava.list.length && lavaAhead(this.lava, r.position.x, r.position.z, r.heading, 1, Math.min(d, 12), RIVAL_R * 0.6, ARENA.maxX - RIVAL_R))
+        ) {
           this.startDash(r);
           break;
         }
@@ -1532,19 +1592,20 @@ export class BrawlManager implements BrawlAPI {
     r.ballVol = 0;
     const x = r.position.x;
     const z = r.position.z;
+    const gy = r.vert.surfaceY;
     if (this.near(x, z, 90)) {
-      _v.set(x, 1.2, z);
+      _v.set(x, gy + 1.2, z);
       ctx.fx.burst(_v, { color: 0xff8a2a, count: 26, speed: 12, size: 0.14, gravity: 18, life: 0.6 });
       ctx.fx.burst(_v, { color: 0x30343a, count: 16, speed: 5, size: 0.5, gravity: -2, life: 1.4 });
       ctx.fx.burst(_v, { color: 0xffffff, count: 18, speed: 8, size: 0.3, gravity: 14, life: 1 });
       ctx.fx.fireball(_v, 1.2);
-      _v.y = 0.1;
+      _v.y = gy + 0.1;
       ctx.fx.ring(_v, 5, 0xffb060);
       ctx.fx.scorch(_v, 2.6);
       ctx.fx.smolder(_v, { scale: 1.1, seconds: 2.5 });
       const k = this.hear(x, z);
       if (k > 0.1) ctx.fx.shake(0.15 + 0.5 * k);
-      ctx.impact.hit('wreck', _v.set(x, 1.2, z), 1, { stop: false, falloff: k });
+      ctx.impact.hit('wreck', _v.set(x, gy + 1.2, z), 1, { stop: false, falloff: k });
       // Debris chunks in the rival's paint (frozen as it was at the kill) + dark metal: one batch per material.
       const paintMat = r.rig.paint.clone();
       const batches: Debris[] = [paintMat, getDebrisDarkMaterial()].map((mat, k) => {
@@ -1556,7 +1617,7 @@ export class BrawlManager implements BrawlAPI {
         return { mesh, mat: k === 0 ? paintMat : null, chunks: [] };
       });
       for (let i = 0; i < 7; i++) {
-        const pos = new THREE.Vector3(x + (Math.random() - 0.5) * 1.5, 1 + Math.random(), z + (Math.random() - 0.5) * 1.5);
+        const pos = new THREE.Vector3(x + (Math.random() - 0.5) * 1.5, gy + 1 + Math.random(), z + (Math.random() - 0.5) * 1.5);
         const a = Math.random() * Math.PI * 2;
         const s = 4 + Math.random() * 6;
         batches[i % 2].chunks.push({ pos, rot: new THREE.Euler(), scale: 1, vx: Math.sin(a) * s, vy: 6 + Math.random() * 6, vz: Math.cos(a) * s, rx: (Math.random() - 0.5) * 14, rz: (Math.random() - 0.5) * 14, life: 2.4 + Math.random() });
@@ -1668,31 +1729,87 @@ export class BrawlManager implements BrawlAPI {
 
   private drive(r: Rival, dt: number): void {
     const ctx = this.ctx;
+    const terr = ctx.terrain;
+    const air = r.vert.airborne;
     const frozen = r.frozenT > 0 ? 0.5 : 1;
     const stunned = r.stunT > 0;
     if (stunned) r.desSpeed = 0;
+    // Lava: burn while touching it (kill credit to whoever last hit them), and steer around it unless knocked in.
+    if (r.mat === 'lava' && !air && r.targetable) {
+      r.hp -= LAVA_DPS * dt * r.s.damageTaken;
+      r.burnT -= dt;
+      if (r.burnT <= 0) {
+        r.burnT = 0.35;
+        r.flashT = 0.06;
+        if (this.near(r.position.x, r.position.z, 40)) {
+          _v.set(r.position.x, r.position.y + 0.4, r.position.z);
+          ctx.fx.burst(_v, { color: 0xff6a1a, count: 4, speed: 2.5, size: 0.12, gravity: -4, life: 0.45 });
+        }
+      }
+      if (r.hp <= 0) {
+        r.hp = 0;
+        const f = r.f;
+        const killer = f.lastHitBy && this.time - f.lastHitAt < KILL_CREDIT_WINDOW ? f.lastHitBy : null;
+        this.onDeath(f, killer, 'other');
+        return;
+      }
+    }
+    // Steer around lava (stop while turning away); knocked in, drive out by the shortest way (nearest edge).
+    let lavaTurn = 1;
+    let lavaStop = false;
+    if (this.lava.sync(terr) && !air && r.kvx * r.kvx + r.kvz * r.kvz < 16) {
+      const look = RIVAL_R + 1.5 + Math.abs(r.speed) * 0.35;
+      const brake = r.s.accel * 1.4 * (r.ice > 0 ? 1 - (1 - ICE_ACCEL) * r.ice : 1);
+      const k = steerLava(this.lava, r.position.x, r.position.z, r.heading, r.speed, r.desH, r.desSpeed, look, RIVAL_R * 0.8, r.id & 1 ? 1 : -1, this.topSpeed(r) * 0.6, brake, ARENA.maxX - RIVAL_R, _lavaOut);
+      r.desH = wrap(_lavaOut.h);
+      // (stopping short of lava brakes properly even when gliding over the cap after a dash: see below)
+      lavaStop = k !== LAVA_OUT && _lavaOut.v === 0 && r.desSpeed > 0;
+      if (!r.dashing && !stunned) r.desSpeed = _lavaOut.v;
+      // driving out: full turn rate even from a standstill (the slow-speed turn penalty would keep it burning)
+      if (k === LAVA_OUT && !r.dashing) lavaTurn = 1 / (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4));
+    }
     const diff = wrap(r.desH - r.heading);
-    const turnRate = stunned ? 0 : r.s.turn * (r.dashing ? 0.4 : 1) * frozen * (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4));
+    const turnRate = stunned ? 0 : r.s.turn * (r.dashing ? 0.4 : 1) * frozen * (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4)) * (air ? AIR_STEER : 1) * lavaTurn;
     const turn = clamp(diff, -turnRate * dt, turnRate * dt);
     r.heading = wrap(r.heading + turn);
     r.lean += (clamp(turn / Math.max(dt, 1e-4) * 0.04, -0.12, 0.12) - r.lean) * Math.min(1, dt * 6);
 
-    const cap = this.topSpeed(r) * frozen * (1 - 0.2 * (r.ballR / r.s.maxBall)) * (r.whirling ? 0.75 : 1);
-    if (!r.dashing) {
-      const target = clamp(r.desSpeed, -cap * 0.45, cap);
-      if (r.speed > cap) r.speed = Math.max(cap, r.speed - 14 * dt);
-      else r.speed += clamp(target - r.speed, -(stunned ? 30 : r.s.accel * 1.4) * dt, r.s.accel * dt);
-    }
-
     const fx = Math.sin(r.heading);
     const fz = Math.cos(r.heading);
-    const decay = Math.exp(-4 * dt);
+    const cap = this.topSpeed(r) * frozen * (1 - 0.2 * (r.ballR / r.s.maxBall)) * (r.whirling ? 0.75 : 1);
+    if (!r.dashing && !air) {
+      const target = clamp(r.desSpeed, -cap * 0.45, cap);
+      const iceK = r.ice > 0 ? 1 - (1 - ICE_ACCEL) * r.ice : 1;
+      // Slopes: gravity along the slope; downhill speed past the cap bleeds off gently instead of being clamped.
+      let sa = 0;
+      if (terr.active && (r.gx !== 0 || r.gz !== 0)) sa = (-terr.gravity * SLOPE_PULL * (r.gx * fx + r.gz * fz)) / Math.sqrt(1 + r.gx * r.gx + r.gz * r.gz);
+      if (r.speed > cap && !lavaStop) r.speed = Math.max(cap, r.speed - (sa > 0 ? 2 : 14) * dt);
+      else r.speed += clamp(target - r.speed, -(stunned ? 30 : r.s.accel * 1.4) * iceK * dt, r.s.accel * iceK * dt);
+      if (sa !== 0) r.speed += sa * dt;
+    }
+
+    const decay = Math.exp(-(4 - 3 * r.ice) * dt);
     r.kvx *= decay;
     r.kvz *= decay;
-    r.vx = fx * r.speed + r.kvx;
-    r.vz = fz * r.speed + r.kvz;
+    if (air) {
+      // keep the heading velocity it took off with
+    } else if (r.ice > 0) {
+      const k = 1 - Math.exp(-(ICE_GRIP + (1 - r.ice) * 30) * dt);
+      r.ivx += (fx * r.speed - r.ivx) * k;
+      r.ivz += (fz * r.speed - r.ivz) * k;
+    } else {
+      r.ivx = fx * r.speed;
+      r.ivz = fz * r.speed;
+    }
+    r.vx = r.ivx + r.kvx;
+    r.vz = r.ivz + r.kvz;
     r.position.x += r.vx * dt;
     r.position.z += r.vz * dt;
+    if (!air && terr.conveyors.length) {
+      terr.conveyorAt(r.position.x, r.position.z, r.vert.deck, _conv);
+      r.position.x += _conv.x * dt;
+      r.position.z += _conv.z * dt;
+    }
 
     // Walls.
     const lim = RIVAL_R;
@@ -1729,8 +1846,20 @@ export class BrawlManager implements BrawlAPI {
       r.speed *= 0.4;
     }
 
-    // Plow snow into the ball.
-    if (r.speed > 0.5 && r.whirlT < 0) {
+    // Deck sides (only arenas with decks).
+    if (terr.decks.length) {
+      const d = terr.wallAt(r.position.x, r.position.z, r.vert.y, RIVAL_HEIGHT, RIVAL_R);
+      if (d) {
+        terr.pushOut(d, r.position.x, r.position.z, RIVAL_R, _wall);
+        r.position.x = _wall.x;
+        r.position.z = _wall.z;
+        wall = true;
+      }
+    }
+    if (wall && Math.abs(r.speed) > 6 && r.ice > 0) r.ivx = r.ivz = 0;
+
+    // Plow snow into the ball (not in the air, not on a deck: snow lies on the ground only).
+    if (r.speed > 0.5 && r.whirlT < 0 && !air && r.vert.deck < 0) {
       const rx = fz;
       const rz = -fx;
       const bx = r.position.x + fx * BLADE_Z;
@@ -1864,7 +1993,7 @@ export class BrawlManager implements BrawlAPI {
       const c = this.cocoas[i];
       c.t += dt;
       c.spin.rotation.y += dt * 1.8;
-      c.spin.position.y = 0.6 + Math.sin(c.t * 2.4) * 0.18 + ctx.snow.getDepth(c.x, c.z);
+      c.spin.position.y = 0.6 + Math.sin(c.t * 2.4) * 0.18 + ctx.snow.getDepth(c.x, c.z) + (ctx.terrain.active ? ctx.terrain.ground(c.x, c.z) : 0);
       c.halo.scale.setScalar(1 + Math.sin(c.t * 3) * 0.12);
       if (!fighting) continue;
       let taker: Fighter | null = null;
@@ -1893,6 +2022,7 @@ export class BrawlManager implements BrawlAPI {
   }
 
   private updateDebris(dt: number): void {
+    const terr = this.ctx.terrain;
     for (let i = this.debris.length - 1; i >= 0; i--) {
       const b = this.debris[i];
       for (let j = b.chunks.length - 1; j >= 0; j--) {
@@ -1902,8 +2032,9 @@ export class BrawlManager implements BrawlAPI {
         d.pos.x += d.vx * dt;
         d.pos.y += d.vy * dt;
         d.pos.z += d.vz * dt;
-        if (d.pos.y < 0.15) {
-          d.pos.y = 0.15;
+        const floor = terr.active ? 0.15 + terr.ground(d.pos.x, d.pos.z) : 0.15;
+        if (d.pos.y < floor) {
+          d.pos.y = floor;
           d.vy = Math.abs(d.vy) * 0.3;
           d.vx *= 0.6;
           d.vz *= 0.6;
@@ -1950,9 +2081,10 @@ export class BrawlManager implements BrawlAPI {
       r.bubble.sprite.visible = false;
       return;
     }
-    const depth = this.ctx.snow.getDepth(r.position.x, r.position.z);
-    r.position.y += (Math.min(0.25, depth * 0.3) - r.position.y) * Math.min(1, dt * 6);
-    rig.root.rotation.set(0, r.heading, 0);
+    const depth = r.vert.deck < 0 ? this.ctx.snow.getDepth(r.position.x, r.position.z) : 0;
+    r.sink += (Math.min(0.25, depth * 0.3) - r.sink) * Math.min(1, dt * 6);
+    this.vertical(r, dt);
+    rig.root.rotation.set(r.tiltP, r.heading, r.tiltR);
     // Whirl spin of the body + tornado.
     if (r.whirlT >= 0) {
       const k = r.whirlT / WHIRL_T;
@@ -1978,7 +2110,8 @@ export class BrawlManager implements BrawlAPI {
     if (r.ballOn) {
       r.ballSpin += (r.speed * dt) / Math.max(0.2, br);
       _e.set(r.ballSpin, 0, 0);
-      _v.set(0, br - r.position.y + 0.02, BLADE_Z + br);
+      // Root space: the ball sits on the snow under the blade (the root rides at surface + sink).
+      _v.set(0, br - (r.vert.airborne ? 0 : r.sink) + 0.02, BLADE_Z + br);
       r.ballLocal.compose(_v, _q.setFromEuler(_e), _v2.setScalar(br));
     }
     // Glow: slam wind-up / bounty.
@@ -2009,6 +2142,49 @@ export class BrawlManager implements BrawlAPI {
     r.tag.set(r.hp / r.maxHp, r.f.entry.streak, r.protectT > 0);
     r.tag.place(r.position.x, r.position.y + top, r.position.z, _cam);
     if (r.bubble.t > 0) r.bubble.place(r.position.x, r.position.y + top + 2.4, r.position.z, _cam);
+  }
+
+  /** Vertical motion, the surface under the rival (slope / ice / lava for next frame) and its hull tilt. */
+  private vertical(r: Rival, dt: number): void {
+    const terr = this.ctx.terrain;
+    const v = r.vert;
+    const p = r.position;
+    const code = stepVertical(terr, v, p.x, p.z, r.sink, dt, _surf);
+    bonkCeiling(terr, v, p.x, p.z, RIVAL_HEIGHT);
+    p.y = v.y;
+    r.gx = _surf.gx;
+    r.gz = _surf.gz;
+    if (!v.airborne) {
+      r.mat = _surf.material;
+      if (_surf.material === 'ice') r.ice = 1;
+      else if (r.ice > 0) r.ice = Math.max(0, r.ice - dt / RIVAL_ICE_LINGER);
+    }
+    if (code === V_LANDED) {
+      this.ctx.events.emit('enemyLanded', { enemy: r, impact: v.impact });
+      if (this.near(p.x, p.z, 45)) {
+        const k = Math.min(1, v.impact / 18);
+        _v.set(p.x, v.surfaceY + 0.2, p.z);
+        this.ctx.fx.burst(_v, { color: 0xffffff, count: 6 + Math.round(12 * k), speed: 3 + 4 * k, size: 0.24, gravity: 12, life: 0.6 });
+        this.sfx('land', p.x, p.z, 0.3 + 0.5 * k);
+      }
+    }
+    // Hull tilt: to the surface on the ground, nose along the flight path in the air.
+    let wp = 0;
+    let wr = 0;
+    if (v.airborne) wp = clamp(-Math.atan2(v.vy, Math.max(4, Math.abs(r.speed))) * 0.6, -0.45, 0.45);
+    else if (terr.active) {
+      const sh = Math.sin(r.heading);
+      const ch = Math.cos(r.heading);
+      wp = -Math.atan(r.gx * sh + r.gz * ch);
+      wr = Math.atan(r.gx * ch - r.gz * sh);
+    }
+    if (wp !== 0 || wr !== 0 || r.tiltP !== 0 || r.tiltR !== 0) {
+      const k = Math.min(1, dt * (v.airborne ? 4 : 12));
+      r.tiltP += (wp - r.tiltP) * k;
+      r.tiltR += (wr - r.tiltR) * k;
+      if (Math.abs(r.tiltP) < 1e-5 && wp === 0) r.tiltP = 0;
+      if (Math.abs(r.tiltR) < 1e-5 && wr === 0) r.tiltR = 0;
+    }
   }
 
   /** Pack the held balls of every shown rival into the instanced ball mesh. Runs after animate, and again when a

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  INPUT_BYTES, NET_PLOW_LEN, NP, PressTracker, SNAP_BYTES, decodeInput, decodeSnap, decodeSnow, dequantDepth, encodeInput,
+  INPUT_BYTES, NET_PLOW_LEN, NP, NP_DISCRETE, PROTOCOL_VERSION, PressTracker, SNAP_BYTES, decodeInput, decodeSnap, decodeSnow, dequantDepth, encodeInput,
   encodeSnap, encodeSnow, fromJson, quantDepth, seqNewer, toJson, type InputFrame, type SnapHeader,
 } from '../src/net/protocol';
 import { CATCHUP_MAX, DUEL_ZONE, catchUp, catchUpBonus, cleanDuelGear, cleanLevels, duelBonus, duelPower, duelSpent, garageSpent, sharedMatchCost } from '../src/config/duel';
@@ -397,6 +397,67 @@ describe('SnapBuffer (opponent interpolation)', () => {
     b.sample(9, 0, out);
     expect(out[NP.x]).toBeCloseTo(10);
     expect(out[NP.dead]).toBe(1);
+  });
+});
+
+describe('height sync (terrain: feet height, vertical speed, airborne)', () => {
+  it('is part of protocol v4: three floats at the end of each 35-float plow block', () => {
+    expect(PROTOCOL_VERSION).toBe(4);
+    expect(NET_PLOW_LEN).toBe(35);
+    expect([NP.y, NP.vy, NP.air]).toEqual([32, 33, 34]);
+    const idx = Object.values(NP);
+    expect(new Set(idx).size).toBe(idx.length);
+    expect(Math.max(...idx)).toBe(NET_PLOW_LEN - 1);
+    // y / vy blend; the airborne flag is discrete.
+    expect(NP_DISCRETE).toContain(NP.air);
+    expect(NP_DISCRETE).not.toContain(NP.y);
+    expect(NP_DISCRETE).not.toContain(NP.vy);
+  });
+
+  it('round-trips both plows\' height fields through a snapshot', () => {
+    const plows = new Float32Array(2 * NET_PLOW_LEN);
+    plows[NP.y] = 7.25;
+    plows[NP.vy] = -11.5;
+    plows[NP.air] = 1;
+    plows[NET_PLOW_LEN + NP.y] = 0.125;
+    plows[NET_PLOW_LEN + NP.vy] = 3.75;
+    plows[NET_PLOW_LEN + NP.air] = 0;
+    const h: SnapHeader = { phase: 1, seq: 7, time: 3, timer: 60, round: 0, scoreA: 0, scoreB: 0, flags: 0, inputAck: 0 };
+    const buf = new DataView(new ArrayBuffer(SNAP_BYTES));
+    encodeSnap(h, plows, buf);
+    const p2 = new Float32Array(2 * NET_PLOW_LEN);
+    expect(decodeSnap(buf, {} as SnapHeader, p2)).toBe(true);
+    expect([p2[NP.y], p2[NP.vy], p2[NP.air]]).toEqual([7.25, -11.5, 1]);
+    expect([p2[NET_PLOW_LEN + NP.y], p2[NET_PLOW_LEN + NP.vy], p2[NET_PLOW_LEN + NP.air]]).toEqual([0.125, 3.75, 0]);
+  });
+
+  it('interpolation lerps y / vy and never blends the airborne flag (it switches at the newer snapshot)', () => {
+    const b = new SnapBuffer();
+    const a = new Float32Array(2 * NET_PLOW_LEN);
+    const c = new Float32Array(2 * NET_PLOW_LEN);
+    // Guest block (which = 1): leaving a ramp lip between the two snapshots.
+    a[NET_PLOW_LEN + NP.y] = 1;
+    a[NET_PLOW_LEN + NP.vy] = 2;
+    a[NET_PLOW_LEN + NP.air] = 0;
+    c[NET_PLOW_LEN + NP.y] = 3;
+    c[NET_PLOW_LEN + NP.vy] = -6;
+    c[NET_PLOW_LEN + NP.air] = 1;
+    b.push(10, a);
+    b.push(10.1, c);
+    const out = new Float32Array(NET_PLOW_LEN);
+    expect(b.sample(10.025, 1, out)).toBe(true);
+    expect(out[NP.y]).toBeCloseTo(1.5, 5);
+    expect(out[NP.vy]).toBeCloseTo(0, 5);
+    expect(out[NP.air]).toBe(0);
+    b.sample(10.075, 1, out);
+    expect(out[NP.y]).toBeCloseTo(2.5, 5);
+    expect(out[NP.vy]).toBeCloseTo(-4, 5);
+    expect(out[NP.air]).toBe(0);
+    b.sample(10.1, 1, out);
+    expect([out[NP.y], out[NP.vy], out[NP.air]]).toEqual([3, -6, 1]);
+    // The host block is untouched by the guest's values.
+    b.sample(10.05, 0, out);
+    expect([out[NP.y], out[NP.vy], out[NP.air]]).toEqual([0, 0, 0]);
   });
 });
 

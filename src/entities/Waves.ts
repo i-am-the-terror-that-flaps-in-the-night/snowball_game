@@ -1,11 +1,20 @@
 import type { GameContext, WaveDirectorAPI, ZoneDef } from '../core/types';
 import { ENEMY_GATES, GATE_WIDTH } from '../core/types';
 import { ENEMIES, type EnemyType } from '../config/enemies';
+import { OMEGA_HATCHES, OMEGA_TERRAIN } from '../world/omega/layout';
+import { pickHatches } from '../world/omega/zone';
+
+/** Hatches on open ground (deck -1, not in the undercroft): where bosses rise in The Omega Works. */
+const OPEN_HATCHES = OMEGA_HATCHES.filter((h) => h.deck < 0 && !(Math.abs(h.x) < 18 && Math.abs(h.z) < 18));
+/** Hatch spawns this close together in time step to the next hatch so bots don't stack. */
+const HATCH_REUSE = 1.2;
 
 /* WaveDirector: turns an arena round (zone.rounds[i].groups) into a timed spawn queue. Minions rotate
  * through the three gates (shuffled order, so packs come from varying sides); bosses enter through gate 0
  * (north), twin bosses through gates 1 and 2. Summoned minions are spawned by the EnemyManager itself
- * and are covered by aliveCount(), so `done` = queue empty && nothing alive. */
+ * and are covered by aliveCount(), so `done` = queue empty && nothing alive.
+ * The Omega Works (160 m) has no usable gates near the fight: everything rises out of floor hatches 9-35 m from the
+ * player (world/omega/zone.ts pickHatches), so a wave never starts a long drive away. */
 
 interface QueuedSpawn {
   t: number;
@@ -22,6 +31,9 @@ export class WaveDirector implements WaveDirectorAPI {
   private hpMult = 1;
   private lastGateT = [-99, -99, -99];
   private gateBacklog = [0, 0, 0];
+  /** The Omega Works: rotates hatch picks between spawns; last spawn time per hatch. */
+  private hatchTurn = 0;
+  private hatchT = new Map<number, number>();
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -73,6 +85,8 @@ export class WaveDirector implements WaveDirectorAPI {
     this.started = false;
     this.lastGateT.fill(-99);
     this.gateBacklog.fill(0);
+    this.hatchTurn = 0;
+    this.hatchT.clear();
   }
 
   update(dt: number): void {
@@ -102,6 +116,7 @@ export class WaveDirector implements WaveDirectorAPI {
   }
 
   private spawn(s: QueuedSpawn): void {
+    if (this.ctx.zone.theme === 'omega') return this.spawnHatch(s.type);
     const def = ENEMIES[s.type];
     const g = ENEMY_GATES[s.gate];
     const fx = Math.sin(g.heading);
@@ -115,5 +130,28 @@ export class WaveDirector implements WaveDirectorAPI {
     const x = g.x + fz * lat - fx * back;
     const z = g.z - fx * lat - fz * back;
     this.ctx.enemies.spawn(s.type, x, z, { hpMult: this.hpMult, heading: g.heading });
+  }
+
+  /** The Omega Works: rise out of a floor hatch near the player (bosses: an open-ground hatch), facing them. */
+  private spawnHatch(type: EnemyType): void {
+    const ctx = this.ctx;
+    const p = ctx.plow.position;
+    const boss = ENEMIES[type].isBoss;
+    const pool = boss ? OPEN_HATCHES : OMEGA_HATCHES;
+    // Nearest-first candidates; skip ones used a moment ago so a pack fans out over several hatches.
+    const picks = pickHatches(p.x, p.y, p.z, Math.min(pool.length, 6), this.hatchTurn++, pool);
+    let i = picks[0] ?? 0;
+    for (const k of picks) {
+      if (this.time - (this.hatchT.get(k) ?? -99) >= HATCH_REUSE) {
+        i = k;
+        break;
+      }
+    }
+    this.hatchT.set(i, this.time);
+    const h = pool[i];
+    const y = h.deck < 0 ? 0 : (OMEGA_TERRAIN.decks!.find((d) => d.id === h.deck)?.top ?? 0);
+    const jx = boss ? 0 : (Math.random() - 0.5) * 1.2;
+    const jz = boss ? 0 : (Math.random() - 0.5) * 1.2;
+    ctx.enemies.spawn(type, h.x + jx, h.z + jz, { hpMult: this.hpMult, heading: Math.atan2(p.x - h.x, p.z - h.z), y: y + 0.5 });
   }
 }

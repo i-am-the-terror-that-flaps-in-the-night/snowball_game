@@ -7,6 +7,11 @@ import { makeShadowProxy } from '../render/shadowProxy';
 import type { ShadowProxy } from '../render/shadowProxy';
 import { ARENA, ENEMY_GATES, GATE_WIDTH } from '../core/types';
 import { getBackdropTex, getBuntingTex, getCarpetTex, getSignAtlas, getUsFlagTex, RALLY_SIGNS, signPlane } from './rallyTextures';
+import type { BiomeKey } from '../config/zones';
+import { GLINTS, Weather, weatherLayers } from './biomes/Weather';
+import { GroundDecals, getLavaMaterial, lavaTime, scorchMaterial } from './biomes/GroundDecals';
+import { OmegaWorks } from './omega/OmegaWorks';
+import { OmegaSet } from './omega/OmegaSet';
 
 type Theme = ZoneDef['theme'];
 
@@ -41,7 +46,7 @@ interface Style {
   mountain: number;
 }
 
-const STYLES: Record<Theme, Style> = {
+const STYLES: Record<Theme | BiomeKey, Style> = {
   // Frostbite Yard — snowy scrapyard
   meadow: {
     block: 0xa9c8e6, blockAlt: 0x8db3d8, trim: 0x59636f, accents: [0xffc21a, 0x2f7de1, 0xe8423a], gate: 0xffa21a,
@@ -67,6 +72,11 @@ const STYLES: Record<Theme, Style> = {
     block: 0xab9cdc, blockAlt: 0x9282cc, trim: 0x2b2440, accents: [0xd24dff, 0x6ff3ff, 0xff7ad9], gate: 0xd24dff,
     stand: 0x3c3453, standAlt: 0x2b2541, tire: 0x1c1a22, lamp: 0xf2dcff, spot: 2000, glow: 0.8, rock: 0x4b4058, mountain: 0x3d3150,
   },
+  // The Omega Works — night neon factory (its decks and walls are built by world/omega/*; this styles the lights)
+  omega: {
+    block: 0x23262f, blockAlt: 0x14161c, trim: 0x18e8ff, accents: [0xff2bd6, 0x18e8ff, 0xffd400], gate: 0xff2bd6,
+    stand: 0x23262f, standAlt: 0x14161c, tire: 0x111216, lamp: 0xc8b8ff, spot: 1600, glow: 0.8, rock: 0x2a2633, mountain: 0x1a1426,
+  },
   // Golden Tower Plaza — THE DONALD's rally: white + gold, red / white / blue, warm stage lights
   rally: {
     block: 0xf6f1e4, blockAlt: 0xe9dfc8, trim: 0xc9a227, accents: [0xc8102e, 0x1f3b8c, 0xffffff, 0xf2c033], gate: 0xffc233,
@@ -77,6 +87,88 @@ const STYLES: Record<Theme, Style> = {
     block: 0x3a4a78, blockAlt: 0x2f3d68, trim: 0x1d2236, accents: [0xff3d7f, 0x22d3ff, 0xffd23a, 0x7cff5a], gate: 0xff3d7f,
     stand: 0x39405a, standAlt: 0x2c3249, tire: 0x1c1d22, lamp: 0xfff3e0, spot: 14000, glow: 0.85, rock: 0x6c7280, mountain: 0x5b5f8a,
   },
+  snowdome: {
+    block: 0x3a4a78, blockAlt: 0x2f3d68, trim: 0x1d2236, accents: [0xff3d7f, 0x22d3ff, 0xffd23a, 0x7cff5a], gate: 0xff3d7f,
+    stand: 0x39405a, standAlt: 0x2c3249, tire: 0x1c1d22, lamp: 0xfff3e0, spot: 14000, glow: 0.85, rock: 0x6c7280, mountain: 0x5b5f8a,
+  },
+  // Coldboot Glacier — frozen relay station: ice-blue blocks, cyan / violet aurora accents
+  glacier: {
+    block: 0xd2ebfa, blockAlt: 0xb0d8f2, trim: 0x34506c, accents: [0x5ff0ff, 0x9a7bff, 0x3df5b0, 0xffffff], gate: 0x5fe8ff,
+    stand: 0x5a6e82, standAlt: 0x46596c, tire: 0x1f2328, lamp: 0xe0f4ff, spot: 900, glow: 0.55, rock: 0x6f8aa3, mountain: 0x9ab8d6,
+  },
+  // Inferno Quarry — black basalt, ember orange
+  quarry: {
+    block: 0x3d3532, blockAlt: 0x2a2422, trim: 0x16120f, accents: [0xff6a1a, 0xffb02a, 0xff3a1a], gate: 0xff5a14,
+    stand: 0x3b2f2a, standAlt: 0x2b221e, tire: 0x151312, lamp: 0xffa060, spot: 1600, glow: 0.75, rock: 0x231d1b, mountain: 0x2e1d18,
+  },
+  // Rust Basin — red dust, sandstone, mission white / blue
+  mars: {
+    block: 0xd09468, blockAlt: 0xb5774e, trim: 0x5a3a2a, accents: [0xff8a3d, 0xf0e8d8, 0x3a7fae], gate: 0xffa040,
+    stand: 0x7a5a48, standAlt: 0x644838, tire: 0x2a2220, lamp: 0xfff0dc, spot: 700, glow: 0.45, rock: 0x9a4a2a, mountain: 0xb8683e,
+  },
+  // The Thermal Divide — hot west (red), cold east (blue); walls are split by side in buildWalls
+  divide: {
+    block: 0xb8a8b8, blockAlt: 0xa898a8, trim: 0x2e2834, accents: [0xff5a2a, 0x5fd8ff, 0xffffff], gate: 0xd070ff,
+    stand: 0x5a4e60, standAlt: 0x463c4e, tire: 0x1f1d22, lamp: 0xfff0f0, spot: 1700, glow: 0.6, rock: 0x4a3a40, mountain: 0x7a6a88,
+  },
+  // Golden Tower Plaza (biome) = the rally look
+  plaza: {
+    block: 0xf6f1e4, blockAlt: 0xe9dfc8, trim: 0xc9a227, accents: [0xc8102e, 0x1f3b8c, 0xffffff, 0xf2c033], gate: 0xffc233,
+    stand: 0xf3efe6, standAlt: 0xc8102e, tire: 0x222429, lamp: 0xffd9a0, spot: 2600, glow: 0.85, rock: 0x8a7a66, mountain: 0x6f9062,
+  },
+};
+
+/** Snowdome cover reskin per Brawl biome venue: pillar colour / roughness / glow, crystal, fountain stone + water. */
+interface BrawlSkin {
+  pillar: number;
+  rough: number;
+  glow: number;
+  crystal: number;
+  stone: number;
+  water: number;
+  /** Tint of the giant snowman statues (ash-man in the quarry, dust-man on Mars, a gold one at the rally). */
+  statue: number;
+}
+const ICE_SKIN: BrawlSkin = { pillar: 0xa8e4ff, rough: 0.15, glow: 0x15405a, crystal: 0x6ff3ff, stone: 0x8a93a6, water: 0xbfeaff, statue: 0xffffff };
+const BRAWL_SKIN: Partial<Record<BiomeKey, BrawlSkin>> = {
+  snowdome: ICE_SKIN,
+  glacier: ICE_SKIN,
+  quarry: { pillar: 0x2e2826, rough: 0.8, glow: 0x3a0c02, crystal: 0xff6a1a, stone: 0x3a3230, water: 0xff7a2a, statue: 0x77706e },
+  mars: { pillar: 0xb8683e, rough: 0.9, glow: 0x000000, crystal: 0x7fd8ff, stone: 0xa86a4a, water: 0xd8b090, statue: 0xe0a07c },
+  divide: { pillar: 0xffffff, rough: 0.3, glow: 0x101830, crystal: 0xd070ff, stone: 0x6a5a68, water: 0xbfeaff, statue: 0xffffff },
+  plaza: { pillar: 0xe8b423, rough: 0.35, glow: 0x4a3000, crystal: 0xfff0b0, stone: 0xf3efe6, water: 0x8fd0ff, statue: 0xf2c94a },
+};
+
+/** The Thermal Divide's two wall palettes (x < 0 hot basalt, x > 0 cold ice). */
+const DIVIDE_HOT = [0x8a3826, 0x6c2a1e];
+const DIVIDE_COLD = [0xc6e8f8, 0xa2d2ee];
+
+/** Per-biome sky extras and light tweaks (Environment.setZone). */
+interface BiomeSky {
+  /** Hemisphere ground (bounce) colour. */
+  bounce?: number;
+  aurora?: number;
+  stars?: number;
+  smoke?: number;
+  /** Pale sun disc in the sky (visual only): direction (toward the camera's usual view) and angular radius. */
+  sun?: { dir: [number, number, number]; size: number; color: number };
+  /** Split sky (The Thermal Divide): +x side gradient. */
+  split?: { top: number; bottom: number; horizon: number };
+  /** Floodlight spot colours (west, east) and whether they light their own half. */
+  spots?: [number, number];
+  splitSpots?: boolean;
+}
+const BIOME_SKY: Partial<Record<BiomeKey, BiomeSky>> = {
+  glacier: { bounce: 0x9fd0ff, aurora: 1, stars: 0.8, spots: [0xbfe8ff, 0xbfe8ff] },
+  quarry: { bounce: 0xff4a18, smoke: 1, spots: [0xff7a30, 0xffa050] },
+  mars: { bounce: 0xd07850, sun: { dir: [-0.35, 0.3, -1], size: 0.024, color: 0xfff6ea } },
+  divide: {
+    bounce: 0xc8a0c0,
+    split: { top: 0x0e2c5c, bottom: 0x9ad8ff, horizon: 0xcfe8f6 },
+    spots: [0xff6a2a, 0x6fd8ff],
+    splitSpots: true,
+  },
+  plaza: { bounce: 0xffe8c0, sun: { dir: [0.45, 0.55, -1], size: 0.05, color: 0xfff6d8 } },
 };
 
 /** Confetti palette for Snowdome flags / crowd. */
@@ -212,7 +304,6 @@ function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 
 /* ---------------------------------------------------------------- canvas textures */
 
-let snowflakeTex: THREE.Texture | null = null;
 let glowTex: THREE.Texture | null = null;
 let hazardTex: THREE.Texture | null = null;
 let doorTex: THREE.Texture | null = null;
@@ -242,10 +333,6 @@ function radial(size: number, stops: [number, string][]): HTMLCanvasElement {
   g.fillStyle = grd;
   g.fillRect(0, 0, size, size);
   return c;
-}
-
-function getSnowflakeTex(): THREE.Texture {
-  return (snowflakeTex ??= toTex(radial(64, [[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.85)'], [1, 'rgba(255,255,255,0)']])));
 }
 
 function getGlowTex(): THREE.Texture {
@@ -370,6 +457,27 @@ function wavyFlag(w: number, h: number): THREE.BufferGeometry {
   return g;
 }
 
+/** A tapering 4-leg lattice mast `h` tall, `w` wide at the base (merged, origin at the foot). */
+function latticeMast(h: number, w: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const half = (y: number) => (w / 2) * (1 - (0.65 * y) / h);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const b = new THREE.Vector3(sx * half(0), 0, sz * half(0));
+    const t = new THREE.Vector3(sx * half(h), h, sz * half(h));
+    const len = b.distanceTo(t);
+    const g = new THREE.CylinderGeometry(0.09, 0.12, len, 4).translate(0, len / 2, 0);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), t.clone().sub(b).normalize()));
+    parts.push(g.translate(b.x, b.y, b.z));
+  }
+  for (let y = 1.5; y < h; y += 2.4) {
+    const k = half(y) * 2;
+    parts.push(new THREE.BoxGeometry(k, 0.08, 0.08).translate(0, y, half(y)), new THREE.BoxGeometry(k, 0.08, 0.08).translate(0, y, -half(y)));
+    parts.push(new THREE.BoxGeometry(0.08, 0.08, k).translate(half(y), y, 0), new THREE.BoxGeometry(0.08, 0.08, k).translate(-half(y), y, 0));
+  }
+  parts.push(new THREE.CylinderGeometry(0.06, 0.06, 4, 4).translate(0, h + 2, 0));
+  return merge(parts);
+}
+
 /* ---------------------------------------------------------------- environment */
 
 interface GateState {
@@ -397,6 +505,15 @@ interface GateMats {
   back?: THREE.MeshBasicMaterial;
 }
 
+interface Puff {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  rise?: number;
+  drift?: number;
+}
+
 interface Pulse {
   mat: THREE.Material;
   base: number;
@@ -404,8 +521,6 @@ interface Pulse {
   phase: number;
 }
 
-const SNOW_BOX = 70;
-const SNOW_H = 36;
 
 export class Environment implements WorldAPI {
   private ctx: GameContext;
@@ -416,8 +531,18 @@ export class Environment implements WorldAPI {
   private skyMat: THREE.ShaderMaterial;
   private fog: THREE.Fog;
   private decor: THREE.Group | null = null;
+  /** The Omega Works' decks / pistons / conveyors and its set dressing (only while that arena is loaded). */
+  private omega: { works: OmegaWorks; set: OmegaSet } | null = null;
   private zone: ZoneDef;
   private style: Style = STYLES.meadow;
+  /** Biome of the current zone (null = the classic theme look). */
+  private biome: BiomeKey | null = null;
+  private weather: Weather;
+  /** Glacier: the hemisphere light shimmers between its base colour and aurora green / violet. */
+  private auroraBase: THREE.Color | null = null;
+  private auroraA = new THREE.Color(0x6dffc0);
+  private auroraB = new THREE.Color(0xb48cff);
+  private decals: GroundDecals | null = null;
   private time = 0;
   private rnd: () => number = Math.random;
   private obstacleList: Obstacle[] = [];
@@ -443,7 +568,8 @@ export class Environment implements WorldAPI {
   private zoneTex: THREE.Texture[] = [];
   private ticker: THREE.Texture | null = null;
   private spinners: { obj: THREE.Object3D; speed: number }[] = [];
-  private puffs: { mesh: THREE.InstancedMesh; stacks: { x: number; y: number; z: number; r: number }[]; per: number } | null = null;
+  /** Rising smoke / steam columns: `rise` m tall (default 16), drifting `drift` m downwind (default 9). */
+  private puffs: { mesh: THREE.InstancedMesh; stacks: Puff[]; per: number } | null = null;
   private bobTime = { value: 0 };
   /** Crowd bob height (the rally crowd cheers harder). */
   private bobAmp = { value: 0.2 };
@@ -455,14 +581,11 @@ export class Environment implements WorldAPI {
   private tmpV = new THREE.Vector3();
   private tmpV2 = new THREE.Vector3();
 
-  // falling snow
-  private flakes: THREE.Points | null = null;
-  private flakePos: Float32Array = new Float32Array(0);
-  private flakePhase: Float32Array = new Float32Array(0);
-  private windX = 1;
-  private windZ = 0.4;
-  private fallSpeed = 1.5;
-  private sway = 0.6;
+
+  /** Golden Tower Plaza dressing (the rally venue, or the Plaza biome anywhere: Survival, Duel, Brawl). */
+  private get isRally(): boolean {
+    return this.zone.theme === 'rally' || this.biome === 'plaza';
+  }
 
   get obstacles(): readonly Obstacle[] {
     return this.obstacleList;
@@ -532,11 +655,23 @@ export class Environment implements WorldAPI {
       this.spots.push(spot);
     }
 
+    this.weather = new Weather(scene);
     this.skyMat = new THREE.ShaderMaterial({
       uniforms: {
         top: { value: new THREE.Color() },
         bottom: { value: new THREE.Color() },
         horizon: { value: new THREE.Color() },
+        topB: { value: new THREE.Color() },
+        bottomB: { value: new THREE.Color() },
+        horizonB: { value: new THREE.Color() },
+        uSplit: { value: 0 },
+        uAurora: { value: 0 },
+        uStars: { value: 0 },
+        uSmoke: { value: 0 },
+        uTime: { value: 0 },
+        uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+        uSunColor: { value: new THREE.Color() },
+        uSunSize: { value: 0 },
       },
       vertexShader: `
         varying vec3 vDir;
@@ -544,13 +679,54 @@ export class Environment implements WorldAPI {
           vDir = normalize(position);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }`,
+      // Gradient sky + per-biome extras: split halves (The Thermal Divide), aurora curtains and stars (glacier),
+      // drifting smoke bands (quarry) and a small sun disc (Rust Basin, Plaza). Every extra is gated by a uniform.
       fragmentShader: `
         uniform vec3 top; uniform vec3 bottom; uniform vec3 horizon;
+        uniform vec3 topB; uniform vec3 bottomB; uniform vec3 horizonB;
+        uniform float uSplit; uniform float uAurora; uniform float uStars; uniform float uSmoke; uniform float uTime;
+        uniform vec3 uSunDir; uniform vec3 uSunColor; uniform float uSunSize;
         varying vec3 vDir;
+        float hsh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float vn(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hsh(i), hsh(i + vec2(1, 0)), u.x), mix(hsh(i + vec2(0, 1)), hsh(i + vec2(1, 1)), u.x), u.y);
+        }
+        vec3 grad(vec3 hz, vec3 bt, vec3 tp, float h) {
+          vec3 c = mix(hz, bt, smoothstep(-0.02, 0.12, h));
+          return mix(c, tp, smoothstep(0.08, 0.75, h));
+        }
         void main() {
-          float h = vDir.y;
-          vec3 c = mix(horizon, bottom, smoothstep(-0.02, 0.12, h));
-          c = mix(c, top, smoothstep(0.08, 0.75, h));
+          vec3 d = normalize(vDir);
+          float h = d.y;
+          vec3 c = grad(horizon, bottom, top, h);
+          if (uSplit > 0.0) c = mix(c, grad(horizonB, bottomB, topB, h), smoothstep(-0.22, 0.22, d.x) * uSplit);
+          float az = atan(d.x, d.z);
+          if (uStars > 0.0 && h > 0.12) {
+            vec2 g = floor(vec2(az * 90.0, h * 140.0));
+            float s = hsh(g);
+            c += vec3(step(0.993, s) * uStars * smoothstep(0.12, 0.45, h) * (0.55 + 0.45 * sin(uTime * 2.0 + s * 60.0)));
+          }
+          if (uAurora > 0.0) {
+            float band = smoothstep(0.1, 0.26, h) * (1.0 - smoothstep(0.42, 0.8, h));
+            float wv = sin(az * 3.0 + sin(az * 7.0 + uTime * 0.21) * 0.9 + uTime * 0.07);
+            float curtain = pow(0.5 + 0.5 * wv, 3.0);
+            float rays = 0.55 + 0.45 * sin(az * 70.0 + uTime * 0.5 + sin(az * 11.0 + uTime * 0.1) * 4.0);
+            vec3 ac = mix(vec3(0.1, 1.0, 0.5), vec3(0.55, 0.3, 1.0), smoothstep(0.22, 0.6, h));
+            c += ac * band * curtain * rays * uAurora * 0.9;
+          }
+          if (uSmoke > 0.0) {
+            vec2 sp = d.xz * (2.2 / (0.3 + max(h, 0.0))) + vec2(uTime * 0.03, 0.0);
+            float n = vn(sp * 2.0) * 0.6 + vn(sp * 5.0 + 3.1) * 0.4;
+            float k = smoothstep(0.35, 0.8, n) * smoothstep(-0.02, 0.15, h) * (1.0 - smoothstep(0.5, 0.95, h));
+            c = mix(c, vec3(0.05, 0.015, 0.01), k * 0.55 * uSmoke);
+            c += vec3(0.5, 0.12, 0.02) * (1.0 - smoothstep(0.0, 0.12, h)) * (1.0 - k) * 0.35 * uSmoke;
+          }
+          if (uSunSize > 0.0) {
+            float a = dot(d, uSunDir);
+            c += uSunColor * (smoothstep(cos(uSunSize), cos(uSunSize * 0.8), a) + pow(max(a, 0.0), 90.0) * 0.4);
+          }
           gl_FragColor = vec4(c, 1.0);
           #include <colorspace_fragment>
         }`,
@@ -570,7 +746,11 @@ export class Environment implements WorldAPI {
   setZone(zone: ZoneDef): void {
     this.zone = zone;
     this.ctx.terrain.load(zone.terrain ?? {});
-    this.style = STYLES[zone.theme] ?? STYLES.meadow;
+    this.biome = zone.biome?.key ?? null;
+    const base = (this.biome && STYLES[this.biome]) || STYLES[zone.theme] || STYLES.meadow;
+    // Brawl biome venues keep the dome's huge floodlights
+    this.style = zone.theme === 'brawl' ? { ...base, spot: STYLES.brawl.spot, glow: STYLES.brawl.glow } : base;
+    const bs = (this.biome && BIOME_SKY[this.biome]) || {};
     const scene = this.ctx.scene;
     this.fog.color.setHex(zone.fogColor);
     this.fog.near = zone.fogNear;
@@ -580,9 +760,26 @@ export class Environment implements WorldAPI {
     this.skyMat.uniforms.top.value.setHex(zone.skyTop);
     this.skyMat.uniforms.bottom.value.setHex(zone.skyBottom);
     this.skyMat.uniforms.horizon.value.setHex(zone.fogColor);
+    const su = this.skyMat.uniforms;
+    su.uSplit.value = bs.split ? 1 : 0;
+    if (bs.split) {
+      su.topB.value.setHex(bs.split.top);
+      su.bottomB.value.setHex(bs.split.bottom);
+      su.horizonB.value.setHex(bs.split.horizon);
+    }
+    su.uAurora.value = bs.aurora ?? 0;
+    su.uStars.value = bs.stars ?? 0;
+    su.uSmoke.value = bs.smoke ?? 0;
+    su.uSunSize.value = bs.sun?.size ?? 0;
+    if (bs.sun) {
+      (su.uSunDir.value as THREE.Vector3).set(...bs.sun.dir).normalize();
+      su.uSunColor.value.setHex(bs.sun.color);
+    }
 
     this.hemi.color.setHex(zone.ambientColor);
     this.hemi.groundColor.setHex(zone.snowTint).lerp(new THREE.Color(zone.ambientColor), 0.3);
+    if (bs.bounce !== undefined) this.hemi.groundColor.setHex(bs.bounce);
+    this.auroraBase = bs.aurora ? new THREE.Color(zone.ambientColor) : null;
     this.hemi.intensity = zone.ambientIntensity;
     this.sun.color.setHex(zone.sunColor);
     this.sun.intensity = zone.sunIntensity;
@@ -599,7 +796,7 @@ export class Environment implements WorldAPI {
     for (let i = 0; i < this.spots.length; i++) {
       const s = this.spots[i];
       const sx = i === 0 ? -1 : 1;
-      s.color.setHex(this.style.lamp);
+      s.color.setHex(bs.spots ? bs.spots[i] : this.style.lamp);
       s.intensity = this.style.spot;
       if (brawl) {
         const c = ARENA.maxX + DOME_TOWER_OFF;
@@ -612,10 +809,13 @@ export class Environment implements WorldAPI {
         s.target.position.set(-sx * 6, 0, 6);
         s.angle = Math.PI / 4.2;
       }
+      // The Thermal Divide: each tower floods its own half (hot west, cold east)
+      if (bs.splitSpots) s.target.position.set(sx * (brawl ? 40 : 14), 0, brawl ? 10 : 4);
     }
 
     this.buildDecor(zone);
-    this.buildSnowfall(zone);
+    this.buildWeather(zone);
+    this.ctx.audio?.setAmbience(zone.biome?.ambience ?? (brawl || zone.theme === 'blizzard' ? 'wind' : 'none'));
   }
 
   openGate(index: number): void {
@@ -637,6 +837,11 @@ export class Environment implements WorldAPI {
   }
 
   private disposeDecor(): void {
+    if (this.omega) {
+      this.omega.works.dispose();
+      this.omega.set.dispose();
+      this.omega = null;
+    }
     if (!this.decor) return;
     const geos = new Set<THREE.BufferGeometry>();
     const mats = new Set<THREE.Material>();
@@ -666,6 +871,8 @@ export class Environment implements WorldAPI {
     this.ticker = null;
     this.carpet = null;
     this.signMat = null;
+    this.decals?.dispose();
+    this.decals = null;
   }
 
   /* ------------------------------------------------------------------ helpers */
@@ -786,7 +993,8 @@ export class Environment implements WorldAPI {
     if (!crowd) return;
     const { items, bodyMat, eyeMat } = crowd;
     const white = 0xffffff;
-    const rally = this.zone.theme === 'rally';
+    // rally caps / cheering arms: campaign venues only (the Snowdome's 3000-strong crowd stays cheap)
+    const rally = this.isRally && !brawlMode;
     const body = merge([
       colored(new THREE.BoxGeometry(0.46, 0.4, 0.36).translate(0, 0.22, 0), white),
       colored(new THREE.BoxGeometry(0.4, 0.32, 0.34).translate(0, 0.6, 0), white),
@@ -832,7 +1040,7 @@ export class Environment implements WorldAPI {
   private crowdColor(): number {
     const pal = this.style.accents;
     const r = this.rnd();
-    if (this.zone.theme === 'rally') return r < 0.38 ? 0xc8102e : r < 0.7 ? 0xf4f4f0 : r < 0.92 ? 0x1f3b8c : 0xf2c033;
+    if (this.isRally) return r < 0.38 ? 0xc8102e : r < 0.7 ? 0xf4f4f0 : r < 0.92 ? 0x1f3b8c : 0xf2c033;
     if (r < 0.55) return pal[(this.rnd() * pal.length) | 0];
     const greys = [0x9aa4b0, 0x6a7380, 0xd8dde3, 0x3a4250];
     return greys[(this.rnd() * greys.length) | 0];
@@ -854,16 +1062,29 @@ export class Environment implements WorldAPI {
     this.obstacleList = [];
     this.props.clear();
 
-    if (brawlMode) {
-      this.buildWalls(G, snowMat);
-      this.buildSnowdome(zone, G);
-      this.buildObstacles(G, snowMat);
+    if (zone.theme === 'omega') {
+      // The Omega Works: its own walls, decks, hatches and skyline (no stands, gates or props).
+      const works = new OmegaWorks(this.ctx.terrain);
+      const set = new OmegaSet(this.ctx.terrain);
+      this.omega = { works, set };
+      this.ctx.scene.add(works.group, set.group);
+      this.bobAmp.value = 0;
       this.buildMountains(zone);
       this.finishDecor();
       return;
     }
 
-    const rally = zone.theme === 'rally';
+    if (brawlMode) {
+      this.buildWalls(G, snowMat);
+      this.buildSnowdome(zone, G);
+      this.buildObstacles(G, snowMat);
+      this.buildMountains(zone);
+      this.buildGroundDecals();
+      this.finishDecor();
+      return;
+    }
+
+    const rally = this.isRally;
     this.bobAmp.value = rally ? 0.42 : 0.2;
     this.buildWalls(G, snowMat);
     this.buildGates(G, snowMat);
@@ -875,13 +1096,32 @@ export class Environment implements WorldAPI {
     this.buildDrifts(G, snowMat);
 
     const theme = zone.theme;
-    if (theme === 'meadow') this.buildYard(G);
+    const biome = this.biome;
+    if (biome === 'glacier') this.buildGlacier(G);
+    else if (biome === 'quarry') this.buildQuarry(G);
+    else if (biome === 'mars') this.buildMars(G);
+    else if (biome === 'divide') this.buildDivide(G);
+    else if (biome === 'plaza') {
+      this.buildRally(G);
+      this.buildSummer();
+    } else if (theme === 'meadow') this.buildYard(G);
     else if (theme === 'pines') this.buildJunkyard(G);
     else if (theme === 'lake') this.buildFoundry(G);
     else if (theme === 'blizzard') this.buildBowl(zone);
     else if (theme === 'rally') this.buildRally(G);
     else this.buildSummit(G, snowMat);
+    this.buildGroundDecals();
     this.finishDecor();
+  }
+
+  /** Lava ribbons, ice sheets and ramp decks for the zone's ground terrain (none on flat arenas or deck arenas: The
+   *  Omega Works draws its own structures). */
+  private buildGroundDecals(): void {
+    const t = this.ctx.terrain;
+    if (t.decks.length || (!t.patches.length && !t.shapes.some((s) => s.kind === 'ramp') && this.biome !== 'divide')) return;
+    const snow = this.ctx.snow;
+    this.decals = new GroundDecals(t, this.biome, (x, z) => (snow ? snow.getDepth(x, z) : this.zone.snowDepth), ARENA.maxX);
+    this.add(this.decals.group);
   }
 
   /** Emits the batched parts, then one depth-only shadow proxy for every static caster of the zone (the visible
@@ -952,12 +1192,17 @@ export class Environment implements WorldAPI {
           const sc = a + (k + 0.5) * L;
           const [x, z] = side.map(sc, WALL_IN + WALL_T / 2);
           const bh = h * (0.97 + rnd() * 0.06);
+          if (this.biome === 'divide') {
+            const pal = x < 0 || (Math.abs(x) < 1 && z < 0) ? DIVIDE_HOT : DIVIDE_COLD;
+            cA.setHex(pal[0]);
+            cB.setHex(pal[1]);
+          }
           blockCol.copy(cA).lerp(cB, rnd());
           blocks.push({ x, y: 0, z, ry: side.yaw + (rnd() - 0.5) * 0.025, sx: L - 0.14, sy: bh, sz: WALL_T * (0.96 + rnd() * 0.05), color: blockCol.getHex() });
           caps.push({ x, y: bh - 0.06, z, ry: side.yaw, sx: (L - 0.14) * 0.5, sy: 0.2 + rnd() * 0.1, sz: WALL_T * 0.52 });
           const [bx, bz] = side.map(sc, WALL_IN - 0.035);
           bands.push({ x: bx, y: h - 0.62, z: bz, ry: side.yaw, sx: L - 0.1, sy: 1, sz: 1 });
-          if (side.key !== 's' && bi % 2 === 1 && this.zone.theme !== 'rally') {
+          if (side.key !== 's' && bi % 2 === 1 && !this.isRally) {
             const [fx, fz] = side.map(sc, WALL_IN - 0.09);
             banners.push({ x: fx, y: h - 1.22, z: fz, ry: side.yaw, sx: 1, sy: 1, sz: 1, color: st.accents[(bi >> 1) % st.accents.length] });
           }
@@ -986,7 +1231,7 @@ export class Environment implements WorldAPI {
     // block caps + corner caps: same hemisphere, material and flags -> one draw
     const cornerCaps = cornerItems.map((c) => ({ ...c, y: c.sy - 0.05, sx: WALL_C * 0.55, sy: 0.4, sz: WALL_C * 0.55 }));
     this.inst(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, [...caps, ...cornerCaps]);
-    const hazardMat = this.zone.theme === 'rally' ? this.std(0xe8b423, { roughness: 0.35, metalness: 0.35, emissive: 0x4a3000, emissiveIntensity: 0.35 }) : this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false });
+    const hazardMat = this.isRally ? this.std(0xe8b423, { roughness: 0.35, metalness: 0.35, emissive: 0x4a3000, emissiveIntensity: 0.35 }) : this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false });
     this.inst(new THREE.BoxGeometry(1, 0.38, 0.07).translate(0, 0.19, 0), hazardMat, bands);
     const trimMat = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
     this.inst(new THREE.BoxGeometry(0.36, 1, 0.4).translate(0, 0.5, 0), trimMat, posts, true);
@@ -1132,7 +1377,7 @@ export class Environment implements WorldAPI {
 
   /** `skipN` > 0 leaves |x| < skipN of the north side free (Golden Tower Plaza's stage). */
   private buildStands(G: number, skipN = 0): void {
-    const rally = this.zone.theme === 'rally';
+    const rally = this.isRally;
     const signs: { x: number; y: number; z: number; ry: number; i: number }[] = [];
     const st = this.style;
     const rnd = this.rnd;
@@ -1342,45 +1587,79 @@ export class Environment implements WorldAPI {
   private buildMountains(zone: ZoneDef): void {
     const rnd = this.rnd;
     const theme = zone.theme;
+    const biome = this.biome;
     const fogC = new THREE.Color(zone.fogColor);
     const skyB = new THREE.Color(zone.skyBottom);
-    const haze = theme === 'blizzard' ? 0.82 : 0.5;
+    const haze = theme === 'blizzard' && !biome ? 0.82 : biome === 'quarry' ? 0.3 : 0.5;
     const mCol = new THREE.Color(this.style.mountain).lerp(fogC, haze);
-    const cCol = new THREE.Color(zone.snowTint).lerp(skyB, haze * 0.6);
+    // snow caps; volcano craters glow in the quarry, the Divide caps by side, mesas get a lighter band
+    const capHex = biome === 'quarry' ? 0xff5a14 : biome === 'mars' ? 0xd88a5a : biome === 'plaza' ? 0x86a86a : zone.snowTint;
+    const cCol = new THREE.Color(capHex).lerp(skyB, biome === 'quarry' ? 0 : haze * 0.6);
+    const hotM = new THREE.Color(0x6a2418).lerp(fogC, haze);
+    const hotC = new THREE.Color(0xff5a14);
+    const coldM = new THREE.Color(0x8fb8dc).lerp(fogC, haze);
     // one draw: white material, rock / snow-cap colour per instance
     const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, fog: false });
-    const mGeo = new THREE.ConeGeometry(1, 1, 6, 1).translate(0, 0.5, 0);
+    const mesas = biome === 'mars';
+    const mGeo = mesas ? new THREE.CylinderGeometry(0.7, 1, 1, 7, 1).translate(0, 0.5, 0) : new THREE.ConeGeometry(1, 1, 6, 1).translate(0, 0.5, 0);
     const mItems: Item[] = [];
-    const cItems: Item[] = [];
+    let cItems: Item[] = [];
     const n = 34;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + rnd() * 0.12;
       const R = 230 + rnd() * 70;
-      const h = (theme === 'peak' ? 80 : 45) + rnd() * (theme === 'peak' ? 90 : 60);
-      const r = 35 + rnd() * 40;
+      const tall = theme === 'peak' && !biome;
+      const h = (tall ? 80 : mesas ? 22 : 45) + rnd() * (tall ? 90 : mesas ? 30 : 60);
+      const r = (mesas ? 40 : 35) + rnd() * 40;
       const ry = rnd() * 6.28;
       const x = Math.sin(a) * R;
       const z = Math.cos(a) * R;
       const sz = r * (0.7 + rnd() * 0.5);
       mItems.push({ x, y: -2, z, ry, sx: r, sy: h, sz });
-      const k = 0.36;
-      cItems.push({ x, y: -2 + h * (1 - k) - 0.3, z, ry, sx: r * k * 1.04, sy: h * k * 1.01, sz: sz * k * 1.04 });
+      const k = mesas ? 0.22 : biome === 'quarry' ? 0.16 : 0.36;
+      if (mesas) cItems.push({ x, y: -2 + h * 0.62, z, ry, sx: r * 0.83, sy: h * 0.08, sz: sz * 0.83 });
+      else cItems.push({ x, y: -2 + h * (1 - k) - 0.3, z, ry, sx: r * k * 1.04, sy: h * k * 1.01, sz: sz * k * 1.04 });
+    }
+    // lava-capped volcano tops (quarry, the Divide's hot half) glow: unlit, fog-free
+    const glowing = (it: Item) => biome === 'quarry' || (biome === 'divide' && it.x < 0);
+    const lavaCaps = cItems.filter(glowing);
+    if (lavaCaps.length) {
+      const lc = this.inst(mGeo.clone(), new THREE.MeshBasicMaterial({ color: 0xff5a14, fog: false, toneMapped: false }), lavaCaps);
+      if (lc) lc.renderOrder = -5;
+      cItems = cItems.filter((it) => !glowing(it));
     }
     const mm = this.inst(mGeo, mat, [...mItems, ...cItems]);
     if (mm) {
-      for (let i = 0; i < mm.count; i++) mm.setColorAt(i, i < mItems.length ? mCol : cCol);
+      for (let i = 0; i < mm.count; i++) {
+        const cap = i >= mItems.length;
+        const it = cap ? cItems[i - mItems.length] : mItems[i];
+        if (biome === 'divide') mm.setColorAt(i, it.x < 0 ? (cap ? hotC : hotM) : cap ? cCol : coldM);
+        else mm.setColorAt(i, cap ? cCol : mCol);
+      }
       mm.instanceColor!.needsUpdate = true;
       mm.renderOrder = -5;
     }
   }
 
+  /** Low mounds outside the walls: snow drifts, ash heaps (quarry), rust dunes (Rust Basin), hedges (Plaza); the
+   *  Divide gets ash on its hot half and snow on its cold half. */
   private buildDrifts(G: number, snowMat: THREE.Material): void {
     const rnd = this.rnd;
-    const items: Item[] = this.scatter(this.zone.theme === 'blizzard' ? 60 : 36, 48, 115).map((p) => {
+    const biome = this.biome;
+    const items: Item[] = this.scatter(this.zone.theme === 'blizzard' && !biome ? 60 : 36, 48, 115).map((p) => {
       const s = 1.5 + rnd() * 3;
-      return { x: p.x, y: G - 0.1, z: p.z, ry: rnd() * 6.28, sx: s * 1.6, sy: s * 0.28, sz: s };
+      const dune = biome === 'mars';
+      return { x: p.x, y: G - 0.1, z: p.z, ry: rnd() * 6.28, sx: s * (dune ? 2.6 : 1.6), sy: s * (dune ? 0.4 : 0.28), sz: s };
     });
-    this.inst(new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, items, false, true);
+    const geo = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    if (biome === 'plaza') {
+      this.inst(geo, this.std(0x4f9a43, { roughness: 0.85 }), items.map((i) => ({ ...i, sy: i.sy * 2.2 })), true, true);
+    } else if (biome === 'mars') {
+      this.inst(geo, this.std(0xc4744a, { roughness: 0.95 }), items, false, true);
+    } else if (biome === 'divide') {
+      for (const it of items) it.color = it.x < 0 ? 0x5e4a48 : 0xf3f6fa;
+      this.inst(geo, this.std(0xffffff, { roughness: 0.85 }), items, false, true);
+    } else this.inst(geo, snowMat, items, false, true);
   }
 
   /* ---------- theme: Frostbite Yard (snowy scrapyard) ---------- */
@@ -1670,6 +1949,398 @@ export class Environment implements WorldAPI {
     // wind-swept snow fence posts
     const posts: Item[] = this.scatter(30, 48, 56).map((p) => ({ x: p.x, y: 0, z: p.z, ry: rnd() * 6, sx: 1, sy: 1, sz: 1 }));
     this.inst(new THREE.BoxGeometry(0.12, 1.8, 0.12).translate(0, 0.9, 0), this.emissive(0xff5a2a, 0.8, { speed: 4 }), posts);
+  }
+
+  /* ---------- biome: Coldboot Glacier (frozen relay station, aurora) ---------- */
+
+  private buildGlacier(G: number): void {
+    const rnd = this.rnd;
+    // ice cliffs and bergs: big faceted chunks ringing the arena
+    const iceCols = [0xe2f4ff, 0xc4e6fb, 0xa9d8f6, 0xd4eeff];
+    const bergs: Item[] = this.scatter(30, 52, 125).map((p) => {
+      const far = Math.hypot(p.x, p.z) > 80;
+      const s = (far ? 5 : 2.2) + rnd() * (far ? 8 : 3);
+      return { x: p.x, y: G - s * 0.25, z: p.z, ry: rnd() * 6, rx: (rnd() - 0.5) * 0.5, rz: (rnd() - 0.5) * 0.5, sx: s * (1 + rnd() * 0.6), sy: s * (0.9 + rnd() * 1.1), sz: s, color: iceCols[(rnd() * iceCols.length) | 0] };
+    });
+    this.inst(new THREE.DodecahedronGeometry(1, 0), this.std(0xffffff, { roughness: 0.22, metalness: 0.05, emissive: 0x123a58, emissiveIntensity: 0.45 }), bergs, true);
+    // glowing ice crystal clusters
+    const crystals: Item[] = [];
+    for (const p of this.scatter(22, 48, 100)) {
+      const n = 2 + ((rnd() * 4) | 0);
+      for (let k = 0; k < n; k++) {
+        const s = 0.4 + rnd() * 0.8;
+        crystals.push({ x: p.x + (rnd() - 0.5) * 2.2, y: G + s, z: p.z + (rnd() - 0.5) * 2.2, ry: rnd() * 6, rx: (rnd() - 0.5) * 0.7, rz: (rnd() - 0.5) * 0.7, sx: s, sy: s * (2 + rnd() * 1.6), sz: s });
+      }
+    }
+    this.inst(new THREE.OctahedronGeometry(1, 0), this.emissive(0x8ff6ff, 0.9, { speed: 1.3 }), crystals);
+
+    // the relay station (north-west): a squat white block with blue bands, a roof dish and an ice crust
+    const M = new THREE.Matrix4();
+    const st = new THREE.Object3D();
+    st.position.set(-72, 0, -40);
+    st.rotation.y = Math.atan2(72, 40);
+    st.updateMatrix();
+    const at = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true) =>
+      this.bake(geo, M.makeTranslation(x, y, z).premultiply(st.matrix), mat, cast, cast);
+    const white = this.std(0xe6edf3, { roughness: 0.6 });
+    const steel = this.std(0x3a4a5c, { metalness: 0.5, roughness: 0.45 });
+    at(new THREE.BoxGeometry(18, 8, 11).translate(0, 4, 0), white, 0, 0, 0);
+    at(new THREE.BoxGeometry(18.2, 0.8, 11.2), this.std(0x2f6fb0, { roughness: 0.5 }), 0, 6.2, 0, false);
+    at(new THREE.BoxGeometry(8, 4, 7).translate(0, 2, 0), white, -4, 8, 0);
+    at(new THREE.BoxGeometry(6, 4.5, 0.2).translate(0, 2.25, 0), steel, 3, 0, 5.6, false);
+    const winMat = this.emissive(0x7fe8ff, 1.2, { speed: 0.8 });
+    for (let i = 0; i < 4; i++) at(new THREE.BoxGeometry(1.6, 0.9, 0.1), winMat, -7 + i * 2.4, 4.6, 5.56, false);
+    // roof dish: a shallow bowl tilted at the sky, on a mast
+    at(new THREE.CylinderGeometry(0.35, 0.45, 3, 8).translate(0, 1.5, 0), steel, 5, 8, -1);
+    const dish = new THREE.SphereGeometry(3.4, 18, 8, 0, Math.PI * 2, 0, 0.9).rotateX(Math.PI).rotateX(-0.7);
+    at(dish, this.std(0xf2f6fa, { roughness: 0.4, side: THREE.DoubleSide }), 5, 13.2, -1);
+    // ice crust over the station + icicles along the eaves
+    const crust = new THREE.Mesh(new THREE.BoxGeometry(19.2, 9, 12.2).translate(0, 4.5, 0), new THREE.MeshStandardMaterial({ color: 0xbfefff, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.28, depthWrite: false }));
+    crust.renderOrder = 3;
+    crust.position.copy(st.position);
+    crust.rotation.copy(st.rotation);
+    this.add(crust);
+    const icicles: Item[] = [];
+    for (let i = 0; i < 26; i++) {
+      const lx = -9 + rnd() * 18;
+      const lz = rnd() < 0.5 ? 5.6 : -5.6;
+      const v = new THREE.Vector3(lx, 8, lz).applyMatrix4(st.matrix);
+      icicles.push({ x: v.x, y: 8, z: v.z, ry: 0, rx: Math.PI, sx: 0.22 + rnd() * 0.2, sy: 0.8 + rnd() * 1.8, sz: 0.22 + rnd() * 0.2 });
+    }
+    // antenna masts with blinking red beacons
+    const masts: [number, number, number][] = [[-58, -66, 34], [84, -44, 28], [-88, 34, 24], [70, 70, 26]];
+    const mastItems: Item[] = masts.map(([x, z, h]) => ({ x, y: 0, z, ry: rnd() * 6, sx: 1, sy: h / 30, sz: 1 }));
+    this.inst(latticeMast(30, 1.6), this.std(0xd8dee6, { metalness: 0.5, roughness: 0.45 }), mastItems, true);
+    const beacon = this.emissive(0xff2a2a, 2.4, { speed: 3.1 });
+    this.inst(new THREE.SphereGeometry(0.5, 10, 8), beacon, masts.map(([x, z, h]) => ({ x, y: h + 0.4, z, ry: 0, sx: 1, sy: 1, sz: 1 })));
+    for (const [x, z, h] of masts) this.glowSprite(0xff3a3a, 0.7, 5, x, h + 0.4, z, 3.1);
+
+    // frozen server racks: rows of dark cabinets with LED panels, sealed in ice
+    const racks: Item[] = [];
+    const leds: Item[] = [];
+    const shells: Item[] = [];
+    const rows: [number, number, number][] = [[58, -66, 0.6], [-56, 66, 2.3], [88, 12, -1.4], [-90, -8, 1.6], [30, 86, 0.2]];
+    for (const [cx, cz, ry] of rows) {
+      const n = 4 + ((rnd() * 3) | 0);
+      const c = Math.cos(ry);
+      const s = Math.sin(ry);
+      for (let i = 0; i < n; i++) {
+        const along = (i - (n - 1) / 2) * 1.05;
+        const x = cx + c * along;
+        const z = cz - s * along;
+        const tilt = (rnd() - 0.5) * 0.12;
+        racks.push({ x, y: G - 0.3, z, ry, rz: tilt, sx: 1, sy: 1, sz: 1, color: rnd() < 0.2 ? 0x2a3a4a : 0x1a222c });
+        for (let k = 0; k < 5; k++) leds.push({ x: x + s * 0.56, y: G + 0.15 + k * 0.42, z: z + c * 0.56, ry, sx: 1, sy: 1, sz: 1, color: rnd() < 0.7 ? 0x4dffb0 : 0x5fd8ff });
+      }
+      shells.push({ x: cx, y: G - 0.4, z: cz, ry, sx: n * 1.05 + 1.2, sy: 3.2, sz: 2.2 });
+      for (let k = 0; k < 8; k++) icicles.push({ x: cx + c * (rnd() - 0.5) * n, y: G + 2.8, z: cz - s * (rnd() - 0.5) * n, ry: 0, rx: Math.PI, sx: 0.2, sy: 0.6 + rnd(), sz: 0.2 });
+    }
+    this.inst(new THREE.BoxGeometry(0.95, 2.4, 1.05).translate(0, 1.2, 0), this.std(0xffffff, { roughness: 0.5, metalness: 0.4 }), racks, true);
+    this.inst(new THREE.BoxGeometry(0.7, 0.08, 0.04), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), leds);
+    const shellMat = new THREE.MeshStandardMaterial({ color: 0xc8f2ff, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.32, depthWrite: false });
+    const sh = this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), shellMat, shells);
+    if (sh) sh.renderOrder = 3;
+    this.inst(new THREE.ConeGeometry(1, 1, 5).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0xd8f6ff, roughness: 0.15, transparent: true, opacity: 0.85 }), icicles);
+    // two big ground dishes listening north
+    for (const [x, z] of [[38, -84], [-34, -88]] as [number, number][]) {
+      this.bake(new THREE.CylinderGeometry(0.8, 1.4, 6, 8).translate(0, 3, 0), M.makeTranslation(x, 0, z), steel, true);
+      this.bake(new THREE.SphereGeometry(6, 20, 8, 0, Math.PI * 2, 0, 0.85).rotateX(Math.PI).rotateX(-0.9), M.makeTranslation(x, 8.5, z), this.std(0xf0f4f8, { roughness: 0.45, side: THREE.DoubleSide }), true);
+    }
+  }
+
+  /* ---------- biome: Inferno Quarry (basalt terraces, lava falls, ash) ---------- */
+
+  private buildQuarry(G: number): void {
+    const rnd = this.rnd;
+    const M = new THREE.Matrix4();
+    // stepped quarry terraces ringing the arena: you fight at the bottom of the pit
+    const R0 = 56;
+    const STEP_R = 6.5;
+    const STEP_H = 2.6;
+    const STEPS = 7;
+    const pts: THREE.Vector2[] = [new THREE.Vector2(R0, -1)];
+    for (let i = 0; i < STEPS; i++) {
+      const r = R0 + i * STEP_R;
+      pts.push(new THREE.Vector2(r, (i + 1) * STEP_H), new THREE.Vector2(r + STEP_R - 0.6, (i + 1) * STEP_H));
+    }
+    pts.push(new THREE.Vector2(R0 + STEPS * STEP_R + 4, STEPS * STEP_H + 1), new THREE.Vector2(R0 + STEPS * STEP_R + 8, -1));
+    const rock = this.std(0x2c2422, { roughness: 0.95 });
+    const terr = new THREE.Mesh(new THREE.LatheGeometry(pts, 64), rock);
+    terr.receiveShadow = true;
+    this.add(terr);
+    // glowing seams along every step edge (one merged draw)
+    const seams: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < STEPS; i++) seams.push(new THREE.TorusGeometry(R0 + i * STEP_R + 0.05, 0.14, 4, 96).rotateX(Math.PI / 2).translate(0, (i + 1) * STEP_H - 0.25, 0));
+    this.bake(merge(seams), M.identity(), this.emissive(0xff5a14, 1.8, { speed: 1.2 }));
+    const stepY = (r: number) => (r < R0 ? 0 : Math.min(STEPS, Math.floor((r - R0) / STEP_R) + 1) * STEP_H);
+
+    // lava falls pouring down the terraces into pools at the bottom
+    const lava = getLavaMaterial();
+    const fallAngles = [0.55, 1.9, 2.6, 4.1, 5.3];
+    for (const a of fallAngles) {
+      const sx = Math.sin(a);
+      const sz = Math.cos(a);
+      const w = 3 + rnd() * 2;
+      const top = (STEPS - 1) * STEP_R;
+      const g = new THREE.PlaneGeometry(w, Math.hypot(top, STEPS * STEP_H), 1, 8);
+      const tilt = Math.atan2(top, STEPS * STEP_H);
+      g.rotateX(-tilt);
+      g.translate(0, (STEPS * STEP_H) / 2 + 0.3, -(R0 + top / 2 - 0.3));
+      const uv = g.getAttribute('uv');
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getY(i) * 12, uv.getX(i) * 2 - 1);
+      g.rotateY(Math.atan2(-sx, -sz));
+      this.bake(g, M.identity(), lava);
+      const pool = new THREE.CircleGeometry(3.2 + rnd(), 18).rotateX(-Math.PI / 2);
+      this.bake(pool, M.makeTranslation(sx * (R0 - 2.6), 0.08, sz * (R0 - 2.6)), lava);
+      this.glowSprite(0xff6a1a, 0.55, 10, sx * (R0 - 2), 2, sz * (R0 - 2), 1.6);
+    }
+
+    // basalt column clusters on the ledges and around the pit floor
+    const cols: Item[] = [];
+    for (const p of this.scatter(26, 48, 100)) {
+      const r = Math.hypot(p.x, p.z);
+      const y0 = stepY(r);
+      const n = 3 + ((rnd() * 5) | 0);
+      for (let k = 0; k < n; k++) {
+        const s = 0.6 + rnd() * 0.7;
+        const h = 1.5 + rnd() * (r > 80 ? 9 : 5);
+        cols.push({ x: p.x + (rnd() - 0.5) * 3, y: y0 - 0.3, z: p.z + (rnd() - 0.5) * 3, ry: rnd(), sx: s, sy: h, sz: s, color: rnd() < 0.5 ? 0x2a2523 : 0x37302d });
+      }
+    }
+    this.inst(new THREE.CylinderGeometry(1, 1, 1, 6).translate(0, 0.5, 0), this.std(0xffffff, { roughness: 0.85 }), cols, true);
+    // glowing cracks on the pit floor between the stands and the terraces
+    const cracks: Item[] = this.scatter(26, 48, 55).map((p) => ({ x: p.x, y: 0.07, z: p.z, ry: rnd() * 6, sx: 0.25 + rnd() * 0.2, sy: 1, sz: 3 + rnd() * 5 }));
+    this.inst(new THREE.BoxGeometry(1, 0.05, 1), this.emissive(0xff6a1a, 1.6, { speed: 2.2 }), cracks);
+
+    // BULLDOZA's dig site: a rusty excavator + dump truck on a ledge (north-east)
+    const yel = this.std(0xd18a1e, { roughness: 0.7, metalness: 0.3 });
+    const dark = this.std(0x1e1a18, { roughness: 0.8 });
+    const ex = new THREE.Object3D();
+    ex.position.set(64, stepY(Math.hypot(64, -58)), -58);
+    ex.rotation.y = 2.3;
+    ex.updateMatrix();
+    const xb = (geo: THREE.BufferGeometry, mat: THREE.Material) => this.bake(geo, ex.matrix, mat, true);
+    xb(new THREE.BoxGeometry(5, 1.4, 7).translate(0, 0.7, 0), dark);
+    xb(new THREE.BoxGeometry(4.2, 2.6, 4.6).translate(0, 2.7, -0.6), yel);
+    xb(new THREE.BoxGeometry(2, 2, 2).translate(-1, 4.9, 0.6), yel);
+    xb(new THREE.BoxGeometry(1, 1, 9).rotateX(-0.5).translate(1, 6, 5.2), yel);
+    xb(new THREE.BoxGeometry(0.9, 0.9, 6).rotateX(0.7).translate(1, 6.4, 11), yel);
+    xb(new THREE.BoxGeometry(2.4, 2, 1.6).translate(1, 3.4, 13), dark);
+    const tr = new THREE.Object3D();
+    tr.position.set(-70, stepY(Math.hypot(-70, -50)), -50);
+    tr.rotation.y = -0.6;
+    tr.updateMatrix();
+    const tb = (geo: THREE.BufferGeometry, mat: THREE.Material) => this.bake(geo, tr.matrix, mat, true);
+    tb(new THREE.BoxGeometry(5.5, 3.2, 8).translate(0, 3.6, -1), yel);
+    tb(new THREE.BoxGeometry(4.6, 2.8, 3).translate(0, 3.2, 4.4), yel);
+    for (const wx of [-2.6, 2.6]) for (const wz of [-3.5, 0, 4.4]) tb(new THREE.CylinderGeometry(1.1, 1.1, 0.9, 10).rotateZ(Math.PI / 2).translate(wx, 1.1, wz), dark);
+
+    // smoke plumes off the rim and the lava pools
+    const stacks: Puff[] = [];
+    for (let i = 0; i < 6; i++) {
+      const a = rnd() * Math.PI * 2;
+      const r = 62 + rnd() * 35;
+      stacks.push({ x: Math.sin(a) * r, y: stepY(r), z: Math.cos(a) * r, r: 2.4 + rnd() * 1.5, rise: 22, drift: 12 });
+    }
+    for (const a of fallAngles.slice(0, 3)) stacks.push({ x: Math.sin(a) * (R0 - 2.6), y: 0, z: Math.cos(a) * (R0 - 2.6), r: 1.6, rise: 12, drift: 5 });
+    this.addPuffs(stacks, 0x3a2e2c, 0.55);
+  }
+
+  /* ---------- biome: Rust Basin (mesas, dunes, the drill rig) ---------- */
+
+  private buildMars(G: number): void {
+    const rnd = this.rnd;
+    const M = new THREE.Matrix4();
+    // banded buttes: a wide base and a narrower cap, two rust tones
+    const tones = [0xa8532e, 0xc06a3e, 0x8e4428, 0xb85f34];
+    const bases: Item[] = [];
+    const caps: Item[] = [];
+    for (const p of this.scatter(18, 58, 125, true)) {
+      const r = 5 + rnd() * 9;
+      const h = 8 + rnd() * 18;
+      const ry = rnd() * 6;
+      bases.push({ x: p.x, y: 0, z: p.z, ry, sx: r, sy: h * 0.62, sz: r * (0.8 + rnd() * 0.4), color: tones[(rnd() * tones.length) | 0] });
+      caps.push({ x: p.x, y: h * 0.62 - 0.1, z: p.z, ry, sx: r * 0.82, sy: h * 0.38, sz: r * 0.7, color: tones[(rnd() * tones.length) | 0] });
+    }
+    for (const p of this.scatter(12, 48, 75)) {
+      const r = 1.6 + rnd() * 2.2;
+      const h = 2 + rnd() * 4;
+      bases.push({ x: p.x, y: G - 0.3, z: p.z, ry: rnd() * 6, sx: r, sy: h, sz: r * 0.9, color: tones[(rnd() * tones.length) | 0] });
+    }
+    const buttes = this.inst(new THREE.CylinderGeometry(0.88, 1, 1, 7).translate(0, 0.5, 0), this.std(0xffffff, { roughness: 0.95 }), [...bases, ...caps], true);
+    if (buttes) buttes.renderOrder = 0;
+    // scattered boulders
+    const rocks: Item[] = this.scatter(70, 48, 110).map((p) => {
+      const s = 0.5 + rnd() * 1.8;
+      return { x: p.x, y: G - s * 0.2, z: p.z, ry: rnd() * 6, rx: rnd(), sx: s * (1 + rnd() * 0.5), sy: s * 0.7, sz: s, color: tones[(rnd() * tones.length) | 0] };
+    });
+    this.inst(new THREE.DodecahedronGeometry(1, 0), this.std(0xffffff, { roughness: 0.9 }), rocks, true);
+    // crater rims out on the plain
+    const rims: Item[] = this.scatter(8, 52, 105).map((p) => {
+      const s = 4 + rnd() * 6;
+      return { x: p.x, y: G - 0.25, z: p.z, ry: 0, rx: Math.PI / 2, sx: s, sy: s, sz: 1.2 };
+    });
+    this.inst(new THREE.TorusGeometry(1, 0.22, 5, 18), this.std(0xb4643a, { roughness: 0.95 }), rims, false, true);
+
+    // THE GRINDER's drill rig (north-east): lattice derrick, spinning bit, dust plume
+    const rx = 66;
+    const rz = -66;
+    this.inst(latticeMast(28, 3), this.std(0xd8d2c8, { metalness: 0.4, roughness: 0.5 }), [{ x: rx, y: 0, z: rz, ry: 0.4, sx: 1, sy: 1, sz: 1 }], true);
+    this.bake(new THREE.BoxGeometry(9, 2, 9).translate(0, 1, 0), M.makeTranslation(rx, 0, rz), this.std(0x4a4f58, { metalness: 0.5 }), true);
+    const drill = new THREE.Group();
+    drill.position.set(rx, 2, rz);
+    drill.rotation.x = -Math.PI / 2;
+    const bitMat = this.std(0xff8a3d, { metalness: 0.6, roughness: 0.35, emissive: 0x401800, emissiveIntensity: 0.6 });
+    const bit = new THREE.Mesh(merge([
+      new THREE.CylinderGeometry(0.7, 0.7, 20, 8).rotateX(Math.PI / 2).translate(0, 0, 10),
+      new THREE.ConeGeometry(2.2, 4, 6).rotateX(-Math.PI / 2).translate(0, 0, -1.5),
+      new THREE.TorusGeometry(1.8, 0.35, 5, 12).translate(0, 0, 3),
+      new THREE.TorusGeometry(1.4, 0.3, 5, 12).translate(0, 0, 6),
+    ]), bitMat);
+    bit.castShadow = true;
+    drill.add(bit);
+    this.add(drill);
+    this.spinners.push({ obj: bit, speed: 2.4 });
+    this.glowSprite(0xffa040, 0.8, 4, rx, 29, rz, 2.5);
+    // habitat: white domes, a tube and solar arrays (south-west)
+    const hx = -70;
+    const hz = 50;
+    const hab = this.std(0xeee8dc, { roughness: 0.55 });
+    for (const [dx, dz, r] of [[0, 0, 6], [10, 4, 4], [-6, 9, 3.5]] as [number, number, number][]) {
+      this.bake(new THREE.SphereGeometry(r, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.makeTranslation(hx + dx, 0, hz + dz), hab, true);
+      this.bake(new THREE.TorusGeometry(r * 0.98, 0.18, 4, 24).rotateX(Math.PI / 2), M.makeTranslation(hx + dx, r * 0.35, hz + dz), this.emissive(0x7fd8ff, 1.2, { speed: 0.7 }));
+    }
+    this.bake(new THREE.CylinderGeometry(1.1, 1.1, 10, 10).rotateZ(Math.PI / 2).rotateY(-0.38), M.makeTranslation(hx + 5, 1.1, hz + 2), hab, true);
+    const panels: Item[] = [];
+    for (let i = 0; i < 8; i++) panels.push({ x: hx + 16 + (i % 4) * 3.4, y: 1.6, z: hz - 8 + Math.floor(i / 4) * 4, ry: 0.3, rx: -0.6, sx: 1, sy: 1, sz: 1 });
+    this.inst(new THREE.BoxGeometry(3, 0.12, 2.2), this.std(0x1f3d78, { metalness: 0.6, roughness: 0.3, emissive: 0x0a1838, emissiveIntensity: 0.5 }), panels);
+    // dust plumes off the drill and the dunes
+    const stacks: Puff[] = [{ x: rx, y: 0, z: rz, r: 2.2, rise: 10, drift: 18 }];
+    for (let i = 0; i < 4; i++) {
+      const a = rnd() * Math.PI * 2;
+      stacks.push({ x: Math.sin(a) * 90, y: 0, z: Math.cos(a) * 90, r: 3.5, rise: 8, drift: 26 });
+    }
+    this.addPuffs(stacks, 0xd09068, 0.35);
+  }
+
+  /* ---------- biome: The Thermal Divide (hot west, frozen east) ---------- */
+
+  private buildDivide(G: number): void {
+    const rnd = this.rnd;
+    const M = new THREE.Matrix4();
+    const lava = getLavaMaterial();
+    // scorched basalt over the hot half of the world outside the field (the field's own half is GroundDecals'):
+    // one U-shaped flat mesh around the west half of the arena, fading out toward the x = 0 divide line
+    const h = (this.ctx.snow?.size ?? 2 * ARENA.maxX) / 2;
+    const O = 240;
+    const u = new THREE.Shape([
+      new THREE.Vector2(-O, -O), new THREE.Vector2(0, -O), new THREE.Vector2(0, -h), new THREE.Vector2(-h, -h),
+      new THREE.Vector2(-h, h), new THREE.Vector2(0, h), new THREE.Vector2(0, O), new THREE.Vector2(-O, O),
+    ]);
+    const skirt = new THREE.Mesh(new THREE.ShapeGeometry(u).rotateX(-Math.PI / 2).translate(0, G + 0.03, 0), scorchMaterial(-1, 0.62));
+    skirt.matrixAutoUpdate = false;
+    skirt.renderOrder = 1;
+    this.decor!.add(skirt);
+    // spires: red rock on the hot side, ice on the cold side
+    const spires: Item[] = [];
+    for (const p of this.scatter(60, 50, 125)) {
+      const far = Math.hypot(p.x, p.z) > 78;
+      const r = 1.4 + rnd() * (far ? 4.5 : 2);
+      const h = (far ? 12 : 4) + rnd() * (far ? 22 : 8);
+      const hot = p.x < 0;
+      spires.push({ x: p.x, y: G - 0.6, z: p.z, ry: rnd() * 6, rx: (rnd() - 0.5) * 0.25, rz: (rnd() - 0.5) * 0.25, sx: r, sy: h, sz: r * (0.7 + rnd() * 0.5), color: hot ? (rnd() < 0.5 ? 0x6e2618 : 0x8a3420) : rnd() < 0.5 ? 0xcdeefc : 0xa6d6f2 });
+    }
+    this.inst(new THREE.ConeGeometry(1, 1, 5, 1).translate(0, 0.5, 0), this.std(0xffffff, { roughness: 0.6, metalness: 0.05 }), spires, true);
+    // hot side: lava pools and geysers venting steam
+    const stacks: Puff[] = [];
+    for (const p of this.scatter(14, 50, 100).filter((q) => q.x < -8)) {
+      const r = 1.5 + rnd() * 2.5;
+      this.bake(new THREE.CircleGeometry(r, 16).rotateX(-Math.PI / 2), M.makeTranslation(p.x, G + 0.06, p.z), lava);
+      this.glowSprite(0xff6a1a, 0.5, r * 3.5, p.x, G + 1, p.z, 1.8);
+      stacks.push({ x: p.x, y: G, z: p.z, r: 1 + r * 0.4, rise: 10 + rnd() * 6, drift: 4 });
+    }
+    // the arena's own lava vents steam too
+    for (const pt of this.ctx.terrain.patches) {
+      if (pt.material !== 'lava') continue;
+      stacks.push({ x: pt.x2 !== undefined ? (pt.x + pt.x2) / 2 : pt.x, y: this.ctx.terrain.ground(pt.x, pt.z) + G * 0.5, z: pt.z2 !== undefined ? (pt.z + pt.z2) / 2 : pt.z, r: 0.9, rise: 7, drift: 2.5 });
+    }
+    this.addPuffs(stacks, 0xf4ece8, 0.42);
+    // cold side: frozen pines and crystal clusters
+    const pines: Item[] = this.scatter(80, 50, 120).filter((p) => p.x > 8).map((p) => {
+      const s = 0.9 + rnd() * 1.2;
+      return { x: p.x, y: G - 0.2, z: p.z, ry: rnd() * 6, sx: s, sy: s * (1 + rnd() * 0.4), sz: s };
+    });
+    this.inst(merge([
+      new THREE.ConeGeometry(1.7, 2.4, 7).translate(0, 2.1, 0),
+      new THREE.ConeGeometry(1.3, 2.0, 7).translate(0, 3.5, 0),
+      new THREE.ConeGeometry(0.9, 1.7, 7).translate(0, 4.7, 0),
+      new THREE.CylinderGeometry(0.22, 0.3, 1.4, 6).translate(0, 0.7, 0),
+    ]), this.std(0xe8f4fb, { roughness: 0.75 }), pines);
+    const crystals: Item[] = [];
+    for (const p of this.scatter(16, 48, 90).filter((q) => q.x > 8)) {
+      for (let k = 0; k < 3; k++) {
+        const s = 0.4 + rnd() * 0.7;
+        crystals.push({ x: p.x + (rnd() - 0.5) * 2, y: G + s, z: p.z + (rnd() - 0.5) * 2, ry: rnd() * 6, rx: (rnd() - 0.5) * 0.7, rz: (rnd() - 0.5) * 0.7, sx: s, sy: s * 2.6, sz: s });
+      }
+    }
+    this.inst(new THREE.OctahedronGeometry(1, 0), this.emissive(0x8ff0ff, 0.9, { speed: 1.4 }), crystals);
+    // the Divide monolith far to the north: one half glowing magma, the other glowing ice
+    const mz = -100;
+    const hot = this.emissive(0xff4a10, 1.6, { speed: 0.9 });
+    const cold = this.emissive(0x4fd8ff, 1.6, { speed: 0.9, phase: 3 });
+    hot.fog = cold.fog = false;
+    this.bake(new THREE.BoxGeometry(5, 46, 6).translate(-2.5, 23, 0), M.makeTranslation(0, 0, mz), hot);
+    this.bake(new THREE.BoxGeometry(5, 46, 6).translate(2.5, 23, 0), M.makeTranslation(0, 0, mz), cold);
+    const capMat = this.std(0x1a1620, { roughness: 0.6, fog: false });
+    this.bake(new THREE.BoxGeometry(12, 3, 9).translate(0, 1.5, 0), M.makeTranslation(0, 0, mz), capMat);
+    this.bake(new THREE.ConeGeometry(4.6, 8, 4).rotateY(Math.PI / 4).translate(0, 50, 0), M.makeTranslation(0, 0, mz), capMat);
+    this.glowSprite(0xff6a2a, 0.55, 26, -6, 30, mz, 1.1).material.fog = false;
+    this.glowSprite(0x5fd8ff, 0.55, 26, 6, 30, mz, 1.3).material.fog = false;
+  }
+
+  /* ---------- biome: Golden Tower Plaza summer dressing ---------- */
+
+  private buildSummer(): void {
+    const rnd = this.rnd;
+    // leafy trees around the plaza
+    const trees: Item[] = this.scatter(70, 52, 120).filter((p) => !(p.z > 30 && Math.abs(p.x) < 60 && Math.hypot(p.x, p.z) > 80)).map((p) => {
+      const s = 1 + rnd() * 1.1;
+      return { x: p.x, y: 0, z: p.z, ry: rnd() * 6, sx: s, sy: s * (0.9 + rnd() * 0.3), sz: s, color: [0x3f8f3a, 0x4fa043, 0x357a32, 0x5aa84a][(rnd() * 4) | 0] };
+    });
+    this.inst(merge([
+      colored(new THREE.CylinderGeometry(0.28, 0.38, 2.6, 6).translate(0, 1.3, 0).toNonIndexed(), 0x6b4428),
+      colored(new THREE.IcosahedronGeometry(1.9, 0).translate(0, 3.9, 0), 0xffffff),
+      colored(new THREE.IcosahedronGeometry(1.3, 0).translate(0.9, 4.9, 0.3), 0xffffff),
+    ]), this.std(0xffffff, { vertexColors: true, roughness: 0.8 }), trees, true);
+    // red / white / blue balloon bunches tied above the stands
+    const balloons: Item[] = [];
+    const strings: Item[] = [];
+    for (const side of SIDES) {
+      if (side.key === 's') continue;
+      for (let k = 0; k < 6; k++) {
+        const s = ARENA.minX + 4 + k * ((ARENA.maxX - ARENA.minX - 8) / 5);
+        if (side.key === 'n' && Math.abs(s) < STAGE_HALF + 2) continue;
+        const [x, z] = side.map(s, STAND_N0 + ROWS * ROW_D + 0.2);
+        const top = this.zone.snowDepth + 0.25 + ROWS * ROW_RISE + 5.5;
+        for (let b = 0; b < 5; b++) {
+          const col = [0xc8102e, 0xffffff, 0x1f3b8c, 0xf2c033][(rnd() * 4) | 0];
+          balloons.push({ x: x + (rnd() - 0.5) * 1.4, y: top + rnd() * 1.4, z: z + (rnd() - 0.5) * 1.4, ry: 0, sx: 0.55, sy: 0.68, sz: 0.55, color: col });
+        }
+        strings.push({ x, y: top - 3.6, z, ry: 0, sx: 1, sy: 1, sz: 1 });
+      }
+    }
+    this.inst(new THREE.SphereGeometry(1, 10, 8), this.std(0xffffff, { roughness: 0.3, metalness: 0.1 }), balloons);
+    this.inst(new THREE.CylinderGeometry(0.015, 0.015, 3.8, 3).translate(0, 1.9, 0), this.std(0xdddddd), strings);
+  }
+
+  /** Smoke / steam columns animated in update() (one instanced draw). */
+  private addPuffs(stacks: Puff[], color: number, opacity: number): void {
+    const per = 7;
+    const puffMat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity, depthWrite: false });
+    const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), puffMat, stacks.length * per);
+    puffMesh.frustumCulled = false;
+    this.add(puffMesh);
+    this.puffs = { mesh: puffMesh, stacks, per };
   }
 
   /* ---------- theme: Golden Tower Plaza (THE DONALD's rally) ---------- */
@@ -2358,12 +3029,14 @@ export class Environment implements WorldAPI {
       }
     }
 
-    // --- meshes
-    const iceMat = this.std(0xa8e4ff, { roughness: 0.15, metalness: 0.1, emissive: 0x15405a, emissiveIntensity: 0.6 });
+    // --- meshes (the pillar cluster and crystals are reskinned per biome venue)
+    const skin = BRAWL_SKIN[this.biome ?? 'snowdome'] ?? BRAWL_SKIN.snowdome!;
+    if (this.biome === 'divide') for (const p of pillars) p.color = p.x < 0 ? 0x7a2c1e : 0xa8e4ff;
+    const iceMat = this.std(this.biome === 'divide' ? 0xffffff : skin.pillar, { roughness: skin.rough, metalness: 0.1, emissive: skin.glow, emissiveIntensity: 0.6 });
     this.inst(new THREE.CylinderGeometry(0.9, 1, 1, 6).translate(0, 0.5, 0), iceMat, pillars, true, true);
     // pillar caps, container roofs and rock caps share snowMat + receive: baked into one draw
     this.bakeItems(new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, pillarCaps, false, true);
-    this.inst(new THREE.OctahedronGeometry(1, 0), this.emissive(0x6ff3ff, 1.4, { speed: 1.6 }), crystals);
+    this.inst(new THREE.OctahedronGeometry(1, 0), this.emissive(skin.crystal, 1.4, { speed: 1.6 }), crystals);
 
     // containers: corrugated box + snow roof
     const ribs = this.ribTexture();
@@ -2392,7 +3065,7 @@ export class Environment implements WorldAPI {
       colored(new THREE.CylinderGeometry(0.12, 0.12, 3.2, 5).rotateZ(1.0).translate(2.6, 5.4, 0), 0x5a3a22),
       colored(new THREE.CylinderGeometry(0.12, 0.12, 3.2, 5).rotateZ(-1.0).translate(-2.6, 5.4, 0), 0x5a3a22),
     ]);
-    this.inst(snowmanGeo, this.std(0xffffff, { vertexColors: true, roughness: 0.75 }), snowmen, true, true);
+    this.inst(snowmanGeo, this.std(skin.statue, { vertexColors: true, roughness: skin.statue === 0xf2c94a ? 0.35 : 0.75, metalness: skin.statue === 0xf2c94a ? 0.5 : 0 }), snowmen, true, true);
 
     // tire pile: stacks of lying tires + one leaning
     const tireParts: THREE.BufferGeometry[] = [];
@@ -2431,8 +3104,9 @@ export class Environment implements WorldAPI {
   /** Frozen fountain / ice sculpture centerpiece (obstacle r = 4 at the origin). */
   private buildFountain(G: number): void {
     const st = this.style;
-    const stone = 0x8a93a6;
-    const ice = 0xbfeaff;
+    const skin = BRAWL_SKIN[this.biome ?? 'snowdome'] ?? BRAWL_SKIN.snowdome!;
+    const stone = skin.stone;
+    const ice = skin.water;
     const parts: THREE.BufferGeometry[] = [
       colored(new THREE.CylinderGeometry(4, 4.15, 1.0, 24).translate(0, 0.5, 0), stone),
       colored(new THREE.TorusGeometry(3.75, 0.32, 6, 28).rotateX(Math.PI / 2).translate(0, 1.0, 0), 0xa8b1c4),
@@ -2456,7 +3130,7 @@ export class Environment implements WorldAPI {
     const holder = new THREE.Group();
     holder.position.set(0, G * 0.3 + 8.2, 0);
     holder.rotation.x = -Math.PI / 2;
-    const crystalMat = this.emissive(0x7ff6ff, 1.1, { speed: 1.4 });
+    const crystalMat = this.emissive(skin.crystal, 1.1, { speed: 1.4 });
     crystalMat.roughness = 0.1;
     crystalMat.metalness = 0.2;
     const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(1.2, 0).scale(1, 1, 2.2), crystalMat);
@@ -2473,7 +3147,7 @@ export class Environment implements WorldAPI {
     satGeo.dispose();
     this.add(holder);
     this.spinners.push({ obj: crystal, speed: 0.6 });
-    this.glowSprite(0x7ff6ff, 0.55, 12, 0, G * 0.3 + 8.2, 0, 1.4);
+    this.glowSprite(skin.crystal, 0.55, 12, 0, G * 0.3 + 8.2, 0, 1.4);
     // accent ring on the ground
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(5.2, 5.6, 48).rotateX(-Math.PI / 2),
@@ -2484,49 +3158,21 @@ export class Environment implements WorldAPI {
     this.add(ring);
   }
 
-  /* ------------------------------------------------------------------ falling snow */
+  /* ------------------------------------------------------------------ weather */
 
-  private buildSnowfall(zone: ZoneDef): void {
-    if (this.flakes) {
-      this.ctx.scene.remove(this.flakes);
-      this.flakes.geometry.dispose();
-      (this.flakes.material as THREE.Material).dispose();
-      this.flakes = null;
+  /** Biome weather (GPU particles, see biomes/Weather.ts); the classic looks get snow (a gale in the Blizzard Bowl). */
+  private buildWeather(zone: ZoneDef): void {
+    const b = zone.biome;
+    if (b) {
+      const layers = weatherLayers(b.particles, zone.snowfall);
+      if (b.key === 'glacier') layers.push(GLINTS);
+      this.weather.set(layers);
+      return;
     }
     const blizzard = zone.theme === 'blizzard';
-    const count = Math.round(1500 + Math.min(1, Math.max(0, zone.snowfall)) * 6500);
-    this.windX = blizzard ? 16 : 0.8 + zone.snowfall * 2;
-    this.windZ = blizzard ? 5 : 0.4;
-    this.fallSpeed = blizzard ? 5 : 1.4;
-    this.sway = blizzard ? 1.5 : 0.6;
-    const pos = new Float32Array(count * 3);
-    const phase = new Float32Array(count);
-    const cam = this.ctx.camera.position;
-    for (let i = 0; i < count; i++) {
-      pos[i * 3] = cam.x + (Math.random() - 0.5) * SNOW_BOX;
-      pos[i * 3 + 1] = cam.y - 12 + Math.random() * SNOW_H;
-      pos[i * 3 + 2] = cam.z + (Math.random() - 0.5) * SNOW_BOX;
-      phase[i] = Math.random() * 100;
-    }
-    this.flakePos = pos;
-    this.flakePhase = phase;
-    const geo = new THREE.BufferGeometry();
-    const attr = new THREE.BufferAttribute(pos, 3);
-    attr.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('position', attr);
-    const mat = new THREE.PointsMaterial({
-      size: blizzard ? 0.32 : 0.24,
-      map: getSnowflakeTex(),
-      transparent: true,
-      opacity: blizzard ? 0.95 : 0.9,
-      depthWrite: false,
-      sizeAttenuation: true,
-      color: 0xffffff,
-    });
-    this.flakes = new THREE.Points(geo, mat);
-    this.flakes.frustumCulled = false;
-    this.flakes.renderOrder = 5;
-    this.ctx.scene.add(this.flakes);
+    const snow = weatherLayers('snow', zone.snowfall)[0];
+    if (blizzard) Object.assign(snow, { wind: [16, 5], fall: 5, sway: 1.5, size: 0.18, opacity: 0.95 });
+    this.weather.set([snow]);
   }
 
   /* ------------------------------------------------------------------ update */
@@ -2536,8 +3182,18 @@ export class Environment implements WorldAPI {
     const t = this.time;
     const cam = this.ctx.camera.position;
     this.sky.position.copy(cam);
+    this.skyMat.uniforms.uTime.value = t;
+    if (this.auroraBase) {
+      const k = 0.5 + 0.5 * Math.sin(t * 0.23);
+      this.hemi.color.copy(this.auroraA).lerp(this.auroraB, k).lerp(this.auroraBase, 0.8 + 0.08 * Math.sin(t * 0.61));
+    }
     this.bobTime.value = t;
     if (this.carpet) this.drapeCarpet();
+    if (this.omega) {
+      const p = this.ctx.plow?.position;
+      this.omega.works.update(dt, p?.x ?? 0, p?.y ?? 0, p?.z ?? 0);
+      this.omega.set.update(t);
+    }
 
     // sun shadow camera follows the player (snapped to shadow-map texels to avoid shimmering)
     const plow = this.ctx.plow;
@@ -2603,7 +3259,8 @@ export class Environment implements WorldAPI {
         const st = stacks[s];
         for (let j = 0; j < per; j++) {
           const f = (t * 0.12 + j / per + s * 0.37) % 1;
-          d.position.set(st.x + f * 9 + Math.sin(t * 0.5 + j) * 0.8, st.y + 1 + f * 16, st.z + f * 3);
+          const dr = st.drift ?? 9;
+          d.position.set(st.x + f * dr + Math.sin(t * 0.5 + j) * 0.8, st.y + 1 + f * (st.rise ?? 16), st.z + f * dr * 0.33);
           d.scale.setScalar(st.r * (0.8 + f * 2.2) * (1 - f * f * 0.6));
           d.updateMatrix();
           mesh.setMatrixAt(n++, d.matrix);
@@ -2612,38 +3269,8 @@ export class Environment implements WorldAPI {
       mesh.instanceMatrix.needsUpdate = true;
     }
 
-    if (this.flakes) {
-      const pos = this.flakePos;
-      const ph = this.flakePhase;
-      const n = ph.length;
-      const halfB = SNOW_BOX / 2;
-      const yMin = cam.y - 12;
-      const gust = 1 + 0.35 * Math.sin(t * 0.7) + 0.15 * Math.sin(t * 2.3);
-      const wx = this.windX * gust * dt;
-      const wz = this.windZ * gust * dt;
-      const fall = this.fallSpeed * dt;
-      const sw = this.sway * dt;
-      const cx = cam.x;
-      const cz = cam.z;
-      for (let i = 0; i < n; i++) {
-        const i3 = i * 3;
-        const p = ph[i];
-        let x = pos[i3] + wx + Math.sin(t * 1.3 + p) * sw;
-        let y = pos[i3 + 1] - fall * (0.7 + (p % 1) * 0.6);
-        let z = pos[i3 + 2] + wz + Math.cos(t * 1.1 + p * 1.7) * sw;
-        let dx = x - cx;
-        if (dx > halfB) x -= SNOW_BOX;
-        else if (dx < -halfB) x += SNOW_BOX;
-        dx = z - cz;
-        if (dx > halfB) z -= SNOW_BOX;
-        else if (dx < -halfB) z += SNOW_BOX;
-        if (y < yMin || y < -0.2) y += SNOW_H;
-        else if (y > yMin + SNOW_H) y -= SNOW_H;
-        pos[i3] = x;
-        pos[i3 + 1] = y;
-        pos[i3 + 2] = z;
-      }
-      (this.flakes.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    }
+    this.weather.update(t, this.ctx.camera, this.ctx.renderer);
+    lavaTime.value = t;
+    this.decals?.update(dt);
   }
 }

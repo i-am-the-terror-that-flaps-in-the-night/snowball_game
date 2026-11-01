@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Progression } from '../src/core/Progression';
 import type { GameContext } from '../src/core/types';
 import { MIN_COOLDOWN } from '../src/config/upgrades';
-import { ZONES } from '../src/config/zones';
+import { BIOME_ZONE } from '../src/config/zones';
 import {
   DAILY_COIN_MULT, DAILY_KEEP, DAILY_MODIFIERS, activeDaily, dailyBest, dailyButtonLabel, dailyFor, dailyHistory,
   dayKey, mulberry32, recordDaily, todaysDaily, type DailyModifierId, type DailySpec,
 } from '../src/meta/daily';
-import { BOSS_EVERY, GLASS_DMG, GLASS_HP, SurvivalManager, waveClearBonus, waveCoinMult } from '../src/survival/SurvivalManager';
+import { BOSS_EVERY, GLASS_DMG, GLASS_HP, SURVIVAL_BASE, SurvivalManager, waveClearBonus, waveCoinMult } from '../src/survival/SurvivalManager';
 
 let store: Map<string, string>;
 
@@ -138,22 +138,25 @@ describe('seeded waves', () => {
 describe('modifiers', () => {
   it('deep snow and whiteout change the arena, and a normal run restores it', () => {
     const { ctx, sv } = manager();
-    const base = ZONES[2];
     sv.reset(specWith('deepSnow'));
-    expect(sv.zone.snowDepth).toBeGreaterThan(base.snowDepth);
-    expect(sv.zone.snowRegenMult).toBeGreaterThan(base.snowRegenMult);
+    expect(sv.zone.snowDepth).toBeGreaterThan(SURVIVAL_BASE.snowDepth);
+    expect(sv.zone.snowRegenMult).toBeGreaterThan(SURVIVAL_BASE.snowRegenMult);
     expect(sv.zone.name).toBe('DAILY · Deep Snow');
     sv.reset(specWith('whiteout'));
-    expect(sv.zone.snowDepth).toBe(base.snowDepth);
-    expect(sv.zone.fogFar).toBeLessThan(base.fogFar);
+    expect(sv.zone.snowDepth).toBe(SURVIVAL_BASE.snowDepth);
+    expect(sv.zone.fogFar).toBeLessThan(BIOME_ZONE[sv.biome].fogFar);
     expect(sv.zone.snowfall).toBe(1);
     expect(ctx.world.setZone).toHaveBeenCalledWith(sv.zone);
     ctx.world.setZone.mockClear();
     sv.reset(null);
+    // a normal run starts on the glacier with its look and terrain
+    const base = BIOME_ZONE.glacier;
+    expect(sv.biome).toBe('glacier');
+    expect(sv.zone.terrain).toBe(base.terrain);
     expect(sv.zone.fogNear).toBe(base.fogNear);
     expect(sv.zone.fogFar).toBe(base.fogFar);
     expect(sv.zone.snowfall).toBe(base.snowfall);
-    expect(sv.zone.snowDepth).toBe(base.snowDepth);
+    expect(sv.zone.snowDepth).toBe(SURVIVAL_BASE.snowDepth);
     expect(sv.zone.name).toBe(`Survival · ${base.name}`);
     expect(ctx.world.setZone).toHaveBeenCalledTimes(1); // fog back to normal -> re-dressed
     ctx.world.setZone.mockClear();
@@ -195,7 +198,7 @@ describe('modifiers', () => {
     sv.reset(specWith('bossRush'));
     const bosses = Array.from({ length: 9 }, () => (sv.nextWave(), sv.isBossWave));
     expect(bosses.map((b, i) => (b ? i + 1 : 0)).filter(Boolean)).toEqual([3, 6, 9]);
-    expect(sv.bossNameFor(3)).toBe('BULLDOZA');
+    expect(sv.bossNameFor(3)).toBe('FROSTBYTE');
     sv.reset(null);
     const normal = Array.from({ length: 10 }, () => (sv.nextWave(), sv.isBossWave));
     expect(normal.map((b, i) => (b ? i + 1 : 0)).filter(Boolean)).toEqual([BOSS_EVERY, 2 * BOSS_EVERY]);

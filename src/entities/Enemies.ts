@@ -9,6 +9,11 @@ import { MINION_AI, aroundAngle, clamp, initAI, orbit, resetAI, wrap } from './e
 import { BOSS_AI } from './enemies/bosses';
 import { donaldProps } from './enemies/donaldProps';
 import type { KillSource } from '../core/events';
+import type { BotNav } from '../core/types';
+import { makeSurface } from '../world/Terrain';
+import {
+  AIR_STEER, ICE_ACCEL, ICE_GRIP, LAVA_DPS, LAVA_OUT, LavaCache, SLOPE_PULL, V_LANDED, bonkCeiling, launchVert, stepVertical, steerLava,
+} from '../world/terrainMotion';
 
 /* EnemyManager: owns every bot (minions + bosses) of Snowplow Showdown.
  *  - spawning through ENEMY_GATES (bots drive in through the gate opening, then stay clamped inside ARENA)
@@ -34,6 +39,12 @@ const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { slush: 0xff2020, slee
 const _c = new THREE.Color();
 const _ec = new THREE.Color();
 const _v = new THREE.Vector3();
+/** Last-bot hunt: with this many campaign minions (or fewer) left, they stop wandering and drive at the player. */
+export const HUNT_LEFT = 2;
+/** ...from further than this (m); closer in, their normal attack AI takes over. */
+export const HUNT_RANGE = 13;
+/** Seconds of ice grip that linger after a bot leaves the ice. */
+const BOT_ICE_LINGER = 0.4;
 
 interface Debris {
   /** Transform only (not in the scene): drawn as an instance of the batch for its geometry + material. */
@@ -75,6 +86,27 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private plowAlive = true;
   private bossAlive = false;
   private depthFn = (x: number, z: number): number => (this.ctx.snow ? this.ctx.snow.getDepth(x, z) : 0);
+  /** Top of the snow in world height: terrain ground + snow depth (flat arenas: just the depth). */
+  private snowTopFn = (x: number, z: number): number => {
+    const t = this.ctx.terrain;
+    return (t && t.active ? t.ground(x, z) : 0) + this.depthFn(x, z);
+  };
+  // terrain scratch (no per-frame allocation)
+  private surf = makeSurface();
+  private debrisSurf = makeSurface();
+  private lava = new LavaCache();
+  private lavaOut = { h: 0, v: 0 };
+  private conv = { x: 0, z: 0 };
+  private wallOut = { x: 0, z: 0 };
+  private navOut = { x: 0, z: 0 };
+  /** Last-bot hunt is on this frame (HUNT_LEFT or fewer minions alive). */
+  private hunting = false;
+  /**
+   * Optional level routing (The Omega Works): when set, hunting bots on another level than the player steer for the
+   * waypoint it returns instead of straight at the player. Arena code sets / clears it (world/omega/nav.ts NavGraph
+   * satisfies BotNav); null everywhere else.
+   */
+  nav: BotNav | null = null;
 
   // Host per-frame cache
   px = 0;
@@ -101,7 +133,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     return this.aliveN;
   }
 
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number }): EnemyHandle {
+  /**
+   * Spawn a bot at (x, z). `opts.y` = the height to spawn at (a deck top, e.g. an Omega Works hatch on the Assembly
+   * Floor): the bot stands on the highest surface within a step of it. Default 0 = the ground (under any deck).
+   */
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number }): EnemyHandle {
     const ctx = this.ctx;
     const def = ENEMIES[type];
     const rig = createRig(type);
@@ -124,7 +160,14 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.desHeading = e.heading;
     initAI(e);
     if (type === 'sleet') e.cd3 = 3;
-    e.groundY = this.depthFn(x, z) * 0.6;
+    // Feet on the surface at the spawn height (ground by default; flat arenas: 0) plus the snow sink (ground only).
+    const terr = ctx.terrain;
+    const sy = terr && terr.active ? terr.surfaceAt(x, z, opts?.y ?? 0, this.surf).y : 0;
+    e.vert.surfaceY = sy;
+    e.vert.deck = terr && terr.active ? this.surf.deck : -1;
+    e.sink = e.vert.deck < 0 ? this.depthFn(x, z) * 0.6 : 0;
+    e.vert.y = sy + e.sink;
+    e.groundY = e.vert.y;
     e.position.y = e.groundY;
     rig.root.position.copy(e.position);
     rig.root.rotation.y = e.heading;
@@ -148,6 +191,12 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       }
     }
     return e;
+  }
+
+  launch(enemy: EnemyHandle, vy: number): void {
+    const e = enemy as Bot;
+    if (!(e instanceof Bot) || !e.alive) return;
+    launchVert(e.vert, vy);
   }
 
   query(x: number, z: number, radius: number, out: EnemyHandle[] = []): EnemyHandle[] {
@@ -295,6 +344,12 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     this.attackers = att;
     this.thieves = th;
+    let minions = 0;
+    for (const e of this.list) if (e.alive && !e.isBoss) minions++;
+    // Only the true stragglers: nothing left to spawn in this round.
+    const pending = ctx.waves ? ctx.waves.remaining - this.aliveN : 0;
+    this.hunting = minions > 0 && minions <= HUNT_LEFT && this.plowAlive && pending <= 0;
+    this.lava.sync(ctx.terrain);
 
     const n = this.list.length;
     for (let i = 0; i < n; i++) {
@@ -311,7 +366,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.syncBars();
     this.updateDebris(dt);
     donaldProps.update(this, dt);
-    this.decals.update(dt, this.depthFn);
+    this.decals.update(dt, this.snowTopFn);
 
     // compact
     let j = 0;
@@ -518,6 +573,23 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.turnRate = e.baseTurn;
     e.accel = e.baseAccel;
 
+    // Lava burns bots too (LAVA_DPS, no armour); a lava death is credited as a 'lava' kill.
+    if (e.mat === 'lava' && !e.vert.airborne && !e.entering) {
+      e.hp -= LAVA_DPS * dt;
+      e.burnT -= dt;
+      if (e.burnT <= 0) {
+        e.burnT = 0.35;
+        e.flash = FLASH_T * 0.6;
+        this.fxAt(e.position.x, e.groundY + 0.4, e.position.z, 0xff6a1a, 4, 2.5, 0.12, -4, 0.45);
+        this.sfx('lavaBurn', 0.35, 1.1, 0.3);
+      }
+      if (e.hp <= 0) {
+        e.hp = 0;
+        this.kill(e, 'lava');
+        return;
+      }
+    }
+
     if (e.entering) {
       const g = ENEMY_GATES[e.gate];
       e.desHeading = g.heading;
@@ -537,28 +609,133 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       const ai = e.isBoss ? BOSS_AI[e.type] : MINION_AI[e.type];
       ai?.(this, e, dt);
       e.desSpeed *= e.spdMult;
+      if (this.hunting && !e.isBoss) this.hunt(e);
     }
     e.wallHit = false;
+    const terr = this.ctx.terrain;
+    const air = e.vert.airborne;
+    // Lava: steer around it (stop while turning away); knocked in, drive out by the shortest way (nearest edge). Not
+    // while knocked flying (that is how bots end up in it); stunned / staggered bots only turn (no throttle).
+    if (this.lava.list.length && !air && !e.entering && e.kvx * e.kvx + e.kvz * e.kvz < 16) {
+      const look = e.radius + 1.5 + Math.abs(e.speed) * 0.35;
+      const lo = this.lavaOut;
+      const brake = e.accel * 1.5 * (e.ice > 0 ? 1 - (1 - ICE_ACCEL) * e.ice : 1) * (e.freeze > 0 ? 0.5 : 1);
+      const k = steerLava(this.lava, e.position.x, e.position.z, e.heading, e.speed, e.desHeading, e.desSpeed, look, e.radius * 0.8, e.id & 1 ? 1 : -1, Math.max(3, e.def.speed * 0.8), brake, ARENA.maxX - e.radius, lo);
+      e.desHeading = wrap(lo.h);
+      if (e.stun <= 0 && e.stagger <= 0) e.desSpeed = lo.v;
+      if (k === LAVA_OUT) e.turnRate = Math.max(e.turnRate, e.baseTurn);
+    }
 
     // integrate
     const fm = e.freeze > 0 ? 0.5 : 1;
     const dh = wrap(e.desHeading - e.heading);
-    const mt = e.turnRate * dt * fm;
+    const mt = e.turnRate * dt * fm * (air ? AIR_STEER : 1);
     e.heading = wrap(e.heading + clamp(dh, -mt, mt));
     const target = e.desSpeed * fm;
-    const a = e.accel * dt * (Math.abs(target) < Math.abs(e.speed) ? 1.5 : 1);
-    e.speed += clamp(target - e.speed, -a, a);
     const s = Math.sin(e.heading);
     const c = Math.cos(e.heading);
-    e.vx = s * e.speed + e.kvx;
-    e.vz = c * e.speed + e.kvz;
+    if (!air) {
+      // No traction in the air (speed carries); less on ice.
+      const a = e.accel * dt * (Math.abs(target) < Math.abs(e.speed) ? 1.5 : 1) * (e.ice > 0 ? 1 - (1 - ICE_ACCEL) * e.ice : 1);
+      e.speed += clamp(target - e.speed, -a, a);
+      // Slopes: gravity along the slope (faster downhill, slower uphill).
+      if (terr.active && (e.gx !== 0 || e.gz !== 0)) {
+        e.speed += ((-terr.gravity * SLOPE_PULL * (e.gx * s + e.gz * c)) / Math.sqrt(1 + e.gx * e.gx + e.gz * e.gz)) * dt;
+      }
+    }
+    if (air) {
+      // keep the heading velocity it took off with
+    } else if (e.ice > 0) {
+      const k = 1 - Math.exp(-(ICE_GRIP + (1 - e.ice) * 30) * dt);
+      e.ivx += (s * e.speed - e.ivx) * k;
+      e.ivz += (c * e.speed - e.ivz) * k;
+    } else {
+      e.ivx = s * e.speed;
+      e.ivz = c * e.speed;
+    }
+    e.vx = e.ivx + e.kvx;
+    e.vz = e.ivz + e.kvz;
     e.position.x += e.vx * dt;
     e.position.z += e.vz * dt;
-    const kd = Math.exp(-3.5 * dt);
+    if (!air && terr.conveyors.length) {
+      terr.conveyorAt(e.position.x, e.position.z, e.vert.deck, this.conv);
+      e.position.x += this.conv.x * dt;
+      e.position.z += this.conv.z * dt;
+    }
+    const kd = Math.exp(-(3.5 - 2.6 * e.ice) * dt);
     e.kvx *= kd;
     e.kvz *= kd;
     this.clampPos(e, true);
     if (!e.entering && e.type !== 'donald') this.pushOutObstacles(e);
+    if (terr.decks.length) this.pushOutDecks(e);
+  }
+
+  /** Last-bot hunt: a straggler far from the player drops its wander / orbit and drives straight at them (via the
+   *  zone's level routing when one is set and the player is on another level). Close in, its own AI attacks. */
+  private hunt(e: Bot): void {
+    if (e.entering || e.atk || e.state === 'flee' || e.stun > 0 || e.stagger > 0) return;
+    const d = Math.hypot(this.px - e.position.x, this.pz - e.position.z);
+    if (d < HUNT_RANGE) return;
+    let tx = this.px;
+    let tz = this.pz;
+    const plow = this.ctx.plow;
+    if (this.nav && this.nav.next(e.position.x, e.position.z, e.vert.deck, tx, tz, plow.deck, this.navOut)) {
+      tx = this.navOut.x;
+      tz = this.navOut.z;
+    }
+    e.desHeading = Math.atan2(tx - e.position.x, tz - e.position.z);
+    e.desSpeed = Math.max(4.5, e.def.speed) * e.spdMult;
+  }
+
+  /** Deck sides (The Omega Works): push the bot out of any deck it cannot step onto. */
+  private pushOutDecks(e: Bot): void {
+    const t = this.ctx.terrain;
+    const p = e.position;
+    const d = t.wallAt(p.x, p.z, e.vert.y, e.rig.height, e.radius);
+    if (!d) return;
+    t.pushOut(d, p.x, p.z, e.radius, this.wallOut);
+    const nx = this.wallOut.x - p.x;
+    const nz = this.wallOut.z - p.z;
+    p.x = this.wallOut.x;
+    p.z = this.wallOut.z;
+    const n = Math.hypot(nx, nz) || 1;
+    const into = -(e.vx * nx + e.vz * nz) / n;
+    if (into > 4) this.flagWall(e, nx / n, nz / n);
+    const kin = (e.kvx * nx + e.kvz * nz) / n;
+    if (kin < 0) {
+      e.kvx -= (kin * nx) / n * 1.3;
+      e.kvz -= (kin * nz) / n * 1.3;
+    }
+  }
+
+  /** Vertical motion + the surface under the bot (world/terrainMotion.ts); runs before drawing, after contacts. */
+  private vertical(e: Bot, dt: number): void {
+    const t = this.ctx.terrain;
+    const v = e.vert;
+    const p = e.position;
+    const s = this.surf;
+    const code = stepVertical(t, v, p.x, p.z, e.sink, dt, s);
+    bonkCeiling(t, v, p.x, p.z, e.rig.height);
+    e.gx = s.gx;
+    e.gz = s.gz;
+    if (!v.airborne) {
+      e.mat = s.material;
+      if (s.material === 'ice') e.ice = 1;
+      else if (e.ice > 0) e.ice = Math.max(0, e.ice - dt / BOT_ICE_LINGER);
+    }
+    if (code === V_LANDED) {
+      this.ctx.events.emit('enemyLanded', { enemy: e, impact: v.impact });
+      const k = Math.min(1, v.impact / 18);
+      this.fxAt(p.x, v.surfaceY + 0.2, p.z, 0xffffff, 6 + Math.round(12 * k * (e.isBoss ? 2 : 1)), 3 + 4 * k, 0.24, 12, 0.6);
+      if (this.near(p.x, p.z)) this.sfx('land', 0.25 + 0.5 * k * (e.isBoss ? 1.5 : 1), e.isBoss ? 0.7 : 1.05, 0.08);
+    }
+  }
+
+  /** Close enough to the player to bother with a sound. */
+  private near(x: number, z: number): boolean {
+    const dx = x - this.px;
+    const dz = z - this.pz;
+    return dx * dx + dz * dz < 45 * 45;
   }
 
   /** Solid circle obstacles (THE DONALD's walls / podium, destructible props): push the bot out. A bot that is
@@ -871,9 +1048,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const rig = e.rig;
     const t = this.time;
     const p = e.position;
-    const gy = this.depthFn(p.x, p.z) * 0.6;
-    e.groundY += (gy - e.groundY) * Math.min(1, dt * 8);
-    p.y = e.groundY;
+    const gy = e.vert.deck < 0 ? this.depthFn(p.x, p.z) * 0.6 : 0; // decks carry no snow
+    e.sink += (gy - e.sink) * Math.min(1, dt * 8);
+    this.vertical(e, dt);
+    e.groundY = p.y = e.vert.y;
 
     // visual spin (spinner / grinder / sleet swipe); merge back into heading when it stops
     if (e.spinRate > 0.4) e.spinVis = wrap(e.spinVis + e.spinRate * dt);
@@ -1058,10 +1236,17 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         continue;
       }
       d.vy -= 22 * dt;
+      const y0 = m.position.y - d.sy * 0.5;
       m.position.x += d.vx * dt;
       m.position.y += d.vy * dt;
       m.position.z += d.vz * dt;
-      const g = this.depthFn(m.position.x, m.position.z) * 0.8 + d.sy * 0.5;
+      const t = this.ctx.terrain;
+      let g: number;
+      if (t.decks.length) {
+        // Decks: chunks land on the deck under them (queried from before the move); snow only on the ground.
+        t.surfaceAt(m.position.x, m.position.z, y0, this.debrisSurf);
+        g = this.debrisSurf.y + (this.debrisSurf.deck < 0 ? this.depthFn(m.position.x, m.position.z) * 0.8 : 0) + d.sy * 0.5;
+      } else g = (t.active ? t.ground(m.position.x, m.position.z) : 0) + this.depthFn(m.position.x, m.position.z) * 0.8 + d.sy * 0.5;
       if (m.position.y < g) {
         m.position.y = g;
         if (d.vy < 0) d.vy *= -0.32;

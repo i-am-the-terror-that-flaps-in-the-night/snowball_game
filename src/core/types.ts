@@ -1,6 +1,6 @@
 import type { Terrain } from '../world/Terrain';
 import type * as THREE from 'three';
-import type { EventBus } from './events';
+import type { EventBus, KillSource } from './events';
 import type { Input } from './input';
 import type { ZoneDef } from '../config/zones';
 import type { EnemyType } from '../config/enemies';
@@ -187,8 +187,11 @@ export interface PlayerStats {
 export interface SnowFieldAPI {
   /** Edge length of the square field (SNOW_FIELD_SIZE). */
   readonly size: number;
-  /** Snow depth (m) at a world position; 0 outside the field. */
+  /** Snow depth (m) at a world position; 0 outside the field. Depth above the terrain ground, not a height. */
   getDepth(x: number, z: number): number;
+  /** World height of the snow top (terrain ground + depth): where coins, balls, sprays and decals resting on the snow
+   *  sit. Equals getDepth on flat arenas. */
+  topAt(x: number, z: number): number;
   /** Remove snow under a line segment (a blade) of the given thickness. `fraction` (0..1) of the
    *  depth is removed in cells touched. Returns the removed volume in m^3. */
   plowLine(x1: number, z1: number, x2: number, z2: number, thickness: number, fraction: number): number;
@@ -257,7 +260,8 @@ export interface PlowAPI {
   readonly sawHalo: number;
   /** Build Buzzsaw fury from damage dealt and taken (spins the saws up). No-op without the saws. */
   feedSawFury(dealt: number, taken: number): void;
-  /** World-space position of the front of the blade (where the held ball sits). */
+  /** World-space position of the front of the blade (where the held ball sits); y = the surface height under the
+   *  plow (0 on flat arenas). */
   getBladeTip(out: THREE.Vector3): THREE.Vector3;
   getForward(out: THREE.Vector3): THREE.Vector3;
   /** Apply FINAL damage (reductions already applied by Combat.hitPlow). Red flash; sets dead at 0 hp
@@ -275,6 +279,19 @@ export interface PlowAPI {
   /** Reads ctx.input: drive, plow snow into the held ball, SPACE slam, SHIFT dash, E whirl.
    *  Collides with ARENA walls and ctx.world.obstacles. */
   update(dt: number): void;
+  // ---- terrain (world/Terrain.ts via ctx.terrain). position.y = feet height (surface + snow ride height).
+  /** In the air (drove off a ramp lip / crest faster than gravity can follow; there is no jump button). */
+  readonly airborne: boolean;
+  /** Vertical speed, m/s (+ up). Follows the surface while grounded. */
+  readonly vy: number;
+  /** Seconds into the current flight (0 when grounded). */
+  readonly airTime: number;
+  /** Deck id under the plow (-1 = ground). */
+  readonly deck: number;
+  /** Height of the surface under the plow (m). */
+  readonly surfaceY: number;
+  /** Air slam: only while airborne, sets vy = -speed (no-op on the ground). */
+  dive(speed: number): void;
 }
 
 /** Melee damage resolution shared by the player and the bots. */
@@ -322,6 +339,10 @@ export interface EnemyHandle {
   readonly maxHp: number;
   readonly alive: boolean;
   readonly isBoss: boolean;
+  /** Terrain: position.y is the feet height; airborne after a ramp lip / launch(); vy m/s (+ up); deck id (-1 ground). */
+  readonly airborne: boolean;
+  readonly vy: number;
+  readonly deck: number;
 }
 
 export interface DamageOpts {
@@ -330,7 +351,8 @@ export interface DamageOpts {
   freezeSeconds?: number;
   /** Hard stun (bot stops and can't attack), e.g. BRUTUS Ground Pound. Bosses take half. */
   stunSeconds?: number;
-  source?: 'slam' | 'ram' | 'whirl' | 'other';
+  /** Kill credit (core/events.ts KillSource). */
+  source?: KillSource;
   /** Attacker position — used for directional armor (Brute front plate, Frostbyte ball block). */
   fromX?: number;
   fromZ?: number;
@@ -343,7 +365,7 @@ export interface DamageOpts {
 }
 
 export interface EnemyManagerAPI {
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number }): EnemyHandle;
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number }): EnemyHandle;
   /** Living enemies whose collision circle overlaps the given circle. Reuses `out` if provided. */
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[];
   /** Callers pass RAW damage. The manager applies armor (min 1; reduced for `direct` hits), directional armor, and vulnerability
@@ -357,6 +379,18 @@ export interface EnemyManagerAPI {
   clear(): void;
   /** AI, movement, wall clamping, bot-bot separation, plow contact resolution (see Enemies.ts). */
   update(dt: number): void;
+  /** Throw a bot into the air with vertical speed `vy` (m/s, + up); it keeps its horizontal motion, falls with
+   *  ctx.terrain.gravity and emits 'enemyLanded' on touchdown (boss leaps, stomps, blasts). */
+  launch(e: EnemyHandle, vy: number): void;
+  /** Optional level routing consulted by the last-bot hunt (Enemies.ts sets / clears nothing itself: arena code
+   *  assigns it, e.g. The Omega Works' NavGraph, and sets it back to null on leaving). */
+  nav?: BotNav | null;
+}
+
+/** Optional level routing for bots (The Omega Works, world/omega/nav.ts NavGraph satisfies it): where should a bot at
+ *  (x, z) on `deck` steer to reach (tx, tz) on `tdeck`? Writes a waypoint and returns true, or false = steer straight. */
+export interface BotNav {
+  next(x: number, z: number, deck: number, tx: number, tz: number, tdeck: number, out: { x: number; z: number }): boolean;
 }
 
 export interface WaveDirectorAPI {
@@ -474,8 +508,12 @@ export interface CameraRigAPI {
   kick(dx: number, dz: number, amount: number): void;
   /** Short impact FOV punch in degrees (negative = zoom in), separate from the dash kick. Scaled by the shake slider. */
   punchFov(degrees: number): void;
-  /** Ultimate kill-cam: swing out to frame (x, z) for `seconds` of real time, then ease back to the follow. */
-  cinematic(x: number, z: number, seconds: number): void;
+  /** Ultimate kill-cam: swing out to frame (x, z) for `seconds` of real time, then ease back to the follow. `y` = height
+   *  of the shot (default: the terrain surface there). */
+  cinematic(x: number, z: number, seconds: number, y?: number): void;
+  /** Landing thump: dip the camera down by an amount scaled from the touchdown speed (m/s). Scaled by the shake
+   *  settings (incl. Reduce screen shake). */
+  thump(impact: number): void;
   update(dt: number): void;
 }
 
@@ -517,7 +555,12 @@ export type SoundName =
   // BRUTUS
   | 'thud'
   // Paint Shop horns (slam sound cosmetics)
-  | 'hornAir' | 'hornClown' | 'hornBoom' | 'hornBell' | 'hornPixel';
+  | 'hornAir' | 'hornClown' | 'hornBoom' | 'hornBell' | 'hornPixel'
+  // Terrain / biomes (level overhaul)
+  | 'jump' | 'land' | 'airSlam' | 'lavaBurn';
+
+/** Per-biome ambience loop (AudioAPI.setAmbience; ZoneDef.biome.ambience). */
+export type AmbienceKind = 'none' | 'wind' | 'lava' | 'dust' | 'factory' | 'crowd';
 
 export interface AudioAPI {
   /** Resume/create the AudioContext; call from a user gesture. Safe to call repeatedly. */
@@ -531,6 +574,8 @@ export interface AudioAPI {
   setMusic(on: boolean): void;
   /** Settings-menu volume sliders, each 0..1. */
   setVolumes(master: number, music: number, sfx: number): void;
+  /** Background ambience loop for the arena's biome (crossfades; 'none' = silent). Follows the music volume + mute. */
+  setAmbience(kind: AmbienceKind): void;
   muted: boolean;
 }
 
@@ -577,10 +622,35 @@ export interface HudState {
   countdown: number;
   /** Brawl mode HUD data, or null in the campaign. */
   brawl: BrawlHud | null;
-  /** Survival mode wave line (current wave + best), or null/absent outside Survival. */
-  survival?: { wave: number; best: number } | null;
+  /** Survival mode wave line (current wave + best), or null/absent outside Survival. `arenaIn` = waves until the biome
+   *  rotates (1 = this is the last wave here), `nextArena` = the name of the next one. */
+  survival?: { wave: number; best: number; arenaIn?: number; nextArena?: string } | null;
   /** Hide the round / wave counter + pips (Tutorial). */
   hideRound?: boolean;
+  /** Campaign / Survival minimap + lost-bot arrows, or null (Brawl, Duel, Tutorial). Game fills it in place. */
+  radar?: RadarState | null;
+}
+
+/** One bot on the campaign radar (pooled: Game rewrites these in place). */
+export interface RadarBlip {
+  x: number;
+  /** Feet height (terrain). */
+  y: number;
+  z: number;
+  boss: boolean;
+}
+
+/** Campaign / Survival radar data (HudState.radar). Pooled: no allocation per frame. */
+export interface RadarState {
+  /** Arena half-size (ARENA.maxX; The Omega Works is 80). */
+  half: number;
+  me: { x: number; y: number; z: number; heading: number };
+  /** Living bots: only the first `count` entries are valid. */
+  blips: RadarBlip[];
+  count: number;
+  obstacles: readonly Obstacle[];
+  /** Show the off-screen lost-bot arrows (1..ARROW_MAX_BOTS bots left in the round / wave, fighting). */
+  arrows: boolean;
 }
 
 /* ------------------------------------------------------------------ Brawl (free-for-all) mode */
@@ -666,6 +736,8 @@ export interface RunSummary {
   kills: number;
   bestCombo: number;
   biggestBall: number;
+  /** Longest single flight this run (seconds of airtime off ramps / crests). */
+  airtime?: number;
   firstClear: boolean;
   clearReward: number;
   unlockedZoneName: string | null;

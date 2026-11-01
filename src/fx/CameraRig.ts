@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { ARENA } from '../core/types';
 import type { CameraRigAPI, GameContext } from '../core/types';
-import { settings } from '../core/settings';
+import { settings, shakeScale } from '../core/settings';
+import type { RayHit } from '../world/Terrain';
 
 /* Close-quarters follow: high and a bit back so the bots around the plow stay in view. */
 const BACK = 12;
@@ -35,8 +36,21 @@ const CINE_SWING = 0.7;
 /** Share of the shot spent easing in / out of the follow camera. */
 const CINE_IN = 0.25;
 const CINE_OUT = 0.35;
+/** Landing thump: metres of camera dip per m/s of touchdown speed, and its cap. */
+const THUMP_PER = 0.035;
+const THUMP_MAX = 0.9;
+/** Terrain: follow-height smoothing (1/s) on the ground / in the air (the camera does not ride every bump of a jump). */
+const HEIGHT_K = 8;
+const HEIGHT_K_AIR = 2.5;
+/** Occlusion: keep this far (m) in front of whatever blocks the view; pull-in / let-out rates (1/s). */
+const OCCLUDE_PAD = 0.8;
+const OCCLUDE_IN = 10;
+const OCCLUDE_OUT = 2;
+/** Focus height above the plow's feet the occlusion ray starts from. */
+const FOCUS_UP = 1.4;
 
 const _cine = new THREE.Vector3();
+const _hit: RayHit = { t: 0, x: 0, y: 0, z: 0, what: 'ground' };
 
 function damp(k: number, dt: number): number {
   return 1 - Math.exp(-k * dt);
@@ -89,7 +103,13 @@ export class CameraRig implements CameraRigAPI {
   private cineDur = 1;
   private cineX = 0;
   private cineZ = 0;
+  private cineY = 0;
   private cineA = 0;
+  /** Smoothed follow height (terrain arenas; flat arenas follow position.y directly, as always). */
+  private followY = 0;
+  private followInit = false;
+  /** Occlusion pull-in: 0 = full distance, 1 = all the way to the focus (smoothed). */
+  private occl = 0;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -120,12 +140,19 @@ export class CameraRig implements CameraRigAPI {
   }
 
   addShake(intensity: number): void {
-    // Scaled by the settings-menu "Screen shake" slider (0 = off).
-    this.trauma = Math.min(MAX_TRAUMA, this.trauma + intensity * settings.shake);
+    // Scaled by the settings-menu "Screen shake" slider (0 = off) and "Reduce screen shake".
+    this.trauma = Math.min(MAX_TRAUMA, this.trauma + intensity * shakeScale());
+  }
+
+  thump(impact: number): void {
+    const a = Math.min(THUMP_MAX, Math.max(0, impact) * THUMP_PER) * shakeScale();
+    if (a <= 0.001) return;
+    // Same critically damped spring as the kick, pushed straight down.
+    this.kickVel.y -= a * KICK_W * Math.E;
   }
 
   kick(dx: number, dz: number, amount: number): void {
-    const a = amount * settings.shake;
+    const a = amount * shakeScale();
     if (a <= 0.001) return;
     // Impulse that makes the critically damped spring peak at ~`a` metres.
     const v = a * KICK_W * Math.E;
@@ -135,7 +162,7 @@ export class CameraRig implements CameraRigAPI {
   }
 
   punchFov(degrees: number): void {
-    const d = THREE.MathUtils.clamp(degrees * settings.shake, -PUNCH_MAX, PUNCH_MAX);
+    const d = THREE.MathUtils.clamp(degrees * shakeScale(), -PUNCH_MAX, PUNCH_MAX);
     if (Math.abs(d) < 0.05) return;
     // A bigger punch overrides a smaller one still playing.
     const cur = this.punchT > 0 ? this.punchAmt * (this.punchT / PUNCH_SECONDS) : 0;
@@ -145,10 +172,12 @@ export class CameraRig implements CameraRigAPI {
   }
 
   /** Ultimate kill-cam: swing out to frame (x, z) for `seconds` (real time), then ease back to the follow. */
-  cinematic(x: number, z: number, seconds: number): void {
+  cinematic(x: number, z: number, seconds: number, y?: number): void {
     if (this.mode !== 'follow' || seconds <= 0) return;
     this.cineX = x;
     this.cineZ = z;
+    const t = this.ctx.terrain;
+    this.cineY = y ?? (t && t.active ? t.surfaceAt(x, z).y : 0);
     this.cineDur = this.cineT = seconds;
     // Start from roughly where the camera already is, so the swing reads as a move, not a cut.
     this.cineA = Math.atan2(this.pos.x - x, this.pos.z - z);
@@ -194,9 +223,52 @@ export class CameraRig implements CameraRigAPI {
     const outX = Math.max(0, ARENA.minX - x, x - ARENA.maxX);
     const outZ = Math.max(0, ARENA.minZ - z, z - ARENA.maxZ);
     const lift = Math.max(outX, outZ) * 0.5;
-    this.tmpPos.set(x, p.y + up + lift, z);
-    this.tmpLook.set(p.x + sx * AHEAD, p.y + 0.5, p.z + cz * AHEAD);
+    // Height: flat arenas follow the plow's feet exactly as before; terrain arenas smooth it (a jump does not yank the
+    // camera, a slope is followed quickly).
+    const terr = this.ctx.terrain;
+    let py = p.y;
+    if (terr && (terr.active || plow.airborne)) {
+      const want = plow.airborne ? (plow.surfaceY + p.y) * 0.5 : p.y;
+      if (!this.followInit || dt <= 0) this.followY = want;
+      else this.followY += (want - this.followY) * damp(plow.airborne ? HEIGHT_K_AIR : HEIGHT_K, dt);
+      this.followInit = true;
+      py = this.followY;
+    } else this.followInit = false;
+    this.tmpPos.set(x, py + up + lift, z);
+    this.tmpLook.set(p.x + sx * AHEAD, py + 0.5, p.z + cz * AHEAD);
     if (this.cineT > 0) this.blendCinematic();
+    if (terr && terr.active) this.occlude(dt, p.x, p.y + FOCUS_UP, p.z);
+  }
+
+  /**
+   * Terrain / decks between the focus and the camera: pull the camera in along that line (fast) until it sees the
+   * focus, let it back out slowly once clear. During the kill-cam the focus is the shot.
+   */
+  private occlude(dt: number, fx: number, fy: number, fz: number): void {
+    if (this.cineT > 0) {
+      const u = 1 - this.cineT / this.cineDur;
+      const w = u < CINE_IN ? u / CINE_IN : u > 1 - CINE_OUT ? (1 - u) / CINE_OUT : 1;
+      const k = w * w * (3 - 2 * w);
+      fx += (this.cineX - fx) * k;
+      fy += (this.cineY + FOCUS_UP - fy) * k;
+      fz += (this.cineZ - fz) * k;
+    }
+    const tp = this.tmpPos;
+    let dx = tp.x - fx;
+    let dy = tp.y - fy;
+    let dz = tp.z - fz;
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (len < 1e-3) return;
+    dx /= len;
+    dy /= len;
+    dz /= len;
+    const hit = this.ctx.terrain.raycast(fx, fy, fz, dx, dy, dz, len, _hit);
+    const want = hit ? THREE.MathUtils.clamp(1 - (hit.t - OCCLUDE_PAD) / len, 0, 0.92) : 0;
+    if (dt <= 0) this.occl = want;
+    else this.occl += (want - this.occl) * damp(want > this.occl ? OCCLUDE_IN : OCCLUDE_OUT, dt);
+    if (this.occl < 1e-4) return;
+    const keep = 1 - this.occl;
+    tp.set(fx + dx * len * keep, fy + dy * len * keep, fz + dz * len * keep);
   }
 
   /** Pull the follow target toward the kill-cam orbit (weight eases in, holds, eases out). */
@@ -207,8 +279,8 @@ export class CameraRig implements CameraRigAPI {
     const a = this.cineA + CINE_SWING * u;
     const cx = THREE.MathUtils.clamp(this.cineX + Math.sin(a) * CINE_RADIUS, ARENA.minX - WALL_SLACK, ARENA.maxX + WALL_SLACK);
     const cz = THREE.MathUtils.clamp(this.cineZ + Math.cos(a) * CINE_RADIUS, ARENA.minZ - WALL_SLACK, ARENA.maxZ + WALL_SLACK);
-    this.tmpPos.lerp(_cine.set(cx, CINE_HEIGHT, cz), k);
-    this.tmpLook.lerp(_cine.set(this.cineX, 0.5, this.cineZ), k);
+    this.tmpPos.lerp(_cine.set(cx, this.cineY + CINE_HEIGHT, cz), k);
+    this.tmpLook.lerp(_cine.set(this.cineX, this.cineY + 0.5, this.cineZ), k);
   }
 
   update(dt: number): void {

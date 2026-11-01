@@ -1,6 +1,8 @@
-import type { BrawlHud, GameContext, Obstacle } from '../core/types';
+import type { BrawlHud, GameContext } from '../core/types';
 import type { GameEvents } from '../core/events';
 import { STREAK_TIERS } from '../config/brawl';
+import { MinimapCanvas } from './Minimap';
+import type { MapView } from './radarMath';
 
 /* Brawl-mode HUD layer: match timer, live leaderboard, kill feed, streak meter, announcements,
  * minimap and respawn overlay. Owned by UI; lives inside the HUD element so it fades with it. */
@@ -81,10 +83,8 @@ export class BrawlHudView {
   private respBy: HTMLElement;
   private respT: HTMLElement;
   private mapBox: HTMLElement;
-  private canvas: HTMLCanvasElement;
-  private g: CanvasRenderingContext2D;
-  private bg: HTMLCanvasElement;
-  private bgKey: { obs: readonly Obstacle[] | null; half: number; dpr: number; n: number } = { obs: null, half: 0, dpr: 0, n: -1 };
+  private map: MinimapCanvas;
+  private mapView: MapView = { cx: 0, cz: 0, half: 1 };
   private mapAt = 0;
 
   private last = { secs: -1, target: -1, rank: -1, total: -1, streak: -1, mult: -1, resp: -1, by: '' };
@@ -140,9 +140,7 @@ export class BrawlHudView {
 
     // minimap
     this.mapBox = mk('div', 'ss-bh-map ss-glass-dark', undefined, root);
-    this.canvas = mk('canvas', 'ss-bh-canvas', undefined, this.mapBox);
-    this.g = this.canvas.getContext('2d')!;
-    this.bg = document.createElement('canvas');
+    this.map = new MinimapCanvas(this.mapBox, 'ss-bh-canvas', MAP_PX, MAP_PAD, 30);
     mk('div', 'ss-bh-map-n', 'N', this.mapBox);
 
     ctx.events.on('brawlKill', (e) => this.onKill(e));
@@ -170,7 +168,7 @@ export class BrawlHudView {
     const L = this.last;
     L.secs = L.target = L.rank = L.total = L.streak = L.mult = L.resp = -1;
     L.by = '';
-    this.bgKey.obs = null;
+    this.map.invalidate();
     this.mapAt = 0;
   }
 
@@ -304,40 +302,17 @@ export class BrawlHudView {
   /* ------------------------------------------------------------------ minimap */
 
   private drawMap(b: BrawlHud, now: number): void {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const px = Math.round(MAP_PX * dpr);
-    const cv = this.canvas;
-    if (cv.width !== px) {
-      cv.width = px;
-      cv.height = px;
-      this.bg.width = px;
-      this.bg.height = px;
-      this.bgKey.obs = null;
-    }
     const half = Math.max(1, b.arenaHalf);
-    const k = this.bgKey;
-    if (k.obs !== b.obstacles || k.half !== half || k.dpr !== dpr || k.n !== b.obstacles.length) {
-      k.obs = b.obstacles;
-      k.half = half;
-      k.dpr = dpr;
-      k.n = b.obstacles.length;
-      this.drawMapBg(b.obstacles, half, dpr);
-    }
-    const g = this.g;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, px, px);
-    g.drawImage(this.bg, 0, 0);
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const sc = (MAP_PX - MAP_PAD * 2) / (2 * half);
-    const ox = MAP_PAD + half * sc;
+    const v = this.mapView;
+    v.half = half;
+    const g = this.map.begin(v, half, b.obstacles, this.ctx.terrain ?? null);
 
     // pickups
     g.strokeStyle = '#4dff8a';
     g.lineWidth = 2;
     g.beginPath();
     for (const p of b.pickups) {
-      const x = ox + p.x * sc;
-      const y = ox + p.z * sc;
+      const { x, y } = this.map.at(p.x, p.z);
       g.moveTo(x - 3.5, y);
       g.lineTo(x + 3.5, y);
       g.moveTo(x, y - 3.5);
@@ -348,8 +323,7 @@ export class BrawlHudView {
     // rivals
     const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
     for (const bl of b.blips) {
-      const x = ox + bl.x * sc;
-      const y = ox + bl.z * sc;
+      const { x, y } = this.map.at(bl.x, bl.z);
       if (bl.bounty) {
         g.globalAlpha = 0.35 + 0.65 * pulse;
         g.strokeStyle = '#ffc531';
@@ -368,60 +342,7 @@ export class BrawlHudView {
       g.stroke();
     }
 
-    // player arrow
-    const mx = ox + b.me.x * sc;
-    const my = ox + b.me.z * sc;
-    g.save();
-    g.translate(mx, my);
-    g.rotate(Math.PI - b.me.heading);
-    g.fillStyle = '#ff9b2f';
-    g.strokeStyle = '#fff';
-    g.lineWidth = 1.8;
-    g.beginPath();
-    g.moveTo(0, -8);
-    g.lineTo(5.5, 6);
-    g.lineTo(0, 3);
-    g.lineTo(-5.5, 6);
-    g.closePath();
-    g.fill();
-    g.stroke();
-    g.restore();
-  }
-
-  private drawMapBg(obs: readonly Obstacle[], half: number, dpr: number): void {
-    const g = this.bg.getContext('2d')!;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, this.bg.width, this.bg.height);
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const sc = (MAP_PX - MAP_PAD * 2) / (2 * half);
-    const ox = MAP_PAD + half * sc;
-    const w = 2 * half * sc;
-    g.fillStyle = 'rgba(225, 242, 255, 0.16)';
-    g.fillRect(MAP_PAD, MAP_PAD, w, w);
-    // grid every 30m
-    g.strokeStyle = 'rgba(255,255,255,0.08)';
-    g.lineWidth = 1;
-    g.beginPath();
-    for (let v = -half + 30; v < half; v += 30) {
-      const p = ox + v * sc;
-      g.moveTo(p, MAP_PAD);
-      g.lineTo(p, MAP_PAD + w);
-      g.moveTo(MAP_PAD, p);
-      g.lineTo(MAP_PAD + w, p);
-    }
-    g.stroke();
-    g.strokeStyle = 'rgba(255,255,255,0.85)';
-    g.lineWidth = 2;
-    g.strokeRect(MAP_PAD, MAP_PAD, w, w);
-    g.fillStyle = 'rgba(150, 168, 190, 0.9)';
-    g.strokeStyle = 'rgba(40, 55, 75, 0.9)';
-    g.lineWidth = 1;
-    for (const o of obs) {
-      g.beginPath();
-      g.arc(ox + o.x * sc, ox + o.z * sc, Math.max(1.5, o.r * sc), 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-    }
+    this.map.player(b.me.x, b.me.z, b.me.heading);
   }
 
   /* ------------------------------------------------------------------ events */

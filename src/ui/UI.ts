@@ -14,6 +14,7 @@ import {
   BRAWL_SHUTDOWN_PER_STREAK, BRAWL_TIME, STREAK_TIERS,
 } from '../config/brawl';
 import { BrawlHudView, fmtMult } from './BrawlHud';
+import { RadarHud } from './RadarHud';
 import { SettingsMenu } from './Settings';
 import { ACTIONS, keyLabel, type Action } from '../core/input';
 import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
@@ -354,13 +355,15 @@ export class UI implements UIAPI {
   private bresultScreen!: HTMLElement;
   private bresultPanel!: HTMLElement;
   private bh!: BrawlHudView;
+  /** Campaign / Survival minimap + lost-bot arrows. */
+  private radar!: RadarHud;
 
   // hud
   private hud!: HTMLElement;
   private hudVisible = false;
   private bossSlots: BossSlot[] = [];
   private h = {} as {
-    zone: HTMLElement; round: HTMLElement; enemies: HTMLElement; pips: HTMLElement;
+    zone: HTMLElement; round: HTMLElement; enemies: HTMLElement; pips: HTMLElement; arena: HTMLElement;
     bosses: HTMLElement;
     coins: HTMLElement; coinBox: HTMLElement;
     combo: HTMLElement; comboN: HTMLElement;
@@ -377,7 +380,7 @@ export class UI implements UIAPI {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false,
+    dash: -1, whirl: -2, flame: -2, fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
   };
   private hintTimer = 0;
 
@@ -1738,6 +1741,8 @@ export class UI implements UIAPI {
     H.round = el('div', 'ss-hud-round', '', rr);
     H.enemies = el('div', 'ss-hud-enemies', '', rr);
     H.pips = el('div', 'ss-round-pips', undefined, tl);
+    // Survival / Daily: the biome rotates every 5 waves; a tag counts down to the next arena.
+    H.arena = el('div', 'ss-hud-arena hidden', '', tl);
 
     // top-center: boss bars (1–2)
     H.bosses = el('div', 'ss-bosses', undefined, hud);
@@ -1824,6 +1829,7 @@ export class UI implements UIAPI {
     H.count = el('div', 'ss-count hidden', '', hud);
     H.hint = el('div', 'ss-hint hidden', 'W/S drive  ·  A/D steer  ·  plow snow to grow a ball  ·  SPACE slam  ·  SHIFT dash strike  ·  E whirlwind  ·  F fire / thunderclap  ·  ESC pause', hud);
     this.bh = new BrawlHudView(this.ctx, hud, bc);
+    this.radar = new RadarHud(this.ctx, hud);
   }
 
   private buildBossSlot(parent: HTMLElement): BossSlot {
@@ -2197,6 +2203,7 @@ export class UI implements UIAPI {
       this.bh.setActive(!!brawl);
     }
     if (s.brawl) this.bh.update(s.brawl);
+    this.radar.update(s.radar);
 
     if (s.zoneName !== L.zone) {
       L.zone = s.zoneName;
@@ -2226,6 +2233,16 @@ export class UI implements UIAPI {
       H.round.textContent = s.bossRound ? '☠ BOSS ROUND' : `Round ${s.round}/${s.totalRounds}`;
       H.round.classList.toggle('boss', s.bossRound);
       this.renderPips(s.round, s.totalRounds);
+    }
+    // Survival / Daily biome rotation: count down to the next arena over the last two waves of a block.
+    const arena = sv && sv.arenaIn !== undefined && sv.arenaIn <= 2 && sv.nextArena
+      ? sv.arenaIn === 1 ? `Last wave here · next: ${sv.nextArena}` : `New arena in ${sv.arenaIn} waves: ${sv.nextArena}`
+      : '';
+    if (arena !== L.arena) {
+      L.arena = arena;
+      H.arena.textContent = arena;
+      H.arena.classList.toggle('hidden', !arena);
+      H.arena.classList.toggle('last', sv?.arenaIn === 1);
     }
     const en = Math.max(0, Math.round(s.enemiesRemaining));
     if (en !== L.enemies) {

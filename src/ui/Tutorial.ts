@@ -1,9 +1,12 @@
 import './tutorial.css';
+import * as THREE from 'three';
 import type { EnemyHandle, GameContext } from '../core/types';
 import type { Progression } from '../core/Progression';
 import { CAMPAIGN_ARENA_HALF } from '../core/types';
 import { keyLabel, type Action } from '../core/input';
 import { PLOWS, type PlowDef } from '../config/plows';
+import type { TerrainDef, TerrainShape } from '../world/Terrain';
+import { arrowRect, edgePoint, fmtDist, onScreen, viewDir, type EdgeHit, type EdgeRect, type ScreenDir } from './radarMath';
 
 /** localStorage flag: set once the tutorial is finished or skipped (kept out of the save so RESET SAVE doesn't replay it). */
 const DONE_KEY = 'snowplow-showdown-tutorial-done';
@@ -20,6 +23,33 @@ const BLOCKS_NEEDED = 2;
 const HP_FLOOR = 0.4;
 /** Dummy bots get extra hp so they survive a few lessons. */
 const DUMMY_HP = 3;
+/* Terrain lessons (slopes, ramp jump, air slam). The yard itself is flat (core/modeZones TUTORIAL_ZONE); these steps load a
+ * gentle bowl and one ramp through ctx.terrain.load, laid out around wherever the plow is, and restore flat after. */
+/** The bowl: radius / depth (m), centred this far ahead of the plow (clamped inside the walls). */
+const BOWL_R = 10;
+const BOWL_DEPTH = 2.2;
+const BOWL_AHEAD = 13;
+/** Lesson 1 clears after reaching this fraction of the bowl's depth, then climbing back to near flat ground. */
+const BOWL_BOTTOM = 0.6;
+const BOWL_OUT = 0.25;
+/** The ramp: run-up from the plow to the toe, length, width, lip height and drop-off (m). */
+const RAMP_RUNUP = 7;
+const RAMP_LEN = 10;
+const RAMP_W = 7;
+const RAMP_H = 2.8;
+const RAMP_FALL = 1.8;
+/** Run-up + ramp + drop-off + a landing strip (m): the straight line the jump needs, from the plow. */
+const RAMP_PATH = RAMP_RUNUP + RAMP_LEN + RAMP_FALL + 8;
+/** Headings tried for the bowl / ramp, as offsets (rad) from where the plow faces, before falling back to the arena
+ *  centre: the feature lands in front of the camera whenever the walls allow. */
+const LAY_OFFSETS = [0, 0.3, 0.6, 0.9, 1.2];
+/** A flight shorter than this (s) does not count as a jump. */
+const JUMP_AIR = 0.3;
+/** Seconds between the floating "BOWL" / "RAMP" markers over the lesson's feature. */
+const BEACON_EVERY = 1.3;
+/** A frame-to-frame drop in vertical speed this big (m/s) can only be the air-slam dive (gravity adds < 1.5). */
+const DIVE_DV = 8;
+
 /** Gamepad prompt per action (standard mapping, see PAD_BUTTONS in src/core/input.ts). */
 const PAD_LABEL: Partial<Record<Action, string>> = {
   forward: 'L-STICK', back: 'L-STICK', left: 'L-STICK', right: 'L-STICK',
@@ -68,6 +98,31 @@ export class Tutorial {
   private blocks = 0;
   private fUsed = false;
   private lastF = -1;
+  /** Terrain lessons: the shapes loaded into ctx.terrain (null = flat), bowl / ramp layout, flight tracking. */
+  private shapes: TerrainShape[] | null = null;
+  private bowl = { x: 0, z: 0 };
+  private ramp = { x: 0, z: 0, rot: 0 };
+  private bottomed = false;
+  private climbed = false;
+  private launched = false;
+  private jumped = false;
+  private dived = false;
+  private airSlammed = false;
+  private prevVy = 0;
+  /** Floating marker over the current lesson's feature (null = none). */
+  private beacon: { x: number; z: number; label: string; name: string } | null = null;
+  private beaconT = 0;
+  private beaconPos = new THREE.Vector3();
+  /** Edge arrow toward the beacon while it is off screen or under the card (the radar is off in the Tutorial). */
+  private arrow: HTMLElement;
+  private arrowTip: HTMLElement;
+  private arrowLabel: HTMLElement;
+  private arrowOn = false;
+  private arrowText = '';
+  private arrowBox: EdgeRect = { l: 0, t: 0, r: 0, b: 0 };
+  private arrowVis: EdgeRect = { l: 0, t: 0, r: 0, b: 0 };
+  private arrowW = 0;
+  private arrowH = 0;
 
   private card: HTMLElement;
   private stepEl: HTMLElement;
@@ -138,6 +193,14 @@ export class Tutorial {
     menu.textContent = 'MENU';
     this.noFocus(menu);
     menu.addEventListener('click', () => this.exit('menu'));
+    // Beacon arrow: the campaign radar's lost-bot arrow look (ui.css .ss-lost*), in gold.
+    const lost = div('ss-lost ss-tut-lost', root);
+    this.arrow = div('ss-lost-arrow boss ss-tut-arrow', lost);
+    this.arrowTip = div('ss-lost-tip', this.arrow);
+    this.arrowLabel = div('ss-lost-d', this.arrow);
+    window.addEventListener('resize', () => {
+      if (this.beacon) this.measureArrow();
+    });
   }
 
   get active(): boolean {
@@ -158,6 +221,16 @@ export class Tutorial {
       ctx.events.on('plowDamaged', ({ blocked }) => {
         if (blocked > 0) this.blocks++;
       }),
+      ctx.events.on('plowLaunched', () => {
+        this.launched = true;
+        this.dived = false;
+      }),
+      ctx.events.on('plowLanded', ({ airTime }) => {
+        if (this.launched && airTime >= JUMP_AIR) this.jumped = true;
+        if (this.dived) this.airSlammed = true;
+        this.launched = false;
+        this.dived = false;
+      }),
     );
     this.card.classList.add('show');
     this.goto(0);
@@ -167,9 +240,11 @@ export class Tutorial {
   stop(): void {
     for (const u of this.unsub) u();
     this.unsub = [];
+    this.flatten();
     this.running = false;
     this.dummies = [];
     this.card.classList.remove('show', 'done');
+    this.showArrow(false);
   }
 
   /** Esc / SKIP: mark done and go back to the menu. */
@@ -202,6 +277,21 @@ export class Tutorial {
       if (ctx.input.wasPressed('Enter') || ctx.input.wasPressed('NumpadEnter')) this.exit('arena');
       return;
     }
+    // Air-slam detection: the dive sets vy straight to -speed, a jump far bigger than one frame of gravity.
+    if (this.shapes && plow.airborne) {
+      if (plow.vy - this.prevVy < -DIVE_DV) this.dived = true;
+      this.prevVy = plow.vy;
+    } else this.prevVy = 0;
+    if (this.beacon && this.shapes && this.pauseT <= 0) {
+      this.beaconT -= dt;
+      const b = this.beacon;
+      this.beaconPos.set(b.x, ctx.terrain.ground(b.x, b.z) + 2.2, b.z);
+      if (this.beaconT <= 0) {
+        this.beaconT = BEACON_EVERY;
+        ctx.fx.floatText(this.beaconPos, b.label, '#ffd400', 1.3);
+      }
+      this.placeArrow(b.name);
+    } else this.showArrow(false);
     const step = this.steps[this.index];
     if (this.pauseT > 0) {
       this.pauseT -= dt;
@@ -224,6 +314,7 @@ export class Tutorial {
 
   private goto(i: number): void {
     this.index = i;
+    this.beacon = null;
     this.card.classList.remove('done');
     if (i >= this.steps.length) return this.finish();
     const step = this.steps[i];
@@ -244,6 +335,7 @@ export class Tutorial {
     this.hintEl.textContent = '';
     this.barEl.classList.add('hidden');
     this.btnsEl.classList.remove('hidden');
+    this.flatten();
     ctx.audio.play('roundClear');
     ctx.ui.toast("YOU'RE READY!", 'big');
     Tutorial.markDone();
@@ -351,7 +443,211 @@ export class Tutorial {
         hint: () => needBall() || `Blocked ${this.blocks} / ${BLOCKS_NEEDED}`,
       },
     ];
+    if (Tutorial.terrainReady(ctx)) steps.push(...this.terrainSteps());
     return steps;
+  }
+
+  /** The slope / jump / air-slam lessons need the terrain movement contract (PlowAPI airborne / vy / dive). */
+  static terrainReady(ctx: GameContext): boolean {
+    const p = ctx.plow as Partial<GameContext['plow']> | undefined;
+    return !!ctx.terrain && !!p && typeof p.airborne === 'boolean' && typeof p.vy === 'number' && typeof p.dive === 'function';
+  }
+
+  private terrainSteps(): Step[] {
+    const { ctx } = this;
+    const plow = ctx.plow;
+    const dist = (x: number, z: number) => Math.round(Math.hypot(x - plow.position.x, z - plow.position.z));
+    return [
+      {
+        title: 'Slopes',
+        keys: [['forward'], ['left', 'right']],
+        text: 'A bowl just opened up ahead. Roll down into it (gravity speeds you up), then climb back out (it slows you down).',
+        enter: () => {
+          this.bottomed = false;
+          this.climbed = false;
+          this.layBowl();
+        },
+        progress: () => {
+          const depth = -plow.surfaceY;
+          if (depth >= BOWL_DEPTH * BOWL_BOTTOM) this.bottomed = true;
+          if (this.bottomed && depth <= BOWL_DEPTH * BOWL_OUT && !plow.airborne) this.climbed = true;
+          return (this.bottomed ? 0.5 : Math.min(0.45, (0.5 * Math.max(0, depth)) / (BOWL_DEPTH * BOWL_BOTTOM))) + (this.climbed ? 0.5 : 0);
+        },
+        hint: () => (this.bottomed ? 'Now drive back up and out!' : `Bowl centre: ${dist(this.bowl.x, this.bowl.z)} m`),
+      },
+      {
+        title: 'Ramp jump',
+        keys: [['forward']],
+        text: 'A ramp is waiting. Hit it at full speed and fly off the lip. There is no jump button: speed does it. In the air you steer less, but you keep your ball.',
+        enter: () => {
+          this.jumped = false;
+          this.launched = false;
+          this.layRamp();
+        },
+        progress: () => (this.jumped ? 1 : plow.airborne ? 0.5 : 0),
+        hint: () => (plow.airborne ? 'Airborne!' : `Ramp: ${dist(this.ramp.x, this.ramp.z)} m · line up and floor it`),
+      },
+      {
+        title: 'Air slam',
+        keys: [['slam']],
+        text: 'Jump off the ramp again and press slam while in the air: you dive straight down and land with a big shockwave. Land it on bots for extra damage.',
+        enter: () => {
+          this.airSlammed = false;
+          this.dived = false;
+          this.rampBeacon();
+        },
+        progress: () => (this.airSlammed ? 1 : this.dived ? 0.6 : plow.airborne ? 0.3 : 0),
+        hint: () => (plow.airborne ? (this.dived ? 'Diving!' : 'NOW: slam!') : `Ramp: ${dist(this.ramp.x, this.ramp.z)} m`),
+      },
+    ];
+  }
+
+  /** Lesson 1: a gentle bowl ahead of the plow, kept inside the walls. */
+  private layBowl(): void {
+    const plow = this.ctx.plow;
+    const B = Tutorial.bowlLayout(plow.position.x, plow.position.z, plow.heading);
+    this.bowl.x = B.x;
+    this.bowl.z = B.z;
+    this.loadShapes([{ kind: 'dome', x: this.bowl.x, z: this.bowl.z, r: BOWL_R, h: -BOWL_DEPTH }]);
+    this.setBeacon(this.bowl.x, this.bowl.z, '▼ BOWL', 'BOWL');
+  }
+
+  /** Bowl centre for a plow at (x, z) facing `heading`: BOWL_AHEAD in front (or as close to in front as fits inside the
+   *  walls), else toward the arena centre, clamped. Always at least BOWL_R + 2 m from the plow, so it never opens under it. */
+  static bowlLayout(x: number, z: number, heading: number, half = CAMPAIGN_ARENA_HALF): { x: number; z: number } {
+    const lim = half - BOWL_R - 1;
+    const rot = Tutorial.layHeading(x, z, heading, (s, c) => Math.abs(x + s * BOWL_AHEAD) <= lim && Math.abs(z + c * BOWL_AHEAD) <= lim);
+    const clamp = (v: number) => Math.max(-lim, Math.min(lim, v));
+    let bx = clamp(x + Math.sin(rot) * BOWL_AHEAD);
+    let bz = clamp(z + Math.cos(rot) * BOWL_AHEAD);
+    // pressed into a corner: slide on toward the centre until the plow is clear of the rim
+    const min = BOWL_R + 2;
+    for (let k = 0; k < 8 && Math.hypot(bx - x, bz - z) < min; k++) {
+      bx = clamp(bx - Math.sign(bx) * 2);
+      bz = clamp(bz - Math.sign(bz) * 2);
+    }
+    return { x: bx, z: bz };
+  }
+
+  /**
+   * The heading a lesson feature is laid along: the plow's own heading, or the nearest offset from it (LAY_OFFSETS,
+   * turning toward the arena centre first) for which `fits(sin, cos)` holds; else straight at the centre (straight
+   * ahead when already there).
+   */
+  private static layHeading(x: number, z: number, heading: number, fits: (s: number, c: number) => boolean): number {
+    const toC = Math.atan2(-x, -z);
+    let d = toC - heading;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    const first = d >= 0 ? 1 : -1;
+    for (const off of LAY_OFFSETS) {
+      for (const sg of off === 0 ? [1] : [first, -first]) {
+        const rot = heading + sg * off;
+        if (fits(Math.sin(rot), Math.cos(rot))) return rot;
+      }
+    }
+    return Math.hypot(x, z) > 2.5 ? toC : heading;
+  }
+
+  private setBeacon(x: number, z: number, label: string, name: string): void {
+    this.beacon = { x, z, label, name };
+    this.beaconT = 0;
+    this.measureArrow();
+  }
+
+  /** Cache the viewport and the arrow rectangle: clear of the HUD edges and of the step card (right-side panel on
+   *  desktop, pinned to the top on phones). One layout read per lesson / resize, none per frame. */
+  private measureArrow(): void {
+    const w = (this.arrowW = window.innerWidth);
+    const h = (this.arrowH = window.innerHeight);
+    const R = arrowRect(w, h, this.arrowBox);
+    const V = arrowRect(w, h, this.arrowVis, true);
+    const c = this.card.getBoundingClientRect();
+    if (c.width > 0) {
+      if (c.left > w * 0.5) R.r = V.r = Math.max(R.l + 40, Math.min(R.r, c.left - 12));
+      else R.t = V.t = Math.min(R.b - 40, Math.max(R.t, c.bottom + 12));
+    }
+  }
+
+  /** Point the edge arrow at the beacon (beaconPos) when it is off screen or behind the card; hide it otherwise. */
+  private placeArrow(name: string): void {
+    const cam = this.ctx.camera as THREE.PerspectiveCamera;
+    if (!this.arrowW) this.measureArrow();
+    const pe = cam.projectionMatrix.elements;
+    _tv.copy(this.beaconPos).applyMatrix4(cam.matrixWorldInverse);
+    viewDir(_tv.x, _tv.y, _tv.z, pe[0], pe[5], _tdir);
+    if (onScreen(_tdir, this.arrowW, this.arrowH, this.arrowVis)) return this.showArrow(false);
+    edgePoint(_tdir.x, _tdir.y, this.arrowW, this.arrowH, this.arrowBox, _thit);
+    this.arrow.style.transform = `translate(${_thit.x.toFixed(1)}px, ${_thit.y.toFixed(1)}px)`;
+    this.arrowTip.style.transform = `rotate(${_thit.angle.toFixed(3)}rad)`;
+    const p = this.ctx.plow.position;
+    const text = `${name} ${fmtDist(Math.hypot(this.beaconPos.x - p.x, this.beaconPos.z - p.z))}`;
+    if (text !== this.arrowText) {
+      this.arrowText = text;
+      this.arrowLabel.textContent = text;
+    }
+    this.showArrow(true);
+  }
+
+  private showArrow(on: boolean): void {
+    if (on === this.arrowOn) return;
+    this.arrowOn = on;
+    this.arrow.classList.toggle('on', on);
+  }
+
+  /**
+   * Lessons 2-3: one ramp a short run-up from the plow, laid along the plow's heading (or as close to it as the walls
+   * allow) so it is in front of the camera; toward the arena centre when nothing near the heading fits. The bowl stays
+   * when it is clear of the ramp's path.
+   */
+  private layRamp(): void {
+    const plow = this.ctx.plow;
+    const p = plow.position;
+    const L = Tutorial.rampLayout(p.x, p.z, plow.heading);
+    this.ramp.x = L.x;
+    this.ramp.z = L.z;
+    this.ramp.rot = L.rot;
+    const ramp: TerrainShape = { kind: 'ramp', x: L.x, z: L.z, rot: L.rot, len: RAMP_LEN, w: RAMP_W, h: RAMP_H, fall: RAMP_FALL };
+    const shapes: TerrainShape[] = [ramp];
+    // keep the bowl unless it sits on the run-up / ramp / landing strip
+    const ex = L.x + Math.sin(L.rot) * (RAMP_LEN + 12);
+    const ez = L.z + Math.cos(L.rot) * (RAMP_LEN + 12);
+    if (segDist(this.bowl.x, this.bowl.z, p.x, p.z, ex, ez) > BOWL_R + RAMP_W / 2 + 1) {
+      shapes.push({ kind: 'dome', x: this.bowl.x, z: this.bowl.z, r: BOWL_R, h: -BOWL_DEPTH });
+    }
+    this.loadShapes(shapes);
+    this.rampBeacon();
+  }
+
+  /** Marker over the middle of the ramp. */
+  private rampBeacon(): void {
+    const r = this.ramp;
+    this.setBeacon(r.x + Math.sin(r.rot) * RAMP_LEN * 0.6, r.z + Math.cos(r.rot) * RAMP_LEN * 0.6, '▲ RAMP', 'RAMP');
+  }
+
+  /** Where the ramp's toe goes for a plow at (x, z) facing `heading`: RAMP_RUNUP ahead along the heading (or the nearest
+   *  heading whose ramp corners and landing fit inside the walls), else toward the arena centre. */
+  static rampLayout(x: number, z: number, heading: number, half = CAMPAIGN_ARENA_HALF): { x: number; z: number; rot: number } {
+    const lip = RAMP_RUNUP + RAMP_LEN;
+    const limLip = half - RAMP_W / 2 - 0.5;
+    const limEnd = half - 2;
+    const rot = Tutorial.layHeading(x, z, heading, (s, c) =>
+      Math.abs(x + s * lip) <= limLip && Math.abs(z + c * lip) <= limLip && Math.abs(x + s * RAMP_PATH) <= limEnd && Math.abs(z + c * RAMP_PATH) <= limEnd);
+    return { x: x + Math.sin(rot) * RAMP_RUNUP, z: z + Math.cos(rot) * RAMP_RUNUP, rot };
+  }
+
+  private loadShapes(shapes: TerrainShape[]): void {
+    this.shapes = shapes;
+    const def: TerrainDef = { shapes };
+    this.ctx.terrain.load(def); // SnowField follows on its next update (it watches ctx.terrain.shapes)
+  }
+
+  /** Back to the flat yard (after the terrain lessons, on finish, skip or leaving). */
+  private flatten(): void {
+    this.beacon = null;
+    this.showArrow(false);
+    if (!this.shapes) return;
+    this.shapes = null;
+    this.ctx.terrain.clear();
   }
 
   /** F-ability lesson: text follows the starter plow's fAbility (src/config/plows.ts). */
@@ -408,4 +704,16 @@ export class Tutorial {
     b.tabIndex = -1;
     b.addEventListener('mousedown', (e) => e.preventDefault());
   }
+}
+
+const _tv = new THREE.Vector3();
+const _tdir: ScreenDir = { x: 0, y: 0, behind: false };
+const _thit: EdgeHit = { x: 0, y: 0, angle: 0 };
+
+function segDist(x: number, z: number, x1: number, z1: number, x2: number, z2: number): number {
+  const vx = x2 - x1;
+  const vz = z2 - z1;
+  const l2 = vx * vx + vz * vz || 1;
+  const t = Math.max(0, Math.min(1, ((x - x1) * vx + (z - z1) * vz) / l2));
+  return Math.hypot(x - (x1 + vx * t), z - (z1 + vz * t));
 }

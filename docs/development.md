@@ -56,6 +56,18 @@ node scripts/render-probe.mjs baseline    # deterministic render metrics + pixel
 node scripts/duel-probe.mjs /tmp/duel-probe  # Duel: two pages over BroadcastChannel (lobby, catch-up garage,
                                              # best of 3, rematch, NUKE / Inferno, ARSENAL, pause, leave, lag)
 node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real PeerJS cloud server (needs internet)
+node scripts/biome-probe.mjs /tmp/biomes   # biome looks: menu / follow / sky / top-down shots of arenas 1-5 and
+                                          # the six Brawl venues (--only=0,2 --menu --game --sky --top --brawl;
+                                          # --audio plays every ambience loop + the jump / land / slam / lava sounds)
+node scripts/terrain-probe.mjs /tmp/terrain  # terrain physics on the dev test terrain (src/world/devTerrain.ts): flat
+                                             # parity, ramp airtime + land events, bowl speed, lava 8 HP/s, ice grip,
+                                             # conveyor, bots on height / around lava, last-bot hunt;
+                                             # plow mid-air + bowl shots.
+                                             # Compares the flat drive to scripts/terrain-probe.flat.json (recorded on
+                                             # the pre-terrain build; --record-flat rewrites it, known-good builds only)
+node scripts/combat3d-probe.mjs /tmp/combat3d  # 3D combat: air slam kills off the dev ramp, stomp damage, a hopping
+                                               # plow dodging BULLDOZA's leap shockwave, the leap telegraph draped
+                                               # over Inferno Quarry's pit + landing on it (shots); --noshots
 ```
 
 The realtime lagged-fight session of the duel probe needs a real GPU to keep frame rate; on software rendering it

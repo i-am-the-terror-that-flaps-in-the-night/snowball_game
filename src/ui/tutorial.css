@@ -39,3 +39,11 @@
 .ss-tut.done .ss-tut-fill { background: var(--green); }
 .ss-tut-btns { display: flex; gap: 10px; margin-top: 14px; }
 .ss-tut-btns .ss-btn { flex: 1; padding: 10px 12px; font-size: 15px; }
+
+/* Phones (portrait): the card moves to the top, under the arena / coin boxes, so it never covers the plow. */
+@media (max-width: 560px) {
+  .ss-tut { top: 128px; right: 50%; width: min(380px, calc(100vw - 24px)); padding: 10px 14px 12px; transform: translate(50%, -16px); }
+  .ss-tut.show { transform: translate(50%, 0); }
+  .ss-tut-title { font-size: 22px; margin: 4px 0 6px; }
+  .ss-tut-text { font-size: 13px; line-height: 1.35; }
+}

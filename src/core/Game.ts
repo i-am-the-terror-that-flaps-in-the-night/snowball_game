@@ -4,9 +4,11 @@ import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
 import { applyAllSettings, setBrawlPerf, settings, settingsUi } from './settings';
-import { BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
-import type { BrawlDifficulty, GameContext, HudState, RunSummary, UIHandlers } from './types';
-import { BRAWL_ZONE, ZONES } from '../config/zones';
+import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
+import type { BrawlDifficulty, EnemyHandle, GameContext, HudState, RadarState, RunSummary, UIHandlers } from './types';
+import { BIOME_ZONE, BRAWL_ZONE, ZONES, pickBrawlZone } from '../config/zones';
+import { TUTORIAL_ZONE, pickMenuZone } from './modeZones';
+import { ARROW_MAX_BOTS } from '../ui/radarMath';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import { PLOWS } from '../config/plows';
 import { SnowField } from '../world/SnowField';
@@ -16,7 +18,7 @@ import { Combat } from '../entities/Combat';
 import { EnemyManager } from '../entities/Enemies';
 import { WaveDirector } from '../entities/Waves';
 import { BrawlManager } from '../brawl/BrawlManager';
-import { SurvivalManager, fullRepairCost, survivalUnlocked } from '../survival/SurvivalManager';
+import { BIOME_EVERY, SurvivalManager, fullRepairCost, survivalUnlocked } from '../survival/SurvivalManager';
 import { Pickups } from '../fx/Pickups';
 import { Fx } from '../fx/Fx';
 import { CameraRig } from '../fx/CameraRig';
@@ -36,9 +38,11 @@ import { ULT_CAM_SECONDS, ULT_CAM_TOAST_DELAY, UltKillCam, ultCamLabel } from '.
 import type { GameEvents, KillSource } from './events';
 import { DuelManager, type DuelRole } from '../duel/DuelManager';
 import { NO_TARGETS } from '../duel/opponent';
-import { DUEL_ZONE } from '../config/duel';
+import { DUEL_ZONE, duelZoneFor } from '../config/duel';
 import { hostRoom, joinRoom, type HostRoom, type LocalLinkOpts, type Transport, type TransportKind } from '../net/transport';
 import { ROOM_CODE_LEN, cleanRoomCode } from '../ui/DuelUI';
+import { NavGraph } from '../world/omega/nav';
+import { OMEGA_NAV } from '../world/omega/layout';
 
 type State =
   | 'menu' | 'countdown' | 'playing' | 'shop' | 'paused' | 'wrecked' | 'gameover' | 'victory'
@@ -52,8 +56,7 @@ const BOSS_COUNTDOWN_SECONDS = 4;
 /** Seconds of slow-motion wreck animation before the game-over screen. */
 const WRECK_SECONDS = 1.6;
 const COMBO_WINDOW = 2.5;
-/** Arena 1 for the Tutorial, paying no coins (kills / strikes give nothing; progression is untouched). */
-const TUTORIAL_ZONE = { ...ZONES[0], coinMult: 0 };
+/* The Tutorial's Training Yard (TUTORIAL_ZONE) and the menu backdrop (pickMenuZone) live in ./modeZones. */
 
 /** Boss intro subtitle: one boss -> its title; a pair (SLUSH & SLEET) -> one "NAME — title" line each. */
 /** Per-run tallies (reset at every run / match start). */
@@ -65,6 +68,8 @@ interface RunTally {
   bossDefeated: boolean;
   killsBy: Record<KillSource, number>;
   damage: number;
+  /** Longest single flight this run (s). */
+  airtime: number;
   /** ctx.time when the run started (ctx.time only advances while the sim runs). */
   start: number;
   /** Gear loot dropped this run. */
@@ -103,6 +108,14 @@ export class Game {
   private ultToastMin = 0;
   private campaignEnemies: EnemyManager;
   private brawlDifficulty: BrawlDifficulty = 'pro';
+  /** Venues from the biome pools: a random one per Brawl match, one per Duel room code (config/zones, config/duel). */
+  private brawlZone = BRAWL_ZONE;
+  private duelZone = DUEL_ZONE;
+  /** Main-menu backdrop (and the idle campaign zone): a random campaign biome per launch, arenas 1-5 only. */
+  private menuZone = pickMenuZone(Math.random());
+  /** Campaign / Survival radar (minimap + lost-bot arrows), filled in place every HUD update. */
+  private radar: RadarState = { half: 30, me: { x: 0, y: 0, z: 0, heading: 0 }, blips: [], count: 0, obstacles: [], arrows: false };
+  private radarQ: EnemyHandle[] = [];
   private survival: SurvivalManager;
   private tutorial: Tutorial;
   private ui: UI;
@@ -142,7 +155,7 @@ export class Game {
       input: new Input(),
       progression,
       stats: progression.computeStats(),
-      zone: ZONES[0],
+      zone: this.menuZone,
       terrain: new Terrain(),
       time: 0,
     } as GameContext;
@@ -211,7 +224,7 @@ export class Game {
       if (this.state === 'shop' && this.mode === 'survival') this.applyLiveStats();
     });
 
-    // Menu backdrop: arena 0 scenery.
+    // Menu backdrop: a random campaign biome (this.menuZone).
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
     ctx.plow.applyStats(ctx.stats);
@@ -285,7 +298,7 @@ export class Game {
     this.ultCam.reset();
     this.ultToastT = 0;
     ctx.enemies = mode === 'brawl' ? ctx.brawl : mode === 'duel' ? NO_TARGETS : this.campaignEnemies;
-    ctx.zone = mode === 'brawl' ? BRAWL_ZONE : mode === 'survival' ? this.survival.zone : mode === 'duel' ? DUEL_ZONE : ZONES[0];
+    ctx.zone = mode === 'brawl' ? this.brawlZone : mode === 'survival' ? this.survival.zone : mode === 'duel' ? this.duelZone : this.menuZone;
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
@@ -301,6 +314,16 @@ export class Game {
     this.state = 'menu';
     this.tutorial.stop();
     this.clearArena();
+    // Back from the Training Yard or The Omega Works (huge, heavy): re-dress the menu's campaign biome.
+    if (ctx.zone === TUTORIAL_ZONE || ctx.zone.index >= 5) {
+      setArenaHalfSize(CAMPAIGN_ARENA_HALF);
+      setBrawlPerf(ctx, false);
+      ctx.enemies.nav = null;
+      ctx.zone = this.menuZone;
+      ctx.fx.clear();
+      ctx.world.setZone(ctx.zone);
+      ctx.snow.reset(ctx.zone);
+    }
     ctx.plow.reset();
     ctx.ui.setHudVisible(false);
     ctx.ui.showMainMenu();
@@ -326,11 +349,14 @@ export class Game {
     this.ultToastT = 0;
     return {
       kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false,
-      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0 }, damage: 0, start: this.ctx?.time ?? 0, loot: [],
+      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 0 }, damage: 0, airtime: 0, start: this.ctx?.time ?? 0, loot: [],
     };
   }
 
   /** `hard`: the arena's Hard mode (needs hardUnlocked). */
+  /** The Omega Works' bot routing graph (built on first visit). */
+  private omegaNav: NavGraph | null = null;
+
   startRun(zoneIndex: number, hard = false): void {
     const { ctx } = this;
     if (!ctx.progression.isZoneUnlocked(zoneIndex)) return;
@@ -344,10 +370,15 @@ export class Game {
     ctx.zone = hard ? hardZone(ZONES[zoneIndex]) : ZONES[zoneIndex];
     this.refreshStats();
     this.clearArena();
+    // Arena size before the world / snow are built (The Omega Works is 160 m across).
+    setArenaHalfSize(ctx.zone.arenaHalf ?? CAMPAIGN_ARENA_HALF);
+    setBrawlPerf(ctx, ctx.zone.theme === 'omega');
+    // Level routing for bots (The Omega Works' decks / ramps / bridges); none on the flat arenas.
+    ctx.enemies.nav = ctx.zone.theme === 'omega' ? (this.omegaNav ??= new NavGraph(OMEGA_NAV)) : null;
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
-    ctx.plow.reset();
+    ctx.plow.reset(ctx.zone.spawn);
     ctx.ui.hideOverlays();
     ctx.ui.setHudVisible(true);
     ctx.ui.toast(ctx.zone.name, 'big');
@@ -359,7 +390,13 @@ export class Game {
   startBrawl(difficulty: BrawlDifficulty): void {
     const { ctx } = this;
     this.brawlDifficulty = difficulty;
+    this.brawlZone = pickBrawlZone(Math.random());
     this.setMode('brawl');
+    if (ctx.zone !== this.brawlZone) {
+      // rematch (already in Brawl mode): re-dress the dome for the new venue
+      ctx.zone = this.brawlZone;
+      ctx.world.setZone(ctx.zone);
+    }
     this.run = this.newRun();
     this.combo = 0;
     this.refreshStats();
@@ -669,6 +706,7 @@ export class Game {
       coins: run.coins,
       bestCombo: run.bestCombo,
       biggestBall: run.biggestBall,
+      airtime: run.airtime,
       duration: Math.max(0, ctx.time - run.start),
       damageTaken: run.damage,
       ...extra,
@@ -689,6 +727,7 @@ export class Game {
       kills: this.run.kills,
       bestCombo: this.run.bestCombo,
       biggestBall: this.run.biggestBall,
+      airtime: this.run.airtime,
     };
   }
 
@@ -748,15 +787,16 @@ export class Game {
       this.run.killsBy[source ?? 'other']++;
       // Final-kill slow-mo: a boss, or the kill that clears a campaign round / Survival wave.
       if (this.mode !== 'brawl' && this.state === 'playing' && (enemy.isBoss || this.ctx.waves.done)) this.ctx.impact.slowMo();
-      const shot = this.ultCam.onKill(enemy.position.x, enemy.position.z);
+      const shot = this.ultCam.onKill(enemy.position.x, enemy.position.z, enemy.position.y);
       if (shot && this.ultCamAllowed()) {
         this.ctx.impact.slowMo(ULT_CAM_SECONDS);
-        this.ctx.cameraRig.cinematic(shot.x, shot.z, ULT_CAM_SECONDS);
+        this.ctx.cameraRig.cinematic(shot.x, shot.z, ULT_CAM_SECONDS, this.ctx.terrain.active ? shot.y : undefined);
         this.ultToastT = ULT_CAM_TOAST_DELAY;
         this.ultToastMin = shot.kills;
       }
     });
     events.on('plowDamaged', ({ amount }) => (this.run.damage += amount));
+    events.on('plowLanded', ({ airTime }) => (this.run.airtime = Math.max(this.run.airtime, airTime)));
     events.on('coinCollected', ({ amount }) => (this.run.coins += amount));
     events.on('enemyHit', () => {
       this.combo = this.comboT > 0 ? this.combo + 1 : 1;
@@ -987,6 +1027,7 @@ export class Game {
     this.duelAttempt++;
     this.ui.duel.closeLobby();
     this.tutorial.stop();
+    this.duelZone = duelZoneFor(code);
     this.setMode('duel');
     this.run = this.newRun();
     this.combo = 0;
@@ -1076,6 +1117,16 @@ export class Game {
     hud.countdown = counting ? Math.max(0, this.countdown) : this.state === 'duel' ? this.duel.countdown : 0;
     hud.brawl = this.mode === 'brawl' ? ctx.brawl.hud() : null;
     hud.survival = this.mode === 'survival' ? this.survival.hud() : null;
+    if (hud.survival) {
+      // Biome rotation: waves left in this arena (1 = last one here) and where the next block is fought. Once a wave
+      // is cleared (the pit stop) count from the coming wave: a block's last clear has already re-dressed the world.
+      const sv = this.survival;
+      const w = Math.max(1, sv.cleared >= sv.wave ? sv.wave + 1 : hud.survival.wave);
+      const k = BIOME_EVERY - ((w - 1) % BIOME_EVERY);
+      hud.survival.arenaIn = k;
+      hud.survival.nextArena = BIOME_ZONE[sv.biomeFor(w + k)]?.name;
+    }
+    hud.radar = this.fillRadar();
     hud.hideRound = this.state === 'tutorial' || (this.state === 'paused' && this.pausedFrom === 'tutorial');
     if (hud.brawl) {
       hud.zoneName = ctx.zone.name;
@@ -1089,6 +1140,39 @@ export class Game {
     }
     this.run.biggestBall = Math.max(this.run.biggestBall, hud.ballRadius);
     ctx.ui.updateHud(hud);
+  }
+
+  /** Campaign / Survival radar: living bots (pooled blips), the player, obstacles; arrows when 1..3 bots are left. */
+  private fillRadar(): RadarState | null {
+    const { ctx } = this;
+    if (this.mode !== 'campaign' && this.mode !== 'survival') return null;
+    const st = this.state === 'paused' ? this.pausedFrom : this.state;
+    if (st !== 'playing' && st !== 'countdown' && st !== 'wrecked' && st !== 'shop') return null;
+    const r = this.radar;
+    const p = ctx.plow.position;
+    r.half = ARENA.maxX;
+    r.me.x = p.x;
+    r.me.y = p.y;
+    r.me.z = p.z;
+    r.me.heading = ctx.plow.heading;
+    r.obstacles = ctx.world.obstacles;
+    const list = ctx.enemies.query(0, 0, ARENA.maxX * 4 + 40, this.radarQ);
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive) continue;
+      let b = r.blips[n];
+      if (!b) b = r.blips[n] = { x: 0, y: 0, z: 0, boss: false };
+      b.x = e.position.x;
+      b.y = e.position.y;
+      b.z = e.position.z;
+      b.boss = e.isBoss;
+      n++;
+    }
+    r.count = n;
+    const left = ctx.waves.remaining;
+    r.arrows = this.state === 'playing' && n > 0 && left > 0 && left <= ARROW_MAX_BOTS;
+    return r;
   }
 
   private onResize(): void {

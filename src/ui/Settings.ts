@@ -36,6 +36,7 @@ export class SettingsMenu {
   private flashBtns = new Map<boolean, HTMLButtonElement>();
   private bloomBtns = new Map<boolean, HTMLButtonElement>();
   private ultCamBtns = new Map<boolean, HTMLButtonElement>();
+  private reduceShakeBtns = new Map<boolean, HTMLButtonElement>();
   private sliders: { input: HTMLInputElement; val: HTMLElement; get: () => number }[] = [];
   private padStatus!: HTMLElement;
   private keyMsg!: HTMLElement;
@@ -140,6 +141,16 @@ export class SettingsMenu {
 
     const vid = this.section('🎥 Camera & graphics');
     this.slider(vid, 'Screen shake', () => settings.shake, (v) => (settings.shake = v));
+    const rsRow = el('div', 'ss-set-row', undefined, vid);
+    el('span', 'ss-set-label', 'Reduce screen shake', rsRow);
+    const rsSeg = el('div', 'ss-set-seg', undefined, rsRow);
+    for (const [on, label] of [[false, 'OFF'], [true, 'ON · landings, slams, hits']] as [boolean, string][]) {
+      this.reduceShakeBtns.set(on, this.btn(label, 'ss-ice ss-small', () => {
+        settings.reduceShake = on;
+        saveSettings();
+        this.refresh();
+      }, rsSeg));
+    }
     const qRow = el('div', 'ss-set-row', undefined, vid);
     el('span', 'ss-set-label', 'Quality', qRow);
     const seg = el('div', 'ss-set-seg', undefined, qRow);
@@ -231,6 +242,7 @@ export class SettingsMenu {
     for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
     for (const [on, b] of this.bloomBtns) b.classList.toggle('ss-set-on', settings.bloom === on);
     for (const [on, b] of this.ultCamBtns) b.classList.toggle('ss-set-on', settings.ultCam === on);
+    for (const [on, b] of this.reduceShakeBtns) b.classList.toggle('ss-set-on', settings.reduceShake === on);
     for (const a of ACTIONS) {
       const b = this.keyBtns.get(a.id)!;
       const keys = this.ctx.input.keysFor(a.id);

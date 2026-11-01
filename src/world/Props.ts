@@ -22,7 +22,13 @@ interface Prop {
   yaw: number;
   alive: boolean;
   obs: Obstacle;
+  /** Terrain ground height under the prop (0 on flat arenas). */
+  y: number;
 }
+
+/** Props never stand on lava or on slopes steeper than this gradient (they would float off the hillside). */
+const MAX_PROP_GRAD = 0.45;
+const _g = { gx: 0, gz: 0 };
 
 const MAX_PER_KIND = 24;
 /** Props per arena: campaign / Survival arenas, the much bigger Brawl Snowdome. */
@@ -125,8 +131,10 @@ export class Props {
           const z = cz + (rnd() - 0.5) * 4;
           const r = s * 1.25;
           if (!this.clearSpot(x, z, r, half, fixed)) continue;
+          const y = this.groundSpot(x, z, r);
+          if (y === null) continue;
           const obs: Obstacle = { x, z, r, breakable: true };
-          this.props.push({ kind, slot: used[kind]++, x, z, s, yaw: rnd() * Math.PI, alive: true, obs });
+          this.props.push({ kind, slot: used[kind]++, x, z, s, yaw: rnd() * Math.PI, alive: true, obs, y });
           obstacles.push(obs);
           fixed.push(obs);
         }
@@ -152,9 +160,36 @@ export class Props {
     return true;
   }
 
+  /** Terrain height for a prop of radius r at (x, z), or null where it can't stand: touching lava (centre + 8 points
+   *  on its rim, with a little margin), a ramp's run-up / launch / landing corridor, a steep slope. Flat arenas: 0. */
+  private groundSpot(x: number, z: number, r: number): number | null {
+    const t = this.ctx.terrain;
+    if (!t) return 0;
+    if (t.patches.length) {
+      if (t.materialAt(x, z) === 'lava') return null;
+      const rr = r + 0.4;
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        if (t.materialAt(x + Math.cos(a) * rr, z + Math.sin(a) * rr) === 'lava') return null;
+      }
+    }
+    if (!t.active) return 0;
+    for (const sh of t.shapes) {
+      if (sh.kind !== 'ramp') continue;
+      const dx = x - sh.x;
+      const dz = z - sh.z;
+      const v = dx * Math.sin(sh.rot) + dz * Math.cos(sh.rot);
+      const u = dx * Math.cos(sh.rot) - dz * Math.sin(sh.rot);
+      if (Math.abs(u) < sh.w / 2 + r + 0.5 && v > -5 - r && v < sh.len + (sh.fall ?? 1) + 7 + r) return null;
+    }
+    t.groundGrad(x, z, _g);
+    if (_g.gx * _g.gx + _g.gz * _g.gz > MAX_PROP_GRAD * MAX_PROP_GRAD) return null;
+    return t.ground(x, z);
+  }
+
   private place(p: Prop): void {
     _q.setFromAxisAngle(_up, p.yaw);
-    _m.compose(_v.set(p.x, 0, p.z), _q, _s.setScalar(p.s));
+    _m.compose(_v.set(p.x, p.y, p.z), _q, _s.setScalar(p.s));
     this.meshes[p.kind].setMatrixAt(p.slot, _m);
   }
 
@@ -171,7 +206,7 @@ export class Props {
       if (i >= 0) obs.splice(i, 1);
     }
     const fx = this.ctx.fx;
-    _v.set(p.x, p.s, p.z);
+    _v.set(p.x, p.y + p.s, p.z);
     if (p.kind === 'crate') {
       fx.burst(_v, { color: 0xa8743f, count: 16, speed: 8, size: 0.28, gravity: 18, life: 0.8 });
       fx.burst(_v, { color: 0x5a3a1a, count: 8, speed: 6, size: 0.2, gravity: 18, life: 0.7 });
@@ -181,7 +216,7 @@ export class Props {
     }
     fx.smoke(_v, { count: 2, color: 0xe2ecf8, size: 0.8, grow: 2.5, life: 0.7, speed: 1.5, up: 1, rise: -0.5, drag: 2, spread: 0.5, opacity: 0.45 });
     this.ctx.audio?.play('wallHit', { volume: 0.55, pitch: p.kind === 'ice' ? 1.35 : 0.9 });
-    if (coins && this.coins) this.ctx.pickups?.spawnCoins(_v.set(p.x, 0.5, p.z), PROP_COINS);
+    if (coins && this.coins) this.ctx.pickups?.spawnCoins(_v.set(p.x, p.y + 0.5, p.z), PROP_COINS);
   }
 
   /** Break every standing prop overlapping the circle. Returns how many broke. */

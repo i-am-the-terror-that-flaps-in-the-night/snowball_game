@@ -4,7 +4,7 @@ import { ballVolume, type CombatAPI, type EnemyHandle, type GameContext, type Im
 import { LAST_STAND_HP } from '../config/upgrades';
 import { ctxPilot, type PilotBinding } from './pilot';
 import { NP } from '../net/protocol';
-import { Threat, _fwd, _p, _q, _tip, type CombatHost } from './combat/shared';
+import { Reach, Threat, _fwd, _p, _q, _tip, bodyBand, heightOk, waveHits, BLAST_BAND, type CastOrigin, type CombatHost } from './combat/shared';
 import { Ultimates } from './combat/ultimates';
 import { BURN_VULN, ClassicKit } from './combat/classic';
 import { VoltKit } from './combat/volt';
@@ -12,6 +12,7 @@ import { BruteKit, ironHide } from './combat/brute';
 import { IsotopeKit, RAD_VULN } from './combat/isotope';
 import { ArsenalKit } from './combat/arsenal';
 import { MeleeKit } from './combat/melee';
+import { AirKit } from './combat/air';
 
 /** Seconds of damage i-frames after the plow is hit (overlapping hits only add their excess). */
 const IFRAME_SECONDS = 0.15;
@@ -58,6 +59,8 @@ export class Combat implements CombatAPI {
   private readonly isotope: IsotopeKit;
   private readonly arsenal: ArsenalKit;
   private readonly melee: MeleeKit;
+  /** Stomps, the air slam and BRUTUS's air pound (landing attacks). */
+  private readonly air: AirKit;
   private readonly ult: Ultimates;
 
   constructor(ctx: GameContext, binding?: PilotBinding) {
@@ -67,14 +70,13 @@ export class Combat implements CombatAPI {
     // Scene order kept: flame cone, lightning, fallout pools, ARSENAL fx, fire field.
     this.classic = new ClassicKit(host);
     this.lightning = new Lightning(ctx.scene);
-    const disc = new THREE.CircleGeometry(1, 32);
-    disc.rotateX(-Math.PI / 2);
-    this.isotope = new IsotopeKit(host, disc);
+    this.isotope = new IsotopeKit(host);
     this.arsenal = new ArsenalKit(host);
-    this.classic.buildField(disc);
+    this.classic.buildField();
     this.volt = new VoltKit(host);
     this.brute = new BruteKit(host);
     this.melee = new MeleeKit(host);
+    this.air = new AirKit(host, this.brute);
     this.ult = new Ultimates(host, { volt: this.volt, brute: this.brute, arsenal: this.arsenal });
   }
 
@@ -102,7 +104,8 @@ export class Combat implements CombatAPI {
       shake: (i) => this.shake(i),
       impactHit: (kind, pos, strength, opts) => this.impactHit(kind, pos, strength, opts),
       smashProps: (x, z, r) => this.smashProps(x, z, r),
-      collect: (x, z, r) => this.collect(x, z, r),
+      collect: (x, z, r, reach, from) => this.collect(x, z, r, reach, from),
+      reaches: (e, reach, from) => this.reaches(e, reach, from),
       clearTargets: () => {
         this.targets.length = 0;
       },
@@ -245,6 +248,15 @@ export class Combat implements CombatAPI {
     const stats = this.b.stats;
     // Mid Ground Pound leap: out of reach until the slam lands.
     if (!plow || plow.dead || amount <= 0 || plow.invulnerable || this.guardT > 0 || this.brute.poundT >= 0) return 0;
+    // Height rule: a bot's body / blade only reaches a plow near its own height (a plow flying over it, or on a deck
+    // above, is out of reach). Non-contact hits (boss ground shockwaves, which check the wave rule themselves in
+    // enemies/bosses.ts, and reflected / thrown hits) come through combat/shared.ts waveHitPlow with no `attacker`,
+    // so this body band never applies to them.
+    const a = opts?.attacker;
+    if (a && !heightOk(a.position.y, plow.position.y, bodyBand(a.radius))) return 0;
+
+    // Feedback fx sit on the surface under the plow (0 on flat arenas; on a deck, the deck top).
+    const base = plow.surfaceY || 0;
 
     // Direction plow -> attacker.
     let dx = fromX - plow.position.x;
@@ -297,9 +309,9 @@ export class Combat implements CombatAPI {
       final = Math.max(0, plow.hp - 1);
       this.secondWindReadyAt = ctx.time + stats.secondWindCd;
       this.guardT = SECOND_WIND_GUARD;
-      _q.set(plow.position.x, 3.4, plow.position.z);
+      _q.set(plow.position.x, base + 3.4, plow.position.z);
       ctx.fx.floatText(_q, 'SECOND WIND!', '#9fe6ff', 1.3);
-      _q.set(plow.position.x, 0.1, plow.position.z);
+      _q.set(plow.position.x, base + 0.1, plow.position.z);
       ctx.fx.ring(_q, 6, 0x9fe6ff);
       this.shake(0.5);
       this.b.audio.play('respawn');
@@ -308,9 +320,9 @@ export class Combat implements CombatAPI {
       plow.damage(final);
       plow.feedSawFury(0, final);
       if (!lastStandBefore && !plow.dead && this.lastStandMult() > 1) {
-        _q.set(plow.position.x, 3.8, plow.position.z);
+        _q.set(plow.position.x, base + 3.8, plow.position.z);
         ctx.fx.floatText(_q, 'LAST STAND!', '#ff6a3a', 1.2);
-        _q.set(plow.position.x, 0.1, plow.position.z);
+        _q.set(plow.position.x, base + 0.1, plow.position.z);
         ctx.fx.ring(_q, 5, 0xff6a3a);
       }
     }
@@ -322,11 +334,11 @@ export class Combat implements CombatAPI {
     // Feedback.
     const fx = ctx.fx;
     const audio = this.b.audio;
-    _p.set(plow.position.x + dx * 1.5, 1.1, plow.position.z + dz * 1.5);
+    _p.set(plow.position.x + dx * 1.5, base + 1.1, plow.position.z + dz * 1.5);
     if (blocked > 0) {
       plow.getBladeTip(_tip);
       const br = Math.max(r, 0.3);
-      _q.set(_tip.x + _fwd.x * br, br + (this.b.snow ? this.b.snow.getDepth(_tip.x, _tip.z) : 0), _tip.z + _fwd.z * br);
+      _q.set(_tip.x + _fwd.x * br, _tip.y + br + (this.b.snow ? this.b.snow.getDepth(_tip.x, _tip.z) : 0), _tip.z + _fwd.z * br);
       fx.burst(_q, { color: 0xffffff, count: 10 + Math.round(blocked * 0.6), speed: 5, size: 0.22, gravity: 16, life: 0.6 });
       fx.burst(_q, { color: 0xbfe6ff, count: 6, speed: 3, size: 0.14, gravity: 8, life: 0.5 });
       if (ctx.time - this.lastBlockSound > 0.08) {
@@ -344,14 +356,13 @@ export class Combat implements CombatAPI {
       this.shake(THREE.MathUtils.clamp(0.15 + final * 0.016, 0.15, 0.6));
       if (this.b.local) ctx.impact.playerHit(final, fromX, fromZ);
       audio.play('plowHit', { volume: Math.min(1, (blocked > 0 ? 0.35 : 0.55) + final * 0.02), pitch: THREE.MathUtils.clamp(1.15 - final * 0.01, 0.75, 1.15) });
-      _q.set(plow.position.x, 2.8, plow.position.z);
+      _q.set(plow.position.x, base + 2.8, plow.position.z);
       fx.floatText(_q, `-${Math.round(final)}`, '#ff5a4a', 0.8 + Math.min(0.6, final * 0.015));
     } else if (blocked > 0) {
       this.shake(0.12);
     }
 
     if (final > 0) {
-      const a = opts?.attacker;
       if (a) this.threat.add(a, final);
       else this.noteThreat(fromX, fromZ, final);
     }
@@ -373,6 +384,8 @@ export class Combat implements CombatAPI {
   /* ------------------------------------------------------------------ plow -> bots */
 
   playerRam(enemy: EnemyHandle, closingSpeed: number): number {
+    // Rams and dash strikes are body hits: nothing when flying over the bot or it sits on a deck above / below.
+    if (!this.reaches(enemy, Reach.Body)) return 0;
     return this.melee.playerRam(enemy, closingSpeed);
   }
 
@@ -402,15 +415,37 @@ export class Combat implements CombatAPI {
     if (this.b.authoritative) this.ctx.world?.blastProps(x, z, r);
   }
 
-  /** Snapshot of living enemies overlapping a circle (copied: damage() may mutate manager lists). */
-  private collect(x: number, z: number, radius: number): EnemyHandle[] {
+  /** Snapshot of living enemies overlapping a circle (copied: damage() may mutate manager lists), filtered by the
+   *  height rule `reach` (combat/shared.ts), judged from the plow or from a fixed cast origin `from`. */
+  private collect(x: number, z: number, radius: number, reach: Reach = Reach.Any, from?: CastOrigin): EnemyHandle[] {
     const enemies = this.b.enemies;
     const out = this.targets;
     out.length = 0;
     if (!enemies) return out;
     const q = enemies.query(x, z, radius, this.queryOut);
-    for (let i = 0; i < q.length; i++) out.push(q[i]);
+    for (let i = 0; i < q.length; i++) if (reach === Reach.Any || this.reaches(q[i], reach, from)) out.push(q[i]);
     return out;
+  }
+
+  /** Height rule for one target vs the bound plow: Body = feet-to-feet within bodyBand; Wave / Blast = the target
+   *  stands on the floor of the plow's level (within WAVE_BAND / BLAST_BAND of it; a wave started on a deck stays on
+   *  it), or feet-to-feet while the plow is in the air. With `from` (persistent ground attacks: fire field, pools,
+   *  quake rings) the floor where the attack was cast stands in for the plow, grounded, whatever the plow does since.
+   *  Targets without a height (duel adapters, tests) sit at 0 like a flat arena. */
+  private reaches(e: EnemyHandle, reach: Reach, from?: CastOrigin): boolean {
+    if (reach === Reach.Any) return true;
+    const ey = e.position.y;
+    const band = reach === Reach.Blast ? BLAST_BAND : undefined;
+    if (from) {
+      if (reach === Reach.Body) return heightOk(from.y, ey, bodyBand(e.radius));
+      return waveHits(this.ctx.terrain, from.y, false, e.position.x, e.position.z, ey, band, from.deck);
+    }
+    const plow = this.b.plow;
+    if (!plow) return true;
+    const py = plow.position.y;
+    if (reach === Reach.Body) return heightOk(py, ey, bodyBand(e.radius));
+    const deck = typeof plow.deck === 'number' ? plow.deck : -1;
+    return waveHits(this.ctx.terrain, py, plow.airborne === true, e.position.x, e.position.z, ey, band, deck);
   }
 
   /** Pilot perks that trigger on the player's own hits: Salvage Rig lifesteal and Adrenaline refunds.
@@ -424,7 +459,7 @@ export class Combat implements CombatAPI {
     if (dealt > 0) this.ult.feed(dealt);
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.volt.chainLightning(target, dealt, heal);
     if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
-    if (killed && target && st.chainBlast > 0 && this.isotope.rads.has(target)) this.isotope.chainQueue.push({ x: target.position.x, z: target.position.z });
+    if (killed && target && st.chainBlast > 0 && this.isotope.rads.has(target)) this.isotope.chainQueue.push({ x: target.position.x, y: target.position.y, z: target.position.z });
     if (killed && st.killRecharge > 0) {
       // Plow keeps its cooldown charges private; refund them through a narrow duck-typed view.
       const p = plow as unknown as { dashCharge: number; whirlCharge: number };
@@ -442,6 +477,7 @@ export class Combat implements CombatAPI {
     this.isotope.clear();
     this.arsenal.clear();
     this.melee.clear();
+    this.air.clear();
     this.threat.clear();
     if (!betweenRounds) this.critCharge = 0;
     this.guardT = 0;
@@ -453,6 +489,8 @@ export class Combat implements CombatAPI {
 
   update(dt: number): void {
     if (this.guardT > 0) this.guardT = Math.max(0, this.guardT - dt);
+    // Landings first (stomp / air slam / air pound), then a new air-slam press (the plow already moved this frame).
+    this.air.update(dt);
     // Order kept from the single-file Combat: kits interleave where they always did.
     this.classic.updateFlame(dt);
     this.classic.updateBurns(dt);

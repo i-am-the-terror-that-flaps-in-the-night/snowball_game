@@ -24,6 +24,8 @@ export function ultCamLabel(kills: number): string {
 export interface UltCamShot {
   x: number;
   z: number;
+  /** Mean feet height of the kills (terrain arenas; 0 on flat ground). */
+  y: number;
   kills: number;
 }
 
@@ -34,23 +36,26 @@ export class UltKillCam {
   private n = 0;
   private sx = 0;
   private sz = 0;
+  private sy = 0;
 
   /** The player's ultimate just went off. A new ultimate opens a fresh window. */
   onUlt(): void {
     this.t = ULT_CAM_WINDOW;
     this.fired = false;
-    this.n = this.sx = this.sz = 0;
+    this.n = this.sx = this.sz = this.sy = 0;
   }
 
-  /** A player kill at (x, z). Returns the shot to play when this is the kill that triggers the cam, else null. */
-  onKill(x: number, z: number): UltCamShot | null {
+  /** A player kill at (x, z) (feet height y). Returns the shot to play when this is the kill that triggers the cam,
+   *  else null. */
+  onKill(x: number, z: number, y = 0): UltCamShot | null {
     if (this.t <= 0) return null;
     this.n++;
     this.sx += x;
     this.sz += z;
+    this.sy += y;
     if (this.fired || this.n < ULT_CAM_KILLS) return null;
     this.fired = true;
-    return { x: this.sx / this.n, z: this.sz / this.n, kills: this.n };
+    return { x: this.sx / this.n, z: this.sz / this.n, y: this.sy / this.n, kills: this.n };
   }
 
   /** Kills so far in the open window (0 when closed); for a running tally after the cam fires. */
@@ -65,6 +70,6 @@ export class UltKillCam {
   reset(): void {
     this.t = 0;
     this.fired = false;
-    this.n = this.sx = this.sz = 0;
+    this.n = this.sx = this.sz = this.sy = 0;
   }
 }

@@ -34,6 +34,15 @@ export class PlowHandle implements EnemyHandle {
   get alive(): boolean {
     return !this.plow.dead;
   }
+  get airborne(): boolean {
+    return this.plow.airborne;
+  }
+  get vy(): number {
+    return this.plow.vy;
+  }
+  get deck(): number {
+    return this.plow.deck;
+  }
 }
 
 /** One landed hit, for the host's event stream (float text / sound / knockback on the guest). */
@@ -84,6 +93,9 @@ export class OpponentTarget implements EnemyManagerAPI {
   spawn(): EnemyHandle {
     return this.handle;
   }
+
+  /** A human plow is never thrown by the opponent's attacks (its own terrain physics fly it). */
+  launch(): void {}
 
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[] {
     const res = out ?? this.out;
@@ -187,4 +199,5 @@ export const NO_TARGETS: EnemyManagerAPI = {
   aliveCount: () => 0,
   clear: () => {},
   update: () => {},
+  launch: () => {},
 };

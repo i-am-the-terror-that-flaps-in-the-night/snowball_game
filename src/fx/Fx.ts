@@ -66,7 +66,24 @@ export class Fx implements FxAPI {
   private tmpColor = new THREE.Color();
   private tmpV = new THREE.Vector3();
   private side = new THREE.Vector3();
-  private readonly ground = (x: number, z: number): number => (this.ctx.snow ? this.ctx.snow.getDepth(x, z) : 0);
+  /** Top of the snow in world height (terrain ground + depth; just the depth on flat arenas). */
+  private readonly ground = (x: number, z: number): number => (this.ctx.snow ? this.ctx.snow.topAt(x, z) : 0);
+  /**
+   * Arenas with decks: the surface an effect at height y lands on (the deck top under it, or the snow top on the
+   * ground). Height only (Terrain.heightAt: no gradient / material), so falling chunks, sparks and decals stay cheap.
+   */
+  private readonly deckGround = (x: number, z: number, y: number): number => {
+    const t = this.ctx.terrain;
+    const h = t.heightAt(x, z, y);
+    // Snow lies on the ground layer only.
+    return t.heightDeck >= 0 || !this.ctx.snow ? h : h + this.ctx.snow.getDepth(x, z);
+  };
+  /** The surface an effect at height y lands on: deckGround on arenas with decks, else the snow top (the cheap path). */
+  private groundAt(x: number, z: number, y: number): number {
+    const t = this.ctx.terrain;
+    if (!t || t.decks.length === 0) return this.ground(x, z);
+    return this.deckGround(x, z, y);
+  }
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -273,7 +290,7 @@ export class Fx implements FxAPI {
   powder(pos: THREE.Vector3, opts?: PowderOpts): void {
     const sc = opts?.size ?? 1;
     const color = opts?.color ?? 0xd6e3f3;
-    const gy = this.ground(pos.x, pos.z);
+    const gy = this.groundAt(pos.x, pos.z, pos.y);
     this.tmpV.set(pos.x, Math.max(pos.y, gy + 0.3), pos.z);
     // Ground-hugging ring that races outward + a lazy column of powder in the middle.
     this.smoke(this.tmpV, {
@@ -299,7 +316,7 @@ export class Fx implements FxAPI {
   }
 
   scorch(pos: THREE.Vector3, radius: number, strength = 0.85): void {
-    this.scorchBatch.spawn(pos.x, this.ground(pos.x, pos.z) + 0.03, pos.z, radius, strength);
+    this.scorchBatch.spawn(pos.x, this.groundAt(pos.x, pos.z, pos.y) + 0.03, pos.z, radius, strength);
   }
 
   fireball(pos: THREE.Vector3, scale = 1): void {
@@ -436,7 +453,7 @@ export class Fx implements FxAPI {
   }
 
   ring(pos: THREE.Vector3, radius: number, color = 0xffffff): void {
-    this.ringBatch.spawn(pos.x, 0.08 + this.ground(pos.x, pos.z), pos.z, radius, color);
+    this.ringBatch.spawn(pos.x, 0.08 + this.groundAt(pos.x, pos.z, pos.y), pos.z, radius, color);
   }
 
   shake(intensity: number): void {
@@ -463,6 +480,7 @@ export class Fx implements FxAPI {
   update(dt: number): void {
     this.lastDt = dt > 0 ? dt : 1 / 60;
     const snow = this.ctx.snow;
+    const decks = !!this.ctx.terrain && this.ctx.terrain.decks.length > 0;
     const { px, py, pz, vx, vy, vz, age, life, size, grav, drag, rot, rotV, col } = this;
     const d = this.dummy;
     let i = 0;
@@ -475,10 +493,12 @@ export class Fx implements FxAPI {
       const dr = Math.max(0, 1 - drag[i] * dt);
       vx[i] *= dr; vz[i] *= dr;
       vy[i] = vy[i] * dr - grav[i] * dt;
+      const y0 = py[i];
       px[i] += vx[i] * dt; py[i] += vy[i] * dt; pz[i] += vz[i] * dt;
       rot[i] += rotV[i] * dt;
-      if (vy[i] < 0 && py[i] < 2) {
-        const floor = (snow ? snow.getDepth(px[i], pz[i]) : 0) + 0.05;
+      // Decks: land on the deck top under the particle (queried from before the move), at any height.
+      if (vy[i] < 0 && (decks || py[i] < 2)) {
+        const floor = (decks ? this.groundAt(px[i], pz[i], y0 - 0.05) : snow ? snow.topAt(px[i], pz[i]) : 0) + 0.05;
         if (py[i] < floor) {
           py[i] = floor;
           vy[i] *= -0.25;
@@ -515,10 +535,12 @@ export class Fx implements FxAPI {
     }
 
     this.updateSmolders(dt);
-    this.sparkBatch.update(dt, this.ground);
+    // Sparks and scorch decals land on the deck under them on deck arenas (height-aware); elsewhere the old snow top.
+    const fxGround = decks ? this.deckGround : this.ground;
+    this.sparkBatch.update(dt, fxGround, decks);
     this.puffBatch.update(dt, this.ground);
     this.ringBatch.update(dt);
-    this.scorchBatch.update(dt, this.ground);
+    this.scorchBatch.update(dt, fxGround);
 
     // Labels
     const cam = this.ctx.camera;

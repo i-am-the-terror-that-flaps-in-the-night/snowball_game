@@ -27,6 +27,11 @@ import { makeShadowProxy } from '../render/shadowProxy';
 import { getPaintEnvMap } from '../render/reflections';
 import { cosmeticsState, resolveLook, type EquippedLook } from '../meta/cosmetics';
 import { GearVisuals } from './gearVisuals';
+import { STEP_UP, makeSurface, type Deck } from '../world/Terrain';
+import { AIR_SLAM_MIN_HEIGHT } from './combat/air';
+import {
+  AIR_STEER, ICE_ACCEL, ICE_BRAKE, ICE_DRAG, ICE_GRIP, LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, makeVert, slopeAccel, stepVertical,
+} from '../world/terrainMotion';
 
 /* Model layout (local, facing +Z): rear dump bed at -Z, cab mid-front, hood, blade at BLADE_Z. */
 const BLADE_Z = 2.35;
@@ -78,6 +83,14 @@ const TRAIL_EVERY_DASH = 0.025;
 const TRAIL_MIN_SPEED = 2.5;
 /** Share of camera shake a duel opponent's plow causes on this screen. */
 const REMOTE_SHAKE = 0.35;
+/** Terrain: plow height (m) for ceiling bonks / deck walls; slope speed bonus decay (m/s²) above the speed cap. */
+const PLOW_HEIGHT = 2.4;
+const SLOPE_BOOST_DECAY = 1.5;
+/** Seconds of reduced grip that linger after leaving ice (blend back to full grip). */
+const ICE_LINGER = 0.35;
+/** Lava: seconds between 'lavaBurn' sounds, and between batched plowDamaged events. */
+const LAVA_SFX_GAP = 0.45;
+const LAVA_EVENT_GAP = 0.5;
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -93,6 +106,13 @@ const _e = new THREE.Euler();
 const _p = new THREE.Vector3();
 const _one = new THREE.Vector3(1, 1, 1);
 const _up = new THREE.Vector3(0, 1, 0);
+const _ballSurf = makeSurface();
+
+/** The deck with this id (a short scan; no allocation), or null. */
+function deckById(decks: readonly Deck[], id: number): Deck | null {
+  for (let i = 0; i < decks.length; i++) if (decks[i].id === id) return decks[i];
+  return null;
+}
 
 interface Streak {
   x: number;
@@ -228,6 +248,36 @@ export class Plow implements PlowAPI {
   private dashTargets: EnemyHandle[] = [];
   private spinAngle = 0;
   private wallCd = 0;
+
+  // terrain (world/Terrain.ts via ctx.terrain; shared vertical model in world/terrainMotion.ts)
+  private vert = makeVert();
+  private surf = makeSurface();
+  private conv = { x: 0, z: 0 };
+  private wallOut = { x: 0, z: 0 };
+  /** Snow ride height above the surface (smoothed); position.y = surface + ride while grounded. */
+  private ride = 0;
+  /** Over-the-cap speed earned rolling downhill (decays); the cap settle leaves it alone. */
+  private slopeBoost = 0;
+  /** Actual horizontal velocity (m/s). Equals forward * speed on normal ground; lags the heading on ice / in the air. */
+  private velX = 0;
+  private velZ = 0;
+  /** 0..1 ice blend (1 on ice, fades out over ICE_LINGER after leaving it). */
+  private ice = 0;
+  /** 0..1 lava burn glow; lava damage batched for the event / sound throttles. */
+  private burn = 0;
+  private lavaAcc = 0;
+  private lavaEventT = 0;
+  private lavaSfxT = 0;
+  /** Smoothed body tilt to the surface (rad) and the landing squash (0..1). */
+  private tiltP = 0;
+  private tiltR = 0;
+  private squash = 0;
+  /** Surface height when wrecked (debris rest heights sit on it). */
+  private wreckGround = 0;
+  /** Duel opponent puppet: the host's feet height / flight state this frame (null = not a puppet). */
+  private puppetY: number | null = null;
+  private puppetAir = false;
+  private puppetVy = 0;
 
   // visuals
   private spin = new THREE.Group();
@@ -607,6 +657,8 @@ export class Plow implements PlowAPI {
 
     this.spin.add(this.body);
     this.object.add(this.spin);
+    // Yaw first, then the terrain pitch / roll in the hull's own frame (identical to a plain yaw when the tilt is 0).
+    this.object.rotation.order = 'YXZ';
 
     // Parts that pop off when wrecked.
     const pop = (obj: THREE.Object3D, rest: number) =>
@@ -729,6 +781,34 @@ export class Plow implements PlowAPI {
   get invulnerable(): boolean {
     return !this._dead && (this.spawnProt > 0 || this.dashT > DASH_SECONDS - DASH_IFRAMES);
   }
+  get airborne(): boolean {
+    return this.vert.airborne;
+  }
+  get vy(): number {
+    return this.vert.vy;
+  }
+  get airTime(): number {
+    return this.vert.airborne ? this.vert.airTime : 0;
+  }
+  get deck(): number {
+    return this.vert.deck;
+  }
+  get surfaceY(): number {
+    return this.vert.surfaceY;
+  }
+  /** 0..1 how much the plow is on ice right now (HUD / probes). */
+  get onIce(): number {
+    return this.ice;
+  }
+  /** Material under the plow (last terrain step). */
+  get material(): string {
+    return this.surf.material;
+  }
+  /** Air slam: dive at `speed` m/s (only while airborne). */
+  dive(speed: number): void {
+    if (!this.vert.airborne || this._dead) return;
+    this.vert.vy = -Math.abs(speed);
+  }
 
   /** Re-bind this plow to another pilot (the online Duel), or back to the single-player singletons (null). */
   bind(binding: PilotBinding | null): void {
@@ -799,6 +879,9 @@ export class Plow implements PlowAPI {
     out[o + NP.throttle] = this._dead ? 0 : this.b.input.throttle;
     out[o + NP.steer] = this._dead ? 0 : this.b.input.steer;
     out[o + NP.sawFury] = this.sawFury;
+    out[o + NP.y] = this.position.y;
+    out[o + NP.vy] = this.vert.vy;
+    out[o + NP.air] = this.vert.airborne ? 1 : 0;
   }
 
   /**
@@ -852,6 +935,22 @@ export class Plow implements PlowAPI {
     this.position.x = s[o + NP.x];
     this.position.z = s[o + NP.z];
     this.heading = s[o + NP.heading];
+    // Height / flight from the host (updateVisuals places the hull with it). Launches and landings replay locally like
+    // the host's own: jump sound; land sound, squash, snow puff and (hard landings) ring, at the touchdown speed (the
+    // last airborne vy). No events (Combat's AirKit polls the puppet for stomps / air slams on the host's side only).
+    const wasAir = this.puppetAir;
+    const lastVy = this.puppetVy;
+    this.puppetY = s[o + NP.y];
+    this.puppetVy = s[o + NP.vy];
+    this.puppetAir = s[o + NP.air] > 0.5;
+    if (!dead && !this._dead) {
+      if (!wasAir && this.puppetAir) this.b.audio.play('jump', { volume: 0.8 });
+      else if (wasAir && !this.puppetAir) {
+        const t = this.ctx.terrain;
+        const ground = t.active ? t.heightAt(this.position.x, this.position.z, this.puppetY) : 0;
+        this.landFx(Math.max(0, -lastVy), ground);
+      }
+    }
     this.speed = s[o + NP.speed];
     this.maxHp = s[o + NP.maxHp];
     if (dead && !this._dead) {
@@ -954,7 +1053,7 @@ export class Plow implements PlowAPI {
   getBladeTip(out: THREE.Vector3): THREE.Vector3 {
     const s = Math.sin(this.heading);
     const c = Math.cos(this.heading);
-    return out.set(this.position.x + s * TIP_Z, 0, this.position.z + c * TIP_Z);
+    return out.set(this.position.x + s * TIP_Z, this.vert.surfaceY, this.position.z + c * TIP_Z);
   }
 
   damage(amount: number): void {
@@ -983,6 +1082,26 @@ export class Plow implements PlowAPI {
     const sp = at ?? PLOW_SPAWN;
     this.position.set(sp.x, 0, sp.z);
     this.heading = sp.heading;
+    // Terrain: start on the topmost surface at the spawn point (flat arenas: 0, as always).
+    const t = this.ctx.terrain;
+    const v = this.vert;
+    v.surfaceY = t && t.active ? t.surfaceAt(sp.x, sp.z, Infinity, this.surf).y : 0;
+    v.deck = t && t.active ? this.surf.deck : -1;
+    v.y = v.surfaceY;
+    v.vy = 0;
+    v.airborne = false;
+    v.airTime = 0;
+    this.position.y = v.y;
+    this.ride = 0;
+    this.slopeBoost = 0;
+    this.velX = this.velZ = 0;
+    this.ice = 0;
+    this.burn = 0;
+    this.lavaAcc = 0;
+    this.lavaEventT = 0;
+    this.lavaSfxT = 0;
+    this.tiltP = this.tiltR = 0;
+    this.squash = 0;
     this.spawnProt = at ? SPAWN_PROTECT : 0;
     this.dashEase = 0;
     this.dashSpeed = 0;
@@ -1312,6 +1431,7 @@ export class Plow implements PlowAPI {
     const b = this.b;
     const stats = b.stats;
     this.time += dt;
+    this.puppetY = null;
     if (stats.bladeWidth !== this.bladeWidth) this.setBladeWidth(stats.bladeWidth);
     if (stats.maxHp !== this.maxHp) this.applyStats(stats);
     this.updateGhosts(dt);
@@ -1361,7 +1481,9 @@ export class Plow implements PlowAPI {
     // ---- abilities
     if (input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
     const armed = this.kind === 'arsenal';
-    if (armed) this.slamBuffer = 0;
+    // Airborne and clear of the surface, SPACE is the air slam (Combat's AirKit dives, ball or not): no ground slam,
+    // and no 'error' buzz for a missing ball. ARSENAL's SPACE is its autocannon either way.
+    if (armed || (this.vert.airborne && this.vert.y - this.vert.surfaceY >= AIR_SLAM_MIN_HEIGHT)) this.slamBuffer = 0;
     if (this.slamBuffer > 0 && this.slamPhase === 0 && this.slamCd <= 0 && this.whirlT < 0) {
       this.slamBuffer = 0;
       if (this.heldBallRadius >= MIN_BALL_RADIUS) {
@@ -1402,46 +1524,93 @@ export class Plow implements PlowAPI {
     const maxF = stats.maxSpeed * (1 - 0.2 * Math.min(1, heldR / maxBallR)) * (this.whirlT >= 0 ? WHIRL_SPEED : 1);
     const accel = stats.accel;
     const maxRev = stats.maxSpeed * 0.45;
+    // Terrain: no traction in the air (speed carries), less on ice (spinning wheels, long braking, long coasting).
+    const air = this.vert.airborne;
+    const iceK = this.ice;
+    const accK = 1 - (1 - ICE_ACCEL) * iceK;
+    const brakeK = 1 - (1 - ICE_BRAKE) * iceK;
+    const dragK = 1 - (1 - ICE_DRAG) * iceK;
     if (this.dashT > 0) {
       // Committed lunge: full burst speed, no cap.
       this.speed = this.dashSpeed;
+    } else if (air) {
+      this.speed *= Math.exp(-0.15 * dt);
     } else if (throttle > 0) {
-      if (this.speed < 0) this.speed += accel * 2.2 * dt;
-      else if (this.speed < maxF) this.speed = Math.min(maxF, this.speed + accel * dt * (1 - 0.35 * (this.speed / maxF)));
+      if (this.speed < 0) this.speed += accel * 2.2 * brakeK * dt;
+      else if (this.speed < maxF) this.speed = Math.min(maxF, this.speed + accel * accK * dt * (1 - 0.35 * (this.speed / maxF)));
     } else if (throttle < 0) {
-      if (this.speed > 0) this.speed -= accel * 2.2 * dt;
-      else if (this.speed > -maxRev) this.speed = Math.max(-maxRev, this.speed - accel * 0.7 * dt);
+      if (this.speed > 0) this.speed -= accel * 2.2 * brakeK * dt;
+      else if (this.speed > -maxRev) this.speed = Math.max(-maxRev, this.speed - accel * 0.7 * accK * dt);
     } else {
-      const drag = (3 + Math.abs(this.speed) * 0.35) * dt;
+      const drag = (3 + Math.abs(this.speed) * 0.35) * dragK * dt;
       this.speed = Math.abs(this.speed) <= drag ? 0 : this.speed - Math.sign(this.speed) * drag;
     }
+    // Slopes: gravity along the slope (faster into dips, slower climbing out). Speed gained downhill past the cap is
+    // kept as slopeBoost (it bleeds off slowly) instead of being settled away like a dash.
+    if (!air && this.ctx.terrain.active && this.dashT <= 0) {
+      this.getForward(_fwd);
+      const sa = slopeAccel(this.ctx.terrain, this.surf, _fwd.x, _fwd.z);
+      if (sa !== 0) {
+        this.speed += sa * dt;
+        if (sa > 0 && this.speed > maxF) this.slopeBoost = Math.max(this.slopeBoost, this.speed - maxF);
+      }
+    }
+    if (this.slopeBoost > 0) {
+      this.slopeBoost = Math.max(0, Math.min(this.slopeBoost - SLOPE_BOOST_DECAY * dt, this.speed - maxF));
+    }
     // Over cap (dash ended / ball got heavier / whirl): settle back — fast ease right after a dash.
-    if (!this.dashing && this.speed > maxF) {
-      const rate = this.dashEase > 0 ? Math.max(14, (this.speed - maxF) / Math.max(0.06, this.dashEase)) : 14;
-      this.speed = Math.max(maxF, this.speed - rate * dt);
+    if (!this.dashing && this.speed > maxF + this.slopeBoost && !air) {
+      const cap = maxF + this.slopeBoost;
+      const rate = this.dashEase > 0 ? Math.max(14, (this.speed - cap) / Math.max(0.06, this.dashEase)) : 14;
+      this.speed = Math.max(cap, this.speed - rate * dt);
     }
 
     // ---- steering
     const absS = Math.abs(this.speed);
     const f = 0.35 + 0.65 * Math.min(1, absS / 4);
     const reversing = this.speed < -0.2 || (absS <= 0.2 && throttle < 0);
-    const turn = steer * stats.turnRate * f * (reversing ? -1 : 1) * (this.dashing ? DASH_STEER : this.whirlT >= 0 ? WHIRL_STEER : 1);
+    const turn = steer * stats.turnRate * f * (reversing ? -1 : 1) * (this.dashing ? DASH_STEER : this.whirlT >= 0 ? WHIRL_STEER : 1) * (air ? AIR_STEER : 1);
     this.heading += turn * dt;
 
     // ---- integrate
     this.getForward(_fwd);
     const vf = this.speed + this.lungeVel;
-    this.position.x += _fwd.x * vf * dt + this.pushVel.x * dt;
-    this.position.z += _fwd.z * vf * dt + this.pushVel.z * dt;
+    // Grip: on normal ground the velocity IS forward * speed (as always); on ice it swings toward it slowly (drifts);
+    // in the air it keeps its course while the hull turns.
+    const wantX = _fwd.x * vf;
+    const wantZ = _fwd.z * vf;
+    if (air) {
+      // keep velX / velZ
+    } else if (iceK > 0) {
+      const grip = ICE_GRIP + (1 - iceK) * 30;
+      const k = 1 - Math.exp(-grip * dt);
+      this.velX += (wantX - this.velX) * k;
+      this.velZ += (wantZ - this.velZ) * k;
+    } else {
+      this.velX = wantX;
+      this.velZ = wantZ;
+    }
+    this.position.x += this.velX * dt + this.pushVel.x * dt;
+    this.position.z += this.velZ * dt + this.pushVel.z * dt;
     this.pushVel.multiplyScalar(Math.exp(-6.5 * dt));
+    // Conveyor strips carry anything standing on them.
+    const terr = this.ctx.terrain;
+    if (!air && terr.conveyors.length) {
+      terr.conveyorAt(this.position.x, this.position.z, this.vert.deck, this.conv);
+      this.position.x += this.conv.x * dt;
+      this.position.z += this.conv.z * dt;
+    }
     this.clampToArena(vf, dt);
     this.collideObstacles(vf, dt);
+    if (terr.decks.length) this.collideDecks(vf, dt);
     if (this.dashT > 0) this.dashHits();
+    this.terrainStep(dt);
 
     // ---- plowing
     let plowIntensity = 0;
     _right.set(Math.cos(this.heading), 0, -Math.sin(this.heading));
-    if (this.whirlT < 0 && vf > 0.5 && !armed) {
+    // Snow lies on the ground layer only: no plowing (or spilling) on a deck, whatever snow is under it.
+    if (this.whirlT < 0 && vf > 0.5 && !armed && !this.vert.airborne && this.vert.deck < 0) {
       const dashing = this.dashT > 0;
       const bx = this.position.x + _fwd.x * BLADE_Z;
       const bz = this.position.z + _fwd.z * BLADE_Z;
@@ -1467,8 +1636,8 @@ export class Plow implements PlowAPI {
         plowIntensity = Math.min(1, removed / dt / 8);
         if (dashing && removed > 0.005) {
           // Thick wake: snow blasted off both blade ends.
-          _a.y = 0.6;
-          _b.y = 0.6;
+          _a.y = this.vert.surfaceY + 0.6;
+          _b.y = this.vert.surfaceY + 0.6;
           ctx.fx.burst(_a, { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 });
           ctx.fx.burst(_b, { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 });
           if (Math.random() < dt * 30) {
@@ -1477,8 +1646,8 @@ export class Plow implements PlowAPI {
           }
         }
         if (plowIntensity > 0.02) {
-          _a.y = snow.getDepth(_a.x, _a.z) + 0.3;
-          _b.y = snow.getDepth(_b.x, _b.z) + 0.3;
+          _a.y = this.vert.surfaceY + snow.getDepth(_a.x, _a.z) + 0.3;
+          _b.y = this.vert.surfaceY + snow.getDepth(_b.x, _b.z) + 0.3;
           _dir.set(-_right.x + _fwd.x * 0.5, 0.9, -_right.z + _fwd.z * 0.5).normalize();
           ctx.fx.spray(_a, _dir, plowIntensity);
           _dir.set(_right.x + _fwd.x * 0.5, 0.9, _right.z + _fwd.z * 0.5).normalize();
@@ -1554,11 +1723,11 @@ export class Plow implements PlowAPI {
     if (this.look.horn.sound) this.b.audio.play(this.look.horn.sound, { volume: 0.4, pitch: 1.25 });
     // Rear blast: snow kicked back + exhaust flare.
     this.getForward(_fwd);
-    _c.set(this.position.x - _fwd.x * REAR_Z, 0.5, this.position.z - _fwd.z * REAR_Z);
+    _c.set(this.position.x - _fwd.x * REAR_Z, this.vert.surfaceY + 0.5, this.position.z - _fwd.z * REAR_Z);
     ctx.fx.burst(_c, { color: 0xffffff, count: 30, speed: 8, size: 0.26, gravity: 14, life: 0.7 });
     _dir.set(-_fwd.x * 6, 0.6, -_fwd.z * 6);
     ctx.fx.smoke(_c, { count: 12, color: 0xe2ecf8, size: 0.5, grow: 3.4, life: 1.1, speed: 3, up: 1.2, rise: -0.8, drag: 2.2, spread: 0.8, opacity: 0.6, dir: _dir });
-    _c.y = 0.05;
+    _c.y = this.vert.surfaceY + 0.05;
     ctx.fx.ring(_c, 2.6, 0xffb060);
     this.exhaustWorld(_c);
     ctx.fx.burst(_c, { color: 0xff9a2a, count: 16, speed: 4, size: 0.24, gravity: -4, life: 0.4 });
@@ -1607,7 +1776,7 @@ export class Plow implements PlowAPI {
     this.b.audio.play('whirl');
     const R = this.whirlRadius();
     this.tornadoR = R;
-    _c.set(this.position.x, 0.05, this.position.z);
+    _c.set(this.position.x, this.vert.surfaceY + 0.05, this.position.z);
     ctx.fx.ring(_c, R, 0xbfeaff);
     this.shake(0.15);
   }
@@ -1650,7 +1819,7 @@ export class Plow implements PlowAPI {
       const s = Math.sin(a);
       const c = Math.cos(a);
       const rr = R * (0.45 + 0.4 * Math.random());
-      _c.set(px + s * rr, 0.3 + Math.random() * 1.6, pz + c * rr);
+      _c.set(px + s * rr, this.vert.surfaceY + 0.3 + Math.random() * 1.6, pz + c * rr);
       _dir.set(c + s * 0.6, 0.5, -s + c * 0.6).normalize();
       ctx.fx.spray(_c, _dir, 0.9);
     }
@@ -1658,7 +1827,7 @@ export class Plow implements PlowAPI {
     const vh = this.heading + this.spinAngle;
     const s = Math.sin(vh);
     const c = Math.cos(vh);
-    _c.set(px + s * TIP_Z, 0.3, pz + c * TIP_Z);
+    _c.set(px + s * TIP_Z, this.vert.surfaceY + 0.3, pz + c * TIP_Z);
     _dir.set(c, 0.6, -s).normalize();
     ctx.fx.spray(_c, _dir, 1);
 
@@ -1672,6 +1841,164 @@ export class Plow implements PlowAPI {
         this.b.audio.play('strike');
       }
     }
+  }
+
+  /* ------------------------------------------------------------------ terrain */
+
+  /**
+   * Vertical motion + surface hazards after the horizontal move (world/terrainMotion.ts). Flat arenas with no patches
+   * reduce to "feet at the ride height", exactly the pre-terrain behaviour.
+   */
+  private terrainStep(dt: number): void {
+    const ctx = this.ctx;
+    const t = ctx.terrain;
+    const v = this.vert;
+    const p = this.position;
+    const code = stepVertical(t, v, p.x, p.z, this.ride, dt, this.surf);
+    if (bonkCeiling(t, v, p.x, p.z, PLOW_HEIGHT)) {
+      this.kick = Math.max(this.kick, 0.5);
+      this.jitter = Math.max(this.jitter, 0.12);
+      this.b.audio.play('wallHit', { volume: 0.6, pitch: 0.8 });
+    }
+    p.y = v.y;
+    if (code === V_LAUNCHED) {
+      this.b.events.emit('plowLaunched', { x: p.x, z: p.z, speed: Math.hypot(this.velX, this.velZ) });
+      this.b.audio.play('jump', { volume: 0.8 });
+    } else if (code === V_LANDED) this.landed(v.impact, v.lastAir);
+
+    // Ice: low grip (blends out over ICE_LINGER after leaving it). Air keeps whatever it had.
+    const mat = this.surf.material;
+    if (!v.airborne) {
+      if (mat === 'ice') this.ice = 1;
+      else if (this.ice > 0) this.ice = Math.max(0, this.ice - dt / ICE_LINGER);
+    }
+    // Lava: burn while touching it (host / single player applies the damage; the glow shows everywhere).
+    const onLava = !v.airborne && mat === 'lava';
+    this.burn = onLava ? Math.min(1, this.burn + dt * 4) : Math.max(0, this.burn - dt * 1.5);
+    if (onLava) {
+      if (this.b.authoritative && !this.invulnerable) {
+        const dmg = Math.min(this.hp, LAVA_DPS * dt);
+        this.hp -= dmg;
+        this.lavaAcc += dmg;
+        this.lavaEventT -= dt;
+        if (this.lavaEventT <= 0 || this.hp <= 0) {
+          this.lavaEventT = LAVA_EVENT_GAP;
+          this.b.events.emit('plowDamaged', { amount: this.lavaAcc, blocked: 0 });
+          this.lavaAcc = 0;
+        }
+        if (this.hp <= 0) this.damage(1);
+      }
+      this.lavaSfxT -= dt;
+      if (this.lavaSfxT <= 0) {
+        this.lavaSfxT = LAVA_SFX_GAP;
+        this.b.audio.play('lavaBurn', { volume: 0.7 });
+        _c.set(p.x + (Math.random() - 0.5) * 2, v.surfaceY + 0.4, p.z + (Math.random() - 0.5) * 2);
+        ctx.fx.burst(_c, { color: 0xff6a1a, count: 6, speed: 3, size: 0.14, gravity: -4, life: 0.5 });
+        ctx.fx.burst(_c, { color: 0x2a2a2e, count: 2, speed: 1, size: 0.45, gravity: -3, life: 0.9 });
+      }
+    } else {
+      this.lavaSfxT = 0;
+      if (this.lavaAcc > 0 && this.b.authoritative) {
+        this.b.events.emit('plowDamaged', { amount: this.lavaAcc, blocked: 0 });
+        this.lavaAcc = 0;
+      }
+      this.lavaEventT = 0;
+    }
+  }
+
+  /** Touchdown after a real flight: puff, thump, sound, a little speed lost on a hard landing. */
+  private landed(impact: number, airTime: number): void {
+    const p = this.position;
+    this.b.events.emit('plowLanded', { x: p.x, y: p.y, z: p.z, impact, airTime });
+    this.speed *= 1 - 0.18 * Math.min(1, impact / 18);
+    if (this.b.local) this.ctx.cameraRig.thump(impact);
+    this.landFx(impact, this.vert.surfaceY);
+  }
+
+  /** What a landing at `impact` m/s looks and sounds like (own landings and the Duel puppet's replayed ones): land
+   *  sound, hull squash, screen shake (a fraction for the opponent), snow puff and, on a hard landing, a ring, on the
+   *  surface at height `ground`. */
+  private landFx(impact: number, ground: number): void {
+    const ctx = this.ctx;
+    const p = this.position;
+    const k = Math.min(1, impact / 18);
+    this.b.audio.play('land', { volume: 0.4 + 0.6 * k, pitch: 1.1 - 0.3 * k });
+    this.squash = Math.max(this.squash, 0.35 + 0.65 * k);
+    this.shake(0.08 + 0.35 * k);
+    _c.set(p.x, ground + 0.2, p.z);
+    ctx.fx.burst(_c, { color: 0xffffff, count: 10 + Math.round(20 * k), speed: 3 + 5 * k, size: 0.28, gravity: 12, life: 0.7 });
+    if (k > 0.3) {
+      _c.y = ground + 0.06;
+      ctx.fx.ring(_c, 2.5 + 3 * k, 0xe8f4ff);
+    }
+  }
+
+  /** Deck sides (The Omega Works): body and blade circles are pushed out of any deck they cannot step onto. */
+  private collideDecks(vf: number, dt: number): void {
+    const t = this.ctx.terrain;
+    const p = this.position;
+    const bladeOff = TIP_Z - 0.55;
+    const bladeR = Math.max(0.9, this.bladeWidth * 0.38);
+    for (let k = 0; k < 2; k++) {
+      const off = k === 0 ? 0 : bladeOff;
+      const cr = k === 0 ? this.radius : bladeR;
+      const cx = p.x + _fwd.x * off;
+      const cz = p.z + _fwd.z * off;
+      let d = t.wallAt(cx, cz, this.vert.y, PLOW_HEIGHT, cr);
+      if (d && k === 1) {
+        // The blade reaches ~2 m ahead, so going up a ramp it already sits higher than the body's feet: tested from
+        // the feet, any grade steeper than STEP_UP / 2 m (and the deck at the top of the ramp) would be a wall.
+        // Re-test the blade from its own height: the surface under the body continued uphill to the blade (and, on a
+        // ramp deck, that ramp itself extended to the blade, whatever its rotation), or, for a ramp the body is lined
+        // up with (driving onto it from its toe), that ramp's height at the blade, skipping that ramp. Sheer sides,
+        // pillars and ramp flanks still block it; so does any other deck in the way.
+        const v = this.vert;
+        const ride = v.y - v.surfaceY;
+        let yb = v.y;
+        if (!v.airborne) {
+          const up = (this.surf.gx * _fwd.x + this.surf.gz * _fwd.z) * off;
+          if (up > 0) yb += up;
+          const body = v.deck >= 0 ? deckById(t.decks, v.deck) : null;
+          if (body && body.rise) yb = Math.max(yb, t.deckTop(body, cx, cz) + ride);
+        }
+        let skip: Deck | null = null;
+        if (this.rampAhead(d)) {
+          skip = d;
+          yb = Math.max(yb, t.deckTop(d, cx, cz) + ride);
+        }
+        if (skip || yb > v.y) {
+          d = t.wallAt(cx, cz, yb, PLOW_HEIGHT, cr, skip);
+          if (d && !skip && this.rampAhead(d)) {
+            // The first hit was something else; the ramp we are lined up with turned up behind it.
+            skip = d;
+            yb = Math.max(yb, t.deckTop(d, cx, cz) + ride);
+            d = t.wallAt(cx, cz, yb, PLOW_HEIGHT, cr, skip);
+          }
+        }
+      }
+      if (!d) continue;
+      t.pushOut(d, cx, cz, cr, this.wallOut);
+      let nx = this.wallOut.x - cx;
+      let nz = this.wallOut.z - cz;
+      const pen = Math.hypot(nx, nz);
+      if (pen < 1e-5) continue;
+      nx /= pen;
+      nz /= pen;
+      this.contact(nx, nz, pen, vf, dt);
+    }
+  }
+
+  /**
+   * Is deck d a ramp the plow is driving onto or up (rather than a ramp side beside it)? True when d slopes, the body's
+   * centre is inside the ramp's strip (across its width) and the ramp's surface extended back to the body is at most a
+   * step above the feet.
+   */
+  private rampAhead(d: Deck): boolean {
+    if (!d.rise) return false;
+    const p = this.position;
+    const lx = (p.x - d.x) * Math.cos(d.rot) - (p.z - d.z) * Math.sin(d.rot);
+    if (Math.abs(lx) > d.hw) return false;
+    return this.ctx.terrain.deckTop(d, p.x, p.z) <= this.vert.y + STEP_UP;
   }
 
   /* ------------------------------------------------------------------ arena */
@@ -1746,6 +2073,12 @@ export class Plow implements PlowAPI {
     const ctx = this.ctx;
     this.position.x += nx * pen;
     this.position.z += nz * pen;
+    // Ice / air velocity (normal ground recomputes it from the heading every frame anyway).
+    const vIn = this.velX * nx + this.velZ * nz;
+    if (vIn < 0) {
+      this.velX -= vIn * nx * 1.3;
+      this.velZ -= vIn * nz * 1.3;
+    }
     const vx = _fwd.x * vf + this.pushVel.x;
     const vz = _fwd.z * vf + this.pushVel.z;
     const into = -(vx * nx + vz * nz);
@@ -1771,7 +2104,7 @@ export class Plow implements PlowAPI {
       this.jitter = 0.2;
       this.b.audio.play('wallHit', { volume: 1, pitch: 0.75 });
       this.shake(0.6);
-      _c.set(this.position.x - nx * (this.radius + 0.6), 1, this.position.z - nz * (this.radius + 0.6));
+      _c.set(this.position.x - nx * (this.radius + 0.6), this.vert.surfaceY + 1, this.position.z - nz * (this.radius + 0.6));
       ctx.fx.burst(_c, { color: 0xffffff, count: 34, speed: 7, size: 0.26, gravity: 14, life: 0.8 });
       ctx.fx.burst(_c, { color: 0xffc04a, count: 18, speed: 10, size: 0.08, gravity: 22, life: 0.35 });
       ctx.fx.burst(_c, { color: 0x8c96a4, count: 8, speed: 5, size: 0.2, gravity: 18, life: 0.6 });
@@ -1789,7 +2122,7 @@ export class Plow implements PlowAPI {
       this.wallCd = 0.3;
       this.b.audio.play('wallHit', { volume: Math.min(1, 0.4 + into * 0.04) });
       this.shake(Math.min(0.45, 0.12 + (into - 5) * 0.03));
-      _c.set(this.position.x - nx * (this.radius + 0.4), 1, this.position.z - nz * (this.radius + 0.4));
+      _c.set(this.position.x - nx * (this.radius + 0.4), this.vert.surfaceY + 1, this.position.z - nz * (this.radius + 0.4));
       ctx.fx.burst(_c, { color: 0xffffff, count: 10 + Math.round(into), speed: 4, size: 0.2, gravity: 14, life: 0.6 });
       ctx.fx.burst(_c, { color: 0xffc04a, count: 6, speed: 6, size: 0.07, gravity: 22, life: 0.3 });
     }
@@ -1819,7 +2152,7 @@ export class Plow implements PlowAPI {
     if (this.heldVolume > 0) {
       const r = this.heldBallRadius;
       this.ballCenter(_c, r, this.heading, 0);
-      this.b.snow.addSnow(_c.x, _c.z, Math.max(1, r * 1.5), this.heldVolume);
+      if (this.vert.deck < 0) this.b.snow.addSnow(_c.x, _c.z, Math.max(1, r * 1.5), this.heldVolume); // decks carry no snow
       ctx.fx.burst(_c, { color: 0xffffff, count: 16, speed: 3, size: 0.3, gravity: 10, life: 0.9 });
       this.heldVolume = 0;
     }
@@ -1828,13 +2161,14 @@ export class Plow implements PlowAPI {
     this.ballR = 0;
 
     // Explosion.
-    _c.set(this.position.x, 1.4, this.position.z);
+    this.wreckGround = this.vert.surfaceY;
+    _c.set(this.position.x, this.vert.surfaceY + 1.4, this.position.z);
     ctx.fx.burst(_c, { color: 0xff7a1a, count: 46, speed: 10, size: 0.3, gravity: 6, life: 0.7 });
     ctx.fx.burst(_c, { color: 0xffd23a, count: 24, speed: 13, size: 0.1, gravity: 22, life: 0.5 });
     ctx.fx.burst(_c, { color: 0x26262b, count: 30, speed: 4, size: 0.6, gravity: -3, life: 1.8 });
     ctx.fx.burst(_c, { color: 0x8c96a4, count: 14, speed: 8, size: 0.2, gravity: 22, life: 1.0 });
     ctx.fx.fireball(_c, 1.3);
-    _c.y = 0;
+    _c.y = this.vert.surfaceY;
     ctx.fx.ring(_c, 5, 0xff7a1a);
     ctx.fx.scorch(_c, 3);
 
@@ -1883,7 +2217,13 @@ export class Plow implements PlowAPI {
     this.pushVel.multiplyScalar(Math.exp(-5 * dt));
     this.position.x = THREE.MathUtils.clamp(this.position.x, ARENA.minX + this.radius, ARENA.maxX - this.radius);
     this.position.z = THREE.MathUtils.clamp(this.position.z, ARENA.minZ + this.radius, ARENA.maxZ - this.radius);
-    this.object.rotation.set(0, this.heading, 0);
+    // A wreck still falls / follows the ground (flat arenas: it stays put, as always).
+    const tv = this.vert;
+    if (tv.airborne || this.ctx.terrain.active) {
+      stepVertical(this.ctx.terrain, tv, this.position.x, this.position.z, this.ride, dt, this.surf);
+      this.position.y = tv.y;
+    }
+    this.object.rotation.set(this.tiltP, this.heading, this.tiltR);
 
     // Slump onto the missing wheels + jitter.
     const k = Math.min(1, dt * 6);
@@ -1915,7 +2255,7 @@ export class Plow implements PlowAPI {
       this.engineWorld(_c);
       ctx.fx.burst(_c, { color: 0x1d1d22, count: 3, speed: 1.4, size: 0.55, gravity: -3, life: 1.6 });
       ctx.fx.burst(_c, { color: 0xff6a1a, count: 2, speed: 1.6, size: 0.25, gravity: -5, life: 0.4 });
-      _c.set(this.position.x + (Math.random() - 0.5) * 1.6, 1.4, this.position.z + (Math.random() - 0.5) * 1.6);
+      _c.set(this.position.x + (Math.random() - 0.5) * 1.6, this.vert.surfaceY + 1.4, this.position.z + (Math.random() - 0.5) * 1.6);
       ctx.fx.burst(_c, { color: 0x3a3a40, count: 2, speed: 0.8, size: 0.7, gravity: -2, life: 1.8 });
     }
 
@@ -1928,8 +2268,8 @@ export class Plow implements PlowAPI {
       o.rotation.x += d.spin.x * dt;
       o.rotation.y += d.spin.y * dt;
       o.rotation.z += d.spin.z * dt;
-      if (o.position.y < d.rest) {
-        o.position.y = d.rest;
+      if (o.position.y < d.rest + this.wreckGround) {
+        o.position.y = d.rest + this.wreckGround;
         if (d.vel.y < 0) d.vel.y *= -0.3;
         d.vel.x *= 0.6;
         d.vel.z *= 0.6;
@@ -1956,7 +2296,13 @@ export class Plow implements PlowAPI {
     const c = Math.cos(vh);
     const d = TIP_Z + this.body.position.z + r + extra;
     out.set(this.position.x + s * d, 0, this.position.z + c * d);
-    out.y = this.ctx.snow.getDepth(out.x, out.z) + r;
+    const t = this.ctx.terrain;
+    if (this.vert.airborne || (this.puppetY !== null && this.puppetAir)) out.y = this.position.y + r * 0.95;
+    else if (!t.active) out.y = this.ctx.snow.getDepth(out.x, out.z) + r;
+    else {
+      t.surfaceAt(out.x, out.z, this.position.y, _ballSurf);
+      out.y = _ballSurf.y + (_ballSurf.deck < 0 ? this.ctx.snow.getDepth(out.x, out.z) : 0) + r;
+    }
     return out;
   }
 
@@ -1980,7 +2326,7 @@ export class Plow implements PlowAPI {
     st.len = 2.5 + Math.random() * 3.5;
     st.x = this.position.x + s * lon + c * lat;
     st.z = this.position.z + c * lon - s * lat;
-    st.y = 0.3 + Math.random() * 2.4;
+    st.y = this.vert.surfaceY + 0.3 + Math.random() * 2.4;
   }
 
   private updateStreaks(dt: number): void {
@@ -2034,7 +2380,7 @@ export class Plow implements PlowAPI {
     const a = this.tornadoA;
     const p = this.position;
     this.tornado.visible = true;
-    this.tornado.position.set(p.x, 0, p.z);
+    this.tornado.position.set(p.x, this.vert.surfaceY, p.z);
     const h = 3.2 + R * 0.25;
     const swell = 0.85 + 0.15 * a + 0.05 * this.ringPulse;
     this.tornadoOuter.scale.set(R * swell, h, R * swell);
@@ -2050,7 +2396,7 @@ export class Plow implements PlowAPI {
     this.tornadoMatO.opacity = a * (0.75 + 0.25 * this.ringPulse);
     this.tornadoMatI.opacity = a * 0.55;
     this.whirlRing.visible = true;
-    this.whirlRing.position.set(p.x, this.ctx.snow ? this.ctx.snow.getDepth(p.x, p.z) + 0.08 : 0.08, p.z);
+    this.whirlRing.position.set(p.x, this.vert.surfaceY + (this.ctx.snow && this.vert.deck < 0 ? this.ctx.snow.getDepth(p.x, p.z) + 0.08 : 0.08), p.z);
     this.whirlRing.scale.setScalar(R * (1 + 0.06 * this.ringPulse));
     this.whirlRingMat.opacity = Math.min(1, a * 0.4 + this.ringPulse * 0.5);
   }
@@ -2092,16 +2438,49 @@ export class Plow implements PlowAPI {
     const stats = this.b.stats;
     const snow = this.b.snow;
     const absS = Math.abs(this.speed);
-    this.object.rotation.set(0, this.heading, 0);
     this.spin.rotation.y = this.spinAngle;
     this.spin.position.y = this.hop;
 
-    // Ride height: sink a little into the snow, bob more in deep snow.
-    const depth = snow.getDepth(this.position.x, this.position.z);
+    // Ride height: sink a little into the snow, bob more in deep snow (ground only: decks carry no snow).
+    const depth = this.vert.deck < 0 ? snow.getDepth(this.position.x, this.position.z) : 0;
     this.bobT += dt * (3 + absS * 1.4);
     const bob = Math.sin(this.bobT) * (0.015 + Math.min(0.05, depth * 0.08)) * Math.min(1, absS / 3 + 0.25);
     const targetY = Math.min(0.25, depth * 0.3);
-    this.position.y += (targetY - this.position.y) * Math.min(1, dt * 6);
+    this.ride += (targetY - this.ride) * Math.min(1, dt * 6);
+    const v = this.vert;
+    const terr = ctx.terrain;
+    if (this.puppetY !== null) {
+      // Duel opponent: the host's height when there is terrain or a flight to show, else the local ride (as always).
+      if (terr.active || this.puppetAir) this.position.y = this.puppetY;
+      else this.position.y = this.ride;
+      if (terr.active) terr.surfaceAt(this.position.x, this.position.z, this.position.y, this.surf);
+      v.surfaceY = terr.active ? this.surf.y : 0;
+    } else if (!v.airborne) this.position.y = v.y = v.surfaceY + this.ride;
+
+    // Terrain tilt: the hull pitches / rolls to the surface (smoothed); in the air it noses along the flight path.
+    let wantP = 0;
+    let wantR = 0;
+    const flying = this.puppetY !== null ? this.puppetAir : v.airborne;
+    if (flying) {
+      const fvy = this.puppetY !== null ? this.puppetVy : v.vy;
+      wantP = THREE.MathUtils.clamp(-Math.atan2(fvy, Math.max(4, absS)) * 0.6, -0.45, 0.45);
+      wantR = this.tiltR * 0.5;
+    } else if (terr.active) {
+      const sh = Math.sin(this.heading);
+      const ch = Math.cos(this.heading);
+      const sf = this.surf;
+      wantP = -Math.atan(sf.gx * sh + sf.gz * ch);
+      wantR = Math.atan(sf.gx * ch - sf.gz * sh);
+    }
+    if (wantP !== 0 || wantR !== 0 || this.tiltP !== 0 || this.tiltR !== 0) {
+      const tk = Math.min(1, dt * (flying ? 4 : 12));
+      this.tiltP += (wantP - this.tiltP) * tk;
+      this.tiltR += (wantR - this.tiltR) * tk;
+      if (Math.abs(this.tiltP) < 1e-5 && wantP === 0) this.tiltP = 0;
+      if (Math.abs(this.tiltR) < 1e-5 && wantR === 0) this.tiltR = 0;
+    }
+    this.object.rotation.set(this.tiltP, this.heading, this.tiltR);
+    this.squash = Math.max(0, this.squash - dt * 5);
 
     // Lean into turns, pitch with acceleration, slam rear-back / lunge, recoil kick.
     const lean = THREE.MathUtils.clamp(turn * Math.min(1, absS / 6) * 0.07, -0.12, 0.12);
@@ -2122,7 +2501,7 @@ export class Plow implements PlowAPI {
     const jx = j > 0 ? (Math.random() - 0.5) * 0.14 * j : 0;
     const jz = j > 0 ? (Math.random() - 0.5) * 0.14 * j : 0;
     this.body.rotation.set(this.pitch + poseP - kickP, 0, this.roll + jx * 0.4);
-    this.body.position.set(jx, bob + (this.whirlT >= 0 ? 0.08 : 0), poseZ - kickP * 1.5 + jz);
+    this.body.position.set(jx, bob + (this.whirlT >= 0 ? 0.08 : 0) - this.squash * 0.18, poseZ - kickP * 1.5 + jz);
 
     // Buzzsaws: always spinning, screaming faster with speed and fury; the halos grow with the spin.
     const sawsOn = this.kind === 'brute' && stats.sawDps > 0;
@@ -2202,8 +2581,10 @@ export class Plow implements PlowAPI {
     // Damage flash.
     this.flash = Math.max(0, this.flash - dt * 4);
     const fl = this.flash * 1.4;
-    this.paintMat.emissiveIntensity = fl;
-    this.bedMat.emissiveIntensity = fl;
+    // Lava burn: a hot red glow pulsing on the paint while it cooks.
+    const burnGlow = this.burn > 0 ? this.burn * (0.45 + 0.25 * Math.sin(this.time * 18)) : 0;
+    this.paintMat.emissiveIntensity = Math.max(fl, burnGlow);
+    this.bedMat.emissiveIntensity = Math.max(fl, burnGlow);
     this.bladeSkinMat.emissiveIntensity = fl;
 
     // Dash flame + afterimages / exhaust puffs.

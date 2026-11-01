@@ -8,10 +8,18 @@ describe('ultimate kill-cam trigger', () => {
     expect(c.onKill(0, 0)).toBeNull();
     expect(c.onKill(3, 0)).toBeNull();
     const shot = c.onKill(0, 6);
-    expect(shot).toEqual({ x: 1, z: 2, kills: ULT_CAM_KILLS });
+    expect(shot).toEqual({ x: 1, z: 2, y: 0, kills: ULT_CAM_KILLS });
     // Later kills from the same ultimate don't fire again.
     expect(c.onKill(1, 1)).toBeNull();
     expect(c.kills).toBe(4);
+  });
+
+  it('frames the shot at the kills\' mean height (terrain arenas)', () => {
+    const c = new UltKillCam();
+    c.onUlt();
+    c.onKill(0, 0, 3);
+    c.onKill(3, 0, 6);
+    expect(c.onKill(0, 6, 0)?.y).toBeCloseTo(3, 6);
   });
 
   it('2 kills do nothing, and kills without an ultimate never count', () => {

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { FlameCone } from '../../fx/FlameCone';
 import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import { FX } from '../../config/upgrades';
-import { Kit, _fwd, _p, _q, _tip, type CombatHost } from './shared';
+import { Kit, Reach, _fwd, _p, _q, _tip, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
+import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
 
 /** Inferno (F): flame duration, cone half-angle (cos), seconds between ignite checks, burn length + tick. */
@@ -47,12 +48,14 @@ export class ClassicKit extends Kit {
   private flameIgniteT = 0;
   /** Burning bots. `storm`: lit by the FIRESTORM (burns at storm dps and doesn't refill the meter). */
   readonly burns = new Map<EnemyHandle, { t: number; tickT: number; storm: boolean }>();
-  /** FIRESTORM burning ground: disc mesh, time left, centre, tick timer. */
-  private fireField!: THREE.Mesh;
+  /** FIRESTORM burning ground: disc mesh (draped over the floor), time left, centre, cast floor, tick timer. */
+  private fireField!: GroundDisc;
   private fireFieldMat!: THREE.MeshBasicMaterial;
   private fireFieldT = 0;
   private fireFieldX = 0;
   private fireFieldZ = 0;
+  /** The floor the FIRESTORM was cast on: the burning ground judges height from it (not from the plow's live height). */
+  private readonly fireFrom: CastOrigin = { y: 0, deck: -1 };
   private fireFieldTickT = 0;
   readonly flameCone: FlameCone;
 
@@ -61,13 +64,10 @@ export class ClassicKit extends Kit {
     this.flameCone = new FlameCone(h.ctx.scene);
   }
 
-  /** The FIRESTORM ground disc (built after the other combat meshes, sharing the fallout pools' disc). */
-  buildField(disc: THREE.BufferGeometry): void {
+  /** The FIRESTORM ground disc (built after the other combat meshes, keeping the scene order). */
+  buildField(): void {
     this.fireFieldMat = new THREE.MeshBasicMaterial({ color: 0xff5a10, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-    this.fireField = new THREE.Mesh(disc, this.fireFieldMat);
-    this.fireField.visible = false;
-    this.fireField.renderOrder = 2;
-    this.ctx.scene.add(this.fireField);
+    this.fireField = new GroundDisc(this.ctx.scene, this.fireFieldMat);
   }
 
   /** Inferno (F, pilot perk): a 1s cone of fire from the blade that ignites bots and melts snow. */
@@ -109,13 +109,13 @@ export class ClassicKit extends Kit {
     for (let i = 0; i < 4; i++) {
       const k = 0.25 + Math.random() * 0.85;
       const side = (Math.random() - 0.5) * 2 * k * range * Math.tan(FLAME_HALF) * 0.8;
-      _p.set(_tip.x + _fwd.x * k * range + _fwd.z * side, 0.7 + Math.random() * 1.1, _tip.z + _fwd.z * k * range - _fwd.x * side);
+      _p.set(_tip.x + _fwd.x * k * range + _fwd.z * side, _tip.y + 0.7 + Math.random() * 1.1, _tip.z + _fwd.z * k * range - _fwd.x * side);
       fx.burst(_p, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 3, speed: 3, size: 0.3 + k * 0.3, gravity: -7, life: 0.4 });
     }
-    _p.set(_tip.x + _fwd.x * range * 0.3, 1, _tip.z + _fwd.z * range * 0.3);
+    _p.set(_tip.x + _fwd.x * range * 0.3, _tip.y + 1, _tip.z + _fwd.z * range * 0.3);
     fx.burst(_p, { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 });
     if (Math.random() < 0.45) {
-      _p.set(_tip.x + _fwd.x * range * 0.9, 2.2, _tip.z + _fwd.z * range * 0.9);
+      _p.set(_tip.x + _fwd.x * range * 0.9, _tip.y + 2.2, _tip.z + _fwd.z * range * 0.9);
       fx.burst(_p, { color: 0x2c2628, count: 2, speed: 1.5, size: 0.7, gravity: -3, life: 1.1 });
     }
     if (Math.random() < dt * 10) this.shake(0.06);
@@ -128,7 +128,7 @@ export class ClassicKit extends Kit {
     if (this.flameIgniteT > 0) return;
     this.flameIgniteT = FLAME_IGNITE_EVERY;
     this.smashProps(_tip.x + _fwd.x * range * 0.55, _tip.z + _fwd.z * range * 0.55, range * 0.35);
-    const hits = this.collect(_tip.x + _fwd.x * range * 0.5, _tip.z + _fwd.z * range * 0.5, range * 0.5 + 1);
+    const hits = this.collect(_tip.x + _fwd.x * range * 0.5, _tip.z + _fwd.z * range * 0.5, range * 0.5 + 1, Reach.Body);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       const dx = e.position.x - _tip.x;
@@ -177,7 +177,7 @@ export class ClassicKit extends Kit {
    *  meter (the FIRESTORM's own blast doesn't, so it can't chain). Returns the bots hit. */
   private fireBlast(x: number, z: number, R: number, dmg: number, knock: number, rim: number, text: string, feed: boolean): number {
     this.smashProps(x, z, R);
-    const hits = this.collect(x, z, R);
+    const hits = this.collect(x, z, R, Reach.Wave);
     let n = 0;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -217,15 +217,17 @@ export class ClassicKit extends Kit {
     const k = st.flameRange * 0.6;
     const x = _tip.x + _fwd.x * k;
     const z = _tip.z + _fwd.z * k;
-    _q.set(x, 1.2, z);
+    // Bursts start on the floor under the fireball (the plow's level; 0 on flat arenas).
+    const top = waveFloor(ctx.terrain, plow.position.y, x, z);
+    _q.set(x, top + 1.2, z);
     ctx.fx.burst(_q, { color: 0xff6a10, count: 36, speed: 12, size: 0.42, gravity: -3, life: 0.6 });
     ctx.fx.burst(_q, { color: 0xffe070, count: 18, speed: 7, size: 0.3, gravity: -6, life: 0.5 });
     ctx.fx.burst(_q, { color: 0x2c2628, count: 10, speed: 3, size: 0.9, gravity: -2.5, life: 1.2 });
-    _q.set(x, 0.15, z);
+    _q.set(x, top + 0.15, z);
     ctx.fx.ring(_q, FIREBALL_RADIUS, 0xff8a20);
     ctx.fx.ring(_q, FIREBALL_RADIUS * 0.55, 0xffe070);
     this.shake(0.45);
-    this.impactHit('meltdown', _q.set(x, 1, z), 0.7);
+    this.impactHit('meltdown', _q.set(x, top + 1, z), 0.7);
     this.b.audio.play('explosion', { volume: 0.7, pitch: 0.85 });
     this.b.snow?.melt(x, z, FIREBALL_RADIUS * 0.8, 1);
     this.fireBlast(x, z, FIREBALL_RADIUS, st.flameDps * FIREBALL_MULT, FIREBALL_KNOCK, 0.6, '💥', true);
@@ -240,20 +242,23 @@ export class ClassicKit extends Kit {
     const x = plow.position.x;
     const z = plow.position.z;
     ctx.ui.toast(this.b.local ? '🔥 FIRESTORM!' : '🔥 INCOMING FIRESTORM!', 'big');
-    _q.set(x, 0.15, z);
+    // Everything starts on the floor the storm is cast on (the surface under the plow; 0 on flat arenas).
+    const from = castOrigin(plow, this.fireFrom);
+    const top = from.y;
+    _q.set(x, top + 0.15, z);
     for (const [r, c] of [[0.35, 0xfff0a0], [0.65, 0xffb040], [1, 0xff5a10], [1.12, 0x8a1a00]] as const) ctx.fx.ring(_q, FIRESTORM_RADIUS * r, c);
     for (let i = 0; i < 24; i++) {
       const a = (i / 24) * Math.PI * 2;
       for (const k of [0.35, 0.7, 1]) {
-        _q.set(x + Math.sin(a) * FIRESTORM_RADIUS * k, 0.8, z + Math.cos(a) * FIRESTORM_RADIUS * k);
+        _q.set(x + Math.sin(a) * FIRESTORM_RADIUS * k, top + 0.8, z + Math.cos(a) * FIRESTORM_RADIUS * k);
         ctx.fx.burst(_q, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 4, speed: 5, size: 0.45, gravity: -6, life: 0.7 });
       }
     }
-    _q.set(x, 2.5, z);
+    _q.set(x, top + 2.5, z);
     ctx.fx.burst(_q, { color: 0xffe070, count: 60, speed: 16, size: 0.35, gravity: -2, life: 0.8 });
     ctx.fx.burst(_q, { color: 0x2c2628, count: 24, speed: 5, size: 1.2, gravity: -2.5, life: 1.6 });
     this.shake(1);
-    this.impactHit('nuke', _q.set(x, 1, z));
+    this.impactHit('nuke', _q.set(x, top + 1, z));
     this.b.audio.play('explosion', { volume: 1, pitch: 0.6 });
     this.b.audio.play('roar', { volume: 0.7, pitch: 1.3 });
     this.b.snow?.melt(x, z, FIRE_FIELD_RADIUS, 1);
@@ -262,9 +267,7 @@ export class ClassicKit extends Kit {
     this.fireFieldX = x;
     this.fireFieldZ = z;
     this.fireFieldTickT = 0;
-    this.fireField.position.set(x, 0.07, z);
-    this.fireField.scale.setScalar(FIRE_FIELD_RADIUS);
-    this.fireField.visible = true;
+    this.fireField.place(ctx.terrain, x, z, FIRE_FIELD_RADIUS, from.y, from.deck, 0.07);
   }
 
   /** FIRESTORM burning ground: flickers, keeps everything inside alight, small contact damage. */
@@ -272,7 +275,7 @@ export class ClassicKit extends Kit {
     if (this.fireFieldT <= 0) return;
     this.fireFieldT -= dt;
     if (this.fireFieldT <= 0) {
-      this.fireField.visible = false;
+      this.fireField.hide();
       return;
     }
     const ctx = this.ctx;
@@ -281,14 +284,17 @@ export class ClassicKit extends Kit {
     for (let i = 0; i < 3; i++) {
       const a = Math.random() * Math.PI * 2;
       const rr = Math.sqrt(Math.random()) * FIRE_FIELD_RADIUS;
-      _q.set(this.fireFieldX + Math.sin(a) * rr, 0.4, this.fireFieldZ + Math.cos(a) * rr);
+      const ex = this.fireFieldX + Math.sin(a) * rr;
+      const ez = this.fireFieldZ + Math.cos(a) * rr;
+      _q.set(ex, waveFloor(ctx.terrain, this.fireFrom.y, ex, ez) + 0.4, ez);
       ctx.fx.burst(_q, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 2, speed: 2, size: 0.35, gravity: -7, life: 0.5 });
     }
     this.fireFieldTickT -= dt;
     if (this.fireFieldTickT > 0) return;
     this.fireFieldTickT = FIRE_FIELD_TICK;
     const st = this.b.stats;
-    const hits = this.collect(this.fireFieldX, this.fireFieldZ, FIRE_FIELD_RADIUS);
+    // Height rule from the cast floor: the ground keeps burning whatever the plow does (flies off a ramp...).
+    const hits = this.collect(this.fireFieldX, this.fireFieldZ, FIRE_FIELD_RADIUS, Reach.Wave, this.fireFrom);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive) continue;
@@ -346,6 +352,6 @@ export class ClassicKit extends Kit {
     this.flameCharge = 1;
     this.burns.clear();
     this.fireFieldT = 0;
-    this.fireField.visible = false;
+    this.fireField.hide();
   }
 }

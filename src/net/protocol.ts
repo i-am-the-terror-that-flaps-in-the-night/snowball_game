@@ -12,7 +12,7 @@
  *            Depth is quantised to a byte over 0..SNOW_Q_MAX metres. flags & 1 = full-field keyframe.
  * ---------------------------------------------------------------------------------------------- */
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const MSG_INPUT = 1;
 export const MSG_SNAP = 2;
@@ -56,12 +56,17 @@ export const NP = {
   turret: 30,
   /** ARSENAL laser beam yaw off the nose (it bends toward its target). */
   laser: 31,
+  // Terrain (Plow.writeNet): feet height, vertical speed (m/s, + up), airborne flag (0 / 1).
+  y: 32,
+  vy: 33,
+  air: 34,
 } as const;
-export const NET_PLOW_LEN = 32;
+export const NET_PLOW_LEN = 35;
 
-/** Fields that are angles (interpolated the short way round) / discrete (taken from the newer snapshot). */
+/** Fields that are angles (interpolated the short way round) / discrete (never blended: they switch to the newer
+ *  snapshot's value when the guest's clock reaches it). */
 export const NP_ANGLE = NP.heading;
-export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase, NP.fire];
+export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase, NP.fire, NP.air];
 
 /* ------------------------------------------------------------------ input */
 

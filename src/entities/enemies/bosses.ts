@@ -5,6 +5,8 @@ import { Bot, Vuln, type Host } from './Bot';
 import { clamp, face, goTo } from './ai';
 import { donaldProps, type WallLine } from './donaldProps';
 import { ARENA } from '../../core/types';
+import { waveHitPlow, waveHits } from '../combat/shared';
+import { makeSurface } from '../../world/Terrain';
 
 /* Boss AI. Every big move has a readable wind-up (>= 0.6s): glowing parts, the bot backing up / revving,
  * and a ground decal (red chevron stripe for charges/dashes, a filling warning ring for AOE moves). */
@@ -12,6 +14,19 @@ import { ARENA } from '../../core/types';
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const STRIPE_RED = 0xff2a1a;
+
+/** Boss ground shockwaves (spins, swipes, pounds, the BULLDOZA leap landing) roll along the floor of the boss's level:
+ *  a plow more than this many metres above that floor (airborne off a ramp / crest) hops over them, and a plow on a
+ *  different level is out of reach (combat/shared.ts waveHits). A bit more generous than the player's WAVE_BAND. */
+export const BOSS_WAVE_BAND = 1.5;
+
+/** Does a ground shockwave from boss `e` reach the player's plow right now? (A wave started on a deck stays on it.)
+ *  Waves that pass hit through waveHitPlow (no feet-to-feet body band on top: a grounded plow anywhere on the floor
+ *  inside the ring is hit, however far the ring runs up or down a slope). */
+function plowInWave(h: Host, e: Bot, band = BOSS_WAVE_BAND): boolean {
+  const plow = h.ctx.plow;
+  return !!plow && waveHits(h.ctx.terrain, e.position.y, e.airborne, plow.position.x, plow.position.z, plow.position.y, band, e.deck);
+}
 
 interface ChargeCfg {
   speed: number;
@@ -154,15 +169,160 @@ function recover(e: Bot, dt: number): boolean {
 
 /* ------------------------------------------------------------------ BULLDOZA */
 
+/* Phase-2 LEAP: a filling red ring marks the landing spot (it tracks the plow for the first LEAP_LOCK of the wind-up,
+ * then locks: drive out of it), BULLDOZA crouches, then flies there in LEAP_FLIGHT s whatever the gravity and lands
+ * with a ground shockwave. A plow in the air when it lands hops over the wave. */
+export const LEAP_WIND = 1.0;
+export const LEAP_LOCK = 0.6;
+export const LEAP_FLIGHT = 1.0;
+/** Leaps only at targets farther than LEAP_MIN m; the jump is at most LEAP_MAX m (it lands short of a far plow). */
+export const LEAP_MIN = 9;
+export const LEAP_MAX = 24;
+/** Landing shockwave radius (m), damage (x ramDamage, before the zone multipliers), knockback. */
+export const LEAP_R = 6;
+export const LEAP_DMG = 0.9;
+const LEAP_KNOCK = 20;
+/** The leap landing's shockwave band (m above the floor): lower than BOSS_WAVE_BAND, so a plow caught in the ring can
+ *  dodge it by flying off one of the arena ramps (1.1-1.6 m lips). Measured (scripts/combat3d-probe.mjs): a top-speed
+ *  jump off an Inferno Quarry lava ramp (1.5 m) flies 0.45 s and peaks 1.54 m over the floor; it is above 1.0 m for
+ *  0.22 s but above 1.5 m for only 0.03 s. Leaving the locked ring (0.4 s of wind-up + 1.0 s of flight) stays the main
+ *  dodge. A grounded plow (feet = floor + at most the 0.25 m snow ride) is always inside it. */
+export const LEAP_WAVE_BAND = 1.0;
+/** Seconds between leaps (random in [a, b]); the first comes LEAP_FIRST s after the enrage. */
+const LEAP_CD: readonly [number, number] = [7, 9.5];
+const LEAP_FIRST = 1.5;
+/** Seconds stuck after landing (the punish window). */
+const LEAP_RECOVER = 1.3;
+
+interface LeapState {
+  /** h.time when the next leap may start. */
+  next: number;
+  /** Landing spot. */
+  tx: number;
+  tz: number;
+}
+const LEAPS = new WeakMap<Bot, LeapState>();
+const _surf = makeSurface();
+
+function leapState(e: Bot): LeapState {
+  let s = LEAPS.get(e);
+  if (!s) LEAPS.set(e, (s = { next: 0, tx: e.position.x, tz: e.position.z }));
+  return s;
+}
+
+/** Landing spot toward (x, z): at most LEAP_MAX m away, inside the arena walls. */
+function leapAim(e: Bot, s: LeapState, x: number, z: number): void {
+  let dx = x - e.position.x;
+  let dz = z - e.position.z;
+  const d = Math.hypot(dx, dz);
+  if (d > LEAP_MAX) {
+    dx *= LEAP_MAX / d;
+    dz *= LEAP_MAX / d;
+  }
+  const m = e.radius + 1;
+  s.tx = clamp(e.position.x + dx, ARENA.minX + m, ARENA.maxX - m);
+  s.tz = clamp(e.position.z + dz, ARENA.minZ + m, ARENA.maxZ - m);
+}
+
+/** Vertical launch speed (m/s) for a flight of `t` s under gravity `g` that lands `dh` m higher than it started. */
+export function leapVy(dh: number, g: number, t = LEAP_FLIGHT): number {
+  return (dh + 0.5 * g * t * t) / t;
+}
+
+function beginLeap(h: Host, e: Bot): void {
+  const s = leapState(e);
+  leapAim(e, s, h.px, h.pz);
+  e.set('leapWind', LEAP_WIND);
+  h.sfx('charge', 0.9, 0.55, 0.2);
+  h.label(e, 'LEAP!', '#ff6a3a', 1.1);
+}
+
+function leapWind(h: Host, e: Bot): void {
+  const s = leapState(e);
+  const p = e.prog;
+  if (p < LEAP_LOCK) leapAim(e, s, h.px, h.pz);
+  face(e, s.tx, s.tz);
+  e.turnRate = 3;
+  e.desSpeed = 0;
+  e.windup = p;
+  e.glow = p;
+  e.jitter = 0.03 + 0.06 * p;
+  const locked = p >= LEAP_LOCK;
+  // The decal drapes over the terrain (EnemyManager re-drapes rings on the surface every frame).
+  h.ring(e, s.tx, s.tz, LEAP_R, p, STRIPE_RED, (0.35 + 0.45 * p) * (locked ? 0.75 + 0.25 * Math.sin(h.time * 30) : 0.9));
+  if (e.stateT > 0) return;
+  // Launch: fly to the spot in LEAP_FLIGHT s (horizontal speed carried through the air, see EnemyManager.integrate).
+  const t = h.ctx.terrain;
+  const dx = s.tx - e.position.x;
+  const dz = s.tz - e.position.z;
+  const dist = Math.hypot(dx, dz);
+  const hs = dist / LEAP_FLIGHT;
+  const ty = t && t.active ? t.surfaceAt(s.tx, s.tz, Infinity, _surf).y : 0;
+  const fromY = e.vert.surfaceY;
+  const head = dist > 1e-3 ? Math.atan2(dx, dz) : e.heading;
+  e.heading = e.desHeading = head;
+  e.speed = hs;
+  e.ivx = Math.sin(head) * hs;
+  e.ivz = Math.cos(head) * hs;
+  e.kvx = 0;
+  e.kvz = 0;
+  e.windup = 0;
+  e.jitter = 0;
+  e.glow = 1;
+  h.ctx.enemies.launch(e, leapVy(ty - fromY, t ? t.gravity : 24));
+  e.set('leap', LEAP_FLIGHT + 1.5);
+  h.sfx('dash', 1, 0.5, 0.1);
+  h.fxAt(e.position.x, e.groundY + 0.3, e.position.z, 0x8a7a6a, 24, 6, 0.3, 14, 0.7);
+}
+
+function leapAir(h: Host, e: Bot): void {
+  const s = leapState(e);
+  e.desSpeed = 0;
+  e.glow = 1;
+  h.ring(e, s.tx, s.tz, LEAP_R, 1, STRIPE_RED, 0.55 + 0.3 * Math.sin(h.time * 30));
+  const flown = e.stateDur - e.stateT;
+  if ((e.airborne || flown < 0.05) && e.stateT > 0) return;
+  // Touchdown: the shockwave fills the telegraphed ring (the ring is the truth: props or the plow can nudge the
+  // flight a little, but the wave lands exactly where the player was warned).
+  h.clearTele(e);
+  e.speed = 0;
+  e.ivx = 0;
+  e.ivz = 0;
+  const fx = h.ctx.fx;
+  _v.set(s.tx, e.groundY + 0.1, s.tz);
+  fx.ring(_v, LEAP_R, 0xff5a2a);
+  fx.ring(_v, LEAP_R * 0.6, 0xffffff);
+  fx.ring(_v, LEAP_R * 1.15, 0xffc04a);
+  _v.y += 0.5;
+  fx.burst(_v, { color: 0xffffff, count: 50, speed: 13, size: 0.32, gravity: 14, life: 0.9 });
+  fx.burst(_v, { color: 0x6b5a48, count: 26, speed: 9, size: 0.26, gravity: 18, life: 0.8 });
+  fx.burst(_v, { color: 0xffa040, count: 20, speed: 11, size: 0.1, gravity: 22, life: 0.5 });
+  // fx.shake goes through CameraRig.addShake: scaled by the shake slider and Reduce screen shake.
+  fx.shake(1.0);
+  h.sfx('thud', 1, 0.6, 0.1);
+  h.sfx('shockwave', 1, 0.75, 0.1);
+  const d = Math.hypot(h.px - s.tx, h.pz - s.tz);
+  if (d < LEAP_R + h.pr * 0.4 && plowInWave(h, e, LEAP_WAVE_BAND)) waveHitPlow(h.ctx, e, e.def.ramDamage * LEAP_DMG, { knockback: LEAP_KNOCK, unblockable: true });
+  s.next = h.time + LEAP_CD[0] + Math.random() * (LEAP_CD[1] - LEAP_CD[0]);
+  e.set('recover', LEAP_RECOVER);
+}
+
 function bulldoza(h: Host, e: Bot, dt: number): void {
   const d = h.dist(e);
   if (!e.enraged && e.hpFrac <= 0.5) {
     e.enraged = true;
     h.bossPhase(e, 'ENRAGED!');
+    leapState(e).next = h.time + LEAP_FIRST;
   }
   const spd = e.def.speed * (e.enraged ? 1.15 : 1);
   const C: ChargeCfg = { speed: 20, maxT: 2.5, dmg: e.def.ramDamage * 1.35, knock: 24 };
   switch (e.state) {
+    case 'leapWind':
+      leapWind(h, e);
+      break;
+    case 'leap':
+      leapAir(h, e);
+      break;
     case 'chargeWind':
       chargeWind(h, e, C);
       break;
@@ -203,6 +363,8 @@ function bulldoza(h: Host, e: Bot, dt: number): void {
         if (d < e.radius + h.pr + 1.6) {
           e.set('shoveWind', 0.6);
           h.sfx('charge', 0.4, 0.65, 0.2);
+        } else if (e.enraged && d > LEAP_MIN && h.time >= leapState(e).next) {
+          beginLeap(h, e);
         } else if (d > 8) {
           e.chargesLeft = e.enraged ? 2 : 1;
           beginChargeWind(h, e, 1.0);
@@ -410,7 +572,7 @@ function grinder(h: Host, e: Bot, dt: number): void {
       e.augerRate = 30;
       e.glow = 1;
       h.ring(e, e.position.x, e.position.z, R, 1, 0xff5a00, 0.22 + 0.15 * Math.sin(h.time * 25));
-      const inRange = d < R + h.pr * 0.5;
+      const inRange = d < R + h.pr * 0.5 && plowInWave(h, e);
       const plow = h.ctx.plow;
       if (inRange && !plow.dead) {
         const k = 15 * dt;
@@ -418,7 +580,7 @@ function grinder(h: Host, e: Bot, dt: number): void {
       }
       if (e.cd3 <= 0) {
         e.cd3 = 0.3;
-        if (inRange) h.hitPlow(e, 9 * (e.enraged ? 1.15 : 1), { knockback: 0.5, unblockable: true });
+        if (inRange) waveHitPlow(h.ctx, e, 9 * (e.enraged ? 1.15 : 1), { knockback: 0.5, unblockable: true });
         h.sparks(e, 0xffb040, 6);
       }
       h.ctx.snow?.collectDisc(e.position.x, e.position.z, 4.5, Math.min(1, dt * 0.6));
@@ -626,7 +788,7 @@ function sleet(h: Host, e: Bot, dt: number): void {
         _v.set(e.position.x, e.groundY + 0.1, e.position.z);
         fx.ring(_v, SR, 0x9fd8ff);
         fx.shake(0.35);
-        if (d < SR + h.pr * 0.6) {
+        if (d < SR + h.pr * 0.6 && plowInWave(h, e)) {
           // knock the plow sideways into SLUSH's charge lane
           let kx: number;
           let kz: number;
@@ -639,7 +801,7 @@ function sleet(h: Host, e: Bot, dt: number): void {
             kz = -h.ux * s;
           }
           const kl = Math.hypot(kx, kz) || 1;
-          h.hitPlow(e, e.def.ramDamage * dm, { knockback: 18, unblockable: true, fromX: h.px - kx / kl, fromZ: h.pz - kz / kl });
+          waveHitPlow(h.ctx, e, e.def.ramDamage * dm, { knockback: 18, unblockable: true, fromX: h.px - kx / kl, fromZ: h.pz - kz / kl });
           h.sfx('shockwave', 0.5, 1.3, 0.1);
         }
       }
@@ -760,7 +922,7 @@ function omega(h: Host, e: Bot, dt: number): void {
         fx.burst(_v, { color: 0xff5a3a, count: 20, speed: 9, size: 0.14, gravity: 18, life: 0.6 });
         fx.shake(1.1);
         h.sfx('shockwave', 1, 0.8, 0.1);
-        if (d < PR + h.pr * 0.4) h.hitPlow(e, e.def.ramDamage * 1.2, { knockback: 18, unblockable: true });
+        if (d < PR + h.pr * 0.4 && plowInWave(h, e)) waveHitPlow(h.ctx, e, e.def.ramDamage * 1.2, { knockback: 18, unblockable: true });
         e.vuln = Vuln.Exposed;
         e.vulnT = 1.5;
         e.vulnMult = 1.5;

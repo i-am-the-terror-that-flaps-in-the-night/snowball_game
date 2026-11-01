@@ -159,7 +159,10 @@ export class RemoteAudio implements PilotAudio {
   }
 }
 
-/** Events for the local pilot: the HUD damage pulse goes to the game bus, slams / F presses to the duel. */
+/** Events for the local pilot: the HUD damage pulse and the plow's flights (plowLaunched / plowLanded, so the run's
+ *  airtime tally sees Duel jumps too) go to the game bus, slams / F presses to the duel. The opponent's sink has no
+ *  bus (its flights replay as effects only, Plow.updatePuppet). Duel ends without a runFinished, so its flights still
+ *  never reach the lifetime airtime record. */
 export class PilotEvents implements EventSink {
   constructor(
     private bus: () => GameContext['events'] | null,
@@ -167,7 +170,7 @@ export class PilotEvents implements EventSink {
     private onAbility: (e: GameEvents['ability']) => void,
   ) {}
   emit<K extends keyof GameEvents>(type: K, payload: GameEvents[K]): void {
-    if (type === 'plowDamaged') this.bus()?.emit('plowDamaged', payload as GameEvents['plowDamaged']);
+    if (type === 'plowDamaged' || type === 'plowLaunched' || type === 'plowLanded') this.bus()?.emit(type, payload);
     else if (type === 'slam') this.onSlam(payload as GameEvents['slam']);
     else if (type === 'ability') this.onAbility(payload as GameEvents['ability']);
   }
@@ -181,6 +184,9 @@ export class ReadOnlySnow implements SnowFieldAPI {
   }
   getDepth(x: number, z: number): number {
     return this.f.getDepth(x, z);
+  }
+  topAt(x: number, z: number): number {
+    return this.f.topAt(x, z);
   }
   plowLine(x1: number, z1: number, x2: number, z2: number, thickness: number, fraction: number): number {
     return this.f.measureLine(x1, z1, x2, z2, thickness, fraction);

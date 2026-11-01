@@ -131,20 +131,29 @@ runs `npx tsc --noEmit`, `npx vitest run`, and its relevant probe before handing
 
 ## Follow-ups
 
-Deferred from Track A (an independent check listed them); not implemented yet. Owner track in brackets.
+Deferred from Track A (an independent check listed them). Owner track in brackets; **Done** items are kept for the
+record.
 
-- **[B] Survival / Daily base zone:** `src/survival/SurvivalManager.ts` spreads `ZONES[2]` (Rust Basin) as its base, so
+- **Done. [B] Survival / Daily base zone:** `src/survival/SurvivalManager.ts` spreads `ZONES[2]` (Rust Basin) as its base, so
   it will inherit that arena's terrain, low gravity and biome. Build it from an explicit neutral zone and pin biome /
   terrain per 5-wave rotation (ground only). Fix the stale "Frozen Foundry scenery" comment; optionally start the boss
-  cycle with FROSTBYTE. `tests/daily.test.ts` also uses `ZONES[2]`.
+  cycle with FROSTBYTE. `tests/daily.test.ts` also uses `ZONES[2]`. *Landed:* `SURVIVAL_BASE` is an explicit neutral
+  zone; the biome (look + ground terrain) rotates every 5 waves in campaign order (glacier first, so FROSTBYTE closes
+  the first block), the Daily seeds its start biome, and a biome switch re-seats the plow with `Plow.reset()` (keeps
+  the run's hp only).
 - **[C] `run.airtime` stat** (plus its lifetime counterpart in `src/meta/achievements.ts`), for the airtime challenge
   and trophy.
 - **[D] `killsBy.lava` and `killsBy.airSlam`** (new `KillSource` values in `src/core/events.ts` plus lifetime stats),
   for the lava / air-slam challenges and trophies.
-- **[E] Tutorial zone and menu backdrop:** `src/core/Game.ts` `TUTORIAL_ZONE`, the menu backdrop zone and the
+- **Done. [E] Tutorial zone and menu backdrop:** `src/core/Game.ts` `TUTORIAL_ZONE`, the menu backdrop zone and the
   menu / default `ctx.zone` spread `ZONES[0]` and will inherit the glacier's terrain and ice. Pin an explicit flat
   tutorial zone (`terrain: undefined`, fixed look) and pick the backdrop from a random campaign biome per launch.
+  *Landed:* `TUTORIAL_ZONE` and `pickMenuZone` in `src/core/modeZones.ts`.
 - **[A, after C / D and terrain land] Challenges and trophies:** add the three biome challenges ("3 lava kills",
   "2 s of airtime", "air-slam kill") and three trophies (airtime, lava kills, air-slam kills), then retune the
   time-based challenges for terrain and arena 6's size (the `TODO`s in `src/config/challenges.ts`). Until then Inferno
   Quarry's "Eviction Notice" (30 s boss kill) is temporarily loose: BULLDOZA dies in about 9-14 s on autopilot.
+- **[B, deviation] Duel venue:** "Other modes" says the Duel host picks the venue or it is random. As built, both peers
+  derive it from the room code (`duelVenueFor` in `src/config/duel.ts`, FNV-1a over the code), so it is effectively
+  random and needs no protocol message, but the host cannot choose. A host choice can ride in the host's hello (a venue
+  key) later, with `duelVenueFor` kept as the default.

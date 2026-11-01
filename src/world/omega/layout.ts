@@ -138,7 +138,7 @@ export const OMEGA_TERRAIN: TerrainDef = {
 };
 
 /** Player spawn: the south ring, facing the Assembly Floor (heading π = facing -z, like PLOW_SPAWN). */
-export const OMEGA_SPAWN = { x: 0, z: 62, heading: Math.PI } as const;
+export const OMEGA_SPAWN = { x: 0, z: 55, heading: Math.PI } as const;
 
 /**
  * Floor hatches bots rise out of (instead of only the far wall gates). Spawning picks hatches within ~35 m of the

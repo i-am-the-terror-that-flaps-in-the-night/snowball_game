@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SLAM_DAMAGE_K, type EnemyHandle } from '../../core/types';
 import { COMBO_MAX, COMBO_WINDOW } from '../../config/upgrades';
-import { Kit, _fwd, _p, _q } from './shared';
+import { Kit, Reach, _fwd, _p, _q, floorTop } from './shared';
 
 /** Momentum (BRUTUS) only counts closing speed up to this many m/s. */
 const MOMENTUM_SPEED_CAP = 20;
@@ -72,7 +72,7 @@ export class MeleeKit extends Kit {
     const fx = ctx.fx;
     _p.set(
       (plow.position.x + _fwd.x * 2.4 + enemy.position.x) * 0.5,
-      0.9,
+      (plow.surfaceY || 0) + 0.9,
       (plow.position.z + _fwd.z * 2.4 + enemy.position.z) * 0.5,
     );
     fx.sparks(_p, _fwd, { color: 0xffc04a, count: 10 + Math.round(Math.min(18, closingSpeed)), speed: 8 + closingSpeed * 0.35, spread: 0.85, gravity: 22, life: 0.35 });
@@ -125,14 +125,14 @@ export class MeleeKit extends Kit {
     const fx = ctx.fx;
     _p.set(
       (plow.position.x + _fwd.x * 2.4 + enemy.position.x) * 0.5,
-      1.0,
+      (plow.surfaceY || 0) + 1.0,
       (plow.position.z + _fwd.z * 2.4 + enemy.position.z) * 0.5,
     );
     fx.sparks(_p, _fwd, { color: 0xffa02a, count: 40, speed: 18, spread: 0.7, size: 0.09, length: 0.04, gravity: 20, life: 0.5 });
     fx.sparks(_p, null, { color: 0xfff0a0, count: 14, speed: 10, size: 0.07, gravity: 26, life: 0.3 });
     fx.burst(_p, { color: 0xffffff, count: 26, speed: 7, size: 0.28, gravity: 12, life: 0.8 });
     fx.burst(_p, { color: 0x9aa4b0, count: 8, speed: 5, size: 0.2, gravity: 18, life: 0.7 });
-    _q.set(_p.x, 0.05, _p.z);
+    _q.set(_p.x, (plow.surfaceY || 0) + 0.05, _p.z);
     fx.ring(_q, 3.2, 0xff9a2a);
     this.shake(0.5);
     this.b.audio.play('dashStrike');
@@ -159,7 +159,8 @@ export class MeleeKit extends Kit {
 
     plow.getForward(_fwd);
     this.smashProps(x, z, zone);
-    const hits = this.collect(x, z, zone);
+    // Ground shockwave: only bots standing on the plow's level (not on a deck above, not flying).
+    const hits = this.collect(x, z, zone, Reach.Wave);
     let count = 0;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -188,7 +189,7 @@ export class MeleeKit extends Kit {
       this.onPlayerHit(dealt, killed, e);
       _q.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
       if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, freeze ? '#9fe6ff' : killed ? '#fff3a0' : '#ffffff', 1 + Math.min(1, r * 0.4));
-      _q.set(e.position.x, 1, e.position.z);
+      _q.set(e.position.x, e.position.y + 1, e.position.z);
       fx.burst(_q, { color: freeze ? 0xbfeaff : 0xffffff, count: 8, speed: 5, size: 0.2, gravity: 16, life: 0.6 });
     }
     if (stats.shardFrac > 0) this.shatter(x, z, zone, dmg, hits);
@@ -197,13 +198,13 @@ export class MeleeKit extends Kit {
       this.lastSlamHitAt = ctx.time;
       this.comboStacks = Math.min(COMBO_MAX, this.comboStacks + 1);
       if (combo > 0) {
-        _q.set(x, 3.2 + r, z);
+        _q.set(x, (plow.surfaceY || 0) + 3.2 + r, z);
         fx.floatText(_q, `COMBO x${combo + 1}`, '#ffb340', 0.9 + 0.15 * combo);
       }
     }
 
-    // Shatter the ball.
-    const ground = this.b.snow ? this.b.snow.getDepth(x, z) : 0;
+    // Shatter the ball: on the snow top (or deck) at the slam point, on the plow's level.
+    const ground = floorTop(ctx.terrain, this.b.snow, plow.position.y, x, z);
     _p.set(x, ground + r * 0.8, z);
     fx.burst(_p, { color: 0xffffff, count: Math.round(16 + r * 22), speed: 5.5 + r * 3.5, size: 0.17 + r * 0.13, gravity: 14, life: 1.1 });
     fx.burst(_p, { color: 0xcfe6ff, count: Math.round(10 + r * 12), speed: 3 + r * 2, size: 0.12 + r * 0.1, gravity: 7, life: 1.3 });
@@ -244,7 +245,7 @@ export class MeleeKit extends Kit {
     const R = zone + stats.shardReach;
     const hits = this.b.enemies.query(x, z, R, this.shardBuf).slice();
     for (const e of hits) {
-      if (!e.alive || slammed.includes(e)) continue;
+      if (!e.alive || slammed.includes(e) || !this.reaches(e, Reach.Wave)) continue;
       const dx = e.position.x - x;
       const dz = e.position.z - z;
       const d = Math.hypot(dx, dz) || 1;
@@ -259,10 +260,10 @@ export class MeleeKit extends Kit {
       this.onPlayerHit(dealt, killed, e);
       _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
       if (dealt > 0) fx.floatText(_q, `🧨${Math.round(dealt)}`, '#bfe6ff', 0.8);
-      _q.y = 1;
+      _q.y = e.position.y + 1;
       fx.burst(_q, { color: 0xcfeeff, count: 6, speed: 6, size: 0.14, gravity: 14, life: 0.5 });
     }
-    const ground = this.b.snow ? this.b.snow.getDepth(x, z) : 0;
+    const ground = floorTop(ctx.terrain, this.b.snow, this.b.plow.position.y, x, z);
     _p.set(x, ground + 0.6, z);
     fx.burst(_p, { color: 0xcfeeff, count: 18, speed: 9 + stats.shardReach, size: 0.12, gravity: 10, life: 0.6 });
     _p.y = ground;
@@ -278,7 +279,7 @@ export class MeleeKit extends Kit {
     const fx = ctx.fx;
     const dmg = (stats.whirlDamage + (ballR >= 0.2 ? 3 * ballR * ballR * stats.damageMult : 0)) * WHIRL_PLAYER_BONUS;
     if (final) this.smashProps(x, z, radius);
-    const hits = this.collect(x, z, radius);
+    const hits = this.collect(x, z, radius, Reach.Body);
     let count = 0;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -309,7 +310,7 @@ export class MeleeKit extends Kit {
         ballRadius: ballR,
       });
       count++;
-      _q.set(e.position.x - dx * e.radius, 1, e.position.z - dz * e.radius);
+      _q.set(e.position.x - dx * e.radius, e.position.y + 1, e.position.z - dz * e.radius);
       fx.burst(_q, { color: final ? 0xbfeaff : 0xffc04a, count: final ? 16 : 9, speed: final ? 11 : 7, size: 0.08, gravity: 22, life: 0.35 });
       fx.burst(_q, { color: 0xffffff, count: 6, speed: 4, size: 0.2, gravity: 12, life: 0.5 });
       _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
@@ -320,7 +321,7 @@ export class MeleeKit extends Kit {
     this.clearTargets();
 
     this.b.audio.play('whirlTick', { pitch: 0.9 + tick * 0.12, volume: final ? 1 : 0.7 });
-    _p.set(x, this.b.snow ? this.b.snow.getDepth(x, z) : 0, z);
+    _p.set(x, floorTop(ctx.terrain, this.b.snow, this.b.plow.position.y, x, z), z);
     if (final) {
       fx.ring(_p, radius * 1.15, 0xbfeaff);
       fx.ring(_p, radius * 0.7, 0xffffff);

@@ -15,6 +15,8 @@ export interface Settings {
   sfx: number;
   /** Camera shake multiplier, 0..1. */
   shake: number;
+  /** Comfort: scales every camera shake / kick / landing thump / FOV punch down to REDUCED_SHAKE on top of `shake`. */
+  reduceShake: boolean;
   quality: Quality;
   /** Photosensitivity: dims screen flashes, the damage vignette and impact lights. */
   reduceFlash: boolean;
@@ -27,7 +29,7 @@ export interface Settings {
 }
 
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} };
+  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -50,6 +52,7 @@ function load(): Settings {
       music: clamp01(p.music, d.music),
       sfx: clamp01(p.sfx, d.sfx),
       shake: clamp01(p.shake, d.shake),
+      reduceShake: p.reduceShake === true,
       quality: p.quality === 'low' ? 'low' : 'high',
       reduceFlash: p.reduceFlash === true,
       bloom: p.bloom !== false,
@@ -63,6 +66,14 @@ function load(): Settings {
 
 /** Live settings; read directly by systems that need them every frame (e.g. CameraRig shake). */
 export const settings: Settings = load();
+
+/** Share of the camera shake left with "Reduce screen shake" on. */
+export const REDUCED_SHAKE = 0.3;
+
+/** Effective camera-shake multiplier: the slider, times REDUCED_SHAKE when "Reduce screen shake" is on. */
+export function shakeScale(s: Pick<Settings, 'shake' | 'reduceShake'> = settings): number {
+  return s.shake * (s.reduceShake ? REDUCED_SHAKE : 1);
+}
 
 /** UI flag: the settings overlay is open (gamepad Start must not unpause underneath it). */
 export const settingsUi = { open: false };

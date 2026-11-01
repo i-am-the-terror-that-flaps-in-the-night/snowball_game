@@ -1,4 +1,4 @@
-import type { AudioAPI, SoundName } from '../core/types';
+import type { AmbienceKind, AudioAPI, SoundName } from '../core/types';
 
 type PlayOpts = { volume?: number; pitch?: number };
 
@@ -10,9 +10,11 @@ export class AudioSystem implements AudioAPI {
   private ac: AudioContext | null = null;
   private master: GainNode | null = null;
   private sfx: GainNode | null = null;
-  /** Player volume buses (settings menu): one-shots + engine/plow loops, and music/wind. */
+  /** Player volume buses (settings menu): one-shots + engine/plow loops, and music/wind. Biome ambience has its own
+   *  bus that follows the SFX slider (music at 0 keeps the wind / lava / crowd); all three feed master (mute). */
   private sfxBus: GainNode | null = null;
   private musicBus: GainNode | null = null;
+  private ambBus: GainNode | null = null;
   private vol = { master: 1, music: 1, sfx: 1 };
   private noiseBuf: AudioBuffer | null = null;
   private _muted = false;
@@ -36,6 +38,9 @@ export class AudioSystem implements AudioAPI {
   private musicTimer: number | null = null;
   private nextBeat = 0;
   private beat = 0;
+  // biome ambience (one loop chain at a time, crossfaded; see setAmbience)
+  private ambWanted: AmbienceKind = 'none';
+  private amb: { kind: AmbienceKind; gain: GainNode; stop: () => void } | null = null;
 
   get muted(): boolean {
     return this._muted;
@@ -51,11 +56,12 @@ export class AudioSystem implements AudioAPI {
   setVolumes(master: number, music: number, sfx: number): void {
     this.vol = { master, music, sfx };
     const ac = this.ac;
-    if (!ac || !this.master || !this.sfxBus || !this.musicBus) return;
+    if (!ac || !this.master || !this.sfxBus || !this.musicBus || !this.ambBus) return;
     const t = ac.currentTime;
     this.master.gain.setTargetAtTime(this._muted ? 0 : MASTER_VOL * master, t, 0.05);
     this.musicBus.gain.setTargetAtTime(music, t, 0.05);
     this.sfxBus.gain.setTargetAtTime(sfx, t, 0.05);
+    this.ambBus.gain.setTargetAtTime(sfx, t, 0.05);
   }
 
   unlock(): void {
@@ -91,6 +97,9 @@ export class AudioSystem implements AudioAPI {
     this.musicBus = ac.createGain();
     this.musicBus.gain.value = this.vol.music;
     this.musicBus.connect(this.master);
+    this.ambBus = ac.createGain();
+    this.ambBus.gain.value = this.vol.sfx;
+    this.ambBus.connect(this.master);
     this.sfx = ac.createGain();
     this.sfx.gain.value = 0.9;
     this.sfx.connect(this.sfxBus);
@@ -168,6 +177,7 @@ export class AudioSystem implements AudioAPI {
     wind.start();
 
     if (this.musicWanted) this.setMusic(true);
+    if (this.ambWanted !== 'none') this.applyAmbience();
   }
 
   /* ---------------------------------------------------------------- continuous */
@@ -212,6 +222,170 @@ export class AudioSystem implements AudioAPI {
         this.musicTimer = null;
       }
     }
+  }
+
+  /* ---------------------------------------------------------------- biome ambience */
+
+  setAmbience(kind: AmbienceKind): void {
+    if (kind === this.ambWanted && (this.amb?.kind ?? 'none') === kind) return;
+    this.ambWanted = kind;
+    this.applyAmbience();
+  }
+
+  /** Crossfade from the current ambience chain to `ambWanted`. Every chain is a couple of looping noise / oscillator
+   *  sources through filters into one gain on the ambience bus (so the SFX slider, master and mute apply, the music
+   *  slider does not); the menu wind of the music bed ducks while a biome loop plays. */
+  private applyAmbience(): void {
+    const ac = this.ac;
+    if (!ac || !this.ambBus) return;
+    const t = ac.currentTime;
+    const kind = this.ambWanted;
+    if ((this.amb?.kind ?? 'none') === kind) return;
+    const old = this.amb;
+    if (old) {
+      old.gain.gain.cancelScheduledValues(t);
+      old.gain.gain.setTargetAtTime(0, t, 0.5);
+      window.setTimeout(() => old.stop(), 2500);
+    }
+    this.amb = kind === 'none' ? null : this.buildAmbience(kind);
+    if (this.amb) {
+      this.amb.gain.gain.setValueAtTime(0, t);
+      this.amb.gain.gain.setTargetAtTime(1, t + 0.1, 0.8);
+    }
+    this.windGain?.gain.setTargetAtTime(kind === 'none' ? 0.035 : 0, t, 0.6);
+  }
+
+  private buildAmbience(kind: AmbienceKind): { kind: AmbienceKind; gain: GainNode; stop: () => void } {
+    const ac = this.ac!;
+    const out = ac.createGain();
+    out.gain.value = 0;
+    out.connect(this.ambBus!);
+    const nodes: AudioScheduledSourceNode[] = [];
+    let timer = 0;
+    const noiseLoop = (rate: number): AudioBufferSourceNode => {
+      const src = ac.createBufferSource();
+      src.buffer = this.noiseBuf;
+      src.loop = true;
+      src.playbackRate.value = rate;
+      src.start(ac.currentTime, Math.random() * 1.5);
+      nodes.push(src);
+      return src;
+    };
+    const filt = (type: BiquadFilterType, f: number, q: number): BiquadFilterNode => {
+      const b = ac.createBiquadFilter();
+      b.type = type;
+      b.frequency.value = f;
+      b.Q.value = q;
+      return b;
+    };
+    const gain = (v: number): GainNode => {
+      const g = ac.createGain();
+      g.gain.value = v;
+      return g;
+    };
+    /** Slow sine LFO added onto an AudioParam (depth in the param's units). */
+    const lfo = (hz: number, depth: number, param: AudioParam): void => {
+      const o = ac.createOscillator();
+      o.frequency.value = hz;
+      const g = gain(depth);
+      o.connect(g).connect(param);
+      o.start();
+      nodes.push(o);
+    };
+    const osc = (type: OscillatorType, hz: number, dest: AudioNode): void => {
+      const o = ac.createOscillator();
+      o.type = type;
+      o.frequency.value = hz;
+      o.connect(dest);
+      o.start();
+      nodes.push(o);
+    };
+    switch (kind) {
+      case 'wind': {
+        // glacier: a low howl with slow gusts and a thin whistle on top
+        const f = filt('bandpass', 420, 1.1);
+        lfo(0.07, 260, f.frequency);
+        const g = gain(0.1);
+        lfo(0.11, 0.05, g.gain);
+        noiseLoop(0.55).connect(f).connect(g).connect(out);
+        const w = filt('bandpass', 1700, 7);
+        lfo(0.05, 500, w.frequency);
+        noiseLoop(0.8).connect(w).connect(gain(0.03)).connect(out);
+        break;
+      }
+      case 'lava': {
+        // quarry: deep rumble, a bubbling mid layer and a faint crackle
+        noiseLoop(0.3).connect(filt('lowpass', 130, 0.7)).connect(gain(0.32)).connect(out);
+        const b = gain(0.03);
+        lfo(4.7, 0.022, b.gain);
+        lfo(2.9, 0.015, b.gain);
+        noiseLoop(0.6).connect(filt('bandpass', 300, 3)).connect(b).connect(out);
+        const c = gain(0.008);
+        lfo(9.3, 0.008, c.gain);
+        noiseLoop(1).connect(filt('highpass', 3200, 0.7)).connect(c).connect(out);
+        break;
+      }
+      case 'dust': {
+        // Rust Basin: hissing grit on a gusty, hollow low wind
+        const h = gain(0.04);
+        lfo(0.13, 0.028, h.gain);
+        noiseLoop(1).connect(filt('bandpass', 2600, 0.6)).connect(h).connect(out);
+        const lo = filt('bandpass', 260, 1.5);
+        lfo(0.06, 120, lo.frequency);
+        noiseLoop(0.45).connect(lo).connect(gain(0.09)).connect(out);
+        break;
+      }
+      case 'factory': {
+        // a mains hum plus irregular metal clanks
+        const hum = filt('lowpass', 240, 1);
+        hum.connect(gain(0.022)).connect(out);
+        osc('sawtooth', 55, hum);
+        osc('sawtooth', 110.6, hum);
+        noiseLoop(0.4).connect(filt('lowpass', 180, 0.7)).connect(gain(0.12)).connect(out);
+        const clank = () => {
+          if (!this.ac) return;
+          const t = this.ac.currentTime + 0.05;
+          const f = 180 + Math.random() * 260;
+          this.tone('square', f, f * 0.96, t, 0.18, 0.035, out, 0.001);
+          this.tone('sine', f * 2.7, f * 2.6, t, 0.35, 0.025, out, 0.001);
+          this.noise(t, 0.08, 0.05, out, 'bandpass', 2400, 1200, 2, 0.001);
+        };
+        timer = window.setInterval(() => {
+          if (Math.random() < 0.55) clank();
+        }, 700);
+        break;
+      }
+      case 'crowd': {
+        // Plaza: a murmuring crowd that swells, with the odd cheer
+        const m = gain(0.05);
+        lfo(0.17, 0.025, m.gain);
+        noiseLoop(0.9).connect(filt('bandpass', 850, 0.8)).connect(m).connect(out);
+        noiseLoop(1.1).connect(filt('bandpass', 1700, 1.4)).connect(gain(0.018)).connect(out);
+        timer = window.setInterval(() => {
+          if (!this.ac || Math.random() > 0.3) return;
+          const t = this.ac.currentTime + 0.05;
+          this.noise(t, 1.6, 0.06, out, 'bandpass', 1100, 1500, 0.9, 0.35);
+        }, 1500);
+        break;
+      }
+      case 'none':
+        break;
+    }
+    return {
+      kind,
+      gain: out,
+      stop: () => {
+        if (timer) window.clearInterval(timer);
+        for (const n of nodes) {
+          try {
+            n.stop();
+          } catch {
+            /* already stopped */
+          }
+        }
+        out.disconnect();
+      },
+    };
   }
 
   /** Am - F - C - G, one chord per bar (root notes as MIDI, plus chord tones for the arpeggio). */
@@ -853,6 +1027,34 @@ export class AudioSystem implements AudioAPI {
         this.noise(t, 0.1, 0.12, o, 'highpass', 4000 * v, 7000 * v, 0.7, 0.02);
         return 0.17;
       }
+      // ---------------------------------------------------------------- terrain / biomes
+      case 'jump':
+        // airy launch whoosh rising off the lip
+        this.noise(t, 0.3, 0.32, o, 'bandpass', 500 * p, 2600 * p, 1.6, 0.04);
+        this.tone('sine', 170 * p, 330 * p, t, 0.2, 0.12, o, 0.01);
+        return 0.32;
+      case 'land': {
+        // heavy suspension thump into the snow
+        this.tone('sine', 115 * p, 38 * p, t, 0.32, 0.8, o, 0.002);
+        this.tone('triangle', 70 * p, 40 * p, t, 0.22, 0.25, o, 0.002);
+        this.noise(t, 0.3, 0.55, o, 'lowpass', 1100 * p, 120, 0.8, 0.002, 0.7);
+        for (let i = 0; i < 4; i++) this.noise(t + 0.01 + Math.random() * 0.12, 0.05, 0.15, o, 'bandpass', 1500 + Math.random() * 2000, 900, 3, 0.002);
+        return 0.35;
+      }
+      case 'airSlam':
+        // falling whistle into a big boom
+        this.tone('sine', 1500 * p, 320 * p, t, 0.32, 0.1, o, 0.02);
+        this.noise(t, 0.34, 0.35, o, 'bandpass', 3200 * p, 500 * p, 2, 0.25);
+        this.tone('sine', 95 * p, 26 * p, t + 0.28, 0.9, 1, o, 0.003);
+        this.tone('sawtooth', 70 * p, 30 * p, t + 0.28, 0.45, 0.14, o, 0.003);
+        this.noise(t + 0.28, 0.9, 0.7, o, 'lowpass', 1600 * p, 60, 0.8, 0.004, 0.5);
+        return 1.2;
+      case 'lavaBurn':
+        // sizzle + a couple of pops
+        this.noise(t, 0.35, 0.22, o, 'highpass', 2600 * p, 5200 * p, 0.7, 0.01);
+        this.noise(t, 0.25, 0.12, o, 'bandpass', 900 * p, 500, 1.5, 0.01, 0.6);
+        for (let i = 0; i < 3; i++) this.noise(t + Math.random() * 0.25, 0.03, 0.12, o, 'bandpass', 2000 + Math.random() * 3000, 1500, 4, 0.001);
+        return 0.36;
       default: {
         const never: never = name;
         void never;

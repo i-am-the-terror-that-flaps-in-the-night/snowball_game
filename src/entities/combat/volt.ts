@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, _p, _q } from './shared';
+import { Kit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 
 /** SUPERCELL (VOLT-9): SUPERCELL_WAVES waves of sky strikes on every bot within SUPERCELL_RADIUS, SUPERCELL_GAP s
@@ -38,6 +38,8 @@ export class VoltKit extends Kit implements UltScript {
   stormT = 0;
   private stormX = 0;
   private stormZ = 0;
+  /** The floor the Thunderclap was cast on: the electrified ground judges height from it (not the plow's live height). */
+  private readonly stormFrom: CastOrigin = { y: 0, deck: -1 };
   private stormStrikes = 0;
   private stormStrikeT = 0;
   private stormTickT = 0;
@@ -95,8 +97,9 @@ export class VoltKit extends Kit implements UltScript {
       this.idleArcT = 0.12 + Math.random() * 0.2;
       const a = Math.random() * Math.PI * 2;
       const r = R * (0.5 + Math.random() * 0.5);
-      _p.set(plow.position.x, 1.6, plow.position.z);
-      _q.set(plow.position.x + Math.sin(a) * r, 0.15, plow.position.z + Math.cos(a) * r);
+      const top = plow.surfaceY || 0;
+      _p.set(plow.position.x, top + 1.6, plow.position.z);
+      _q.set(plow.position.x + Math.sin(a) * r, top + 0.15, plow.position.z + Math.cos(a) * r);
       this.lightning.bolt(_p, _q, { life: 0.1, width: 0.12, jag: 0.5, color: 0x3fa8ff });
     }
     this.fieldT -= dt;
@@ -109,7 +112,7 @@ export class VoltKit extends Kit implements UltScript {
       const e = hits[i];
       if (!e.alive) continue;
       any = true;
-      _p.set(plow.position.x, 1.8, plow.position.z);
+      _p.set(plow.position.x, (plow.surfaceY || 0) + 1.8, plow.position.z);
       _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.14, width: 0.18 });
       const hp0 = e.hp;
@@ -138,11 +141,12 @@ export class VoltKit extends Kit implements UltScript {
     const R = st.clapRadius;
     const px = plow.position.x;
     const pz = plow.position.z;
-    // Sky strike onto the plow + ground rings.
-    _p.set(px, 26, pz);
-    _q.set(px, 1.2, pz);
+    // Sky strike onto the plow + ground rings, on the floor under the plow (0 on flat arenas).
+    const top = castOrigin(plow, this.stormFrom).y;
+    _p.set(px, top + 26, pz);
+    _q.set(px, top + 1.2, pz);
     this.lightning.bolt(_p, _q, { life: 0.35, width: 0.7, jag: 2.2, color: 0x9fe8ff });
-    _q.set(px, 0.1, pz);
+    _q.set(px, top + 0.1, pz);
     ctx.fx.ring(_q, R, 0x7fdcff);
     ctx.fx.ring(_q, R * 0.6, 0xffffff);
     ctx.fx.ring(_q, R * 1.15, 0x2fb8ff);
@@ -150,15 +154,17 @@ export class VoltKit extends Kit implements UltScript {
     ctx.fx.burst(_q, { color: 0xffffff, count: 24, speed: 8, size: 0.3, gravity: 10, life: 0.6 });
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
-      _p.set(px, 1.8, pz);
-      _q.set(px + Math.sin(a) * R, 0.2, pz + Math.cos(a) * R);
+      const bx = px + Math.sin(a) * R;
+      const bz = pz + Math.cos(a) * R;
+      _p.set(px, top + 1.8, pz);
+      _q.set(bx, waveFloor(ctx.terrain, top, bx, bz) + 0.2, bz);
       this.lightning.bolt(_p, _q, { life: 0.25, width: 0.22, jag: 1.1 });
     }
     this.shake(0.8);
-    this.impactHit('clap', _q.set(px, 1, pz));
+    this.impactHit('clap', _q.set(px, top + 1, pz));
     this.b.audio.play('thunder');
     this.smashProps(px, pz, R);
-    const hits = this.collect(px, pz, R);
+    const hits = this.collect(px, pz, R, Reach.Wave);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive) continue;
@@ -167,7 +173,7 @@ export class VoltKit extends Kit implements UltScript {
       const d = Math.hypot(dx, dz) || 1;
       dx /= d;
       dz /= d;
-      _p.set(px, 2, pz);
+      _p.set(px, top + 2, pz);
       _q.set(e.position.x, e.position.y + e.radius, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.35 });
       const hp0 = e.hp;
@@ -202,7 +208,7 @@ export class VoltKit extends Kit implements UltScript {
     this.clapHeat += 1;
     if (dmg <= 0) return;
     plow.damage(dmg);
-    _q.set(plow.position.x, 3.2, plow.position.z);
+    _q.set(plow.position.x, (plow.surfaceY || 0) + 3.2, plow.position.z);
     ctx.fx.floatText(_q, `-${Math.round(dmg)} ⚡OVERLOAD`, this.clapHeat > 1.5 ? '#ff7a5a' : '#ffd27a', 0.95);
   }
 
@@ -247,8 +253,9 @@ export class VoltKit extends Kit implements UltScript {
         sx = this.stormX + Math.sin(a) * r;
         sz = this.stormZ + Math.cos(a) * r;
       }
-      _p.set(sx + (Math.random() - 0.5) * 4, 24, sz + (Math.random() - 0.5) * 4);
-      _q.set(sx, 0.2, sz);
+      const sy = waveFloor(ctx.terrain, this.stormFrom.y, sx, sz);
+      _p.set(sx + (Math.random() - 0.5) * 4, sy + 24, sz + (Math.random() - 0.5) * 4);
+      _q.set(sx, sy + 0.2, sz);
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.55, jag: 1.8, color: 0x9fe8ff });
       ctx.fx.ring(_q, 3.5, 0x7fdcff);
       ctx.fx.burst(_q, { color: 0xbff0ff, count: 18, speed: 9, size: 0.1, gravity: 10, life: 0.4 });
@@ -269,9 +276,13 @@ export class VoltKit extends Kit implements UltScript {
     if (Math.random() < dt * 20) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * R;
-      _p.set(this.stormX + Math.sin(a) * r, 0.15, this.stormZ + Math.cos(a) * r);
+      const ax = this.stormX + Math.sin(a) * r;
+      const az = this.stormZ + Math.cos(a) * r;
       const b = a + (Math.random() - 0.5) * 1.5;
-      _q.set(_p.x + Math.sin(b) * 3, 0.15, _p.z + Math.cos(b) * 3);
+      const bx = ax + Math.sin(b) * 3;
+      const bz = az + Math.cos(b) * 3;
+      _p.set(ax, waveFloor(ctx.terrain, this.stormFrom.y, ax, az) + 0.15, az);
+      _q.set(bx, waveFloor(ctx.terrain, this.stormFrom.y, bx, bz) + 0.15, bz);
       this.lightning.bolt(_p, _q, { life: 0.12, width: 0.14, jag: 0.6, color: 0x3fa8ff });
     }
     this.stormTickT -= dt;
@@ -280,11 +291,12 @@ export class VoltKit extends Kit implements UltScript {
       const hits = this.b.enemies.query(this.stormX, this.stormZ, R, this.chainBuf);
       for (let i = 0; i < hits.length; i++) {
         const e = hits[i];
-        if (!e.alive) continue;
+        // Electrified ground: only bots standing on the floor the clap was cast on.
+        if (!e.alive || !this.reaches(e, Reach.Wave, this.stormFrom)) continue;
         const hp0 = e.hp;
         const killed = this.b.enemies.damage(e, dmgBase * STORM_FIELD_FRAC * 0.5 * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: e.position.x, fromZ: e.position.z });
         this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
-        _p.set(this.stormX, 0.3, this.stormZ);
+        _p.set(this.stormX, this.stormFrom.y + 0.3, this.stormZ);
         _q.set(e.position.x, e.position.y + e.radius * 0.6, e.position.z);
         this.lightning.bolt(_p, _q, { life: 0.12, width: 0.16, jag: 0.8, color: 0x3fa8ff });
       }
@@ -304,21 +316,24 @@ export class VoltKit extends Kit implements UltScript {
   }
 
   /** SUPERCELL wave: sky strikes on every bot in range (+ a few bare-ground strikes for show), ground rings. */
-  private supercellWave(i: number, x: number, z: number): void {
+  private supercellWave(i: number, x: number, z: number, from: CastOrigin): void {
     const ctx = this.ctx;
     const st = this.b.stats;
+    const top = from.y;
     for (let k = 0; k < 6; k++) {
       const a = Math.random() * Math.PI * 2;
       const rr = Math.sqrt(Math.random()) * SUPERCELL_RADIUS;
-      _q.set(x + Math.sin(a) * rr, 0.2, z + Math.cos(a) * rr);
+      const qx = x + Math.sin(a) * rr;
+      const qz = z + Math.cos(a) * rr;
+      _q.set(qx, waveFloor(ctx.terrain, top, qx, qz) + 0.2, qz);
       _p.set(_q.x + (Math.random() - 0.5) * 4, 28, _q.z + (Math.random() - 0.5) * 4);
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.45, jag: 2.2, color: 0x9fe8ff });
       ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 10, speed: 9, size: 0.07, length: 0.05, gravity: 8, life: 0.4 });
     }
-    _q.set(x, 0.12, z);
+    _q.set(x, top + 0.12, z);
     ctx.fx.ring(_q, SUPERCELL_RADIUS * (0.4 + 0.3 * i), 0xbff0ff);
     this.shake(0.7);
-    this.impactHit('clap', _q.set(x, 1, z));
+    this.impactHit('clap', _q.set(x, top + 1, z));
     this.b.audio.play('thunder', { pitch: 0.85 + 0.15 * i });
     ultBlast(this.h, x, z, 0, SUPERCELL_RADIUS, st.clapDamage * SUPERCELL_MULT, { knock: 8, freeze: st.clapStun * 1.5, text: '⚡', color: '#bff0ff', bolt: true });
   }
@@ -331,7 +346,7 @@ export class VoltKit extends Kit implements UltScript {
       const soak = Math.min(this.shield, dmg);
       this.shield -= soak;
       dmg -= soak;
-      _q.set(plow.position.x, 2.6, plow.position.z);
+      _q.set(plow.position.x, (plow.surfaceY || 0) + 2.6, plow.position.z);
       ctx.fx.burst(_q, { color: 0x7fdcff, count: 10, speed: 5, size: 0.12, gravity: 4, life: 0.4 });
       if (soak >= 3) ctx.fx.floatText(_q, `🔋${Math.round(soak)}`, '#7fdcff', 0.75);
       if (this.shield <= 0) this.b.audio.play('zap', { pitch: 0.6 });
@@ -340,17 +355,17 @@ export class VoltKit extends Kit implements UltScript {
     return dmg;
   }
 
-  ultStart(x: number, z: number): number {
+  ultStart(x: number, z: number, plow: PlowAPI): number {
     this.ultStep = 0;
-    _q.set(x, 0.12, z);
+    _q.set(x, (plow.surfaceY || 0) + 0.12, z);
     this.ctx.fx.ring(_q, SUPERCELL_RADIUS, 0x2fb8ff);
     this.ctx.fx.ring(_q, SUPERCELL_RADIUS * 0.5, 0xbff0ff);
     this.b.audio.play('thunder', { pitch: 0.7 });
     return SUPERCELL_WAVES * SUPERCELL_GAP + 1;
   }
 
-  ultTick(t: number, _dt: number, x: number, z: number): boolean {
-    while (this.ultStep < SUPERCELL_WAVES && t >= this.ultStep * SUPERCELL_GAP) this.supercellWave(this.ultStep++, x, z);
+  ultTick(t: number, _dt: number, x: number, z: number, from: CastOrigin): boolean {
+    while (this.ultStep < SUPERCELL_WAVES && t >= this.ultStep * SUPERCELL_GAP) this.supercellWave(this.ultStep++, x, z, from);
     return this.ultStep >= SUPERCELL_WAVES;
   }
 

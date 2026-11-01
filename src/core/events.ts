@@ -2,8 +2,9 @@ import type * as THREE from 'three';
 import type { BrawlDifficulty, EnemyHandle } from './types';
 import type { PlowKind } from '../config/plows';
 
-/** How the player landed a killing blow (campaign / survival / tutorial; Brawl kills omit it). */
-export type KillSource = 'slam' | 'ram' | 'whirl' | 'other';
+/** How the player landed a killing blow (campaign / survival / tutorial; Brawl kills omit it).
+ *  'stomp' = landing on a bot, 'airSlam' = the slam-while-airborne shockwave, 'lava' = a bot burned in lava. */
+export type KillSource = 'slam' | 'ram' | 'whirl' | 'other' | 'stomp' | 'airSlam' | 'lava';
 
 /** Cross-cutting game events. Modules call ctx.audio / ctx.fx directly for their own feedback;
  *  events exist so Game/UI can track stats and show toasts without modules knowing about each other. */
@@ -18,6 +19,12 @@ export interface GameEvents {
   strike: { count: number; position: THREE.Vector3 };
   plowDamaged: { amount: number; blocked: number };
   plowDestroyed: Record<string, never>;
+  /** The player's plow left the ground at speed (m/s) and has been in the air long enough to count as a jump. */
+  plowLaunched: { x: number; z: number; speed: number };
+  /** The player's plow touched down after a real flight: impact = downward speed (m/s), airTime = flight seconds. */
+  plowLanded: { x: number; y: number; z: number; impact: number; airTime: number };
+  /** A bot / Brawl rival touched down after a flight (impact = downward speed, m/s). */
+  enemyLanded: { enemy: EnemyHandle; impact: number };
   coinCollected: { amount: number };
   bossSpawned: { enemy: EnemyHandle; name: string; title: string };
   /** A boss entered a new phase / enraged (e.g. "ENRAGED!", "PHASE 2"). */
@@ -37,6 +44,8 @@ export interface GameEvents {
     coins: number;
     bestCombo: number;
     biggestBall: number;
+    /** Longest single flight this run (s). */
+    airtime?: number;
     /** Seconds from the first countdown to the end, excluding pauses and shops. */
     duration: number;
     /** HP lost this run (after armor / shields). */

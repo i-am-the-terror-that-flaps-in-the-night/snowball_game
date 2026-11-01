@@ -238,12 +238,10 @@ export class Terrain {
     if (deckRef) {
       out.material = deckRef.material ?? 'steel';
       if (deckRef.rise) {
-        // Slope along the deck's local z axis, rotated back to world.
+        // Slope along the deck's local z axis, rotated back to world: lz = dx*sin(rot) + dz*cos(rot).
         const k = deckRef.rise / (2 * deckRef.hd);
-        const c = Math.cos(deckRef.rot);
-        const s = Math.sin(deckRef.rot);
-        out.gx = k * -s;
-        out.gz = k * c;
+        out.gx = k * Math.sin(deckRef.rot);
+        out.gz = k * Math.cos(deckRef.rot);
       } else {
         out.gx = 0;
         out.gz = 0;
@@ -257,6 +255,28 @@ export class Terrain {
     out.ny = inv;
     out.nz = -out.gz * inv;
     return out;
+  }
+
+  /** Deck id the last heightAt() landed on (-1 = the ground), so callers can tell decks from ground (snow lies on the
+   *  ground only) without a second ground() evaluation. */
+  heightDeck = -1;
+
+  /** Height only of surfaceAt (no material / gradient): the cheap floor for falling coins, debris and particles. Sets
+   *  heightDeck. */
+  heightAt(x: number, z: number, y = Infinity): number {
+    let best = this.ground(x, z);
+    let deck = -1;
+    for (let i = 0; i < this.decks.length; i++) {
+      const d = this.decks[i];
+      if (!this.inDeck(d, x, z)) continue;
+      const top = this.deckTop(d, x, z);
+      if (top <= y + STEP_UP && top > best) {
+        best = top;
+        deck = d.id;
+      }
+    }
+    this.heightDeck = deck;
+    return best;
   }
 
   /** Lowest deck underside above height `y` at (x, z), or +Infinity (jumping plows bonk on it). */
@@ -275,12 +295,13 @@ export class Terrain {
    * Deck sides an entity at height `y` (feet), `height` tall, radius r cannot pass at (x, z). A deck blocks when its
    * underside is below the entity's head AND its top is more than STEP_UP above the surface the entity would be on at
    * the point where it touches the deck (so a ramp running up to a deck's lip flows onto it, while a pillar beside a
-   * deck, or a deck edge beside the ground, is a wall). Returns the deck to push out of, or null.
+   * deck, or a deck edge beside the ground, is a wall). Returns the deck to push out of, or null. `skip`: a deck to
+   * ignore (e.g. the ramp a plow's blade is climbing), so the scan still finds any other blocking deck.
    */
-  wallAt(x: number, z: number, y: number, height: number, r: number): Deck | null {
+  wallAt(x: number, z: number, y: number, height: number, r: number, skip: Deck | null = null): Deck | null {
     for (let i = 0; i < this.decks.length; i++) {
       const d = this.decks[i];
-      if (!this.inDeck(d, x, z, r)) continue;
+      if (d === skip || !this.inDeck(d, x, z, r)) continue;
       // Contact point: the closest point of the footprint to the entity's centre.
       const c = Math.cos(d.rot);
       const s = Math.sin(d.rot);
@@ -290,6 +311,8 @@ export class Terrain {
       const lz = Math.max(-d.hd, Math.min(d.hd, dx * s + dz * c));
       const cx = d.x + lx * c + lz * s;
       const cz = d.z - lx * s + lz * c;
+      // The footprint test above is a square of half-size r round the circle: a near miss past a corner isn't contact.
+      if ((x - cx) ** 2 + (z - cz) ** 2 > r * r) continue;
       const top = this.deckTop(d, cx, cz);
       const under = top - d.thickness;
       if (under >= y + height) continue; // passes underneath
@@ -314,7 +337,8 @@ export class Terrain {
     return best;
   }
 
-  /** Push (x, z) radius r out of a deck's footprint along the shortest axis. Writes into `out`. */
+  /** Push a circle at (x, z), radius r, out of a deck's footprint: away from the nearest edge point when its centre is
+   *  outside the footprint (so corners push diagonally), else along the shortest axis. Writes into `out`. */
   pushOut(d: Deck, x: number, z: number, r: number, out: { x: number; z: number }): void {
     const c = Math.cos(d.rot);
     const s = Math.sin(d.rot);
@@ -322,6 +346,18 @@ export class Terrain {
     const dz = z - d.z;
     let lx = dx * c - dz * s;
     let lz = dx * s + dz * c;
+    if (Math.abs(lx) > d.hw || Math.abs(lz) > d.hd) {
+      const qx = Math.max(-d.hw, Math.min(d.hw, lx));
+      const qz = Math.max(-d.hd, Math.min(d.hd, lz));
+      const ex = lx - qx;
+      const ez = lz - qz;
+      const e = Math.hypot(ex, ez) || 1;
+      lx = qx + (ex / e) * r;
+      lz = qz + (ez / e) * r;
+      out.x = d.x + lx * c + lz * s;
+      out.z = d.z - lx * s + lz * c;
+      return;
+    }
     const px = d.hw + r - Math.abs(lx);
     const pz = d.hd + r - Math.abs(lz);
     if (px < pz) lx = Math.sign(lx || 1) * (d.hw + r);
@@ -411,20 +447,29 @@ export class Terrain {
     const ldz = dx * s + dz * c;
     const topMax = this.deckTop(d, d.x, d.z) + Math.abs(d.rise ?? 0) / 2;
     const yMin = topMax - (d.rise ? Math.abs(d.rise) : 0) - d.thickness;
+    // Slab test per axis, inlined (this runs per deck per camera frame: no closures or array swaps).
     let t0 = -Infinity;
     let t1 = Infinity;
-    const slab = (o: number, dir: number, lo: number, hi: number): boolean => {
-      if (Math.abs(dir) < 1e-9) return o >= lo && o <= hi;
-      let a = (lo - o) / dir;
-      let b = (hi - o) / dir;
-      if (a > b) [a, b] = [b, a];
-      t0 = Math.max(t0, a);
-      t1 = Math.min(t1, b);
-      return t0 <= t1;
-    };
-    if (!slab(lox, ldx, -d.hw, d.hw)) return -1;
-    if (!slab(loz, ldz, -d.hd, d.hd)) return -1;
-    if (!slab(oy, dy, yMin, topMax)) return -1;
+    for (let k = 0; k < 3; k++) {
+      const o = k === 0 ? lox : k === 1 ? loz : oy;
+      const dir = k === 0 ? ldx : k === 1 ? ldz : dy;
+      const lo = k === 0 ? -d.hw : k === 1 ? -d.hd : yMin;
+      const hi = k === 0 ? d.hw : k === 1 ? d.hd : topMax;
+      if (Math.abs(dir) < 1e-9) {
+        if (o < lo || o > hi) return -1;
+        continue;
+      }
+      const a = (lo - o) / dir;
+      const b = (hi - o) / dir;
+      if (a < b) {
+        if (a > t0) t0 = a;
+        if (b < t1) t1 = b;
+      } else {
+        if (b > t0) t0 = b;
+        if (a < t1) t1 = a;
+      }
+      if (t0 > t1) return -1;
+    }
     if (t1 < 0) return -1;
     return t0 >= 0 ? t0 : -1; // starting inside a deck: ignore it
   }

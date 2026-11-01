@@ -1,7 +1,7 @@
 import type { GameContext, ZoneDef } from '../core/types';
 import type { Progression } from '../core/Progression';
-import type { RoundDef, SpawnGroup } from '../config/zones';
-import { ZONES } from '../config/zones';
+import type { BiomeKey, RoundDef, SpawnGroup } from '../config/zones';
+import { BIOME_ZONE, ZONES, zoneLook } from '../config/zones';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import type { PlayerStats } from '../core/types';
 import { cooldown } from '../config/upgrades';
@@ -19,7 +19,12 @@ import {
  * DAILY: reset(spec) turns the run into the day's Daily (meta/daily.ts): wave generation draws from a
  * seeded rng instead of Math.random (same day = same lineup), the day's modifier tweaks the zone, the wave
  * mix or the player's stats (adjustStats), and the best wave goes to save.dailyBest instead of
- * survivalBestWave. Every reset rebuilds the zone from the base arena, so nothing leaks between runs. */
+ * survivalBestWave. Every reset rebuilds the zone from the base arena, so nothing leaks between runs.
+ *
+ * BIOMES: the arena is a neutral base zone (SURVIVAL_BASE) dressed as one campaign biome per BIOME_EVERY waves
+ * (look, particles, ground terrain; never decks). Survival starts on the glacier; the Daily starts where its seed says.
+ * The switch happens when a boss block is cleared (waveCleared), during the pit stop: the world is re-dressed, the
+ * snow refilled and the plow moved back to the spawn. */
 
 /** Every Nth wave is a boss wave. */
 export const BOSS_EVERY = 5;
@@ -40,15 +45,31 @@ const MINIONS: { type: EnemyType; cost: number; from: number }[] = [
   { type: 'brute', cost: 3, from: 4 },
 ];
 
-/** Boss cycle (one entry per boss wave); twins come as a pair. */
+/** Boss cycle (one entry per boss wave); twins come as a pair. Ordered like the campaign, so the first laps meet
+ *  each boss in its own biome (FROSTBYTE on the glacier at wave 5, BULLDOZA in the quarry at 10, ...). */
 const BOSS_CYCLE: { types: EnemyType[]; name: string }[] = [
-  { types: ['bulldoza'], name: 'BULLDOZA' },
   { types: ['frostbyte'], name: 'FROSTBYTE' },
+  { types: ['bulldoza'], name: 'BULLDOZA' },
   { types: ['grinder'], name: 'THE GRINDER' },
   { types: ['slush', 'sleet'], name: 'SLUSH & SLEET' },
-  { types: ['omega'], name: 'MEGAPLOW Ω' },
   { types: ['donald'], name: 'THE DONALD' },
+  { types: ['omega'], name: 'MEGAPLOW Ω' },
 ];
+
+/** Waves per biome. */
+export const BIOME_EVERY = 5;
+/** Biome rotation (campaign order). */
+export const SURVIVAL_BIOMES: readonly Exclude<BiomeKey, 'snowdome'>[] = ['glacier', 'quarry', 'mars', 'divide', 'plaza'];
+
+/** The neutral Survival / Daily arena: an explicit field list (never a spread of a campaign arena, so no biome, terrain or
+ *  gravity leaks in by accident); the biome rotation dresses it. `index` keeps the old Survival prop / snow seed. */
+export const SURVIVAL_BASE: ZoneDef = {
+  index: 2, id: 'survival', name: 'Survival', tagline: 'Endless waves. Bosses every 5. How long can you last?', bossName: '',
+  rounds: [{ groups: [] }], enemyHpMult: 1, enemyDmgMult: 1, coinMult: 1, snowDepth: 0.5, snowRegenMult: 1, clearReward: 0,
+  skyTop: 0x4f8fd6, skyBottom: 0xdcefff, fogColor: 0xd6e9fb, fogNear: 55, fogFar: 165,
+  sunColor: 0xfff1d6, sunIntensity: 2.5, ambientColor: 0xbcd7ff, ambientIntensity: 0.9, snowTint: 0xffffff, snowfall: 0.3,
+  terrain: undefined, theme: 'lake',
+};
 
 /** Named special waves: one roughly every other wave between bosses (see specialFor), each with its own
  *  lineup and tuning so the run doesn't feel like the same mix scaled up. */
@@ -142,12 +163,16 @@ export const GLASS_HP = 0.6;
 export const OVERCLOCK_CD = 0.7;
 
 /** Zone fields Environment.setZone reads; a change needs a world re-dress. */
-const VISUAL_KEYS = ['fogNear', 'fogFar', 'fogColor', 'skyTop', 'skyBottom', 'sunIntensity', 'snowfall'] as const;
+const VISUAL_KEYS = ['biome', 'terrain', 'fogNear', 'fogFar', 'fogColor', 'skyTop', 'skyBottom', 'sunIntensity', 'snowfall'] as const;
 
 export class SurvivalManager {
   private ctx: GameContext;
-  /** The survival arena: Frozen Foundry scenery, rounds/multipliers rewritten every wave. */
+  /** The survival arena (SURVIVAL_BASE dressed by the current biome), rounds/multipliers rewritten every wave. */
   readonly zone: ZoneDef;
+  /** Biome currently dressing the arena. */
+  biome: Exclude<BiomeKey, 'snowdome'> = SURVIVAL_BIOMES[0];
+  /** Rotation start (0 = glacier on a normal run; seeded on the Daily). */
+  private biomeOffset = 0;
   /** Current wave, 1-based (0 before the first wave). */
   wave = 0;
   /** Waves fully cleared this run. */
@@ -166,20 +191,24 @@ export class SurvivalManager {
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
-    const base = ZONES[2];
-    this.base = {
-      ...base,
-      id: 'survival',
-      name: `Survival · ${base.name}`,
-      tagline: 'Endless waves. Bosses every 5. How long can you last?',
-      bossName: '',
-      rounds: [{ groups: [] }],
-      clearReward: 0,
-      enemyHpMult: 1,
-      coinMult: 1,
-      enemyDmgMult: 1,
-    };
+    this.base = { ...SURVIVAL_BASE, rounds: [{ groups: [] }] };
     this.zone = { ...this.base, rounds: [{ groups: [] }] };
+    this.dress(SURVIVAL_BIOMES[0]);
+  }
+
+  /** Biome of wave w (1-based) for this run. */
+  biomeFor(w: number): Exclude<BiomeKey, 'snowdome'> {
+    const block = Math.floor((Math.max(1, w) - 1) / BIOME_EVERY);
+    return SURVIVAL_BIOMES[(this.biomeOffset + block) % SURVIVAL_BIOMES.length];
+  }
+
+  /** Write a biome's look + ground terrain onto the zone, then the Daily modifier's overrides on top. */
+  private dress(key: Exclude<BiomeKey, 'snowdome'>): void {
+    const src = BIOME_ZONE[key];
+    this.biome = key;
+    Object.assign(this.zone, zoneLook(src), { biome: src.biome, terrain: src.terrain }, this.fx.zone);
+    const mod = this.daily ? dailyModifier(this.daily) : null;
+    this.zone.name = mod ? `DAILY · ${mod.name}` : `Survival · ${src.name}`;
   }
 
   /** Daily modifiers that touch the player (Glass Cannon, Overclocked). Called by Game after every computeStats. */
@@ -219,16 +248,15 @@ export class SurvivalManager {
     this.fx = modEffect(mod?.id ?? null, this.base);
     this.prevBest = daily ? dailyBest(ctx.progression, daily.key) : survivalBest(ctx.progression);
 
-    // Rebuild the zone from the base arena, then layer the modifier on top.
+    // Rebuild the zone from the base arena, dress it as the run's first biome, then layer the modifier on top.
     const z = this.zone;
     const before = VISUAL_KEYS.map((k) => z[k]);
+    this.biomeOffset = daily ? daily.seed % SURVIVAL_BIOMES.length : 0;
     Object.assign(z, this.base, { rounds: [{ groups: [] }] }, this.fx.zone);
-    if (mod) {
-      z.name = `DAILY · ${mod.name}`;
-      z.tagline = mod.desc;
-    }
+    this.dress(this.biomeFor(1));
+    if (mod) z.tagline = mod.desc;
     // Game's setMode only re-dresses the world on a mode change (with the previous run's values), so a
-    // fog / sky / snowfall change has to be pushed here.
+    // biome / fog / sky / snowfall change has to be pushed here.
     if (ctx.zone === z && VISUAL_KEYS.some((k, i) => z[k] !== before[i])) ctx.world?.setZone(z);
     if (mod) ctx.ui?.toast(`${mod.icon} ${mod.name}: ${mod.desc}`, 'info');
   }
@@ -296,7 +324,28 @@ export class SurvivalManager {
     ctx.progression.addCoins(bonus);
     const plow = ctx.plow;
     plow.hp = Math.min(plow.maxHp, plow.hp + ctx.stats.repairFraction * WAVE_REPAIR * plow.maxHp);
+    const next = this.biomeFor(this.wave + 1);
+    if (next !== this.biome) this.switchBiome(next);
     return bonus;
+  }
+
+  /** Mid-run biome change (between blocks): re-dress the world, refill the snow, park the plow on the spawn. */
+  private switchBiome(key: Exclude<BiomeKey, 'snowdome'>): void {
+    const { ctx } = this;
+    this.dress(key);
+    if (ctx.zone !== this.zone) return;
+    ctx.world?.setZone(this.zone);
+    ctx.snow?.reset(this.zone);
+    // Re-seat the plow on the new arena's spawn with the plow's own reset: height snapped to the new surface, not
+    // airborne, no velocity, no lava burn (so the first tick of the next countdown fires no landing / burn). Only the
+    // run's hp carries over (the held ball is dropped with the old arena's snow).
+    const plow = ctx.plow;
+    if (plow?.position) {
+      const hp = plow.hp;
+      plow.reset();
+      plow.hp = Math.min(plow.maxHp, hp);
+    }
+    ctx.ui?.toast(`New arena: ${BIOME_ZONE[key].name}`, 'info');
   }
 
   /** Run over: persist the best wave (that day's Daily best on a Daily run, else the Survival best; never

@@ -189,6 +189,9 @@ vec3 fxFogColor() {
 }
 `;
 
+/** Floor height under a point at height y (flat / ground-only arenas may ignore y). */
+export type GroundFn = (x: number, z: number, y: number) => number;
+
 /* ------------------------------------------------------------------ sparks */
 
 /** Thin bright streaks stretched along their velocity (metal hits, lightning impacts, embers). */
@@ -276,7 +279,11 @@ export class SparkBatch {
     this.col[j] = r; this.col[j + 1] = g; this.col[j + 2] = b;
   }
 
-  update(dt: number, ground: (x: number, z: number) => number): void {
+  /**
+   * `ground(x, z, y)`: the floor under a spark at height y (height-aware on deck arenas). `decks`: the arena has decks,
+   * so a falling spark is checked at any height (else only below 2.5 m, the cheap flat-arena path).
+   */
+  update(dt: number, ground: GroundFn, decks = false): void {
     const { px, py, pz, vx, vy, vz, age, life, width, stretch, grav, drag, col } = this;
     const H = this.aHead.array as Float32Array;
     const T = this.aTail.array as Float32Array;
@@ -291,9 +298,11 @@ export class SparkBatch {
       const dr = Math.max(0, 1 - drag[i] * dt);
       vx[i] *= dr; vz[i] *= dr;
       vy[i] = vy[i] * dr - grav[i] * dt;
+      const y0 = py[i];
       px[i] += vx[i] * dt; py[i] += vy[i] * dt; pz[i] += vz[i] * dt;
-      if (vy[i] < 0 && py[i] < 2.5) {
-        const fl = ground(px[i], pz[i]) + 0.04;
+      if (vy[i] < 0 && (decks || py[i] < 2.5)) {
+        // Floor under the spark from its height before this step (so a deck it is above catches it).
+        const fl = ground(px[i], pz[i], y0) + 0.04;
         if (py[i] < fl) {
           py[i] = fl;
           vy[i] *= -0.35;
@@ -726,7 +735,8 @@ export class ScorchBatch {
     this.age[i] = 0; this.strength[i] = Math.min(1, strength);
   }
 
-  update(dt: number, ground: (x: number, z: number) => number): void {
+  /** `ground(x, z, y)`: the floor under a decal at height y (height-aware on deck arenas: a decal on a deck stays on it). */
+  update(dt: number, ground: GroundFn): void {
     const P = this.aPos.array as Float32Array;
     const M = this.aMisc.array as Float32Array;
     let i = 0;
@@ -738,7 +748,7 @@ export class ScorchBatch {
         continue;
       }
       // Follow the snow surface (it melts / gets plowed under the decal), never rising above where it landed.
-      const gy = ground(this.x[i], this.z[i]) + 0.03;
+      const gy = ground(this.x[i], this.z[i], this.y[i] + 0.1) + 0.03;
       if (gy < this.y[i]) this.y[i] = gy;
       const h = i * 4;
       P[h] = this.x[i]; P[h + 1] = this.y[i]; P[h + 2] = this.z[i];

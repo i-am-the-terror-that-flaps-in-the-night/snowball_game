@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PlayerStats, PlowAPI } from '../../core/types';
-import { _p, _q, _tip, type CombatHost, type UltKind } from './shared';
+import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type UltKind } from './shared';
 
 /** Ultimates for VOLT-9 / BRUTUS / ARSENAL (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
  *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
@@ -16,8 +16,9 @@ export const ultCharge = (st: PlayerStats, base: number) => (base * Math.max(1, 
 export interface UltScript {
   /** Opening fx from (x, z); returns how long the meter stays locked (s). */
   ultStart(x: number, z: number, plow: PlowAPI): number;
-  /** Advance to `t` s in; true once the ultimate is over. */
-  ultTick(t: number, dt: number, x: number, z: number): boolean;
+  /** Advance to `t` s in; true once the ultimate is over. `from`: the floor under the plow when it was cast (ground
+   *  waves that roll out over several seconds judge height from it, not from the plow's live height). */
+  ultTick(t: number, dt: number, x: number, z: number, from: CastOrigin): boolean;
 }
 
 /** The SUPERCELL / EARTHQUAKE / MISSILE STORM meter and timeline (the shared meter lives on the host). */
@@ -27,6 +28,7 @@ export class Ultimates {
   private kind: UltKind = 'volt';
   private x = 0;
   private z = 0;
+  private readonly from: CastOrigin = { y: 0, deck: -1 };
   private lock = 0;
 
   constructor(
@@ -60,6 +62,7 @@ export class Ultimates {
     this.t = 0;
     this.x = plow.position.x;
     this.z = plow.position.z;
+    castOrigin(plow, this.from);
     h.ctx.ui.toast(h.b.local ? `${ULT_NAME[kind]}!` : `INCOMING ${ULT_NAME[kind]}!`, 'big');
     this.lock = this.scripts[kind].ultStart(this.x, this.z, plow);
   }
@@ -68,7 +71,7 @@ export class Ultimates {
     if (this.lock > 0) this.lock -= dt;
     if (this.t < 0) return;
     this.t += dt;
-    if (this.scripts[this.kind].ultTick(this.t, dt, this.x, this.z)) this.t = -1;
+    if (this.scripts[this.kind].ultTick(this.t, dt, this.x, this.z, this.from)) this.t = -1;
   }
 
   clear(): void {
@@ -85,10 +88,12 @@ export function ultBlast(
   inner: number,
   R: number,
   dmg: number,
-  o: { knock: number; stun?: number; freeze?: number; text: string; color: string; bolt?: boolean },
+  o: { knock: number; stun?: number; freeze?: number; text: string; color: string; bolt?: boolean; reach?: Reach; from?: CastOrigin },
 ): number {
   h.smashProps(x, z, R);
-  const hits = h.collect(x, z, R);
+  // Height rule (combat/shared.ts): ground quakes pass reach Wave (judged from their cast floor `from`); sky bolts hit
+  // anything (default).
+  const hits = h.collect(x, z, R, o.reach ?? Reach.Any, o.from);
   let n = 0;
   for (let i = 0; i < hits.length; i++) {
     const e = hits[i];

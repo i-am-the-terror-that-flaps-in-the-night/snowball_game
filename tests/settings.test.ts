@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('settings', () => {
   it('defaults when nothing is stored', async () => {
-    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} });
+    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} });
   });
 
   it('defaults on corrupted storage', async () => {
@@ -39,6 +39,15 @@ describe('settings', () => {
   it('loads reduceFlash only when it is literally true', async () => {
     expect((await loadWith(JSON.stringify({ reduceFlash: true }))).reduceFlash).toBe(true);
     expect((await loadWith(JSON.stringify({ reduceFlash: 'yes' }))).reduceFlash).toBe(false);
+  });
+
+  it('loads reduceShake only when it is literally true, and it scales the shake down', async () => {
+    expect((await loadWith(JSON.stringify({ reduceShake: true }))).reduceShake).toBe(true);
+    expect((await loadWith(JSON.stringify({ reduceShake: 1 }))).reduceShake).toBe(false);
+    const { shakeScale, REDUCED_SHAKE } = await import('../src/core/settings');
+    expect(shakeScale({ shake: 0.8, reduceShake: false })).toBeCloseTo(0.8, 6);
+    expect(shakeScale({ shake: 0.8, reduceShake: true })).toBeCloseTo(0.8 * REDUCED_SHAKE, 6);
+    expect(REDUCED_SHAKE).toBeLessThan(0.5);
   });
 
   it('keeps valid bindings and low quality', async () => {

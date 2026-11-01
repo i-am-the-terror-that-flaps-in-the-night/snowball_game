@@ -84,4 +84,39 @@ describe('Terrain', () => {
       expect(t.lineOfSight(30, 1, 30, 30, 1, 40)).toBe(true);
     });
   });
+
+  it('reports the true slope of rotated ramp decks (gradient = central difference of the height)', () => {
+    for (const rot of [0, Math.PI / 2, -Math.PI / 2, Math.PI / 4, Math.PI]) {
+      const t = new Terrain({ decks: [{ id: 1, x: 3, z: -2, hw: 3, hd: 8, rot, top: 0, rise: 4, thickness: 4 }] });
+      const s = makeSurface();
+      const h = 0.01;
+      for (const [x, z] of [[3, -2], [5, 0], [1.5, -4]]) {
+        t.surfaceAt(x, z, Infinity, s);
+        const gx = (t.surfaceAt(x + h, z).y - t.surfaceAt(x - h, z).y) / (2 * h);
+        const gz = (t.surfaceAt(x, z + h).y - t.surfaceAt(x, z - h).y) / (2 * h);
+        expect(s.deck).toBe(1);
+        expect(s.gx).toBeCloseTo(gx, 4);
+        expect(s.gz).toBeCloseTo(gz, 4);
+        expect(t.heightAt(x, z)).toBeCloseTo(s.y, 6);
+      }
+    }
+  });
+
+  it('a circle passing near a deck corner is not in contact; one touching it is pushed out diagonally', () => {
+    const t = new Terrain({ decks: [{ id: 2, x: 0, z: 0, hw: 1, hd: 1, rot: 0, top: 6, thickness: 6 }] });
+    // Centre (2.3, 2.3): inside the r-expanded square but 1.84 m from the corner (1, 1) > r 1.6.
+    expect(t.wallAt(2.3, 2.3, 0, 2, 1.6)).toBeNull();
+    // Centre (1.8, 1.8): 1.13 m from the corner -> contact, pushed along the diagonal to 1.6 m away.
+    const d = t.wallAt(1.8, 1.8, 0, 2, 1.6);
+    expect(d?.id).toBe(2);
+    const out = { x: 0, z: 0 };
+    t.pushOut(d!, 1.8, 1.8, 1.6, out);
+    expect(out.x).toBeCloseTo(out.z, 6);
+    expect(Math.hypot(out.x - 1, out.z - 1)).toBeCloseTo(1.6, 6);
+    // Face contact still pushes straight out, and `skip` ignores the deck.
+    t.pushOut(d!, 2, 0.2, 1.6, out);
+    expect(out.x).toBeCloseTo(2.6, 6);
+    expect(out.z).toBeCloseTo(0.2, 6);
+    expect(t.wallAt(1.8, 1.8, 0, 2, 1.6, d)).toBeNull();
+  });
 });
