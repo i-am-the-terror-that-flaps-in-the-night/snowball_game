@@ -99,10 +99,17 @@ fewer bots remain, and the last 2 bots route straight to you.
 - Laser: aims anywhere within 80° of straight ahead (down limited to about -15°); stops at the first deck / ground hit.
 - Missiles: full 3D homing on any target on any level; if a deck is in the way they swing around its edge and dive.
 - Pitch / aim synced in Duel.
-- **Arena 6 balance check (after it is playable):** extend the autopilot balance script (`scripts/legend-probe.mjs`)
-  with a full Omega Works clear per plow at equal upgrade levels; compare clear time and damage taken. If ARSENAL
-  trails: more HP in arena 6 only (zone multipliers) or widen the minigun to -45° / +60°. If it leads clearly: trim
-  missile damage / lengthen the reload only where decks exist.
+- Minigun is now the **pulse laser** (12+ bolts/s at half the damage per bolt, same DPS, same -35° / +45° aim).
+- **Arena 6 balance check: done** (`scripts/omega-probe.mjs`: an autopilot clears arena 6 and, as the reference,
+  arena 5 with every plow at the balance sim's fresh / mid / high levels, 2 runs a cell, then reviewed with 25 more).
+  Result: no tuning. Arena 6 / arena 5 clear-time ratio by tier is 0.95 fresh, 1.05 mid, 1.04 high; no plow is more
+  than 25% off its tier mean (BRUTUS fastest at mid, consistently, but inside the band). ARSENAL is in line (within
+  ~6% of the mean at mid and high, fastest at fresh thanks to MISSILE STORM reaching the boss on any level); decks cut
+  its laser damage ~30% and missiles make it up. Caveat from the review: the autopilot fights mostly on one level, so
+  the 3D aim itself was only lightly exercised; run-to-run noise is ~5-15%, so differences under ~10% mean nothing.
+  The one systematic cost it found, mopping up MEGAPLOW's adds after the boss dies (~3 s, up to 14 s), is fixed:
+  a boss's summoned adds now power down in a quick chain when the last boss of the fight dies. Re-run with
+  `node scripts/omega-probe.mjs --arenas 5,4 --tiers mid,fresh,high --runs 2 --par 1 --out <dir>`.
 
 ### Challenges and trophies
 

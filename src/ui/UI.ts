@@ -2241,7 +2241,6 @@ export class UI implements UIAPI {
       this.bh.setActive(!!brawl);
     }
     if (s.brawl) this.bh.update(s.brawl);
-    this.radar.update(s.radar);
     if (!!s.radar !== this.radarShown) {
       this.radarShown = !!s.radar;
       this.topDirty = true;
@@ -2304,6 +2303,8 @@ export class UI implements UIAPI {
     // bosses
     if (!brawl && (s.bosses.length || L.bossCount > 0)) this.updateBosses(s.bosses);
     if (this.topDirty) this.layoutTop();
+    // After the layout: off-screen arrows are placed with this frame's boss bars / round box, not last frame's.
+    this.radar.update(s.radar);
 
     // coins
     const coins = Math.floor(s.coins);

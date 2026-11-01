@@ -52,3 +52,10 @@
   .ss-tut-title { font-size: 22px; margin: 4px 0 6px; }
   .ss-tut-text { font-size: 13px; line-height: 1.35; }
 }
+
+/* Very short landscape (568 x 320): a narrower card leaves room on its left for the edge arrow. */
+@media (max-height: 400px) {
+  .ss-tut { width: min(250px, 44vw); padding: 8px 12px 10px; }
+  .ss-tut-title { font-size: 18px; }
+  .ss-tut-text { font-size: 12px; }
+}

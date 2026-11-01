@@ -131,6 +131,8 @@ export class Bot implements EnemyHandle {
   ballRoll = 0;
   carry = 0;
   stole = false;
+  /** Summoned by a boss (phase adds): powers down when the last boss of the fight dies. */
+  summoned = false;
 
   // --- visuals
   windup = 0;

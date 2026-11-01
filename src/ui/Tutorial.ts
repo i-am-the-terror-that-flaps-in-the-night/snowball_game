@@ -575,8 +575,10 @@ export class Tutorial {
       const p = card.offsetParent?.getBoundingClientRect();
       const left = (p?.left ?? 0) + card.offsetLeft;
       const bottom = (p?.top ?? 0) + card.offsetTop + card.offsetHeight;
-      // side panel when it leaves a usable strip to its left (desktop, landscape phones), else pinned to the top
-      if (left - CARD_CLEAR - ARROW_HALF_W > R.l + 160) R.r = V.r = Math.max(R.l + 40, Math.min(R.r, left - CARD_CLEAR - ARROW_HALF_W));
+      // Side panel (desktop, landscape phones: right-anchored or sitting low) - keep the arrow left of it however narrow
+      // the strip is; else the card is pinned to the top (portrait) and the arrow keeps below it.
+      const top = (p?.top ?? 0) + card.offsetTop;
+      if (left > w * 0.35 || top > h * 0.4) R.r = V.r = Math.max(R.l + 40, Math.min(R.r, left - CARD_CLEAR - ARROW_HALF_W));
       else R.t = V.t = Math.min(R.b - 40, Math.max(R.t, bottom + CARD_CLEAR + ARROW_ABOVE));
     }
   }

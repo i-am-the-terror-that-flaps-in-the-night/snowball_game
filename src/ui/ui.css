@@ -1400,7 +1400,9 @@
   .ss-ab-icon { font-size: 16px; }
   /* the SLAM! tag pops above the row instead of holding a line under it */
   .ss-slam-hint { position: absolute; bottom: calc(100% + 4px); white-space: nowrap; }
-  .ss-hud-br { padding: 6px 12px; }
+  /* SNOW panel slim enough to sit right of the ability row (which drops 40 px here) */
+  .ss-hud-br { padding: 5px 8px; gap: 6px; }
+  .ss-snow-bar { width: 44px; }
   /* compact boss bars: no title line, slimmer name and track */
   .ss-bosses { gap: 6px; }
   .ss-bosses .ss-bb-title { display: none; }
@@ -1416,6 +1418,7 @@
 }
 /* Very short (568 x 320): slimmer still, so round box + twin bars + a toast end above the bottom panels. */
 @media (max-height: 340px) {
+  .ss-root.has-twin .ss-hud-arena { display: none; }
   .ss-toasts { width: min(260px, 92vw); }
   .ss-toast { padding: 4px 12px; font-size: 13px; border-left-width: 4px; }
   .ss-bosses { gap: 4px; }
@@ -1432,6 +1435,31 @@
   .ss-ab-core { inset: 5px; }
   .ss-ab-icon { font-size: 14px; }
   .ss-ab-name { font-size: 7.5px; }
+}
+/* Landscape phones: the ability row sits in the gap between the HP panel and the SNOW panel (not centred on the
+   screen, where it ran over the HP number), with slightly smaller rings so it fits. */
+@media (max-height: 560px) and (max-width: 760px) {
+  .ss-hud-bc { left: 244px; transform: none; }
+  .ss-bc-row { gap: 8px; }
+  .ss-gauge { width: 76px; height: 76px; }
+  .ss-gauge::before { inset: 7px; }
+  .ss-gauge-r { font-size: 15px; }
+  .ss-ab { width: 46px; height: 46px; }
+  .ss-ab-core { inset: 5px; }
+}
+/* Narrow landscape phones: just the snowflake and the % for snow, a slimmer HP panel and smaller rings still. */
+@media (max-height: 560px) and (max-width: 620px) {
+  .ss-snow-label { display: inline-block; width: 1.1em; overflow: hidden; white-space: nowrap; }
+  .ss-hud-bl { width: 190px; }
+  .ss-hud-bc { left: 214px; }
+  .ss-bc-row { gap: 6px; }
+  .ss-gauge { width: 64px; height: 64px; }
+  .ss-gauge::before { inset: 6px; }
+  .ss-gauge-r { font-size: 13px; }
+  .ss-gauge-tier { display: none; }
+  .ss-ab { width: 38px; height: 38px; }
+  .ss-ab-core { inset: 4px; }
+  .ss-ab-icon { font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ss-lost-tip::before { animation: none; }

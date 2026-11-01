@@ -33,6 +33,10 @@ const BOT_PROP_CHARGE_SPEED = 8;
 const FLASH_T = 0.12;
 const ICE = new THREE.Color(0x8fd0ff);
 const MAX_DEBRIS = 180;
+/** When the last boss of a fight dies, its summoned adds power down: the first after POWER_DOWN_DELAY s, then one every
+ *  POWER_DOWN_GAP s (a quick chain of explosions instead of a mop-up hunt round the arena). */
+const POWER_DOWN_DELAY = 0.6;
+const POWER_DOWN_GAP = 0.15;
 /** Share of a bot's armour that rapid weapon hits (DamageOpts.direct: minigun rounds, laser ticks) still face. */
 const DIRECT_ARMOR = 0.5;
 const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff, donald: 0xffc400 };
@@ -73,6 +77,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private aliveN = 0;
   private nextId = 1;
   private bossList: Bot[] = [];
+  /** Seconds until the next summoned add powers down after the last boss died (0 = none pending). */
+  private powerDownT = 0;
   private decals: DecalPool;
   private debris: Debris[] = [];
   /** One pooled InstancedMesh per debris geometry + material, refilled from the active chunks (syncDebris). */
@@ -311,6 +317,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     for (const e of this.list) if (e.alive) this.removeVisual(e);
     this.list.length = 0;
     this.aliveN = 0;
+    this.powerDownT = 0;
     this.bossList.length = 0;
     this.syncBars();
     this.decals.clear();
@@ -327,6 +334,14 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const ctx = this.ctx;
     const plow = ctx.plow;
     this.time += dt;
+    // The last boss is down: its summoned adds power down one after another (no mop-up hunt round the arena).
+    if (this.powerDownT > 0 && (this.powerDownT -= dt) <= 0) {
+      const next = this.list.find((b) => b.alive && b.summoned);
+      if (next) {
+        this.kill(next);
+        this.powerDownT = POWER_DOWN_GAP;
+      }
+    }
     this.px = plow.position.x;
     this.pz = plow.position.z;
     this.pr = plow.radius;
@@ -468,7 +483,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const fx = Math.sin(g.heading);
     const fz = Math.cos(g.heading);
     const back = 1 + Math.random() * 2;
-    this.spawn(type, g.x + fz * lat - fx * back, g.z - fx * lat - fz * back, { hpMult: this.ctx.zone.enemyHpMult, heading: g.heading });
+    const e = this.spawn(type, g.x + fz * lat - fx * back, g.z - fx * lat - fz * back, { hpMult: this.ctx.zone.enemyHpMult, heading: g.heading }) as Bot;
+    e.summoned = true;
   }
 
   bossPhase(e: Bot, label: string): void {
@@ -992,7 +1008,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.aliveN = Math.max(0, this.aliveN - 1);
     this.releaseToken(e);
     this.removeVisual(e);
-    if (e.isBoss) this.refreshBosses();
+    if (e.isBoss) {
+      this.refreshBosses();
+      if (!this.bossList.length && this.list.some((b) => b.alive && b.summoned)) this.powerDownT = POWER_DOWN_DELAY;
+    }
 
     const fx = ctx.fx;
     const p = e.position;

@@ -890,7 +890,8 @@ function summon(h: Host, type: EnemyType, gate: number): void {
   if (i === undefined) return h.spawnAtGate(type, gate);
   const hh = OMEGA_HATCHES[i];
   const y = hh.deck < 0 ? 0 : (OMEGA_TERRAIN.decks!.find((d) => d.id === hh.deck)?.top ?? 0);
-  h.ctx.enemies.spawn(type, hh.x, hh.z, { hpMult: h.ctx.zone.enemyHpMult, heading: Math.atan2(pp.x - hh.x, pp.z - hh.z), y: y + 0.5 });
+  const add = h.ctx.enemies.spawn(type, hh.x, hh.z, { hpMult: h.ctx.zone.enemyHpMult, heading: Math.atan2(pp.x - hh.x, pp.z - hh.z), y: y + 0.5 }) as Bot;
+  add.summoned = true;
 }
 
 function omega(h: Host, e: Bot, dt: number): void {
@@ -1216,6 +1217,7 @@ function donaldRallyStart(h: Host, e: Bot, s: DonaldState): void {
     const b = ctx.enemies.spawn('rallybot', x, z, { hpMult: ctx.zone.enemyHpMult, heading: a }) as Bot;
     b.spdMult = 1.3;
     b.dmgOutMult = 1.4;
+    b.summoned = true;
     s.rally.push(b);
     _v.set(x, 1, z);
     for (const c of [0xc8102e, 0xffffff, 0x1f3b8c, 0xffd24a]) ctx.fx.burst(_v, { color: c, count: 8, speed: 7, size: 0.13, gravity: 9, life: 1.0 });
