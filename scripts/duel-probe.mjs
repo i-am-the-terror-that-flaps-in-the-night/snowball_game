@@ -179,7 +179,7 @@ await session('lobby', async (host, guest) => {
   log('garage line', sub);
   check(/Opponent garage: [\d,]+ · Yours: [\d,]+ · Catch-up: \+[\d,]+/.test(sub), 'garage shows "Opponent garage: X · Yours: Y · Catch-up: +Z"', sub);
   // Guest spends catch-up coins: a real click, then the rest through the same buttons.
-  await guest.locator('.ss-tab-defense').click();
+  await guest.locator('.ss-tab-core').click();
   await guest.locator('.ss-card[data-id="armor"] .ss-buy').click();
   await guest.evaluate(() => {
     const buy = (id, n) => { for (let i = 0; i < n; i++) document.querySelector(`.ss-card[data-id="${id}"] .ss-buy`).click(); };
@@ -192,6 +192,15 @@ await session('lobby', async (host, guest) => {
   log('guest wallet', gw);
   check(gw.temp.armor === 6 && gw.temp.engine === 4 && gw.temp.packedIce === 6 && gw.temp.brutePound === 4, 'guest bought armour / engine / packed ice / ground pound with catch-up coins', gw.temp);
   check(!gw.saved.armor && !gw.saved.engine && gw.coins === 0, 'temp levels never touch the guest save', gw.saved);
+  // AUTO-SPEND spends what's left of the catch-up on a spread of upgrades and gear, then disables itself.
+  await guest.locator('.ss-duel-match').click();
+  await run(host, guest, 0.2);
+  const ga = await guest.evaluate(() => {
+    const w = window.__game.duel.wallet, b = document.querySelector('.ss-duel-match');
+    return { bonusLeft: w.bonus, items: w.tempItemLevels(), temp: w.tempLevels(), disabled: b.disabled, label: b.textContent };
+  });
+  log('auto-spend', ga);
+  check(ga.bonusLeft < gw.bonusLeft && Object.keys(ga.items).length > 0 && ga.disabled, 'AUTO-SPEND spends the rest of the catch-up (incl. gear) and then disables', ga);
   await shot(guest, '04-guest-garage');
   await shot(host, '05-host-garage');
   const preMatchMaxHp = await guest.evaluate(() => window.__game.ctx.progression.computeStats().maxHp);
@@ -204,8 +213,8 @@ await session('lobby', async (host, guest) => {
   log('match stats', { host: h.stats, guest: g.stats });
   check(h.stats[1] && h.stats[1].maxHp > preMatchMaxHp * 1.5 && h.stats[1].plowKind === 'brute', 'host computes the guest stats WITH the catch-up levels', { hostSees: h.stats[1], preMatchMaxHp });
   const kept = await guest.evaluate(() => ({ ...window.__game.ctx.progression.data.upgrades }));
-  check(kept.armor === 6 && kept.engine === 4 && kept.packedIce === 6 && kept.brutePound === 4, 'catch-up levels are saved to the guest garage once the match starts', kept);
-  check(h.levels[1]?.armor === 6 && h.levels[1]?.brutePound === 4, 'host received the guest final effective levels', h.levels[1]);
+  check(kept.armor >= 6 && kept.engine >= 4 && kept.packedIce >= 6 && kept.brutePound >= 4, 'catch-up levels are saved to the guest garage once the match starts', kept);
+  check(h.levels[1]?.armor === kept.armor && h.levels[1]?.brutePound === kept.brutePound, 'host received the guest final effective levels', h.levels[1]);
   check(JSON.stringify(h.stats) === JSON.stringify(g.stats), 'both sides fight with identical stats');
   check(Math.abs(h.maxHp[1] - h.stats[1].maxHp) < 0.01 && Math.abs(g.maxHp[1] - h.stats[1].maxHp) < 0.01, 'guest plow max HP matches on both screens', [h.maxHp, g.maxHp]);
   await run(host, guest, 1);
@@ -504,7 +513,8 @@ await session('peer', async (host, guest) => {
 
 if (errors.length) console.log(`\nERRORS:\n${errors.join('\n')}`);
 else console.log('\nNO CONSOLE ERRORS');
-console.log(fails.length ? `\n${fails.length} FAILED CHECK(S):\n  ${fails.join('\n  ')}` : '\nALL CHECKS PASSED');
+// A session that throws (see ERRORS) skips its remaining checks, so it must not read as a clean pass.
+console.log(fails.length ? `\n${fails.length} FAILED CHECK(S):\n  ${fails.join('\n  ')}` : errors.length ? `\nCHECKS RUN PASSED, BUT ${errors.length} ERROR(S) ABOVE` : '\nALL CHECKS PASSED');
 if (SHOTS) console.log(`screenshots in ${out}`);
 await server.close();
 process.exit(errors.length || fails.length ? 1 : 0);

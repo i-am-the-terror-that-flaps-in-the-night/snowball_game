@@ -1,6 +1,6 @@
-import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
+import { SHOP_UPGRADES, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
-import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, type GearSlot, type GearState } from '../config/gear';
+import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_SLOTS, gearCost, gearLevels, type GearSlot, type GearState } from '../config/gear';
 import type { Progression } from '../core/Progression';
 
 /** What the Garage UI buys through: the save (Progression) or the pre-duel DuelWallet. */
@@ -246,6 +246,59 @@ export class DuelWallet implements ShopWallet {
     return buys.length;
   }
 
+  /** AUTO-SPEND's next purchase: the cheapest step the bonus can pay for among the core upgrades, this plow's line,
+   *  levelling an equipped gear item, or filling an empty gear slot (with that slot's cheapest item). Null when the
+   *  bonus can't afford anything. */
+  private autoStep(): { kind: 'up'; id: UpgradeId; cost: number } | { kind: 'item'; id: string; cost: number } | null {
+    let best: { kind: 'up'; id: UpgradeId; cost: number } | { kind: 'item'; id: string; cost: number } | null = null;
+    for (const def of SHOP_UPGRADES) {
+      if (def.plowOnly && def.plowOnly !== this.plow) continue;
+      const cost = this.bonusCost(def.id);
+      if (cost <= this.bonus && (!best || cost < best.cost)) best = { kind: 'up', id: def.id, cost };
+    }
+    for (const slot of GEAR_SLOTS) {
+      // Level what's equipped if it helps in a duel; otherwise (empty slot, or e.g. a coin magnet) the slot's
+      // cheapest item that does.
+      const on = this.equipped[slot.id];
+      const pool = GEAR.filter((d) => d.slot === slot.id && duelUseful(d.id));
+      const id = on && duelUseful(on) ? on : pool.length ? pool.reduce((a, b) => (b.cost < a.cost ? b : a)).id : null;
+      if (!id) continue;
+      const cost = this.bonusItemCost(id);
+      if (cost <= this.bonus && (!best || cost < best.cost)) best = { kind: 'item', id, cost };
+    }
+    return best;
+  }
+
+  /** True while AUTO-SPEND would buy something. */
+  canAutoSpend(target: Partial<Record<UpgradeId, number>> | null): boolean {
+    return (!!target && this.matchPlan(target).buys.length > 0) || this.autoStep() !== null;
+  }
+
+  /**
+   * AUTO-SPEND: spend the catch-up bonus in one go. First MATCH OPPONENT (raise the shared upgrades to the
+   * opponent's levels), then keep buying the cheapest next step across core upgrades, this plow's line and gear
+   * (level what's equipped, fill empty slots) until the bonus runs out, so the coins spread evenly instead of piling
+   * into one stat. Bonus only: real coins are never touched. Returns how many purchases it made.
+   */
+  autoSpend(target: Partial<Record<UpgradeId, number>> | null): number {
+    let n = target ? this.matchOpponent(target) : 0;
+    for (let guard = 0; guard < 5000; guard++) {
+      const step = this.autoStep();
+      if (!step) break;
+      this.bonus -= step.cost;
+      if (step.kind === 'up') this.temp[step.id] = this.tempLevel(step.id) + 1;
+      else {
+        this.tempGear[step.id] = this.tempItemLevel(step.id) + 1;
+        const slot = GEAR_BY_ID[step.id].slot;
+        const on = this.equipped[slot];
+        if (!on || !duelUseful(on)) this.equipped[slot] = step.id;
+      }
+      n++;
+    }
+    if (n) this.changed();
+    return n;
+  }
+
   /** Keep the duel garage's catch-up levels and gear loadout: fold them into the save (called when the match starts). */
   commitTemp(): void {
     let any = false;
@@ -274,6 +327,15 @@ export class DuelWallet implements ShopWallet {
   tempLevels(): Partial<Record<UpgradeId, number>> {
     return { ...this.temp };
   }
+}
+
+/** Stats a duel ignores: coin pickup range, and snow regrowth (both players share DUEL_SNOW_REGEN). */
+const DUEL_IGNORED: ReadonlySet<UpgradeId> = new Set<UpgradeId>(['magnet', 'snowMachine']);
+
+/** True if at least one of the item's stats does something in a duel (AUTO-SPEND only buys those). */
+function duelUseful(id: string): boolean {
+  const def = GEAR_BY_ID[id];
+  return !!def && def.grants.some((g) => !DUEL_IGNORED.has(g.stat));
 }
 
 function equipChanged(a: Partial<Record<GearSlot, string>>, b: Partial<Record<GearSlot, string>>): boolean {

@@ -22,9 +22,11 @@ top of what it has already spent, with no cap. The stronger garage never gets an
 
 Garage value counts core and plow-line levels at their shop prices plus each equipped gear item at what it cost to
 buy and level. Catch-up coins (🎁 on a price) pay first, for upgrades **or gear** (buying new items, levelling them,
-and re-equipping). Whatever they buy is **yours to keep** once the match starts. **⚖ MATCH OPPONENT** raises every
-shared, non plow-specific upgrade to the opponent's level in one click, and the catch-up always covers it. After
-that you can keep buying with your own coins.
+and re-equipping). Whatever they buy is **yours to keep** once the match starts. Don't want to shop? **⚡ AUTO-SPEND**
+spends all of it in one click: first it raises every shared, non plow-specific upgrade to the opponent's level
+(the catch-up always covers that), then it spreads the rest evenly, always buying the cheapest next step among
+the core upgrades, your plow's line, levelling your equipped gear and filling empty gear slots. You can still shop
+by hand before or after, and then keep buying with your own coins.
 
 ## Netcode
 

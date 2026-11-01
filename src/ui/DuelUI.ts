@@ -72,7 +72,7 @@ export class DuelUI {
   private gBonus: HTMLElement;
   private gReady: HTMLButtonElement;
   private gMatch: HTMLButtonElement;
-  private onMatch: (() => void) | null = null;
+  private onAuto: (() => void) | null = null;
   private gOpp: HTMLElement;
   private onReady: (() => void) | null = null;
   // HUD.
@@ -154,8 +154,8 @@ export class DuelUI {
     this.gPowers = el('div', 'ss-duel-gpowers', '', gMid);
     this.gBonus = el('div', 'ss-duel-gbonus', '', gMid);
     this.gMatch = el('button', 'ss-btn ss-ice ss-small ss-duel-match', '', this.garage);
-    this.gMatch.title = "Raise every shared upgrade (not plow-specific) to your opponent's level, paid from your catch-up coins.";
-    this.gMatch.addEventListener('click', () => this.onMatch?.());
+    this.gMatch.title = "Spend all your catch-up coins for you: first your opponent's shared upgrade levels, then an even spread over upgrades, your plow's line and gear.";
+    this.gMatch.addEventListener('click', () => this.onAuto?.());
     const gRight = el('div', 'ss-duel-gright', undefined, this.garage);
     this.gReady = el('button', 'ss-btn ss-primary ss-duel-ready', 'READY ✓', gRight);
     this.gReady.addEventListener('click', () => this.onReady?.());
@@ -263,11 +263,11 @@ export class DuelUI {
   showGarageBanner(o: {
     secondsLeft: number; ownPower: number; oppPower: number; bonus: number; bonusLeft: number;
     readySelf: boolean; readyOpp: boolean; onReady(): void;
-    /** MATCH OPPONENT (only offered with catch-up coins): what it would cost / leave uncovered. */
-    match?: { cost: number; missing: number; levels: number } | null; onMatch?(): void;
+    /** AUTO-SPEND (only offered with catch-up coins): whether it would buy anything. */
+    auto?: { can: boolean } | null; onAuto?(): void;
   }): void {
     this.onReady = o.onReady;
-    this.onMatch = o.onMatch ?? null;
+    this.onAuto = o.onAuto ?? null;
     this.gPowers.innerHTML = `Opponent garage <b>${fmt(o.oppPower)}</b> · Yours <b>${fmt(o.ownPower)}</b>`;
     this.garage.classList.toggle('has-bonus', o.bonus > 0);
     this.garage.dataset.bonus = String(o.bonus);
@@ -277,18 +277,13 @@ export class DuelUI {
 
   updateGarageBanner(o: {
     secondsLeft: number; bonusLeft: number; readySelf: boolean; readyOpp: boolean;
-    match?: { cost: number; missing: number; levels: number } | null;
+    auto?: { can: boolean } | null;
   }): void {
-    const m = o.match;
-    this.gMatch.classList.toggle('hidden', !m || !this.onMatch);
-    if (m) {
-      const done = m.levels === 0 && m.missing === 0;
-      this.gMatch.disabled = m.levels === 0;
-      this.gMatch.innerHTML = done
-        ? '⚖ MATCHED ✓'
-        : m.levels === 0
-          ? '⚖ MATCH: not enough catch-up'
-          : `⚖ MATCH OPPONENT <small>−${fmt(m.cost)}${m.missing > 0 ? ` · ${m.missing} short` : ''}</small>`;
+    const a = o.auto;
+    this.gMatch.classList.toggle('hidden', !a || !this.onAuto);
+    if (a) {
+      this.gMatch.disabled = !a.can;
+      this.gMatch.innerHTML = a.can ? `⚡ AUTO-SPEND <small>${fmt(o.bonusLeft)}</small>` : '⚡ CATCH-UP SPENT ✓';
     }
     const total = Number(this.garage.dataset.bonus ?? 0);
     this.gTimer.textContent = String(Math.max(0, Math.ceil(o.secondsLeft)));

@@ -485,3 +485,55 @@ describe('ICE servers', () => {
     expect(relay.credential).toBe('p');
   });
 });
+
+/* ------------------------------------------------------------------ AUTO-SPEND */
+
+describe('DuelWallet AUTO-SPEND', () => {
+  const fresh = (coins = 0) => {
+    const p = new Progression();
+    p.data.coins = coins;
+    p.data.upgrades = {};
+    p.data.gear = { owned: {}, equipped: {} };
+    p.save();
+    return p;
+  };
+
+  it('matches the opponent first, then spends the rest on a spread of upgrades and gear, bonus only', () => {
+    const p = fresh(777);
+    const before = store.get(SAVE_KEY);
+    const w = new DuelWallet(p, 20000);
+    const target: Partial<Record<UpgradeId, number>> = { engine: 3, armor: 2 };
+    expect(w.canAutoSpend(target)).toBe(true);
+    const n = w.autoSpend(target);
+    expect(n).toBeGreaterThan(5);
+    expect(w.level('engine')).toBeGreaterThanOrEqual(3);
+    expect(w.level('armor')).toBeGreaterThanOrEqual(2);
+    // It spread: several core stats and at least one gear item, and every slot it filled is equipped.
+    const coreBought = ['engine', 'armor', 'packedIce', 'hopper'].filter((id) => w.level(id as UpgradeId) > 0);
+    expect(coreBought.length).toBeGreaterThanOrEqual(3);
+    const items = w.tempItemLevels();
+    expect(Object.keys(items).length).toBeGreaterThan(0);
+    for (const id of Object.keys(items)) expect(w.isEquipped(id)).toBe(true);
+    // Never on stats a duel ignores (coin magnet, snow regrowth).
+    expect(items.luckyMagnet).toBeUndefined();
+    expect(items.snowGlobe).toBeUndefined();
+    // Whatever is left can't buy anything, real coins and the save are untouched.
+    expect(w.canAutoSpend(target)).toBe(false);
+    expect(w.autoSpend(target)).toBe(0);
+    expect(p.coins).toBe(777);
+    expect(store.get(SAVE_KEY)).toBe(before);
+  });
+
+  it('only buys the plow line of the plow being driven, and never with no bonus', () => {
+    const p = fresh();
+    p.data.plow = 'brute';
+    const w = new DuelWallet(p, 50000);
+    w.autoSpend(null);
+    expect(w.level('voltChain')).toBe(0);
+    expect(w.level('isoMeltdown')).toBe(0);
+    expect(w.level('brutePound') + w.level('bruteHide')).toBeGreaterThan(0);
+    const none = new DuelWallet(fresh(), 0);
+    expect(none.canAutoSpend({ engine: 5 })).toBe(false);
+    expect(none.autoSpend({ engine: 5 })).toBe(0);
+  });
+});

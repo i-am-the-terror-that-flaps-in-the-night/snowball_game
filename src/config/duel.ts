@@ -151,7 +151,7 @@ interface DuelSideInfo {
 /** Duel catch-up for two garages. Only the weaker side (lower spent + coins) gets any, and it gets enough to
  *  match the opponent's FULL garage value (all their spending, plow lines included, plus their coins on hand)
  *  on top of what it has already spent: oppSpent + oppCoins − ownSpent (its own unspent coins are its own and
- *  don't reduce it). Never less than the MATCH OPPONENT cost, so that button is always fully covered. */
+ *  don't reduce it). Never less than the cost of matching the opponent's shared upgrades, so AUTO-SPEND's first step is always fully covered. */
 export function duelBonus(a: DuelSideInfo, b: DuelSideInfo): { a: number; b: number } {
   const pa = duelPower(a.spent, a.coins);
   const pb = duelPower(b.spent, b.coins);
