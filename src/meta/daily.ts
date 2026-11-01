@@ -161,10 +161,14 @@ export function activeDaily(): DailySpec | null {
   return active;
 }
 
-/** Main-menu DAILY button label (HTML). */
-export function dailyButtonLabel(p: Progression): string {
+/** Today's modifier and best wave, e.g. "Deep Snow · best 7" (the menu hub's DAILY tile subtitle). */
+export function dailySubLabel(p: Progression): string {
   const spec = todaysDaily();
-  const mod = dailyModifier(spec);
   const best = dailyBest(p, spec.key);
-  return `📅 DAILY <small class="ss-daily-sub">${mod.name}${best > 0 ? ` · best ${best}` : ''}</small>`;
+  return `${dailyModifier(spec).name}${best > 0 ? ` · best ${best}` : ''}`;
+}
+
+/** DAILY button label (HTML). */
+export function dailyButtonLabel(p: Progression): string {
+  return `📅 DAILY <small class="ss-daily-sub">${dailySubLabel(p)}</small>`;
 }

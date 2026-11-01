@@ -44,6 +44,7 @@ without waiting on real time). In environments with a preinstalled browser, poin
 
 ```bash
 node scripts/smoke.mjs                 # campaign smoke test + screenshots
+node scripts/ui-tour.mjs /tmp/ui       # screenshot every menu screen (hub tabs, arenas, garage, shops, HUD, pause)
 node scripts/combat-probe.mjs          # slam / ram / boss numbers
 node scripts/brawl-probe.mjs /tmp/brawl-probe --noshots # Brawl: bot fights, dash/whirl numbers, respawn, match end
 node scripts/meta-probe.mjs            # Paint Shop, Trophies, stars + Hard mode, Daily run + results screens
@@ -57,6 +58,18 @@ node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real P
 
 The realtime lagged-fight session of the duel probe needs a real GPU to keep frame rate; on software rendering it
 can fail even when nothing is wrong.
+
+## UI look and the menu hub
+
+All UI colours, fonts and shapes are tokens on `.ss-root` at the top of `src/ui/ui.css` ("road crew": asphalt
+slabs, hazard yellow, signal red, condensed display type, chamfered corners via `clip-path: var(--chamfer)`). Use the
+tokens rather than raw hex. Because `clip-path` clips outlines, focus is drawn with inset box-shadows. Fonts are
+bundled from `@fontsource` (`src/ui/fonts.css`), so the game needs no network for them.
+
+The main menu is a hub: category tabs (PLAY / BUILD / RECORD / SYSTEM, Q/E to switch) over a tile grid. A new
+destination is one `this.tile(category, icon, name, subtitle, onClick)` call in `UI.buildMenu`; `hero`, `tall`, `wide`
+and `hot` size or accent it, and icons are line SVGs in `src/ui/icons.ts`. Coins, sound and settings sit in the
+top-right utility strip on every tab.
 
 ## Balance harness
 

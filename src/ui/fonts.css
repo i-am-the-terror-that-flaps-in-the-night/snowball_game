@@ -1,0 +1,6 @@
+/* Bundled UI fonts (OFL): condensed industrial display + techy body. Latin subset only, to keep the build small. */
+@import "@fontsource/big-shoulders-display/latin-800";
+@import "@fontsource/big-shoulders-display/latin-900";
+@import "@fontsource/chakra-petch/latin-500";
+@import "@fontsource/chakra-petch/latin-600";
+@import "@fontsource/chakra-petch/latin-700";

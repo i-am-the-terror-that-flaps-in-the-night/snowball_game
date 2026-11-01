@@ -1,3 +1,4 @@
+import './fonts.css';
 import './ui.css';
 import './brawl.css';
 import './challenges.css';
@@ -18,7 +19,8 @@ import { ACTIONS, keyLabel, type Action } from '../core/input';
 import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
 import { StyleShop } from './StyleShop';
 import { Trophies } from './Trophies';
-import { activeDaily, dailyButtonLabel } from '../meta/daily';
+import { activeDaily, dailySubLabel } from '../meta/daily';
+import { ICONS, type IconName } from './icons';
 import { renderDailyResult, renderDailyShopTag } from './DailyResult';
 import { renderLoot } from './LootReveal';
 import {
@@ -28,6 +30,15 @@ import { achievementCount, totalStars } from '../meta/progress';
 import { ACHIEVEMENTS } from '../config/achievements';
 import { DuelUI } from './DuelUI';
 import type { DuelWallet, ShopWallet } from '../duel/DuelWallet';
+
+/** Main-menu hub categories. A new menu destination is one `tile()` call in buildMenu, inside its category. */
+const HUB_CATS = [
+  ['play', 'Play'],
+  ['build', 'Build'],
+  ['record', 'Record'],
+  ['system', 'System'],
+] as const;
+type HubCat = (typeof HUB_CATS)[number][0];
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
 
@@ -209,6 +220,11 @@ export class UI implements UIAPI {
   private controlLists: HTMLElement[] = [];
   private survivalBtn!: HTMLButtonElement;
   private dailyBtn!: HTMLButtonElement;
+  private hubCat: HubCat = 'play';
+  private hubTabs = new Map<HubCat, HTMLButtonElement>();
+  private hubPanes = new Map<HubCat, HTMLElement>();
+  private hubMute!: HTMLButtonElement;
+  private hubBoard = new Map<string, HTMLElement>();
   /** Paint shop (cosmetics) and Trophies (achievements + stats) overlays. */
   private styleShop!: StyleShop;
   private trophies!: Trophies;
@@ -431,9 +447,18 @@ export class UI implements UIAPI {
   private refreshMute(): void {
     const muted = !!this.ctx.audio?.muted;
     for (const b of this.muteBtns) {
+      if (b.classList.contains('ss-tile')) {
+        this.setTile(b, muted ? 'Off · press M' : 'On · press M');
+        b.querySelector('.ss-tile-ico')!.innerHTML = muted ? ICONS.soundOff : ICONS.soundOn;
+        b.classList.toggle('off', muted);
+        continue;
+      }
       b.innerHTML = muted ? '🔇 SOUND: OFF' : '🔊 SOUND: ON';
       b.classList.toggle('off', muted);
     }
+    this.hubMute.innerHTML = muted ? ICONS.soundOff : ICONS.soundOn;
+    this.hubMute.classList.toggle('off', muted);
+    this.hubMute.title = this.hubMute.ariaLabel = muted ? 'Sound: off' : 'Sound: on';
   }
 
   private refreshProgress(): void {
@@ -444,15 +469,24 @@ export class UI implements UIAPI {
     const cleared = ZONES.filter((z) => p.zoneRecord(z.id).cleared).length;
     const bw = p.data.brawlWins ?? 0;
     const bm = p.data.brawlMatches ?? 0;
-    this.menuStats.textContent =
-      `🏆 Arenas cleared ${cleared}/${ZONES.length}  ·  🤖 ${fmt(p.data.totalKills)} bots scrapped` +
-      (bm > 0 ? `  ·  🥇 Brawl wins ${fmt(bw)}/${fmt(bm)}` : '') +
-      `  ·  🏅\u00a0${achievementCount(p)}/${ACHIEVEMENTS.length}`;
+    const stars = totalStars(p);
+    const ach = achievementCount(p);
+    this.menuStats.innerHTML =
+      `<span>Arenas <b>${cleared}/${ZONES.length}</b></span><span>Bots scrapped <b>${fmt(p.data.totalKills)}</b></span>` +
+      (bm > 0 ? `<span>Brawl wins <b>${fmt(bw)}/${fmt(bm)}</b></span>` : '') +
+      `<span>Trophies <b>${ach}/${ACHIEVEMENTS.length}</b></span>`;
     const sb = survivalBest(p);
-    this.survivalBtn.innerHTML = survivalUnlocked(p)
-      ? `♾ SURVIVAL${sb > 0 ? ` <small>best wave ${sb}</small>` : ''}`
-      : '🔒 SURVIVAL <small>beat arena 1</small>';
-    this.dailyBtn.innerHTML = survivalUnlocked(p) ? dailyButtonLabel(p) : '🔒 DAILY';
+    const unlocked = survivalUnlocked(p);
+    this.setTile(this.survivalBtn, unlocked ? (sb > 0 ? `Best wave ${sb}` : 'Endless waves') : `Locked · beat ${ZONES[0].name}`, !unlocked);
+    this.setTile(this.dailyBtn, unlocked ? dailySubLabel(p) : `Locked · beat ${ZONES[0].name}`, !unlocked);
+    const board = this.hubBoard;
+    const set = (k: string, v: string) => { const e = board.get(k); if (e) e.innerHTML = v; };
+    set('arenas', `${cleared}<small>/${ZONES.length}</small>`);
+    set('stars', `${stars}<small>/${maxStars()}</small>`);
+    set('kills', fmt(p.data.totalKills));
+    set('brawl', bm > 0 ? `${fmt(bw)}<small>/${fmt(bm)}</small>` : '—');
+    set('survival', sb > 0 ? `${sb}` : '—');
+    set('trophies', `${ach}<small>/${ACHIEVEMENTS.length}</small>`);
     this.refreshCards();
     if (this.current === 'zones') this.renderZones();
   }
@@ -476,6 +510,11 @@ export class UI implements UIAPI {
       }
       return;
     }
+    if (name === 'menu' && (code === 'KeyQ' || code === 'KeyE' || code === 'PageUp' || code === 'PageDown')) {
+      e.preventDefault();
+      this.cycleHubCat(code === 'KeyQ' || code === 'PageUp' ? -1 : 1);
+      return;
+    }
     if (name === 'garage' && (code === 'KeyQ' || code === 'KeyE' || code === 'PageUp' || code === 'PageDown')) {
       e.preventDefault();
       this.cycleShopTab(code === 'KeyQ' || code === 'PageUp' ? -1 : 1);
@@ -495,7 +534,7 @@ export class UI implements UIAPI {
       if (a instanceof HTMLButtonElement && scr.contains(a)) {
         a.click();
       } else if (code !== 'Space') {
-        scr.querySelector<HTMLButtonElement>('[data-primary]:not(.hidden)')?.click();
+        Array.from(scr.querySelectorAll<HTMLButtonElement>('[data-primary]:not(.hidden)')).find((b) => b.offsetParent !== null)?.click();
       }
       return;
     }
@@ -516,46 +555,130 @@ export class UI implements UIAPI {
 
   private buildMenu(): void {
     const s = this.screen('menu', 'ss-menu');
-    const panel = el('div', 'ss-menu-panel ss-glass ss-icicles', undefined, s);
-    const title = el('h1', 'ss-title', undefined, panel);
-    el('span', 'ss-title-a', 'SNOWPLOW', title);
-    el('span', 'ss-title-b', 'SHOWDOWN', title);
-    el('p', 'ss-tagline', 'Plow it. Pack it. Slam it.', panel);
-    this.menuCoins = this.coinPill(panel, 'ss-menu-coins');
+    const hub = el('div', 'ss-hub', undefined, s);
+    const title = el('h1', 'ss-title', undefined, hub);
+    el('span', 'ss-title-a', 'Snowplow', title);
+    el('span', 'ss-title-b', 'Showdown', title);
+    el('div', 'ss-hub-tape', 'Plow it · Pack it · Slam it', hub);
 
-    const btns = el('div', 'ss-menu-btns', undefined, panel);
-    this.btn('⚔ FIGHT', 'ss-primary ss-big', () => this.showZoneSelect(), btns).dataset.primary = '1';
-    this.btn('🔥 BRAWL <span class="ss-new">NEW</span>', 'ss-hot ss-big', () => this.showBrawlLobby(), btns);
-    const modes = el('div', 'ss-menu-row', undefined, btns);
-    this.survivalBtn = this.btn('', 'ss-ice', () => {
-      if (survivalUnlocked(this.ctx.progression)) this.handlers.onStartSurvival?.();
-      else this.toast(`Beat ${ZONES[0].name} to unlock Survival`, 'bad');
-    }, modes);
-    this.dailyBtn = this.btn('', 'ss-ice', () => {
-      if (survivalUnlocked(this.ctx.progression)) this.handlers.onStartDaily?.();
-      else this.toast(`Beat ${ZONES[0].name} to unlock the Daily run`, 'bad');
-    }, modes);
-    const shops = el('div', 'ss-menu-row', undefined, btns);
-    this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('menu'), shops);
-    this.btn('🎨 PAINT SHOP', 'ss-ice', () => this.styleShop.open(), shops, null);
-    const info = el('div', 'ss-menu-row', undefined, btns);
-    this.btn('🏆 TROPHIES', 'ss-ice', () => this.trophies.open(), info, null);
-    this.btn('❓ HOW TO PLAY', 'ss-ice', () => this.show('howto'), info);
-    const misc = el('div', 'ss-menu-row', undefined, btns);
-    this.btn('⚙ SETTINGS', 'ss-ice', () => this.settings.open(), misc, null);
-    this.btn('🎓 TUTORIAL', 'ss-ice', () => this.handlers.onStartTutorial?.(), misc);
-    const row = el('div', 'ss-menu-row', undefined, btns);
-    this.btn('🤺 DUEL <small>online 1v1</small>', 'ss-hot ss-duel-menu', () => this.handlers.onOpenDuel?.(), row);
-    const mute = this.btn('', 'ss-ice ss-small', () => {
+    const util = el('div', 'ss-hub-util', undefined, s);
+    this.menuCoins = this.coinPill(util, 'ss-menu-coins');
+    this.hubMute = this.iconBtn('soundOn', 'Sound', () => {
       this.handlers.onToggleMute();
       this.refreshMute();
-    }, row);
+    }, util);
+    this.iconBtn('settings', 'Settings', () => this.settings.open(), util, null);
+
+    const nav = el('div', 'ss-hub-nav', undefined, hub);
+    nav.setAttribute('role', 'tablist');
+    const body = el('div', 'ss-hub-body', undefined, hub);
+    HUB_CATS.forEach(([id, label], i) => {
+      const t = el('button', 'ss-hub-cat', undefined, nav);
+      t.type = 'button';
+      t.dataset.cat = id;
+      t.setAttribute('role', 'tab');
+      t.innerHTML = `<span class="ss-hub-cat-n">0${i + 1}</span>${label}`;
+      t.addEventListener('click', () => {
+        if (this.hubCat !== id) this.sfx('click');
+        this.setHubCat(id);
+      });
+      this.hubTabs.set(id, t);
+      const pane = el('div', 'ss-hub-pane', undefined, body);
+      pane.setAttribute('role', 'tabpanel');
+      this.hubPanes.set(id, pane);
+    });
+    el('div', 'ss-hub-key', undefined, nav).innerHTML = '<kbd>Q</kbd><kbd>E</kbd>';
+
+    const locked = () => !survivalUnlocked(this.ctx.progression);
+    const lockMsg = (what: string) => this.toast(`Beat ${ZONES[0].name} to unlock ${what}`, 'bad');
+    // PLAY
+    this.tile('play', 'fight', 'Fight', 'Six arenas · bosses · stars', () => this.showZoneSelect(), 'hero').dataset.primary = '1';
+    this.tile('play', 'brawl', 'Brawl', 'Free-for-all vs rival plows', () => this.showBrawlLobby(), 'hot', 'New');
+    this.survivalBtn = this.tile('play', 'survival', 'Survival', '', () =>
+      locked() ? lockMsg('Survival') : this.handlers.onStartSurvival?.());
+    this.dailyBtn = this.tile('play', 'daily', 'Daily', '', () =>
+      locked() ? lockMsg('the Daily run') : this.handlers.onStartDaily?.());
+    this.tile('play', 'duel', 'Duel', 'Online 1v1 with a friend', () => this.handlers.onOpenDuel?.(), 'hot ss-duel-menu');
+    this.tile('play', 'tutorial', 'Tutorial', 'Learn the controls', () => this.handlers.onStartTutorial?.());
+    // BUILD
+    this.tile('build', 'garage', 'Garage', 'Plows · upgrades · gear', () => this.openGarage('menu'), 'hero').dataset.primary = '1';
+    this.tile('build', 'paint', 'Paint Shop', 'Colours · decals · trails', () => this.styleShop.open(), 'tall', undefined, null);
+    // RECORD
+    this.tile('record', 'trophy', 'Trophies', 'Achievements', () => this.trophies.open(), 'tall', undefined, null).dataset.primary = '1';
+    const board = el('div', 'ss-board', undefined, this.hubPanes.get('record'));
+    el('div', 'ss-board-h', 'SERVICE RECORD', board);
+    for (const [k, label] of [
+      ['arenas', 'Arenas cleared'], ['stars', 'Challenge stars'], ['kills', 'Bots scrapped'],
+      ['brawl', 'Brawl wins'], ['survival', 'Best survival wave'], ['trophies', 'Trophies'],
+    ] as const) {
+      const row = el('div', 'ss-board-row', undefined, board);
+      el('span', 'ss-board-k', label, row);
+      this.hubBoard.set(k, el('span', 'ss-board-v', '—', row));
+    }
+    // SYSTEM
+    this.tile('system', 'settings', 'Settings', 'Video · audio · controls · saves', () => this.settings.open(), 'wide', undefined, null).dataset.primary = '1';
+    this.tile('system', 'help', 'How to Play', 'Controls and the basics', () => this.show('howto'));
+    const mute = this.tile('system', 'soundOn', 'Sound', '', () => {
+      this.handlers.onToggleMute();
+      this.refreshMute();
+    });
+    mute.classList.add('ss-hub-mute');
     this.muteBtns.push(mute);
     // Save reset / export / import live in ⚙ SETTINGS → Save data.
 
-    this.menuStats = el('div', 'ss-menu-stats', '', panel);
-    el('div', 'ss-credits', 'PvE arena brawler · Three.js · procedural everything', panel);
+    this.menuStats = el('div', 'ss-menu-stats', '', hub);
+    this.setHubCat(this.hubCat);
     this.refreshMute();
+  }
+
+  /** One hub tile. `cls` adds hero / hot / tall / wide; `tag` is a corner badge (e.g. NEW). */
+  private tile(cat: HubCat, icon: IconName, name: string, sub: string, onClick: () => void, cls = '', tag?: string, sound: SoundName | null = 'click'): HTMLButtonElement {
+    const pane = this.hubPanes.get(cat)!;
+    const b = el('button', `ss-tile ${cls}`, undefined, pane);
+    b.type = 'button';
+    el('span', 'ss-tile-ico', undefined, b).innerHTML = ICONS[icon];
+    el('span', 'ss-tile-name', name, b);
+    el('span', 'ss-tile-sub', sub, b);
+    el('span', 'ss-tile-n', String(pane.querySelectorAll('.ss-tile').length).padStart(2, '0'), b);
+    if (tag) el('span', 'ss-tile-tag', tag, b);
+    b.addEventListener('click', () => {
+      if (sound) this.sfx(sound);
+      onClick();
+    });
+    return b;
+  }
+
+  private setTile(b: HTMLButtonElement, sub: string, locked = false): void {
+    const s = b.querySelector('.ss-tile-sub');
+    if (s) s.textContent = sub;
+    b.classList.toggle('locked', locked);
+  }
+
+  private iconBtn(icon: IconName, label: string, onClick: () => void, parent: HTMLElement, sound: SoundName | null = 'click'): HTMLButtonElement {
+    const b = el('button', 'ss-icon-btn', undefined, parent);
+    b.type = 'button';
+    b.innerHTML = ICONS[icon];
+    b.title = b.ariaLabel = label;
+    b.addEventListener('click', () => {
+      if (sound) this.sfx(sound);
+      onClick();
+    });
+    return b;
+  }
+
+  private setHubCat(cat: HubCat): void {
+    this.hubCat = cat;
+    for (const [id, t] of this.hubTabs) {
+      t.classList.toggle('on', id === cat);
+      t.setAttribute('aria-selected', String(id === cat));
+    }
+    for (const [id, p] of this.hubPanes) p.classList.toggle('hidden', id !== cat);
+  }
+
+  private cycleHubCat(dir: number): void {
+    const i = HUB_CATS.findIndex(([id]) => id === this.hubCat);
+    this.setHubCat(HUB_CATS[(i + dir + HUB_CATS.length) % HUB_CATS.length][0]);
+    this.sfx('click');
   }
 
   /* ================================================================== how to play */
