@@ -13,7 +13,7 @@ import { MissileTrail } from './missileTrail';
 const ULT_MISSILES = 21;
 const ULT_RANGE = 75;
 const ULT_RIPPLE = 0.05;
-const ULT_MULT = 3.5;
+const ULT_MULT = 4;
 const ULT_BLAST = 4.2;
 const ULT_SPEED = 36;
 const ULT_FUSE = 7;

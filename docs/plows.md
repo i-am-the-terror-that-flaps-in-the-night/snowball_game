@@ -59,7 +59,7 @@ Line: Minigun, Laser Lance, Swarm Missiles, Energy Barrier (a recharging shield,
 behind).
 
 **Ultimate: MISSILE STORM.** Any damage fills the meter. Every pod empties: 21 heavy missiles ripple out over about a
-second and spread over the biggest threats up to 75 m away (a normal salvo reaches 45 m). Each hits for 3.5× missile
+second and spread over the biggest threats up to 75 m away (a normal salvo reaches 45 m). Each hits for 4× missile
 damage in a bigger blast.
 
 ## Ultimates and the kill-cam
