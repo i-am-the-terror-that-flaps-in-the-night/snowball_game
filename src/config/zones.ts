@@ -90,7 +90,7 @@ const g = (type: EnemyType, count: number, delay = 0, interval = 2.5): SpawnGrou
 /* Biomes of the campaign arenas 1-5 (arena 6, The Omega Works, has its own build). */
 export const BIOMES: Record<Exclude<BiomeKey, 'snowdome'>, BiomeDef> = {
   glacier: { key: 'glacier', particles: 'snow', snowColor: 0xeef7ff, groundColor: 0x5f86a8, ambience: 'wind' },
-  quarry: { key: 'quarry', particles: 'ash', snowColor: 0x6f6b6c, groundColor: 0x1e1a19, ambience: 'lava' },
+  quarry: { key: 'quarry', particles: 'ash', snowColor: 0xb3a49b, groundColor: 0x5c4339, ambience: 'lava' },
   mars: { key: 'mars', particles: 'dust', snowColor: 0xdc9670, groundColor: 0x7e3218, ambience: 'dust' },
   divide: { key: 'divide', particles: 'steam', snowColor: 0xf3f0f5, groundColor: 0x5a4c58, ambience: 'wind' },
   plaza: { key: 'plaza', particles: 'confetti', snowColor: 0xfff9ee, groundColor: 0x8a6a4a, ambience: 'crowd' },
@@ -122,8 +122,8 @@ export const ZONES: ZoneDef[] = [
       { boss: true, groups: [g('bulldoza', 1, 1, 1)] },
     ],
     enemyHpMult: 1.2, coinMult: 1.2, snowDepth: 0.55, snowRegenMult: 1, clearReward: 300,
-    skyTop: 0x1c0605, skyBottom: 0xb3391b, fogColor: 0x6e2c1d, fogNear: 42, fogFar: 140,
-    sunColor: 0xffbc94, sunIntensity: 1.9, ambientColor: 0xd87a66, ambientIntensity: 0.75, snowTint: BIOMES.quarry.snowColor, snowfall: 0.6,
+    skyTop: 0x6a5a9a, skyBottom: 0xffa66a, fogColor: 0xd99a78, fogNear: 50, fogFar: 160,
+    sunColor: 0xffd2a8, sunIntensity: 2.4, ambientColor: 0xffc0a0, ambientIntensity: 1.0, snowTint: BIOMES.quarry.snowColor, snowfall: 0.6,
     biome: BIOMES.quarry, terrain: QUARRY_TERRAIN, theme: 'pines',
   },
   {

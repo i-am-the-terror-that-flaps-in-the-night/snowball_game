@@ -8,22 +8,23 @@
 import { GRAVITY, STEP_UP, type Terrain } from '../Terrain';
 import { OMEGA_HALF, OMEGA_HATCHES, OMEGA_SPAWN, OMEGA_TERRAIN } from './layout';
 
-/** Visual + size fields for ZONES[5]. A night-time neon factory: deep violet sky, magenta haze, a cold moon key light. */
+/** Visual + size fields for ZONES[5]. A neon factory at dusk: clear blue sky fading to a pink horizon, light lavender
+ *  haze, a warm low sun and white snow (the neon edges and circuits still glow). */
 export const OMEGA_LOOK = {
   arenaHalf: OMEGA_HALF,
   spawn: OMEGA_SPAWN,
   terrain: OMEGA_TERRAIN,
-  skyTop: 0x04050d,
-  skyBottom: 0x2b0d3d,
-  fogColor: 0x1c0f2e,
-  fogNear: 70,
-  fogFar: 240,
-  sunColor: 0x9fb6ff,
-  sunIntensity: 1.25,
-  ambientColor: 0x6a4fb0,
-  ambientIntensity: 1.05,
-  snowTint: 0xd9dcff,
-  snowfall: 0.18,
+  skyTop: 0x3f6fd8,
+  skyBottom: 0xffb8d8,
+  fogColor: 0xd9c4ec,
+  fogNear: 90,
+  fogFar: 300,
+  sunColor: 0xfff0dc,
+  sunIntensity: 2.4,
+  ambientColor: 0xc9c2ff,
+  ambientIntensity: 1.25,
+  snowTint: 0xf7f6ff,
+  snowfall: 0.15,
 } as const;
 
 /* ------------------------------------------------------------------ spawning */

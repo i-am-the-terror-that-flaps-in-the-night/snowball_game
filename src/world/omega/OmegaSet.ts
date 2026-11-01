@@ -1,7 +1,7 @@
 /**
  * The Omega Works set dressing: everything around the playfield that isn't a deck.
  *
- *   - Perimeter factory walls at the 160 m edge: dark steel panels, a cyan neon strip along the top and a hazard band
+ *   - Perimeter factory walls at the 160 m edge: light steel panels, a cyan neon strip along the top and a hazard band
  *     at the base, with the three gate openings (OMEGA_GATES) left clear.
  *   - Corner light towers with magenta beacons, and a ring of smokestacks / factory blocks on the skyline with
  *     ember-glowing tops (outside the walls, fog-faded).
@@ -46,8 +46,8 @@ export class OmegaSet {
   constructor(terrain: Terrain) {
     this.group.name = 'omega-set';
     const B = OMEGA_HALF;
-    const steel = this.own(new THREE.MeshStandardMaterial({ color: 0x23262f, metalness: 0.7, roughness: 0.5 }));
-    const rib = this.own(new THREE.MeshStandardMaterial({ color: 0x14161c, metalness: 0.8, roughness: 0.4 }));
+    const steel = this.own(new THREE.MeshStandardMaterial({ color: 0x8c93a3, metalness: 0.3, roughness: 0.55 }));
+    const rib = this.own(new THREE.MeshStandardMaterial({ color: 0x5c6373, metalness: 0.35, roughness: 0.45 }));
     const neon = this.own(new THREE.MeshBasicMaterial({ color: NEON_CYAN, toneMapped: false }));
     const hazard = this.own(new THREE.MeshBasicMaterial({ color: 0xffd400, toneMapped: false }));
     const beacon = this.own(new THREE.MeshBasicMaterial({ color: NEON_MAGENTA, toneMapped: false, transparent: true }));
@@ -178,7 +178,7 @@ export class OmegaSet {
     const frame = this.own(new THREE.EdgesGeometry(new THREE.BoxGeometry(16, 13, 0.5)));
     g.add(new THREE.LineSegments(frame, new THREE.LineBasicMaterial({ color: NEON_CYAN, toneMapped: false })));
     const back = this.own(new THREE.BoxGeometry(16, 13, 0.4));
-    const backM = new THREE.Mesh(back, this.own(new THREE.MeshStandardMaterial({ color: 0x0b0c12, metalness: 0.6, roughness: 0.5 })));
+    const backM = new THREE.Mesh(back, this.own(new THREE.MeshStandardMaterial({ color: 0x2c3140, metalness: 0.3, roughness: 0.5 })));
     backM.position.z = -0.5;
     g.add(backM);
     g.position.set(x, y, z);

@@ -41,15 +41,15 @@ function canvasTex(c: HTMLCanvasElement): THREE.CanvasTexture {
 
 let deckTopTex: THREE.Texture | null = null;
 let deckGlowTex: THREE.Texture | null = null;
-/** Gunmetal plate with panel seams (colour) + a matching circuit-trace emissive map (glow). One tile = 4 m. */
+/** Light brushed-steel plate with panel seams (colour) + a matching circuit-trace emissive map (glow). One tile = 4 m. */
 function deckTextures(): [THREE.Texture, THREE.Texture] {
   if (deckTopTex && deckGlowTex) return [deckTopTex, deckGlowTex];
   const S = 256;
   const [c, g] = canvas(S, S);
-  g.fillStyle = '#1b1d24';
+  g.fillStyle = '#7d8596';
   g.fillRect(0, 0, S, S);
   // plates
-  g.strokeStyle = '#0b0c10';
+  g.strokeStyle = '#555c6b';
   g.lineWidth = 4;
   g.strokeRect(2, 2, S - 4, S - 4);
   g.beginPath();
@@ -57,7 +57,7 @@ function deckTextures(): [THREE.Texture, THREE.Texture] {
   g.lineTo(S / 2, S);
   g.stroke();
   // rivets
-  g.fillStyle = '#3a3e4a';
+  g.fillStyle = '#a9b0bf';
   for (const [x, y] of [[14, 14], [S - 14, 14], [14, S - 14], [S - 14, S - 14], [S / 2 - 12, S / 2], [S / 2 + 12, S / 2]]) {
     g.beginPath();
     g.arc(x, y, 4, 0, Math.PI * 2);
@@ -218,9 +218,9 @@ export class OmegaWorks {
         map: plate,
         emissive: accent,
         emissiveMap: glow,
-        emissiveIntensity: 0.9,
-        metalness: 0.75,
-        roughness: 0.42,
+        emissiveIntensity: 0.8,
+        metalness: 0.35,
+        roughness: 0.5,
         transparent: true, // so it can fade while overhead; opaque look at opacity 1
         opacity: 1,
       });
@@ -232,10 +232,10 @@ export class OmegaWorks {
       this.owned.push(m);
       return m;
     };
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0x8a90a0, metalness: 0.95, roughness: 0.22 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xb4bac6, metalness: 0.5, roughness: 0.3 });
     const bandMat = new THREE.MeshBasicMaterial({ color: WARN_RED, toneMapped: false });
     const pistonTopMat = new THREE.MeshStandardMaterial({ map: hazardStripes(), metalness: 0.3, roughness: 0.6 });
-    const pistonSideMat = new THREE.MeshStandardMaterial({ color: 0x2a2d36, metalness: 0.85, roughness: 0.35, emissive: HAZARD, emissiveIntensity: 0.06 });
+    const pistonSideMat = new THREE.MeshStandardMaterial({ color: 0x6a7080, metalness: 0.45, roughness: 0.4, emissive: HAZARD, emissiveIntensity: 0.06 });
     this.owned.push(chromeMat, bandMat, pistonTopMat, pistonSideMat);
 
     const pillarParts: THREE.BufferGeometry[] = [];
