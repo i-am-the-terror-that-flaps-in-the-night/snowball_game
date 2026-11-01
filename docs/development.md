@@ -10,7 +10,7 @@ src/entities       Player plow (Plow.ts), plow models, gear attachments (gearVis
                    round director, and Combat.ts: the combat class the game talks to (damage in / out, ultimate
                    meter, net sync), which delegates each plow's kit to src/entities/combat/
 src/entities/combat  Per-plow kits: melee.ts (slam / ram / dash / whirl), classic.ts, volt.ts, brute.ts, isotope.ts,
-                   arsenal.ts, ultimates.ts (SUPERCELL / EARTHQUAKE / ORBITAL STRIKE) and shared.ts (helpers, the
+                   arsenal.ts, ultimates.ts (SUPERCELL / EARTHQUAKE / MISSILE STORM) and shared.ts (helpers, the
                    threat map ARSENAL's targeting uses)
 src/brawl          Brawl mode: rival AI, VOLT-9 + BRUTUS rivals, streaks / coins, respawns, rival models, name tags
 src/survival       Survival mode: endless wave generator + scaling (seeded for the Daily run)

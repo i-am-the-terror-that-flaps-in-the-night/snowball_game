@@ -1,6 +1,6 @@
 /**
  * Ultimate kill-cam trigger. An ultimate (the critCharge-slot F: FIRESTORM, SUPERCELL, EARTHQUAKE, ISOTOPE NUKE,
- * ORBITAL STRIKE; Combat emits `ability {nuke: true}`) opens a window; the 3rd player kill inside it fires the
+ * MISSILE STORM; Combat emits `ability {nuke: true}`) opens a window; the 3rd player kill inside it fires the
  * cinematic ONCE for that ultimate, framed on the kills' centroid. Pure logic (no scene access) so it unit-tests.
  */
 

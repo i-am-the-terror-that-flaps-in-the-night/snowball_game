@@ -155,7 +155,7 @@ const ULT_HUD: Record<HudState['fAbility'], { bar: string; tag: string; icon: st
   zap: { bar: '⚡', tag: 'SUPERCELL', icon: '🌩️', name: 'CELL', baseIcon: '⚡', baseName: 'CLAP' },
   pound: { bar: '🌍', tag: 'EARTHQUAKE', icon: '🌍', name: 'QUAKE', baseIcon: '💥', baseName: 'POUND' },
   meltdown: { bar: '☢', tag: 'NUKE', icon: '☢️', name: 'NUKE', baseIcon: '☢️', baseName: 'MELT' },
-  missiles: { bar: '🛰', tag: 'ORBITAL STRIKE', icon: '🛰️', name: 'ORBITAL', baseIcon: '🚀', baseName: 'MISSILES' },
+  missiles: { bar: '🚀', tag: 'MISSILE STORM', icon: '🚀', name: 'STORM', baseIcon: '🚀', baseName: 'MISSILES' },
 };
 
 const ENEMY_ICON: Record<EnemyType, string> = {

@@ -6,13 +6,24 @@ import { makeSurface } from '../../world/Terrain';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MissileTrail } from './missileTrail';
 
-/** ORBITAL STRIKE (ARSENAL): marks up to ORBITAL_TARGETS top-priority bots within ORBITAL_RANGE, then after
- *  ORBITAL_DELAY a sky laser hits each — ORBITAL_MULT x missile damage in ORBITAL_RADIUS. */
-const ORBITAL_TARGETS = 6;
-const ORBITAL_RANGE = 50;
-const ORBITAL_DELAY = 1;
-const ORBITAL_MULT = 10;
-const ORBITAL_RADIUS = 4.5;
+/** MISSILE STORM (ARSENAL's ultimate): ULT_MISSILES heavy missiles ripple out of the pods ULT_RIPPLE s apart and are
+ *  spread over the top threats within ULT_RANGE (a normal salvo reaches MISSILE_RANGE), the same way planSalvo spreads
+ *  a normal salvo. Each hits for ULT_MULT x missile damage in a ULT_BLAST m blast, flies a little faster (ULT_SPEED)
+ *  and burns longer (ULT_FUSE) to cover the range. The ultimate lasts until the last one lands (ULT_MAX_T cap). */
+const ULT_MISSILES = 20;
+const ULT_RANGE = 75;
+const ULT_RIPPLE = 0.05;
+const ULT_MULT = 3;
+const ULT_BLAST = 4.2;
+const ULT_SPEED = 36;
+const ULT_FUSE = 7;
+const ULT_MAX_T = 9;
+/** Storm missiles boost straight up for this long after leaving the pod (s), then pitch over onto their targets. */
+const ULT_BOOST = 0.55;
+/** Storm missiles turn this much harder than salvo missiles (they pitch over from vertical at speed). */
+const ULT_TURN = 2;
+/** Ult missiles are drawn a bit bigger than salvo missiles. */
+const ULT_SCALE = 1.25;
 /** ARSENAL: the minigun turret tracks all the way round (360°); it holds fire until the barrels are within this
  *  many radians of the target, so rounds never leave sideways from a turret still swinging round. Then the burst a
  *  single press fires when the input source can't report held keys. */
@@ -47,6 +58,8 @@ const LASER_PITCH_MIN = -15 * (Math.PI / 180);
 const MISSILE_LOS_EVERY = 0.2;
 
 const MISSILES_MAX = 12;
+/** Missile meshes: a full salvo plus a full MISSILE STORM can be in the air at once. */
+const MISSILE_POOL = MISSILES_MAX + ULT_MISSILES;
 /** Missile flight: ejected from the pod with no thrust for MISSILE_EJECT s, then the motor lights and it accelerates
  *  along its nose from MISSILE_V0 to MISSILE_SPEED (m/s). It turns at most MISSILE_TURN rad/s (more as it slows near
  *  the end), so it flies wide arcs and can overshoot a target that jinks. Guidance leads the target and lofts: it
@@ -101,13 +114,18 @@ type Missile = {
   /** The exhaust flame (scaled / flickered while lit) and the exhaust + smoke trail. */
   flame: THREE.Object3D;
   trail: MissileTrail;
+  /** A MISSILE STORM missile (ultimate): heavier hit, bigger blast, faster, longer fuse. */
+  ult: boolean;
 };
+
+/** What launch() needs from the plow: where it is and its pod tubes. */
+type PodHost = { position: THREE.Vector3; heading: number; mountWorld(kind: 'pod', i: number, out: THREE.Vector3): THREE.Vector3 };
 
 const _a = new THREE.Vector3();
 const _hit = { t: 0, x: 0, y: 0, z: 0, what: 'ground' as 'ground' | number };
 const _surf = makeSurface();
 
-/** ARSENAL: autocannon, laser, swarm missiles and the ORBITAL STRIKE (plus the duel guest's view of them). */
+/** ARSENAL: autocannon, laser, swarm missiles and the MISSILE STORM (plus the duel guest's view of them). */
 export class ArsenalKit extends Kit implements UltScript {
   /** Autocannon timer + burst window, alternating muzzle, tracer pool. */
   private gunT = 0;
@@ -140,8 +158,6 @@ export class ArsenalKit extends Kit implements UltScript {
   /** Duel guest: the host's laser bend (NaN = aim locally). */
   netLaserOff = NaN;
   private missiles: Missile[] = [];
-  /** ORBITAL STRIKE reticles: where each lands and the bot it follows. */
-  private marks: { x: number; z: number; e: EnemyHandle | null }[] = [];
 
   constructor(h: CombatHost) {
     super(h);
@@ -156,63 +172,22 @@ export class ArsenalKit extends Kit implements UltScript {
     this.netLaserOff = NaN;
   }
 
-  ultStart(x: number, z: number, plow: PlowAPI): number {
-    // Paint the targets: the top threats in range by Threat.score, one mark each.
-    this.marks.length = 0;
-    const ranked = this.collect(x, z, ORBITAL_RANGE)
-      .filter((e) => e.alive)
-      .map((e) => ({ e, score: this.h.threat.score(e, x, z) }))
-      .sort((p, q) => q.score - p.score);
-    this.clearTargets();
-    for (const { e } of ranked.slice(0, ORBITAL_TARGETS)) this.marks.push({ x: e.position.x, z: e.position.z, e });
-    // Nothing to hit: strike straight ahead.
-    if (!this.marks.length) {
-      plow.getForward(_fwd);
-      this.marks.push({ x: x + _fwd.x * 12, z: z + _fwd.z * 12, e: null });
-    }
-    this.b.audio.play('charge', { pitch: 1.3, volume: 0.8 });
-    return ORBITAL_DELAY + 1;
+  /** MISSILE STORM: every pod empties, ULT_MISSILES heavy missiles spread over the top threats within ULT_RANGE. */
+  ultStart(x: number, z: number): number {
+    const pods = this.b.plow;
+    if (pods) this.launch(this.planSalvo(ULT_MISSILES, x, z, ULT_RANGE, ULT_MULT), pods, true);
+    this.b.audio.play('burst', { pitch: 1.1, volume: 1 });
+    this.b.audio.play('charge', { pitch: 1.5, volume: 0.7 });
+    this.shake(0.25);
+    // The meter can't refill while the storm is still flying anyway (Ultimates.feed), so only a short lock after.
+    return 1;
   }
 
-  ultTick(t: number, dt: number): boolean {
-    // Reticles follow their targets and tighten until the strike lands.
-    const k = Math.min(1, t / ORBITAL_DELAY);
-    for (const m of this.marks) {
-      if (m.e?.alive) {
-        m.x = m.e.position.x;
-        m.z = m.e.position.z;
-      }
-      if (Math.random() < dt * 14) {
-        _q.set(m.x, 0.12, m.z);
-        this.ctx.fx.ring(_q, ORBITAL_RADIUS * (1.6 - k), 0xff3030);
-      }
-    }
-    if (t < ORBITAL_DELAY) return false;
-    for (const m of this.marks) this.orbitalStrike(m.x, m.z);
-    this.marks.length = 0;
+  /** Over once every storm missile has landed (or ULT_MAX_T passed). */
+  ultTick(t: number): boolean {
+    if (t > ULT_MAX_T) return true;
+    for (const m of this.missiles) if (m.live && m.ult) return false;
     return true;
-  }
-
-  /** ORBITAL STRIKE: a sky laser column onto (x, z). */
-  private orbitalStrike(x: number, z: number): void {
-    const ctx = this.ctx;
-    const st = this.b.stats;
-    for (let k = 0; k < 3; k++) {
-      _p.set(x + (Math.random() - 0.5) * 0.6, 40, z + (Math.random() - 0.5) * 0.6);
-      _q.set(x, 0.1, z);
-      this.lightning.bolt(_p, _q, { life: 0.45, width: 1.4 - k * 0.4, jag: 0.15, color: k === 0 ? 0xff2020 : 0xffe0e0 });
-    }
-    _q.set(x, 0.12, z);
-    ctx.fx.ring(_q, ORBITAL_RADIUS, 0xff3030);
-    ctx.fx.ring(_q, ORBITAL_RADIUS * 1.3, 0xffb0a0);
-    _q.set(x, 1, z);
-    ctx.fx.burst(_q, { color: 0xff4020, count: 30, speed: 12, size: 0.35, gravity: -2, life: 0.6 });
-    ctx.fx.burst(_q, { color: 0x2c2628, count: 10, speed: 3, size: 1, gravity: -2.5, life: 1.2 });
-    this.b.snow?.melt(x, z, ORBITAL_RADIUS * 0.8, 1);
-    this.shake(0.6);
-    this.impactHit('nuke', _q, 0.6);
-    this.b.audio.play('explosion', { volume: 0.8, pitch: 1.1 });
-    ultBlast(this.h, x, z, 0, ORBITAL_RADIUS, st.missileDamage * ORBITAL_MULT, { knock: 14, text: '🛰', color: '#ff8a7a' });
   }
 
   private buildArsenalFx(scene: THREE.Scene): void {
@@ -285,7 +260,7 @@ export class ArsenalKit extends Kit implements UltScript {
     const finGeo = mergeGeometries([finA, finB]);
     finA.dispose();
     finB.dispose();
-    for (let i = 0; i < MISSILES_MAX; i++) {
+    for (let i = 0; i < MISSILE_POOL; i++) {
       const g = new THREE.Group();
       const flame = new THREE.Mesh(fireGeo, fireMat);
       g.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(noseGeo, noseMat), new THREE.Mesh(finGeo, bodyMat), flame);
@@ -294,7 +269,7 @@ export class ArsenalKit extends Kit implements UltScript {
       this.missiles.push({
         mesh: g, pos: new THREE.Vector3(), vel: new THREE.Vector3(), target: null, t: 0, live: false, via: null, losT: 0,
         fwd: new THREE.Vector3(0, 0, 1), speed: 0, lit: false, delay: 0, last: new THREE.Vector3(), wob: i * 1.7, smokeT: 0, pod: 0, flame,
-        trail: new MissileTrail(scene),
+        trail: new MissileTrail(scene), ult: false,
       });
     }
   }
@@ -625,36 +600,46 @@ export class ArsenalKit extends Kit implements UltScript {
     this.clearTargets();
   }
 
-  /** Damage one missile does to `e` (direct hit), for working out how many it takes. */
+  /** Damage one salvo missile does to `e` (direct hit), for working out how many it takes. */
   private missileHitOn(e: EnemyHandle): number {
     return Math.max(1, this.b.stats.missileDamage * this.b.stats.damageMult * this.hitMult(e));
   }
 
-  /** Live missiles already flying at `e`. */
+  /** Live missiles already flying at `e`, in salvo-missile hits (a storm missile counts ULT_MULT). */
   private inFlight(e: EnemyHandle): number {
     let n = 0;
-    for (const m of this.missiles) if (m.live && m.target === e) n++;
+    for (const m of this.missiles) if (m.live && m.target === e) n += m.ult ? ULT_MULT : 1;
     return n;
   }
 
   /**
    * Target list for a salvo of `n` missiles. Bots are ranked by Threat.score (damage they've dealt you first), and
    * each gets as many missiles as its HP needs, minus the ones already flying at it; leftovers go round the ranked
-   * list again (overkill on the biggest threats). Several missiles can share a target.
+   * list again (overkill on the biggest threats). Several missiles can share a target. `range`: how far out bots are
+   * picked; `mult`: each missile's hit in salvo-missile hits (MISSILE STORM missiles hit harder, and spread first).
    */
-  planSalvo(n: number, x: number, z: number): (EnemyHandle | null)[] {
-    const hits = this.collect(x, z, MISSILE_RANGE);
+  planSalvo(n: number, x: number, z: number, range = MISSILE_RANGE, mult = 1): (EnemyHandle | null)[] {
+    const hits = this.collect(x, z, range);
     const ranked: { e: EnemyHandle; score: number; need: number }[] = [];
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
-      if (!e.alive || Math.hypot(e.position.x - x, e.position.z - z) > MISSILE_RANGE + e.radius) continue;
+      if (!e.alive || Math.hypot(e.position.x - x, e.position.z - z) > range + e.radius) continue;
       const per = this.missileHitOn(e);
-      const need = Math.max(0, Math.ceil(Math.max(0, e.hp) / per) - this.inFlight(e));
+      const need = Math.max(0, Math.ceil((Math.max(0, e.hp) / per - this.inFlight(e)) / mult));
       ranked.push({ e, score: this.h.threat.score(e, x, z), need });
     }
     this.clearTargets();
     ranked.sort((a, b) => b.score - a.score);
     const out: (EnemyHandle | null)[] = [];
+    // A storm (mult > 1) first spreads evenly (no target gets more than its share until every target has had one),
+    // so one tanky bot can't soak the whole ultimate; then what's left goes by need as usual.
+    const share = mult > 1 ? Math.max(1, Math.ceil(n / Math.max(1, ranked.length))) : Infinity;
+    for (const r of ranked) {
+      const k = Math.min(r.need, share, n - out.length);
+      for (let j = 0; j < k; j++) out.push(r.e);
+      r.need -= k;
+      if (out.length >= n) break;
+    }
     for (const r of ranked) {
       for (let k = 0; k < r.need && out.length < n; k++) out.push(r.e);
       if (out.length >= n) break;
@@ -681,9 +666,13 @@ export class ArsenalKit extends Kit implements UltScript {
     this.b.events.emit('ability', { nuke: false });
     this.b.audio.play('burst', { pitch: 1.4, volume: 0.8 });
     this.b.audio.play('dash', { pitch: 1.6, volume: 0.6 });
+    this.launch(this.planSalvo(Math.min(MISSILES_MAX, st.missileCount), plow.position.x, plow.position.z), plow, false);
+  }
+
+  /** Load one missile per plan entry into the pods and ripple them out (storm missiles faster, bigger, heavier). */
+  private launch(plan: (EnemyHandle | null)[], plow: PodHost, ult: boolean): void {
     const px = plow.position.x;
     const pz = plow.position.z;
-    const plan = this.planSalvo(Math.min(MISSILES_MAX, st.missileCount), px, pz);
     for (let i = 0; i < plan.length; i++) {
       const m = this.missiles.find((x) => !x.live);
       if (!m) break;
@@ -695,11 +684,19 @@ export class ArsenalKit extends Kit implements UltScript {
       const sl = Math.hypot(side, sideZ) || 1;
       const fx = Math.sin(plow.heading);
       const fz = Math.cos(plow.heading);
-      m.vel.set((side / sl) * 3 + fx * 4, 6 + Math.random() * 1.5, (sideZ / sl) * 3 + fz * 4);
-      m.fwd.set((side / sl) * 0.35 + fx * 0.55, 0.75, (sideZ / sl) * 0.35 + fz * 0.55).normalize();
+      if (ult) {
+        // Storm missiles leave near-vertical (a cold launch straight up, splayed slightly outward), then tip over toward
+        // targets in any direction and rain down: from vertical no target is more than a quarter turn away.
+        m.vel.set((side / sl) * 1.5, 10 + Math.random() * 2, (sideZ / sl) * 1.5);
+        m.fwd.set((side / sl) * 0.18, 1, (sideZ / sl) * 0.18).normalize();
+      } else {
+        m.vel.set((side / sl) * 3 + fx * 4, 6 + Math.random() * 1.5, (sideZ / sl) * 3 + fz * 4);
+        m.fwd.set((side / sl) * 0.35 + fx * 0.55, 0.75, (sideZ / sl) * 0.35 + fz * 0.55).normalize();
+      }
       m.speed = 0;
       m.lit = false;
-      m.delay = i * MISSILE_RIPPLE;
+      m.ult = ult;
+      m.delay = i * (ult ? ULT_RIPPLE : MISSILE_RIPPLE);
       m.target = plan[i];
       if (m.target) m.last.copy(m.target.position);
       m.t = 0;
@@ -707,6 +704,7 @@ export class ArsenalKit extends Kit implements UltScript {
       m.live = true;
       m.via = null;
       m.losT = 0;
+      m.mesh.scale.setScalar(ult ? ULT_SCALE : 1);
       m.mesh.visible = false; // shown when its turn in the ripple comes
       m.flame.visible = false;
     }
@@ -773,7 +771,14 @@ export class ArsenalKit extends Kit implements UltScript {
         }
       } else {
         // Guidance: aim point = detour round a deck, else the target's predicted position (lead) lofted while far.
-        if (tgt) {
+        // Storm missiles first finish their vertical boost (climbing, leaning a little toward the target).
+        if (m.ult && m.t < ULT_BOOST) {
+          const dx = tgt ? tgt.position.x - m.pos.x : m.fwd.x;
+          const dz = tgt ? tgt.position.z - m.pos.z : m.fwd.z;
+          const dl = Math.hypot(dx, dz) || 1;
+          _q.set(m.pos.x + (dx / dl) * 3, m.pos.y + 12, m.pos.z + (dz / dl) * 3);
+          if (tgt) m.last.copy(tgt.position);
+        } else if (tgt) {
           if (ter?.active && ter.decks.length && (m.losT -= dt) <= 0) {
             m.losT = MISSILE_LOS_EVERY;
             m.via = this.missileDetour(m, tgt);
@@ -801,14 +806,14 @@ export class ArsenalKit extends Kit implements UltScript {
         const late = THREE.MathUtils.clamp((m.t - 1.2) / 1.5, 0, 1);
         const toAim = m.pos.distanceTo(_q);
         const terminal = 1 + (MISSILE_TERMINAL - 1) * (1 - THREE.MathUtils.smoothstep(toAim, 3, MISSILE_TERMINAL_RANGE));
-        const maxTurn = (MISSILE_TURN + (MISSILE_TURN_LATE - MISSILE_TURN) * late) * terminal * dt;
+        const maxTurn = (MISSILE_TURN + (MISSILE_TURN_LATE - MISSILE_TURN) * late) * terminal * (m.ult ? ULT_TURN : 1) * dt;
         const ang = m.fwd.angleTo(_tip);
         if (ang > 1e-4) m.fwd.lerp(_tip, Math.min(1, maxTurn / ang)).normalize();
         m.wob += dt * 9;
         _fwd.set(Math.cos(m.wob), Math.sin(m.wob * 1.3), Math.sin(m.wob)).multiplyScalar(0.02);
         m.fwd.add(_fwd).normalize();
         // Thrust: speed builds along the nose; the missile flies where it points.
-        m.speed = Math.min(MISSILE_SPEED, m.speed + MISSILE_ACCEL * dt);
+        m.speed = Math.min(m.ult ? ULT_SPEED : MISSILE_SPEED, m.speed + MISSILE_ACCEL * dt);
         m.vel.copy(m.fwd).multiplyScalar(m.speed);
         m.pos.addScaledVector(m.vel, dt);
         // Exhaust flicker and a lingering smoke trail.
@@ -843,7 +848,7 @@ export class ArsenalKit extends Kit implements UltScript {
         }
       }
       const floor = ter?.active ? ter.surfaceAt(m.pos.x, m.pos.z, m.pos.y, _surf).y : 0;
-      if (hitTarget || struck || m.pos.y <= floor + 0.15 || m.t > MISSILE_FUSE) this.explodeMissile(m, tgt);
+      if (hitTarget || struck || m.pos.y <= floor + 0.15 || m.t > (m.ult ? ULT_FUSE : MISSILE_FUSE)) this.explodeMissile(m, tgt);
     }
   }
 
@@ -885,31 +890,32 @@ export class ArsenalKit extends Kit implements UltScript {
     const z = m.pos.z;
     const ter = this.ctx.terrain;
     const floorY = ter?.active ? ter.surfaceAt(x, z, m.pos.y + 0.5, _surf).y : 0;
+    const blast = m.ult ? ULT_BLAST : MISSILE_BLAST;
+    const mult = m.ult ? ULT_MULT : 1;
     _q.set(x, Math.max(floorY + 0.5, m.pos.y), z);
-    this.ctx.fx.burst(_q, { color: 0xff8a20, count: 18, speed: 9, size: 0.35, gravity: -2, life: 0.5 });
-    this.ctx.fx.burst(_q, { color: 0x3a3634, count: 6, speed: 2, size: 0.8, gravity: -2, life: 1 });
-    this.ctx.fx.ring(_q.set(x, floorY + 0.15, z), MISSILE_BLAST, 0xffb040);
-    this.b.audio.play('explosion', { volume: 0.45, pitch: 1.2 + Math.random() * 0.2 });
-    this.shake(0.18);
-    this.b.snow.melt(x, z, MISSILE_BLAST * 0.6, 0.6);
-    this.smashProps(x, z, MISSILE_BLAST);
-    const hits = this.collect(x, z, MISSILE_BLAST);
+    this.ctx.fx.burst(_q, { color: 0xff8a20, count: m.ult ? 26 : 18, speed: m.ult ? 12 : 9, size: m.ult ? 0.45 : 0.35, gravity: -2, life: 0.5 });
+    this.ctx.fx.burst(_q, { color: 0x3a3634, count: m.ult ? 9 : 6, speed: 2, size: m.ult ? 1.1 : 0.8, gravity: -2, life: 1 });
+    this.ctx.fx.ring(_q.set(x, floorY + 0.15, z), blast, m.ult ? 0xff5a20 : 0xffb040);
+    this.b.audio.play('explosion', { volume: m.ult ? 0.6 : 0.45, pitch: (m.ult ? 0.95 : 1.2) + Math.random() * 0.2 });
+    this.shake(m.ult ? 0.26 : 0.18);
+    this.b.snow.melt(x, z, blast * 0.6, 0.6);
+    this.smashProps(x, z, blast);
+    const hits = this.collect(x, z, blast);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       // A blast on one level doesn't reach bots on a deck above or below it.
-      if (e !== direct && Math.abs(e.position.y - floorY) > MISSILE_BLAST) continue;
+      if (e !== direct && Math.abs(e.position.y - floorY) > blast) continue;
       const full = e === direct;
-      const dealt = this.weaponHit(e, st.missileDamage * (full ? 1 : MISSILE_SPLASH), x, z, full ? 9 : 6);
+      const dealt = this.weaponHit(e, st.missileDamage * mult * (full ? 1 : MISSILE_SPLASH), x, z, (full ? 9 : 6) * (m.ult ? 1.4 : 1));
       if (dealt > 0) {
         _tip.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
-        this.ctx.fx.floatText(_tip, `🚀${Math.round(dealt)}`, '#ffb060', 0.9);
+        this.ctx.fx.floatText(_tip, `🚀${Math.round(dealt)}`, m.ult ? '#ff7a50' : '#ffb060', m.ult ? 1.1 : 0.9);
       }
     }
     this.clearTargets();
   }
 
   clear(): void {
-    this.marks.length = 0;
     this.missileCharge = 1;
     this.gunT = this.gunBurstT = 0;
     this.gunsOn = false;

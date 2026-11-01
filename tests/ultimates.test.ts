@@ -49,7 +49,8 @@ const fill = (c: Combat, n: number) => (c as unknown as { onPlayerHit(d: number,
 describe.each([
   ['volt', 'SUPERCELL', [bot(0, 15), bot(-10, -10)], [bot(40, 0)]],
   ['brute', 'EARTHQUAKE', [bot(0, 6), bot(0, -17)], [bot(30, 0)]],
-  ['arsenal', 'ORBITAL STRIKE', [bot(0, 20), bot(30, 30)], [bot(80, 0)]],
+  // MISSILE STORM reaches 75 m (a normal salvo 45 m); it spreads by HP, so give the targets bot-sized HP.
+  ['arsenal', 'MISSILE STORM', [bot(0, 20, 300), bot(30, 30, 300), bot(0, -60, 300)], [bot(80, 0)]],
 ] as const)('%s ultimate (%s)', (kind, _name, inRange, outOfRange) => {
   it('any damage fills the meter; full + F fires it, hits what is in range, and its own damage never refills it', () => {
     const all = [...inRange, ...outOfRange];
@@ -62,9 +63,9 @@ describe.each([
     expect(c.critMass).toBe(1);
     press();
     expect(c.critMass).toBe(0);
-    run(3);
-    for (const b of inRange) expect(b.hp).toBeLessThan(5000);
-    for (const b of outOfRange) expect(b.hp).toBe(5000);
+    run(5); // long enough for the MISSILE STORM's furthest missiles to land
+    for (const b of inRange) expect(b.hp).toBeLessThan(b.maxHp);
+    for (const b of outOfRange) expect(b.hp).toBe(b.maxHp);
     expect(c.critMass).toBe(0);
   });
 });
