@@ -19,7 +19,7 @@ const el = () => ((Date.now() - T0) / 1000).toFixed(1) + 's';
 const VERBOSE = process.argv.includes('--verbose');
 async function open(small) {
   T0 = Date.now();
-  browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  browser = await chromium.launch({ ...(process.env.PW_EXE ? { executablePath: process.env.PW_EXE } : { channel: 'chrome' }), headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   page = await browser.newPage({ viewport: small ? { width: 320, height: 200 } : { width: 1280, height: 720 } });
   page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}\n${e.stack}`));
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !m.text().includes('GPU stall')) errors.push(`[${m.type()}] ${m.text()}`); });
@@ -285,7 +285,15 @@ await session('restore', async () => {
 // ================================================================== session 4: menu, lobby, mid-fight HUD screenshots
 await session('menus', async () => {
   await shot('01-menu');
-  await ev(() => { const b = [...document.querySelectorAll('button')].find((x) => /BRAWL/.test(x.textContent)); b?.click(); });
+  // The BRAWL tile lives in the hub's PLAY pane (the default tab). A missed click must fail the probe.
+  const lobby = await ev(() => {
+    const b = document.querySelector('.ss-tile[data-tile="brawl"]');
+    if (!b || b.offsetParent === null) return 'no visible BRAWL tile';
+    b.click();
+    const cur = window.__game.ctx.ui.current;
+    return cur === 'lobby' ? 'ok' : `clicked BRAWL, but the screen is ${cur}`;
+  });
+  if (lobby !== 'ok') throw new Error(`menus: ${lobby}`);
   await shot('02-lobby');
 }, true);
 await session('hud', async () => {
@@ -312,4 +320,5 @@ await session('hud', async () => {
 console.log(errors.length ? `ERRORS (${errors.length}):\n` + errors.slice(0, 20).join('\n') : 'NO CONSOLE ERRORS');
 console.log(`screenshots in ${out}`);
 await server.close();
-process.exit(0);
+// Warnings are listed above but only real errors (console errors, page errors, failed steps) fail the probe.
+process.exit(errors.some((e) => !e.startsWith('[warning]')) ? 1 : 0);

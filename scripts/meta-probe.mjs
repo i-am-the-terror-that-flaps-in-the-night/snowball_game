@@ -11,7 +11,7 @@ const root = process.cwd();
 const port = 6200 + Math.floor(Math.random() * 100);
 const server = await createServer({ root, server: { port, strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: [process.env.PROBE_GPU === '0' ? '--use-angle=swiftshader' : '--use-angle=metal', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ ...(process.env.PW_EXE ? { executablePath: process.env.PW_EXE } : { channel: 'chrome' }), headless: true, args: [process.env.PROBE_GPU === '0' ? '--use-angle=swiftshader' : '--use-angle=metal', '--enable-unsafe-swiftshader'] });
 const errors = [];
 const log = (...a) => console.log(...a);
 
@@ -22,9 +22,21 @@ async function session(w, h, tag) {
   await page.goto(`http://localhost:${port}/?debug`, { waitUntil: 'load' });
   await page.waitForTimeout(1500);
   const shot = async (name, wait = 350) => { await page.waitForTimeout(wait); await page.screenshot({ path: `${out}/${tag}-${name}.png` }); };
+  // A missed click is a probe failure, not a silent skip (the hub redesign once hid every step this way).
+  const miss = (what) => { errors.push(`[${tag}] ${what}`); log(`  [${tag}] ${what}`); return false; };
   const clickText = async (text) => {
     const b = page.locator('button:visible', { hasText: text }).first();
-    if (!(await b.count())) { log(`  [${tag}] no visible button "${text}"`); return false; }
+    if (!(await b.count())) return miss(`no visible button "${text}"`);
+    await b.click();
+    return true;
+  };
+  /** Open a hub tile: switch to its category tab, then click it. */
+  const hubTile = async (cat, tile) => {
+    const tab = page.locator(`.ss-hub-cat[data-cat="${cat}"]`);
+    if (!(await tab.count())) return miss(`no hub tab "${cat}"`);
+    await tab.click();
+    const b = page.locator(`.ss-tile[data-tile="${tile}"]:visible`);
+    if (!(await b.count())) return miss(`no visible hub tile "${tile}" on ${cat}`);
     await b.click();
     return true;
   };
@@ -32,23 +44,22 @@ async function session(w, h, tag) {
   await page.evaluate(() => { const g = window.__game; g.toMenu(); });
   await shot('menu');
 
-  if (await clickText('PAINT SHOP')) {
+  if (await hubTile('build', 'paint')) {
     await shot('paint');
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Enter');
     await shot('paint-bought');
     await page.keyboard.press('Escape');
   }
-  if (await clickText('TROPHIES')) {
+  if (await hubTile('record', 'trophy')) {
     await shot('trophies');
-    const stats = page.locator('button:visible', { hasText: /STATS/i }).first();
-    if (await stats.count()) { await stats.click(); await shot('trophies-stats'); }
+    if (await clickText(/STATS/i)) await shot('trophies-stats');
     await page.keyboard.press('Escape');
   }
 
   // Campaign: mark arena 1 cleared so Hard opens, then look at zone select.
   await page.evaluate(() => { const p = window.__game.ctx.progression; p.data.zones.yard = { cleared: true, bestRound: 3 }; p.commit(); });
-  if (await clickText('FIGHT')) await shot('zones');
+  if (await hubTile('play', 'fight')) await shot('zones');
   await page.keyboard.press('Escape');
 
   // Hard clear of arena 1 (jump straight to victory) -> results screen with challenges.

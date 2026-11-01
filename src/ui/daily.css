@@ -43,7 +43,7 @@
 }
 .ss-daily-num b { font-family: var(--display); font-weight: 900; font-size: 28px; line-height: 1.1; color: var(--ink); }
 .ss-daily-num small { font-size: 11px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.08em; }
-.ss-daily-num.new { background: var(--ink-inv); box-shadow: inset 0 0 0 2px var(--hazard); }
+.ss-daily-num.new { background: var(--ink-inv); box-shadow: inset 0 0 0 2px var(--hazard); padding-top: 16px; }
 .ss-daily-num.new b { color: var(--hazard); }
 .ss-daily-newbest {
   position: absolute;

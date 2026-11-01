@@ -64,6 +64,9 @@ export class DuelUI {
   private status: HTMLElement;
   private lobbyH: { onHost(): void; onJoin(code: string): void; onCancel(): void } | null = null;
   private _lobbyOpen = false;
+  private openedAt = 0;
+  /** Hub button focused when the lobby opened; BACK / Escape return focus there. */
+  private returnFocus: HTMLElement | null = null;
   private hostCode = '';
   // Garage strip.
   private garage: HTMLElement;
@@ -141,7 +144,7 @@ export class DuelUI {
     this.status = el('div', 'ss-duel-status', '', lp);
     const foot = el('div', 'ss-panel-foot', undefined, lp);
     const back = el('button', 'ss-btn ss-ice ss-duel-cancel', '◀ BACK', foot);
-    back.addEventListener('click', () => this.lobbyH?.onCancel());
+    back.addEventListener('click', () => this.cancelLobby());
 
     // Capture phase, like the Paint Shop: the lobby owns Enter / Escape while open.
     window.addEventListener('keydown', (e) => this.onKey(e), true);
@@ -200,7 +203,9 @@ export class DuelUI {
 
   openLobby(h: { onHost(): void; onJoin(code: string): void; onCancel(): void }): void {
     this.lobbyH = h;
+    if (!this._lobbyOpen) this.returnFocus = document.activeElement as HTMLElement | null;
     this._lobbyOpen = true;
+    this.openedAt = performance.now();
     this.hostCode = '';
     this.lobbyChoose.classList.remove('hidden');
     this.lobbyHosting.classList.add('hidden');
@@ -216,6 +221,8 @@ export class DuelUI {
     this.codeBig.textContent = code;
     this.lobbyChoose.classList.add('hidden');
     this.lobbyHosting.classList.remove('hidden');
+    // HOST just hid itself while focused: hand focus to COPY so keyboard / pad players still see where they are.
+    if (this._lobbyOpen) this.lobbyHosting.querySelector<HTMLButtonElement>('.ss-duel-copy')?.focus({ preventScroll: true });
   }
 
   setStatus(text: string, kind: 'info' | 'ok' | 'error' = 'info'): void {
@@ -231,6 +238,15 @@ export class DuelUI {
     if (a && this.lobby.contains(a)) a.blur();
   }
 
+  /** BACK / Escape: leave the lobby and, back on the hub, refocus the DUEL tile so keyboard / pad play continues.
+   *  (Not done in closeLobby: a duel that starts also closes the lobby, and must not focus a hub tile.) */
+  private cancelLobby(): void {
+    const f = this.returnFocus;
+    this.returnFocus = null;
+    this.lobbyH?.onCancel();
+    if (!this._lobbyOpen && f && f !== document.body && document.contains(f) && f.offsetParent !== null) f.focus({ preventScroll: true });
+  }
+
   private submitJoin(): void {
     const code = cleanRoomCode(this.codeInput.value);
     if (code.length !== ROOM_CODE_LEN) {
@@ -242,20 +258,71 @@ export class DuelUI {
     this.lobbyH?.onJoin(code);
   }
 
+  /**
+   * The lobby owns keyboard / gamepad input while it is open: nothing reaches the hub behind it (whose own Enter
+   * handler would otherwise open Fight, and Q/E would flip its tabs). Gamepad events are synthetic, so the lobby
+   * clicks its buttons itself rather than relying on the browser's native Enter / Space activation.
+   */
   private onKey(e: KeyboardEvent): void {
     if (!this._lobbyOpen) return;
-    if (e.key === 'Escape') {
+    const code = e.code || e.key;
+    const a = document.activeElement;
+    const inInput = a === this.codeInput;
+    if (code === 'Escape') {
       e.preventDefault();
-      e.stopPropagation();
-      this.lobbyH?.onCancel();
-    } else if (e.key === 'Enter' && document.activeElement === this.codeInput) {
-      e.preventDefault();
-      e.stopPropagation();
-      this.submitJoin();
-    } else if (document.activeElement === this.codeInput) {
-      // Typing a code must not drive the plow / menus underneath.
-      e.stopPropagation();
+      e.stopImmediatePropagation();
+      this.cancelLobby();
+      return;
     }
+    if (inInput && (code === 'Enter' || code === 'NumpadEnter')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!e.repeat) this.submitJoin();
+      return;
+    }
+    const step = code === 'Tab' ? (e.shiftKey ? -1 : 1)
+      : code === 'ArrowDown' || code === 'ArrowRight' ? 1
+      : code === 'ArrowUp' || code === 'ArrowLeft' ? -1 : 0;
+    // Left / Right move the caret while typing a code; Up / Down / Tab leave the field.
+    if (step && !(inInput && (code === 'ArrowLeft' || code === 'ArrowRight'))) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this.cycleLobbyFocus(step);
+      return;
+    }
+    if (inInput) {
+      // Typing a code must not drive the plow / menus underneath.
+      e.stopImmediatePropagation();
+      return;
+    }
+    if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.repeat || performance.now() - this.openedAt < 300) return;
+      if (a instanceof HTMLButtonElement && this.lobby.contains(a) && !a.disabled) a.click();
+      else this.lobbyFocusables()[0]?.focus({ preventScroll: true });
+      return;
+    }
+    if (code === 'KeyQ' || code === 'KeyE' || code === 'PageUp' || code === 'PageDown') {
+      // Hub tab switching behind the overlay.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }
+
+  /** The lobby's visible, enabled buttons and the code field, in DOM order. */
+  private lobbyFocusables(): HTMLElement[] {
+    return Array.from(this.lobby.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')).filter(
+      (b) => !b.disabled && b.offsetParent !== null,
+    );
+  }
+
+  private cycleLobbyFocus(step: number): void {
+    const list = this.lobbyFocusables();
+    if (!list.length) return;
+    const i = list.indexOf(document.activeElement as HTMLElement);
+    const next = list[i < 0 ? (step > 0 ? 0 : list.length - 1) : (i + step + list.length) % list.length];
+    next.focus({ preventScroll: true });
   }
 
   /* ------------------------------------------------------------------ duel garage strip */

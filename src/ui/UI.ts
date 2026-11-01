@@ -31,6 +31,84 @@ import { ACHIEVEMENTS } from '../config/achievements';
 import { DuelUI } from './DuelUI';
 import type { DuelWallet, ShopWallet } from '../duel/DuelWallet';
 
+export type ArrowCode = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
+type NavRect = Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>;
+
+/**
+ * 2D focus move for grid menus: index of the rect nearest to `rects[from]` in the arrow's direction, or -1 when
+ * nothing lies that way. Candidates must sit past the current rect's centre along the axis and inside a cone around
+ * it; distance weighs the cross axis double so a tile straight below beats a closer one off to the side.
+ */
+export function spatialPick(rects: readonly NavRect[], from: number, code: ArrowCode): number {
+  const c = rects[from];
+  if (!c) return -1;
+  const cx = (c.left + c.right) / 2;
+  const cy = (c.top + c.bottom) / 2;
+  const horiz = code === 'ArrowLeft' || code === 'ArrowRight';
+  const sign = code === 'ArrowRight' || code === 'ArrowDown' ? 1 : -1;
+  let best = -1;
+  let bestD = Infinity;
+  rects.forEach((r, i) => {
+    if (i === from) return;
+    const rx = (r.left + r.right) / 2;
+    const ry = (r.top + r.bottom) / 2;
+    // Edge-based gap along the axis (0 when the rects overlap there), so big tiles aren't penalised.
+    const gap = horiz
+      ? sign > 0 ? r.left - c.right : c.left - r.right
+      : sign > 0 ? r.top - c.bottom : c.top - r.bottom;
+    const ahead = horiz ? (rx - cx) * sign : (ry - cy) * sign;
+    if (ahead <= 1) return;
+    // Cross-axis offset: 0 when the rects overlap on the cross axis.
+    const cross = horiz
+      ? Math.max(0, r.top - c.bottom, c.top - r.bottom)
+      : Math.max(0, r.left - c.right, c.left - r.right);
+    // Stay inside a ~60° cone: a button far off to the side isn't "to the right", even if its centre is.
+    if (cross > 2 * Math.max(0, gap) + 8) return;
+    const crossC = horiz ? Math.abs(ry - cy) : Math.abs(rx - cx);
+    const d = Math.max(0, gap) + 2 * cross + 0.01 * crossC;
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+export type HubNavKind = 'cat' | 'util' | 'pane';
+
+/**
+ * Hub arrow move. Like spatialPick, except that the tab rail stays a rail: Left / Right from a tab only reach the
+ * other tabs and the utility strip (coins / sound / settings), so Right off the last tab lands on the strip instead of
+ * dropping diagonally into the pane. Up from a tab goes to the strip; when the cone finds nothing (the strip sits off to
+ * the side at desktop width), the nearest strip button is taken. Returns -1 when nothing lies that way.
+ */
+export function hubPick(rects: readonly NavRect[], kinds: readonly HubNavKind[], from: number, code: ArrowCode): number {
+  if (kinds[from] !== 'cat' || code === 'ArrowDown') return spatialPick(rects, from, code);
+  const idx = rects.map((_, i) => i).filter((i) => i === from || kinds[i] === 'cat' || kinds[i] === 'util');
+  const sub = idx.map((i) => rects[i]);
+  const j = spatialPick(sub, idx.indexOf(from), code);
+  if (j >= 0) return idx[j];
+  if (code === 'ArrowLeft') return -1;
+  // Right off the end of the rail, or Up: the nearest utility button that lies that way.
+  const c = rects[from];
+  const cx = (c.left + c.right) / 2;
+  const cy = (c.top + c.bottom) / 2;
+  let best = -1;
+  let bestD = Infinity;
+  rects.forEach((r, i) => {
+    if (kinds[i] !== 'util') return;
+    const rx = (r.left + r.right) / 2;
+    const ry = (r.top + r.bottom) / 2;
+    if (code === 'ArrowRight' && rx <= cx) return;
+    const d = Math.hypot(rx - cx, ry - cy);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
 /** Main-menu hub categories. A new menu destination is one `tile()` call in buildMenu, inside its category. */
 const HUB_CATS = [
   ['play', 'Play'],
@@ -385,10 +463,34 @@ export class UI implements UIAPI {
       this.toastBox?.replaceChildren();
       this.endIntro();
     }
-    const target = this.screens[name].querySelector<HTMLButtonElement>('[data-primary]:not(.hidden)');
     const a = document.activeElement as HTMLElement | null;
     if (a && a.blur) a.blur();
-    if (target) setTimeout(() => this.current === name && target.focus({ preventScroll: true }), 30);
+    setTimeout(() => {
+      if (this.current !== name) return;
+      const target = this.visiblePrimary(this.screens[name]);
+      if (!target) return;
+      target.focus({ preventScroll: true });
+      // Every screen opens at its top (How to Play's primary is BACK at the very bottom, the Brawl lobby's sits under
+      // the rules). The end screens and the arena list then bring their primary into view: a victory with loot can
+      // push NEXT below the fold, and the arena to play next can be the sixth card on a phone.
+      this.resetScroll(this.screens[name]);
+      if (name === 'result' || name === 'bresult' || name === 'zones') target.scrollIntoView({ block: 'nearest' });
+    }, 30);
+  }
+
+  /** Scroll a screen and every scrollable panel inside it back to the top. */
+  private resetScroll(scr: HTMLElement): void {
+    scr.scrollTop = 0;
+    scr.querySelectorAll<HTMLElement>('*').forEach((n) => {
+      if (n.scrollTop) n.scrollTop = 0;
+    });
+  }
+
+  /** The screen's first `[data-primary]` button that is actually shown (not inside a hidden hub pane / section). */
+  private visiblePrimary(scr: HTMLElement): HTMLButtonElement | undefined {
+    return Array.from(scr.querySelectorAll<HTMLButtonElement>('[data-primary]')).find(
+      (b) => !b.disabled && !b.closest('.hidden') && b.offsetParent !== null,
+    );
   }
 
   private controlsList(parent: HTMLElement): HTMLElement {
@@ -412,7 +514,8 @@ export class UI implements UIAPI {
       const k = el('div', 'ss-keys', undefined, row);
       this.rowKeys(keys).forEach((key, i) => {
         if (i) el('span', 'ss-key-sep', '/', k);
-        el('kbd', 'ss-kbd', key, k);
+        // The display face draws arrows as hairlines; arrow keycaps use the body font instead.
+        el('kbd', /^[←↑→↓]$/.test(key) ? 'ss-kbd arrow' : 'ss-kbd', key, k);
       });
       el('span', 'ss-ctrl-label', label, row);
     }
@@ -510,14 +613,13 @@ export class UI implements UIAPI {
       }
       return;
     }
-    if (name === 'menu' && (code === 'KeyQ' || code === 'KeyE' || code === 'PageUp' || code === 'PageDown')) {
+    if ((name === 'menu' || name === 'garage') && (code === 'KeyQ' || code === 'KeyE' || code === 'PageUp' || code === 'PageDown')) {
       e.preventDefault();
-      this.cycleHubCat(code === 'KeyQ' || code === 'PageUp' ? -1 : 1);
-      return;
-    }
-    if (name === 'garage' && (code === 'KeyQ' || code === 'KeyE' || code === 'PageUp' || code === 'PageDown')) {
-      e.preventDefault();
-      this.cycleShopTab(code === 'KeyQ' || code === 'PageUp' ? -1 : 1);
+      // Holding the key would spin through every tab on auto-repeat (the pad's shoulder buttons are edge-triggered).
+      if (e.repeat) return;
+      const dir = code === 'KeyQ' || code === 'PageUp' ? -1 : 1;
+      if (name === 'menu') this.cycleHubCat(dir);
+      else this.cycleShopTab(dir);
       return;
     }
     const isActivate = code === 'Enter' || code === 'NumpadEnter' || code === 'Space';
@@ -534,7 +636,7 @@ export class UI implements UIAPI {
       if (a instanceof HTMLButtonElement && scr.contains(a)) {
         a.click();
       } else if (code !== 'Space') {
-        Array.from(scr.querySelectorAll<HTMLButtonElement>('[data-primary]:not(.hidden)')).find((b) => b.offsetParent !== null)?.click();
+        this.visiblePrimary(scr)?.click();
       }
       return;
     }
@@ -545,7 +647,29 @@ export class UI implements UIAPI {
     const btns = Array.from(scr.querySelectorAll<HTMLButtonElement>('button')).filter((b) => b.offsetParent !== null && !b.disabled);
     if (!btns.length) return;
     let i = btns.indexOf(document.activeElement as HTMLButtonElement);
-    i = i < 0 ? (dir > 0 ? 0 : btns.length - 1) : (i + dir + btns.length) % btns.length;
+    if (i >= 0 && name === 'menu' && code !== 'Tab') {
+      // The hub is a 2D grid (tab rail, tiles, utility strip): arrows / d-pad move to the nearest button in that
+      // direction and stop at the edges (wrapping in DOM order would teleport across the grid). Tab stays linear,
+      // and so do the list-like screens and the no-focus case below.
+      const from = btns[i];
+      const kinds = btns.map((b): HubNavKind => (b.classList.contains('ss-hub-cat') ? 'cat' : b.closest('.ss-hub-util') ? 'util' : 'pane'));
+      const j = hubPick(btns.map((b) => b.getBoundingClientRect()), kinds, i, code as ArrowCode);
+      if (j < 0) return;
+      i = j;
+      const fromTab = from.classList.contains('ss-hub-cat');
+      if (btns[i].classList.contains('ss-hub-cat')) {
+        if (fromTab) {
+          // Along the tab rail, the focused tab is the shown one.
+          btns[i].click();
+        } else {
+          // Climbing out of a pane lands on that pane's own tab, not whichever tab happens to be above.
+          const on = this.hubTabs.get(this.hubCat);
+          if (on && btns.includes(on)) i = btns.indexOf(on);
+        }
+      }
+    } else {
+      i = i < 0 ? (dir > 0 ? 0 : btns.length - 1) : (i + dir + btns.length) % btns.length;
+    }
     const next = btns[i];
     next.focus();
     next.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -636,6 +760,7 @@ export class UI implements UIAPI {
     const pane = this.hubPanes.get(cat)!;
     const b = el('button', `ss-tile ${cls}`, undefined, pane);
     b.type = 'button';
+    b.dataset.tile = icon; // stable hook for the headless probes
     el('span', 'ss-tile-ico', undefined, b).innerHTML = ICONS[icon];
     el('span', 'ss-tile-name', name, b);
     el('span', 'ss-tile-sub', sub, b);
@@ -679,6 +804,8 @@ export class UI implements UIAPI {
     const i = HUB_CATS.findIndex(([id]) => id === this.hubCat);
     this.setHubCat(HUB_CATS[(i + dir + HUB_CATS.length) % HUB_CATS.length][0]);
     this.sfx('click');
+    // The focused tile just went hidden with its pane: move focus to the new pane's main tile.
+    if (this.current === 'menu') this.visiblePrimary(this.hubPanes.get(this.hubCat)!)?.focus({ preventScroll: true });
   }
 
   /* ================================================================== how to play */
@@ -747,6 +874,7 @@ export class UI implements UIAPI {
     this.zoneGrid.textContent = '';
     this.zoneStarTotal.innerHTML = `<span class="ss-star-ico">★</span> ${totalStars(p)}<small>/${maxStars()}</small>`;
     let firstPlayable: HTMLButtonElement | null = null;
+    let lastUnlocked: HTMLButtonElement | null = null;
     ZONES.forEach((z, i) => {
       const unlocked = p.isZoneUnlocked(i);
       const rec = p.zoneRecord(z.id);
@@ -797,9 +925,10 @@ export class UI implements UIAPI {
       });
       this.zoneHardStrip(i, slot);
       if (unlocked && !rec.cleared && !firstPlayable) firstPlayable = card;
-      if (unlocked && i === p.data.unlockedZones - 1) firstPlayable = card;
+      if (unlocked) lastUnlocked = card;
     });
-    const fp = firstPlayable as HTMLButtonElement | null;
+    // First unlocked arena not yet beaten; once every open arena is cleared, the newest open one.
+    const fp = (firstPlayable ?? lastUnlocked) as HTMLButtonElement | null;
     this.zoneGrid.querySelectorAll('[data-primary]').forEach((n) => delete (n as HTMLElement).dataset.primary);
     if (fp) fp.dataset.primary = '1';
   }
@@ -828,9 +957,11 @@ export class UI implements UIAPI {
     const tip =
       `Hard mode: bots ×${HARD.hpMult} HP, ×${HARD.dmgMult} damage, +${Math.round((HARD.minionMult - 1) * 100)}% minions. ` +
       `×${HARD.coinMult} coins. Stars count here too.`;
-    if (!hardUnlocked(p, zoneIndex)) {
+    // A locked arena gets no HARD button even when an old save has it cleared (startRun would refuse it anyway).
+    const arenaOpen = p.isZoneUnlocked(zoneIndex);
+    if (!arenaOpen || !hardUnlocked(p, zoneIndex)) {
       const s = el('div', 'ss-zone-hard locked', undefined, slot);
-      s.innerHTML = '🔒 <b>HARD</b> <small>clear to unlock</small>';
+      s.innerHTML = `🔒 <b>HARD</b> <small>${arenaOpen ? 'clear to unlock' : 'arena locked'}</small>`;
       s.title = tip;
       return;
     }
@@ -983,6 +1114,11 @@ export class UI implements UIAPI {
     const i = SHOP_TABS.findIndex((t) => t.id === this.shopTab);
     this.setShopTab(SHOP_TABS[(i + dir + SHOP_TABS.length) % SHOP_TABS.length].id);
     this.sfx('click');
+    // Like the hub: if a tab had focus, focus follows the newly selected tab.
+    const a = document.activeElement;
+    if (a instanceof HTMLElement && a.classList.contains('ss-tab')) {
+      this.screens.garage.querySelector<HTMLButtonElement>('.ss-tab.on')?.focus({ preventScroll: true });
+    }
   }
 
   private buildCard(def: UpgradeDef, tab: ShopTabId, parent: HTMLElement): CardRefs {
@@ -1185,6 +1321,19 @@ export class UI implements UIAPI {
     this.shopBack.dataset.primary = '1';
     this.refreshCards();
     this.show('garage');
+    // Phone width: the plow picker is one swipeable row; bring the plow being driven into it (after show() has reset
+    // the scroll). Only the row scrolls sideways, so the panel itself stays at its top.
+    setTimeout(() => this.scrollPlowIntoView(), 40);
+  }
+
+  private scrollPlowIntoView(): void {
+    const row = this.plowPick;
+    const on = row.querySelector<HTMLElement>('.ss-plow-card.on');
+    if (!on || row.scrollWidth <= row.clientWidth) return;
+    const r = row.getBoundingClientRect();
+    const c = on.getBoundingClientRect();
+    if (c.left < r.left) row.scrollLeft -= r.left - c.left + 4;
+    else if (c.right > r.right) row.scrollLeft += c.right - r.right + 4;
   }
 
   private renderRoundPreview(nextRound: number, totalRounds: number): void {

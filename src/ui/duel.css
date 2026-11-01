@@ -2,6 +2,7 @@
 
 /* ---- Lobby */
 .ss-duel-panel { width: min(760px, 100%); align-items: stretch; }
+.ss-duel-panel .ss-result-emoji { align-self: center; }
 .ss-duel-choose { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 6px 0 4px; }
 .ss-duel-col {
   display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 16px 20px;
@@ -47,28 +48,31 @@
 .ss-duel-gtitle { font-family: var(--display); font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: var(--hazard); }
 .ss-duel-gpowers, .ss-duel-gbonus { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
 .ss-duel-gbonus b { color: var(--hazard); }
-.ss-duel-gbonus small { color: var(--ink-dim); }
+.ss-duel-gbonus small { color: var(--ink-soft); }
 .ss-duel-garage.has-bonus .ss-duel-gbonus { font-size: 15px; color: var(--ink); }
 .ss-duel-match { flex: none; }
 .ss-duel-match small { font-size: 11px; opacity: 0.75; margin-left: 4px; }
 .ss-duel-match:disabled { opacity: 0.6; cursor: default; transform: none; }
 .ss-duel-gright { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .ss-duel-ready:disabled { filter: grayscale(0.4) brightness(0.9); cursor: default; transform: none; }
-.ss-duel-gopp { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-dim); }
+.ss-duel-gopp { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
 .ss-duel-gopp.ready { color: var(--green); }
+/* The strip is ~87px tall from top:10px; leave a clear gap above the garage panel's hazard stripe (ui.css sets 96px). */
+.ss-duel-garage-screen.ss-duel-garage-screen { padding-top: 110px; }
 
 /* ---- HUD (floats over the snowy arena: dark slabs with an accent edge) */
 .ss-duel-hud {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6;
-  width: min(900px, calc(100% - 24px)); display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 14px;
+  width: min(900px, calc(100% - 24px)); display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 14px;
   pointer-events: none;
 }
-.ss-duel-side { padding: 8px 12px 10px; border-radius: 0; background: rgba(10, 10, 12, 0.86); color: var(--ink); box-shadow: inset 4px 0 0 var(--green); }
+.ss-duel-side { min-width: 0; padding: 8px 12px 10px; border-radius: 0; background: rgba(10, 10, 12, 0.86); color: var(--ink); box-shadow: inset 4px 0 0 var(--green); }
 .ss-duel-opp { box-shadow: inset -4px 0 0 var(--red); }
 .ss-duel-shead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ss-duel-opp .ss-duel-shead { flex-direction: row-reverse; }
-.ss-duel-sname { font-family: var(--display); font-weight: 900; font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ss-duel-pips { display: flex; gap: 5px; }
+.ss-duel-sname { font-family: var(--display); font-weight: 900; font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+.ss-duel-opp .ss-duel-sname { text-align: right; }
+.ss-duel-pips { display: flex; flex: none; gap: 5px; }
 .ss-duel-pip { width: 14px; height: 14px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 2px var(--line-hi); }
 .ss-duel-pip.on { background: var(--hazard); box-shadow: inset 0 0 0 2px var(--ink-inv); }
 .ss-duel-bar { position: relative; height: 16px; border-radius: 0; overflow: hidden; background: var(--ink-inv); box-shadow: inset 0 0 0 1.5px var(--line-hi); }
@@ -110,10 +114,28 @@
 .ss-duel-rematch.pulse { animation: ss-duel-breathe 0.8s ease-in-out infinite; }
 .ss-duel-rematch:disabled { filter: grayscale(0.35); cursor: default; }
 
+@media (max-width: 960px) {
+  /* Garage strip: timer + AUTO-SPEND + READY always on ONE row (the controls shrink, they never wrap), the garage
+     numbers on a second row, so the strip stays at most ~120px tall in every state and never covers the garage panel. */
+  .ss-duel-garage { flex-wrap: wrap; gap: 8px 10px; padding: 8px 10px; }
+  .ss-duel-gtimer { width: 46px; height: 46px; font-size: 22px; }
+  .ss-duel-gmid { flex: 1 1 100%; order: 3; font-size: 12px; }
+  .ss-duel-gtitle { display: none; } /* the garage panel right below is titled DUEL GARAGE */
+  .ss-duel-gmid .ss-duel-gpowers, .ss-duel-gmid .ss-duel-gbonus { font-size: 12px; line-height: 1.25; }
+  .ss-duel-gmid small { display: none; }
+  .ss-duel-match { flex: 1 1 0; min-width: 0; max-width: max-content; padding: 8px 10px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ss-duel-match small { display: none; } /* coins left are also in the line underneath */
+  .ss-duel-gright { flex: 0 1 auto; min-width: 0; margin-left: auto; gap: 2px; align-items: stretch; }
+  .ss-duel-ready { padding: 8px 12px; font-size: 16px; white-space: nowrap; }
+  .ss-duel-ready:disabled { font-size: 13px; letter-spacing: 0.03em; padding: 10px 10px; }
+  .ss-duel-gopp { font-size: 10px; letter-spacing: 0.02em; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ss-duel-garage-screen.ss-duel-garage-screen { padding-top: 150px; } /* doubled: beats ui.css regardless of load order */
+}
 @media (max-width: 620px) {
   .ss-duel-choose { grid-template-columns: 1fr; }
   .ss-duel-code-big { font-size: 48px; }
-  .ss-duel-garage { flex-wrap: wrap; }
-  .ss-duel-hud { grid-template-columns: 1fr 1fr; }
+  .ss-duel-hud { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; width: calc(100% - 16px); }
+  .ss-duel-side { padding: 6px 8px 8px; }
+  .ss-duel-sname { font-size: 15px; letter-spacing: 0.03em; }
   .ss-duel-hmid { grid-column: 1 / -1; grid-row: 1; }
 }

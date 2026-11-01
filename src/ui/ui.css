@@ -307,6 +307,8 @@
 .ss-hub-cat:focus-visible { color: var(--ink); box-shadow: inset 0 -4px 0 var(--ink); }
 .ss-hub-cat.on { background: var(--hazard); color: var(--ink-inv); }
 .ss-hub-cat.on .ss-hub-cat-n { color: var(--ink-inv); }
+/* the selected tab is yellow, so its focus ring is black */
+.ss-hub-cat.on:focus-visible { box-shadow: inset 0 0 0 3px var(--hazard), inset 0 0 0 6px var(--ink-inv); }
 .ss-hub-key {
   margin-left: auto;
   align-self: center;
@@ -381,6 +383,7 @@
   color: #fff;
 }
 .ss-tile:hover, .ss-tile:focus-visible { background: var(--hazard); color: var(--ink-inv); box-shadow: none; }
+/* (focus adds a black + cream frame on top of the hover flip; rules sit after .hot / .hero below) */
 .ss-tile:hover .ss-tile-ico, .ss-tile:focus-visible .ss-tile-ico,
 .ss-tile:hover .ss-tile-sub, .ss-tile:focus-visible .ss-tile-sub,
 .ss-tile:hover .ss-tile-n, .ss-tile:focus-visible .ss-tile-n { color: var(--ink-inv); }
@@ -403,8 +406,11 @@
   background: repeating-linear-gradient(-45deg, var(--ink-inv) 0 12px, transparent 12px 24px);
   opacity: 0.85;
 }
-.ss-tile.hero:hover, .ss-tile.hero:focus-visible { background: var(--hazard); box-shadow: inset 0 0 0 5px var(--ink-inv); }
+.ss-tile.hero:hover { background: var(--ink); }
 .ss-tile.hero:active { background: var(--ink); }
+/* Keyboard / pad focus: hover's flip plus a frame, so the focused tile never looks like the hovered one. */
+.ss-tile:focus-visible, .ss-tile.hot:focus-visible { box-shadow: inset 0 0 0 4px var(--ink-inv), inset 0 0 0 7px var(--ink); }
+.ss-tile.hero:focus-visible { background: var(--ink); box-shadow: inset 0 0 0 6px var(--ink-inv), inset 0 0 0 10px var(--hazard); }
 .ss-tile.tall { grid-row: span 2; }
 .ss-tile:has(.ss-tile-tag) .ss-tile-n { display: none; }
 .ss-tile.off .ss-tile-ico { color: var(--red); }
@@ -438,6 +444,7 @@
 }
 .ss-icon-btn svg { width: 24px; height: 24px; }
 .ss-icon-btn:hover, .ss-icon-btn:focus-visible { background: var(--hazard); color: var(--ink-inv); box-shadow: none; }
+.ss-icon-btn:focus-visible { box-shadow: inset 0 0 0 3px var(--ink-inv), inset 0 0 0 5px var(--ink); }
 .ss-icon-btn.off { color: var(--red); }
 .ss-menu-coins { font-size: 26px; padding: 8px 18px 8px 12px; }
 
@@ -462,6 +469,10 @@
 /* ------------------------------------------------------------ controls */
 .ss-controls { display: flex; flex-direction: column; gap: 9px; }
 .ss-controls.compact { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 22px; margin-top: 4px; }
+/* pause panel: narrower key column so long labels (the F-ability row) wrap less and the list fits the panel */
+.ss-controls.compact .ss-ctrl-row { gap: 10px; }
+.ss-controls.compact .ss-keys { min-width: 92px; }
+.ss-controls.compact .ss-ctrl-label { font-size: 13px; line-height: 1.2; }
 .ss-ctrl-row { display: flex; align-items: center; gap: 12px; }
 .ss-keys { display: flex; align-items: center; gap: 4px; min-width: 112px; }
 .ss-key-sep { color: var(--ink-soft); font-size: 12px; }
@@ -479,6 +490,7 @@
   color: var(--ink);
   text-align: center;
 }
+.ss-kbd.arrow { font-family: var(--font); font-weight: 700; font-size: 16px; line-height: 1; padding: 3px 9px 5px; }
 .ss-ctrl-label { font-weight: 700; font-size: 14px; }
 .ss-ctrl-pad { grid-column: 1 / -1; font-size: 12px; font-weight: 700; opacity: 0.7; margin-top: 2px; }
 
@@ -509,7 +521,8 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  background: linear-gradient(170deg, var(--sky-top) 0%, var(--sky-bottom) 70%);
+  /* the zone's sky hue, sunk into asphalt so white type always reads */
+  background: linear-gradient(170deg, color-mix(in srgb, var(--sky-top) 34%, var(--bg)) 0%, color-mix(in srgb, var(--sky-bottom) 16%, var(--slab)) 70%);
   box-shadow: inset 0 0 0 3px var(--line);
   transition: transform 0.12s ease, box-shadow 0.12s;
   outline: none;
@@ -539,12 +552,12 @@
   font-family: var(--display);
   font-weight: 900;
   font-size: 110px;
-  color: rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.16);
   line-height: 1;
 }
-.ss-zone-top { position: relative; padding: 18px 16px 0; color: #fff; }
+.ss-zone-top { position: relative; padding: 18px 16px 0; color: var(--ink); }
 .ss-zone-name { font-family: var(--display); font-weight: 900; font-size: 30px; line-height: 0.92; text-transform: uppercase; letter-spacing: 0.02em; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55); }
-.ss-zone-tag { margin-top: 8px; font-size: 13px; font-weight: 600; line-height: 1.3; text-shadow: 0 1px 3px rgba(0, 20, 60, 0.6); opacity: 0.95; }
+.ss-zone-tag { margin-top: 8px; font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ink-soft); }
 .ss-zone-bottom { position: relative; padding: 0 14px 16px; display: flex; flex-direction: column; gap: 5px; }
 .ss-zone-stat { font-size: 12.5px; font-weight: 700; color: var(--ink); }
 .ss-zone-reward { color: var(--hazard); }
@@ -562,6 +575,7 @@
   transform: none;
 }
 .ss-zone.cleared { box-shadow: inset 0 0 0 3px var(--green); }
+.ss-zone.cleared:focus-visible { box-shadow: inset 0 0 0 4px var(--hazard), inset 0 0 0 7px var(--ink-inv); }
 .ss-zone-boss {
   position: relative;
   margin: 12px 10px 10px;
@@ -702,6 +716,8 @@
 .ss-tab:hover { background: var(--slab-2); color: var(--ink); }
 .ss-tab.on { background: var(--hazard); color: var(--ink-inv); box-shadow: inset 0 -5px 0 var(--acc); }
 .ss-tab:focus-visible { box-shadow: inset 0 0 0 3px var(--ink); }
+.ss-tab.on:focus-visible { box-shadow: inset 0 -5px 0 var(--acc), inset 0 0 0 3px var(--hazard), inset 0 0 0 6px var(--ink-inv); }
+.ss-tab.on .ss-tab-icon { filter: drop-shadow(0 0 1px var(--ink-inv)) drop-shadow(0 0 1px var(--ink-inv)); }
 .ss-tab-core { --acc: #ff8a1f; }
 .ss-tab-gear { --acc: #b05cf0; }
 .ss-tab-line[data-plow='classic'] { --acc: #ff8a1a; }
@@ -775,7 +791,7 @@
   box-shadow: none;
 }
 .ss-buy:hover { background: var(--ink); }
-.ss-card.poor .ss-buy { background: var(--slab-3); color: var(--ink-dim); box-shadow: none; cursor: not-allowed; }
+.ss-card.poor .ss-buy { background: var(--slab-3); color: var(--ink-soft); box-shadow: none; cursor: not-allowed; }
 .ss-card.poor .ss-buy:hover { transform: none; background: var(--slab-3); }
 .ss-card.maxed { background: color-mix(in srgb, var(--hazard) 8%, var(--slab-2)); }
 .ss-card.maxed .ss-buy { background: transparent; color: var(--hazard); box-shadow: inset 0 0 0 2px var(--hazard); cursor: default; }
@@ -789,7 +805,7 @@
 .ss-foot-hint { font-weight: 700; color: var(--ink-soft); font-size: 13px; letter-spacing: 0.04em; }
 
 /* ------------------------------------------------------------ pause */
-.ss-pause { width: min(560px, 100%); align-items: center; }
+.ss-pause { width: min(560px, 100%); align-items: center; overflow-y: auto; }
 
 /* ------------------------------------------------------------ result */
 .ss-result { width: min(720px, 100%); align-items: center; text-align: center; overflow: auto; }
@@ -964,20 +980,20 @@
   position: absolute;
   inset: 12px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eef8ff 40%, #c6e4f8 75%, #9cc9ea 100%);
-  box-shadow: inset 0 -6px 12px rgba(80, 140, 200, 0.35), 0 6px 18px rgba(0, 30, 70, 0.35);
+  background: var(--slab);
+  box-shadow: inset 0 0 0 2px var(--line-hi), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
-.ss-gauge-svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 2px 4px rgba(0, 20, 50, 0.4)); }
-.ss-gauge-track { fill: none; stroke: rgba(10, 30, 60, 0.45); stroke-width: 9; }
+.ss-gauge-svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45)); }
+.ss-gauge-track { fill: none; stroke: rgba(0, 0, 0, 0.62); stroke-width: 9; }
 .ss-gauge-ring { fill: none; stroke: var(--tc); stroke-width: 9; stroke-linecap: round; transition: stroke-dashoffset 0.15s linear, stroke 0.3s; }
-.ss-gauge-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink-inv); }
+.ss-gauge-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink); }
 .ss-gauge-r { font-family: var(--display); font-weight: 900; font-size: 24px; line-height: 1; }
-.ss-gauge-tier { font-family: var(--display); font-weight: 900; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; color: color-mix(in srgb, var(--tc) 70%, #123); max-width: 92px; text-align: center; }
+.ss-gauge-tier { font-family: var(--display); font-weight: 900; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; color: var(--tc); max-width: 92px; text-align: center; }
 .ss-gauge[data-tier="4"] .ss-gauge-tier { font-size: 8.5px; }
 .ss-gauge.ready .ss-gauge-svg { filter: drop-shadow(0 0 8px var(--tc)); }
 .ss-gauge.full { animation: ss-throb 0.9s ease-in-out infinite; }
 .ss-gauge.tierup { animation: ss-bump 0.45s cubic-bezier(0.2, 1.8, 0.4, 1); }
-.ss-slam-hint { font-family: var(--display); font-size: 14px; font-weight: 900; letter-spacing: 0.06em; color: #fff; text-shadow: 0 1px 3px rgba(0, 20, 50, 0.85), 0 0 10px rgba(255, 140, 40, 0.6); opacity: 0; transform: translateY(6px); transition: opacity 0.2s, transform 0.2s; }
+.ss-slam-hint { font-family: var(--display); font-size: 15px; font-weight: 900; letter-spacing: 0.08em; color: var(--hazard); background: var(--ink-inv); padding: 2px 9px; text-shadow: none; opacity: 0; transform: translateY(6px); transition: opacity 0.2s, transform 0.2s; }
 .ss-slam-hint.show { opacity: 1; transform: none; animation: ss-blink 1.2s ease-in-out infinite; }
 .ss-shield {
   font-family: var(--display);
@@ -1023,10 +1039,10 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: conic-gradient(var(--ac) calc(var(--p) * 360deg), rgba(10, 30, 60, 0.55) 0);
+  background: conic-gradient(var(--ac) calc(var(--p) * 360deg), rgba(0, 0, 0, 0.62) 0);
   -webkit-mask: radial-gradient(circle, transparent 57%, #000 59%);
   mask: radial-gradient(circle, transparent 57%, #000 59%);
-  filter: drop-shadow(0 2px 3px rgba(0, 20, 50, 0.45));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
 }
 .ss-ab-core {
   position: absolute;
@@ -1036,9 +1052,10 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 35% 30%, rgba(60, 100, 150, 0.9), rgba(12, 30, 58, 0.92));
-  border: 1.5px solid rgba(255, 255, 255, 0.45);
-  color: #fff;
+  background: var(--slab);
+  border: 0;
+  box-shadow: inset 0 0 0 2px var(--line-hi);
+  color: var(--ink);
   transition: filter 0.2s;
 }
 .ss-ab-icon { font-size: 20px; line-height: 1; }
@@ -1179,6 +1196,7 @@
    over the screen's headline. */
 .ss-root:has(> .ss-screen.show) .ss-toasts { top: 16px; left: auto; right: 16px; transform: none; width: min(360px, 70vw); align-items: flex-end; }
 .ss-root:has(> .ss-screen.show) .ss-toast { font-size: 15px; padding: 8px 16px; }
+.ss-root:has(> .ss-menu.show) .ss-toasts { top: calc(clamp(12px, 2vh, 24px) + 60px); right: clamp(12px, 2vw, 28px); }
 .ss-toast {
   padding: 10px 22px;
   border-radius: 0;
@@ -1272,9 +1290,11 @@
   .ss-bosses { width: 60vw; top: 92px; }
   .ss-combo-n { font-size: 54px; }
   .ss-bc-row { gap: 8px; }
+  .ss-controls.compact { grid-template-columns: 1fr; }
 }
 @media (max-height: 760px) {
   .ss-zone { min-height: 300px; }
+  .ss-controls.compact { gap: 4px 22px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ss-card.afford .ss-buy, .ss-chip.boss, .ss-gauge.full, .ss-boss-preview, .ss-hud-round.boss, .ss-bi-stripes { animation: none; }
@@ -1285,7 +1305,7 @@
 .ss-plow-pick.hidden { display: none; }
 .ss-plow-card { position: relative; display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; border-radius: 0; cursor: pointer; font: inherit; color: var(--ink); outline: none;
   background: var(--slab-2); border: 0; box-shadow: inset 0 0 0 2px var(--line), inset 0 -5px 0 var(--acc, var(--hazard)); clip-path: var(--chamfer-sm); transition: box-shadow 0.15s, background 0.15s; }
-.ss-plow-card:hover, .ss-plow-card:focus-visible { box-shadow: inset 0 0 0 2px var(--line-hi), inset 0 -5px 0 var(--acc); }
+.ss-plow-card:hover { box-shadow: inset 0 0 0 2px var(--line-hi), inset 0 -5px 0 var(--acc); }
 .ss-plow-card.on { background: color-mix(in srgb, var(--acc) 22%, var(--slab-2)); box-shadow: inset 0 0 0 3px var(--acc); }
 .ss-plow-classic { --acc: #ff8a1a; }
 .ss-plow-volt { --acc: #2fb8ff; }
@@ -1316,8 +1336,8 @@
 .ss-batt { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .ss-batt.hidden { display: none; }
 .ss-batt-label { font-size: 13px; }
-.ss-batt-bar { position: relative; flex: 1; height: 10px; border-radius: 5px; background: rgba(0, 15, 35, 0.6); border: 1.5px solid rgba(160, 225, 255, 0.85); overflow: hidden; }
-.ss-batt-fill { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, #2fb8ff, #bff0ff); box-shadow: 0 0 8px #2fb8ff; transition: transform 0.15s; }
+.ss-batt-bar { position: relative; flex: 1; height: 10px; border-radius: 0; background: var(--ink-inv); border: 0; box-shadow: inset 0 0 0 1.5px var(--line-hi); overflow: hidden; }
+.ss-batt-fill { position: absolute; inset: 0; transform-origin: left; background: var(--cyan); transition: transform 0.15s; }
 .ss-batt.empty .ss-batt-bar { border-color: rgba(255, 120, 120, 0.8); }
 .ss-crit .ss-batt-bar { border-color: rgba(160, 255, 120, 0.85); background: rgba(10, 30, 0, 0.6); }
 .ss-crit .ss-batt-fill { background: linear-gradient(90deg, #2f9a10, #b8ff6a); box-shadow: 0 0 8px #5dff3a; }
@@ -1332,13 +1352,13 @@
 .ss-ab-nuke { --ac: #eaff6a; animation: ss-nuke-glow 0.6s ease-in-out infinite; }
 @keyframes ss-nuke-glow { 50% { filter: drop-shadow(0 0 12px #9dff5a) brightness(1.25); } }
 /* Thunderclap Overload meter: perched above the F icon; heat bar + the next clap's self-damage. */
-.ss-heat { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; }
+.ss-heat { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 6px 2px; background: rgba(10, 10, 12, 0.88); pointer-events: none; }
 .ss-heat.hidden { display: none; }
-.ss-heat-bar { position: relative; width: 54px; height: 6px; border-radius: 3px; background: rgba(0, 15, 35, 0.6); border: 1px solid rgba(160, 225, 255, 0.75); overflow: hidden; }
+.ss-heat-bar { position: relative; width: 54px; height: 6px; border-radius: 0; background: var(--ink-inv); border: 0; box-shadow: inset 0 0 0 1px var(--line-hi); overflow: hidden; }
 .ss-heat-fill { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, #ffd27a, #ff7a5a); transition: transform 0.15s; }
-.ss-heat-txt { font-family: var(--display); font-weight: 900; font-size: 9.5px; letter-spacing: 0.05em; color: #ffd27a; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); white-space: nowrap; }
-.ss-heat[data-t='1'] .ss-heat-txt { color: #ffa25a; }
-.ss-heat[data-t='2'] .ss-heat-txt { color: #ff5a4a; }
+.ss-heat-txt { font-family: var(--display); font-weight: 900; font-size: 11px; letter-spacing: 0.05em; color: var(--hazard); white-space: nowrap; }
+.ss-heat[data-t='1'] .ss-heat-txt { color: var(--orange); }
+.ss-heat[data-t='2'] .ss-heat-txt { color: var(--red); }
 .ss-heat[data-t='2'] .ss-heat-fill { box-shadow: 0 0 8px #ff5a4a; }
 
 /* Survival between-wave shop (PIT STOP) */
@@ -1399,6 +1419,11 @@
 .ss-hud.duel .ss-combo,
 .ss-hud.duel .ss-hint { display: none !important; }
 .ss-btn.ss-buy.ss-bonus-buy { box-shadow: 0 0 0 2px #ffd34a inset; }
+/* Buy-button focus (matches .ss-primary:focus-visible). animation:none stops ss-glow's keyframed shadow hiding it. */
+.ss-card .ss-btn.ss-buy:focus-visible { animation: none; background: var(--ink); color: var(--ink-inv); box-shadow: inset 0 0 0 3px var(--ink-inv); }
+.ss-card.poor .ss-btn.ss-buy:focus-visible, .ss-card.maxed .ss-btn.ss-buy:focus-visible { background: var(--slab-3); color: var(--ink); box-shadow: inset 0 0 0 3px var(--hazard); }
+/* Plow picker focus (after the .on / volt / isotope glow rules) */
+.ss-plow-card:focus-visible, .ss-plow-card.on:focus-visible { animation: none; box-shadow: inset 0 0 0 3px var(--hazard), inset 0 0 0 6px var(--ink-inv), inset 0 -5px 0 var(--acc); }
 /* Duel garage: leave room at the top for DuelUI's timer / READY strip. */
 .ss-duel-garage-screen { padding-top: 96px; }
 .ss-duel-garage-screen .ss-shop { height: min(860px, 100%); }
@@ -1407,7 +1432,7 @@
 .ss-gear-eq { font-family: var(--body, inherit); font-size: 13px; font-weight: 800; color: var(--ink-soft); letter-spacing: 0; text-transform: none; }
 .ss-gear-rarity { margin-left: 8px; padding: 1px 7px; font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: var(--ink-inv); background: var(--acc); vertical-align: 3px; }
 .ss-gear-lvl { margin-top: 5px; font-size: 12px; font-weight: 900; color: var(--acc); letter-spacing: 0.04em; }
-.ss-gear-off { color: var(--slab-3); }
+.ss-gear-off { color: var(--line-hi); }
 .ss-gear-btns { display: flex; flex-direction: column; gap: 8px; }
 .ss-gear-equip { font-size: 13px; padding: 7px 10px; }
 .ss-gear-card { --acc: #c9c6bc; }
@@ -1418,7 +1443,14 @@
   .ss-plow-pick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
-  .ss-plow-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* one swipeable row, so the upgrade list keeps the height (the tag line is hidden: it would wrap 3 deep) */
+  /* columns size to their content (plain max-content: minmax(x, max-content) never grows in an overflowing row) so every
+     plow name reads whole; the ellipsis only guards a name wider than the phone */
+  .ss-plow-pick { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; scroll-padding-inline: 4px; scrollbar-width: thin; scrollbar-color: var(--line-hi) transparent; }
+  .ss-plow-card { padding-top: 14px; min-width: 132px; max-width: calc(100vw - 72px); }
+  .ss-plow-info { min-width: 0; }
+  .ss-plow-tag { display: none; }
+  .ss-plow-name { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 .ss-crit[data-ult='zap'] .ss-batt-bar { border-color: rgba(127, 220, 255, 0.9); background: rgba(0, 20, 40, 0.6); }
@@ -1449,6 +1481,15 @@
 @media (prefers-reduced-motion: reduce) { .ss-loot-card { animation: none; } }
 
 /* ---- hub: narrow screens */
+@media (max-width: 420px) {
+  /* Arena cards: long names (COLDBOOT, THERMAL) and boss names must fit two-column cards. */
+  .ss-zone-name { font-size: 21px; letter-spacing: 0; }
+  .ss-zone-boss { gap: 5px; padding-right: 6px; }
+  .ss-zone-boss-badge { width: 24px; height: 24px; font-size: 15px; }
+  .ss-zone-boss-text b { font-size: 11px; letter-spacing: 0; padding-right: 10px; }
+  /* Garage header: let the coin pill drop under the title instead of running off the panel. */
+  .ss-shop-head { flex-wrap: wrap; gap: 8px 14px; }
+}
 @media (max-width: 700px) {
   .ss-menu { padding: 0 16px; background: rgba(4, 4, 6, 0.9); }
   .ss-hub { padding-top: 76px; }
@@ -1459,4 +1500,9 @@
   .ss-hub-pane { grid-auto-rows: 92px; }
   .ss-hub-tape { letter-spacing: 0.14em; font-size: 13px; }
   .ss-tile.hero .ss-tile-name { font-size: 54px; }
+  .ss-tile { padding: 10px; column-gap: 8px; }
+  .ss-tile-name { font-size: 22px; }
+  .ss-tile-n { display: none; }
+  .ss-tile-sub { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.15; }
+  .ss-root:has(> .ss-menu.show) .ss-toasts { top: 74px; right: 16px; }
 }

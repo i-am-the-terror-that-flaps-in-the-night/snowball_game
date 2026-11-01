@@ -26,13 +26,15 @@
 .ss-set-val { font-family: var(--display); font-weight: 900; font-size: 18px; color: var(--hazard); text-align: right; font-variant-numeric: tabular-nums; }
 .ss-set-range { width: 100%; accent-color: var(--hazard); height: 22px; cursor: pointer; }
 .ss-set-range:focus-visible { outline: 3px solid var(--hazard); outline-offset: 3px; border-radius: 0; }
-.ss-set-seg { display: flex; gap: 10px; grid-column: 2 / 4; }
+.ss-set-seg { display: flex; flex-wrap: wrap; gap: 8px 10px; grid-column: 2 / 4; min-width: 0; }
 .ss-set-on, .ss-set-on:hover { background: var(--hazard) !important; color: var(--ink-inv) !important; box-shadow: none !important; }
 .ss-set-on:focus-visible { box-shadow: inset 0 0 0 3px var(--ink-inv) !important; }
 .ss-set-note { font-size: 13px; color: var(--ink-soft); font-weight: 600; margin: 4px 0 8px; }
-.ss-set-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px 18px; }
+.ss-set-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 6px 18px; }
 .ss-set-keyrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .ss-set-key { min-width: 130px; font-size: 13px; padding: 8px 12px; }
+/* Key labels mix letters and arrow glyphs; the condensed display face draws ← ↑ → ↓ as hairlines, so use the body face. */
+.ss-set-key { font-family: var(--font); font-weight: 700; letter-spacing: 0.04em; }
 .ss-set-key.ss-set-custom { color: var(--orange); }
 .ss-set-key.ss-set-listen { animation: ss-set-blink 0.8s ease-in-out infinite; color: var(--hazard); box-shadow: inset 0 0 0 2px var(--hazard); }
 @keyframes ss-set-blink { 50% { opacity: 0.55; } }
@@ -58,4 +60,8 @@
 .ss-set-code:focus { outline: none; box-shadow: inset 0 0 0 3px var(--hazard); }
 @media (max-width: 560px) {
   .ss-set-row { grid-template-columns: 1fr 2fr 44px; }
+  .ss-set-sec { padding: 12px 12px 10px 14px; }
+  .ss-set-seg .ss-btn { padding: 8px 10px; font-size: 14px; }
+  .ss-set-keyrow { min-width: 0; }
+  .ss-set-key { flex: none; max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
 }

@@ -66,7 +66,7 @@
 .ss-tier-at { font-size: 12px; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
 .ss-tier-m { font-family: var(--display); font-weight: 900; font-size: 13px; letter-spacing: 0.04em; padding: 3px 9px; border-radius: 0; background: var(--tc); color: var(--ink-inv); white-space: nowrap; }
 .ss-tier.t4 .ss-tier-l { animation: ss-blink 0.9s ease-in-out infinite; }
-.ss-tier-note { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--ink-dim); }
+.ss-tier-note { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
 
 .ss-place-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .ss-place { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border-radius: 0; background: var(--slab-3); box-shadow: inset 0 0 0 2px var(--line); }
@@ -175,7 +175,7 @@
   animation: ss-pop-in 0.4s ease both;
 }
 .ss-bres-row > span:nth-child(n + 4) { text-align: center; }
-.ss-bres-row.head { background: none; font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: 0.14em; color: var(--ink-dim); padding-top: 0; padding-bottom: 0; animation: none; }
+.ss-bres-row.head { background: none; font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: 0.14em; color: var(--ink-soft); padding-top: 0; padding-bottom: 0; animation: none; }
 .ss-bres-row.first { background: var(--slab-3); box-shadow: inset 4px 0 0 var(--hazard); }
 .ss-bres-row.me { background: var(--hazard); color: var(--ink-inv); box-shadow: none; }
 .ss-bres-row.me .ss-bres-n { color: var(--ink-inv); }
@@ -274,7 +274,7 @@
 /* leaderboard */
 .ss-bh-board { position: absolute; right: 18px; top: 236px; width: 262px; padding: 7px 8px 8px; border-radius: 0; }
 .ss-bh-row { display: grid; grid-template-columns: 18px 10px 1fr 24px 24px 34px; align-items: center; gap: 6px; height: 25px; padding: 0 6px; border-radius: 0; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.ss-bh-head { height: 18px; font-family: var(--display); font-size: 11px; letter-spacing: 0.14em; color: var(--ink-dim); }
+.ss-bh-head { height: 18px; font-family: var(--display); font-size: 11px; letter-spacing: 0.14em; color: var(--ink-soft); }
 .ss-bh-rows { position: relative; }
 .ss-bh-rows .ss-bh-row { position: absolute; left: 0; right: 0; top: 0; transition: transform 0.4s cubic-bezier(0.3, 1.3, 0.5, 1), background 0.3s, opacity 0.3s; }
 .ss-bh-r { text-align: center; font-family: var(--display); font-weight: 900; color: var(--ink-soft); }
@@ -295,6 +295,8 @@
 .ss-bh-row.me .ss-bh-dot { box-shadow: 0 0 0 1.5px var(--ink-inv); }
 .ss-bh-row.me.dead { background: var(--hazard-dark); }
 .ss-bh-row.climb { animation: ss-bh-climb 0.6s ease; }
+/* The YOU row keeps its hazard slab through the climb flash (a background-color animation would beat it and leave black text on the dark board). */
+.ss-bh-row.me.climb { animation: ss-bh-climb-me 0.6s ease; }
 
 /* streak meter */
 .ss-bh-streak {
@@ -397,6 +399,7 @@
 @keyframes ss-bh-tick { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
 @keyframes ss-kf-life { 0% { opacity: 0; transform: translateX(30px); } 5% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes ss-bh-climb { 0% { background-color: rgba(24, 224, 122, 0.5); } 100% { background-color: transparent; } }
+@keyframes ss-bh-climb-me { 0% { background-color: var(--green); } 100% { background-color: var(--hazard); } }
 @keyframes ss-bh-banner-life { 0% { opacity: 0; transform: translateY(-12px) scaleX(0.6); } 8% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
 @keyframes ss-bh-ann {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(3) rotate(-6deg); }
@@ -423,6 +426,22 @@
   .ss-bh-board { top: 150px; }
   .ss-bh-feed .ss-kf:nth-last-child(n + 3) { display: none; }
   .ss-bh-canvas { width: 120px; height: 120px; }
+}
+@media (max-width: 520px) {
+  /* Lobby kill-streak rows: the tier name gets the whole top line (never cut off), kills + coin multiplier sit
+     underneath, and the flames stay on one line so every row is the same height. */
+  .ss-tier {
+    grid-template-columns: 46px minmax(0, 1fr) auto; grid-template-areas: 'fl l l' 'fl at m';
+    gap: 3px 8px; padding: 7px 8px 7px 12px;
+  }
+  .ss-tier-fl { grid-area: fl; font-size: 11px; letter-spacing: -0.2em; white-space: nowrap; }
+  .ss-tier-l { grid-area: l; font-size: 15px; letter-spacing: 0.04em; line-height: 1.05; white-space: normal; min-width: 0; }
+  .ss-tier-at { grid-area: at; align-self: center; }
+  .ss-tier-m { grid-area: m; justify-self: end; padding: 2px 6px; font-size: 12px; }
+  /* Results leaderboard: tighter number tracks so the PLOWER column keeps real width. */
+  .ss-bres-row { grid-template-columns: 24px 10px minmax(0, 1fr) 36px 36px 44px; gap: 5px; padding: 6px 8px; font-size: 13px; }
+  .ss-bres-row.head { font-size: 10px; letter-spacing: 0.04em; }
+  .ss-bres-k { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ss-new, .ss-bh-streak, .ss-tier.t4 .ss-tier-l, .ss-bh-timer.hurry .ss-bh-time { animation: none !important; }
