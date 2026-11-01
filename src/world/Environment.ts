@@ -46,6 +46,9 @@ interface Style {
   mountain: number;
 }
 
+/** Steam / smoke puffs shrink to nothing within this many metres of the camera (they never fill the screen). */
+const PUFF_CAM_CLEAR = 3;
+
 const STYLES: Record<Theme | BiomeKey, Style> = {
   // Frostbite Yard — snowy scrapyard
   meadow: {
@@ -2336,7 +2339,8 @@ export class Environment implements WorldAPI {
   /** Smoke / steam columns animated in update() (one instanced draw). */
   private addPuffs(stacks: Puff[], color: number, opacity: number): void {
     const per = 7;
-    const puffMat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity, depthWrite: false });
+    // Self-lit a little, so a puff seen from its shaded side never reads as a dark blob.
+    const puffMat = new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.45, transparent: true, opacity, depthWrite: false });
     const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), puffMat, stacks.length * per);
     puffMesh.frustumCulled = false;
     this.add(puffMesh);
@@ -3261,7 +3265,12 @@ export class Environment implements WorldAPI {
           const f = (t * 0.12 + j / per + s * 0.37) % 1;
           const dr = st.drift ?? 9;
           d.position.set(st.x + f * dr + Math.sin(t * 0.5 + j) * 0.8, st.y + 1 + f * (st.rise ?? 16), st.z + f * dr * 0.33);
-          d.scale.setScalar(st.r * (0.8 + f * 2.2) * (1 - f * f * 0.6));
+          let sc = st.r * (0.8 + f * 2.2) * (1 - f * f * 0.6);
+          // Shrink away near the camera: a puff drifting through the follow camera (the Thermal Divide's in-arena
+          // vents) would otherwise fill the screen.
+          const cd = d.position.distanceTo(cam) - sc;
+          if (cd < PUFF_CAM_CLEAR) sc *= Math.max(0, cd / PUFF_CAM_CLEAR);
+          d.scale.setScalar(Math.max(1e-3, sc));
           d.updateMatrix();
           mesh.setMatrixAt(n++, d.matrix);
         }
