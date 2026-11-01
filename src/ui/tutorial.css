@@ -1,17 +1,22 @@
 /* ============================================================ Tutorial step card (ROAD CREW; sits over the 3D scene) */
+/* Centred without a transform (top / bottom 0, auto margins, fit-content height), so `transform` is only the slide-in and
+ * Tutorial.measureArrow can read the card's resting box (offsetTop / offsetHeight) even mid-slide. */
 .ss-tut {
   position: absolute;
   right: 18px;
-  top: 50%;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  height: fit-content;
   width: min(330px, 86vw);
   padding: 14px 18px 16px;
-  transform: translate(30px, -50%);
+  transform: translateX(30px);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease, transform 0.3s ease;
   z-index: 30;
 }
-.ss-tut.show { opacity: 1; transform: translate(0, -50%); pointer-events: auto; }
+.ss-tut.show { opacity: 1; transform: none; pointer-events: auto; }
 .ss-tut-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .ss-tut-step { font-family: var(--display); font-size: 12px; font-weight: 900; letter-spacing: 0.16em; color: var(--ink-soft); text-transform: uppercase; }
 .ss-tut-skip {
@@ -42,8 +47,8 @@
 
 /* Phones (portrait): the card moves to the top, under the arena / coin boxes, so it never covers the plow. */
 @media (max-width: 560px) {
-  .ss-tut { top: 128px; right: 50%; width: min(380px, calc(100vw - 24px)); padding: 10px 14px 12px; transform: translate(50%, -16px); }
-  .ss-tut.show { transform: translate(50%, 0); }
+  .ss-tut { top: 128px; bottom: auto; left: 0; right: 0; margin: 0 auto; width: min(380px, calc(100vw - 24px)); padding: 10px 14px 12px; transform: translateY(-16px); }
+  .ss-tut.show { transform: none; }
   .ss-tut-title { font-size: 22px; margin: 4px 0 6px; }
   .ss-tut-text { font-size: 13px; line-height: 1.35; }
 }

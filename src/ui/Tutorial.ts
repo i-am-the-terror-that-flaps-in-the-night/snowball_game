@@ -6,7 +6,9 @@ import { CAMPAIGN_ARENA_HALF } from '../core/types';
 import { keyLabel, type Action } from '../core/input';
 import { PLOWS, type PlowDef } from '../config/plows';
 import type { TerrainDef, TerrainShape } from '../world/Terrain';
-import { arrowRect, edgePoint, fmtDist, onScreen, viewDir, type EdgeHit, type EdgeRect, type ScreenDir } from './radarMath';
+import {
+  ARROW_ABOVE, ARROW_HALF_W, arrowRect, edgePoint, fmtDist, onScreen, viewDir, type EdgeHit, type EdgeRect, type ScreenDir,
+} from './radarMath';
 
 /** localStorage flag: set once the tutorial is finished or skipped (kept out of the save so RESET SAVE doesn't replay it). */
 const DONE_KEY = 'snowplow-showdown-tutorial-done';
@@ -47,6 +49,8 @@ const LAY_OFFSETS = [0, 0.3, 0.6, 0.9, 1.2];
 const JUMP_AIR = 0.3;
 /** Seconds between the floating "BOWL" / "RAMP" markers over the lesson's feature. */
 const BEACON_EVERY = 1.3;
+/** Gap (px) between the beacon's edge arrow (tip and label) and the step card. */
+const CARD_CLEAR = 12;
 /** A frame-to-frame drop in vertical speed this big (m/s) can only be the air-slam dive (gravity adds < 1.5). */
 const DIVE_DV = 8;
 
@@ -457,6 +461,8 @@ export class Tutorial {
     const { ctx } = this;
     const plow = ctx.plow;
     const dist = (x: number, z: number) => Math.round(Math.hypot(x - plow.position.x, z - plow.position.z));
+    // to the ramp's marker (the beacon the edge arrow points at), so the hint and the arrow read the same distance
+    const rampDist = () => (this.beacon ? dist(this.beacon.x, this.beacon.z) : dist(this.ramp.x, this.ramp.z));
     return [
       {
         title: 'Slopes',
@@ -485,7 +491,7 @@ export class Tutorial {
           this.layRamp();
         },
         progress: () => (this.jumped ? 1 : plow.airborne ? 0.5 : 0),
-        hint: () => (plow.airborne ? 'Airborne!' : `Ramp: ${dist(this.ramp.x, this.ramp.z)} m · line up and floor it`),
+        hint: () => (plow.airborne ? 'Airborne!' : `Ramp: ${rampDist()} m · line up and floor it`),
       },
       {
         title: 'Air slam',
@@ -497,7 +503,7 @@ export class Tutorial {
           this.rampBeacon();
         },
         progress: () => (this.airSlammed ? 1 : this.dived ? 0.6 : plow.airborne ? 0.3 : 0),
-        hint: () => (plow.airborne ? (this.dived ? 'Diving!' : 'NOW: slam!') : `Ramp: ${dist(this.ramp.x, this.ramp.z)} m`),
+        hint: () => (plow.airborne ? (this.dived ? 'Diving!' : 'NOW: slam!') : `Ramp: ${rampDist()} m`),
       },
     ];
   }
@@ -555,16 +561,23 @@ export class Tutorial {
   }
 
   /** Cache the viewport and the arrow rectangle: clear of the HUD edges and of the step card (right-side panel on
-   *  desktop, pinned to the top on phones). One layout read per lesson / resize, none per frame. */
+   *  desktop, pinned to the top on phones). The whole arrow stays off the card: the 34 px tip box centred on the edge
+   *  point and the distance label (up to ~76 px wide) centred under it. The card is measured by its layout box, which
+   *  tutorial.css keeps free of its slide-in transform, so a card still sliding in measures where it comes to rest.
+   *  One layout read per lesson / resize, none per frame. */
   private measureArrow(): void {
     const w = (this.arrowW = window.innerWidth);
     const h = (this.arrowH = window.innerHeight);
     const R = arrowRect(w, h, this.arrowBox);
     const V = arrowRect(w, h, this.arrowVis, true);
-    const c = this.card.getBoundingClientRect();
-    if (c.width > 0) {
-      if (c.left > w * 0.5) R.r = V.r = Math.max(R.l + 40, Math.min(R.r, c.left - 12));
-      else R.t = V.t = Math.min(R.b - 40, Math.max(R.t, c.bottom + 12));
+    const card = this.card;
+    if (card.offsetWidth > 0) {
+      const p = card.offsetParent?.getBoundingClientRect();
+      const left = (p?.left ?? 0) + card.offsetLeft;
+      const bottom = (p?.top ?? 0) + card.offsetTop + card.offsetHeight;
+      // side panel when it leaves a usable strip to its left (desktop, landscape phones), else pinned to the top
+      if (left - CARD_CLEAR - ARROW_HALF_W > R.l + 160) R.r = V.r = Math.max(R.l + 40, Math.min(R.r, left - CARD_CLEAR - ARROW_HALF_W));
+      else R.t = V.t = Math.min(R.b - 40, Math.max(R.t, bottom + CARD_CLEAR + ARROW_ABOVE));
     }
   }
 

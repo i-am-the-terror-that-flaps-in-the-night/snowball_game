@@ -11,6 +11,8 @@ import {
   AIR_SLAM_DIVE, STOMP_MAX, STOMP_MIN_IMPACT, airPoundMult, airSlamDamage, airSlamRadius, stompDamage,
 } from '../src/entities/combat/air';
 import { BOSS_WAVE_BAND, LEAP_FLIGHT, LEAP_WAVE_BAND, leapVy } from '../src/entities/enemies/bosses';
+import { GroundDisc } from '../src/entities/combat/groundDisc';
+import { OMEGA_TERRAIN } from '../src/world/omega/layout';
 
 /** Any property, any call: a no-op (fx, audio, ui, impact, snow). */
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
@@ -287,6 +289,100 @@ describe('height rules on terrain (wave 2 fixes)', () => {
     Object.assign(ctx, { combat: c, plow, zone: {} });
     expect(c.hitPlow(10, 0, 4, { attacker: boss })).toBe(0);
     expect(waveHitPlow(ctx, boss, 10, { unblockable: true })).toBeGreaterThan(0);
+  });
+
+  it('waveHitPlow credits the boss itself for threat, not a minion near the knockback origin', () => {
+    const minion = bot(0, 3, 0);
+    const { c, ctx, plow } = rig([minion]);
+    const boss = Object.assign(bot(0, 9, 0), { radius: 3, dmgOutMult: 1 });
+    plow.position.y = 4; // in the air / on a mesa: out of the boss's body band
+    plow.surfaceY = 4;
+    Object.assign(ctx, { combat: c, plow, zone: {} });
+    // SLEET-style swipe: knockback origin 1 m from the plow, right next to the minion
+    expect(waveHitPlow(ctx, boss, 10, { unblockable: true, fromX: 0, fromZ: 1 })).toBeGreaterThan(0);
+    expect(c.threatOf(boss)).toBeGreaterThan(0);
+    expect(c.threatOf(minion)).toBe(0);
+  });
+
+  it('hit sparks and the damage number follow an airborne plow; ground rings stay on the floor', () => {
+    const { c, ctx, plow } = rig([]);
+    const texts: number[] = [];
+    const bursts: number[] = [];
+    (ctx as unknown as { fx: unknown }).fx = new Proxy(
+      {},
+      {
+        get: (_t, k) =>
+          k === 'floatText'
+            ? (v: THREE.Vector3) => texts.push(v.y)
+            : k === 'burst'
+              ? (v: THREE.Vector3) => bursts.push(v.y)
+              : noop,
+      },
+    );
+    plow.airborne = true;
+    plow.position.y = 5;
+    plow.surfaceY = 0;
+    expect(c.hitPlow(10, 0, 3, { unblockable: true })).toBeGreaterThan(0);
+    expect(texts[0]).toBeCloseTo(5 + 2.8, 5);
+    expect(bursts[0]).toBeCloseTo(5 + 1.1, 5);
+    // grounded on a deck: unchanged (surface-relative)
+    texts.length = bursts.length = 0;
+    (c as unknown as { iframe: number }).iframe = 0;
+    plow.airborne = false;
+    plow.position.y = 3;
+    plow.surfaceY = 3;
+    expect(c.hitPlow(10, 0, 3, { unblockable: true })).toBeGreaterThan(0);
+    expect(texts[0]).toBeCloseTo(3 + 2.8, 5);
+  });
+
+  it('a GroundDisc cast near a deck edge stops at the edge (Omega Works deck 1) instead of floating past it', () => {
+    const t = new Terrain(OMEGA_TERRAIN);
+    const top = t.heightAt(16, 10, 7); // the Assembly Floor, east edge x = 18 (rampE leaves it at z -5..5)
+    expect(t.heightDeck).toBe(1);
+    const disc = new GroundDisc(new THREE.Scene(), new THREE.MeshBasicMaterial());
+    const lift = 0.07;
+    disc.place(t, 16, 10, 10, top, 1, lift); // FIRESTORM 2 m inside the x = 18 edge
+    const pos = disc.mesh.geometry.getAttribute('position');
+    const on = (x: number, z: number) => {
+      const y = t.heightAt(x, z, top);
+      return { y, ok: t.heightDeck === 1 || heightOk(top, y, WAVE_BAND) };
+    };
+    let pinned = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const x = 16 + pos.getX(i);
+      const z = 10 + pos.getZ(i);
+      const f = on(x, z);
+      expect(f.ok).toBe(true); // every vertex lies on the cast level...
+      expect(pos.getY(i)).toBeCloseTo(f.y + lift, 3); // ...draped on it
+      if (i > 32 * 7 && Math.hypot(pos.getX(i), pos.getZ(i)) < 9.99) pinned++; // outer ring short of r
+    }
+    expect(pinned).toBeGreaterThan(10); // the overhanging spokes were pinned at the edge
+    // ...and so do the triangles: the only centroids past the level are slivers in the concave corner where rampE
+    // meets the Floor's edge (x 18, z 5): triangles spanning a ramp vertex and a Floor vertex.
+    const idx = disc.mesh.geometry.getIndex()!;
+    let off = 0;
+    for (let i = 0; i < idx.count; i += 3) {
+      const a = idx.getX(i), b = idx.getX(i + 1), d = idx.getX(i + 2);
+      const cx = 16 + (pos.getX(a) + pos.getX(b) + pos.getX(d)) / 3;
+      const cz = 10 + (pos.getZ(a) + pos.getZ(b) + pos.getZ(d)) / 3;
+      if (!on(cx, cz).ok) {
+        off++;
+        expect(Math.hypot(cx - 18, cz - 5)).toBeLessThan(1.5);
+      }
+    }
+    expect(off).toBeLessThanOrEqual(6); // of 512 triangles
+  });
+
+  it('a GroundDisc on the ground lies on the snow left after the melt', () => {
+    const disc = new GroundDisc(new THREE.Scene(), new THREE.MeshBasicMaterial());
+    const snow = { getDepth: (x: number) => (x > 0 ? 0.3 : 0) };
+    disc.place(undefined, 0, 0, 5, 0, -1, 0.06, snow);
+    const pos = disc.mesh.geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) expect(pos.getY(i)).toBeCloseTo((pos.getX(i) > 0 ? 0.3 : 0) + 0.06, 5);
+    // a deck floor carries no snow
+    const t = new Terrain({ decks: [{ id: 1, x: 0, z: 0, hw: 20, hd: 20, rot: 0, top: 3, thickness: 1 }] });
+    disc.place(t, 0, 0, 5, 3, 1, 0.06, snow);
+    for (let i = 0; i < pos.count; i++) expect(pos.getY(i)).toBeCloseTo(3.06, 5);
   });
 
   it('a slam on a deck does not spill over its edge onto the ground below', () => {

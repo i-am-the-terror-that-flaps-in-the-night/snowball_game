@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { DamageOpts, EnemyHandle, EnemyManagerAPI, GameContext, SoundName } from '../core/types';
 import { ARENA, ENEMY_GATES, GATE_WIDTH, PLOW_MASS } from '../core/types';
+import { bodyBand, heightOk } from './combat/shared';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import { Bot, Vuln, type Host } from './enemies/Bot';
 import { HpBars, createRig, debrisGeometry, debrisMaterials, disposeRig, rollWheels } from './enemies/models';
@@ -917,6 +918,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       }
 
       if (d2 >= rr * rr) continue;
+      // Different heights (a boss coming down from a leap, a bot under a deck the plow is on): no shove, no ram.
+      if (!heightOk(e.position.y, plow.position.y, bodyBand(e.radius))) continue;
       let d = Math.sqrt(d2);
       if (d < 1e-3) {
         dx = pfx;

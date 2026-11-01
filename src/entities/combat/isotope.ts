@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, Reach, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
+import { Kit, Reach, WAVE_BAND, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
 
@@ -61,7 +61,8 @@ export class IsotopeKit extends Kit {
     pl.tickT = 0;
     pl.from.y = from.y;
     pl.from.deck = from.deck;
-    pl.disc.place(this.ctx.terrain, x, z, r, from.y, from.deck, 0.06);
+    // After the cast's melt: the pool lies on the snow left at its rim.
+    pl.disc.place(this.ctx.terrain, x, z, r, from.y, from.deck, 0.06, this.b.snow);
   }
 
   /** Dose a bot: (re)start its radiation timer. */
@@ -228,8 +229,12 @@ export class IsotopeKit extends Kit {
       const rr = Math.sqrt(Math.random()) * pl.r;
       const bx = pl.x + Math.sin(a) * rr;
       const bz = pl.z + Math.cos(a) * rr;
-      _q.set(bx, waveFloor(ctx.terrain, pl.from.y, bx, bz) + 0.3, bz);
-      ctx.fx.burst(_q, { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gravity: -3, life: 0.7 });
+      const by = waveFloor(ctx.terrain, pl.from.y, bx, bz);
+      // No bubbles past a deck edge (floor far below the cast level), where the pool doesn't reach.
+      if (Math.abs(by - pl.from.y) <= 2 * WAVE_BAND) {
+        _q.set(bx, by + 0.3, bz);
+        ctx.fx.burst(_q, { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gravity: -3, life: 0.7 });
+      }
       if (st.poolDps <= 0 || st.meltDamage <= 0) continue;
       const hits = this.b.enemies.query(pl.x, pl.z, pl.r, this.buf);
       for (let i = 0; i < hits.length; i++) {

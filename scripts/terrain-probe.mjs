@@ -7,7 +7,7 @@
 //   - ramp: airtime > 0.4 s, plowLaunched + plowLanded events, run airtime stat
 //   - bowl: rolling in speeds you up vs flat, climbing out slows you; feet follow the ground
 //   - lava: ~8 HP/s; ice: measurably less grip (slip angle, braking distance); conveyor push
-//   - bots: follow height, avoid lava (6 seeded fights, a fleeing thief), drive out of it the near way, launch() + enemyLanded, last-bot hunt (2 thieves, whose own AI only creeps in,
+//   - bots: follow height, avoid lava (6 fixed-seed fights + 3 on fresh seeds, a fleeing thief), drive out of it the near way, launch() + enemyLanded, last-bot hunt (2 thieves, whose own AI only creeps in,
 //     close clearly faster than a control run with the hunt held off by a third, parked minion)
 //   - The Omega Works (OMEGA_TERRAIN loaded only inside this probe, arena half-size 80): driving under the Assembly
 //     Floor (ground level, camera below its underside), climbing ramp S onto the Floor, ramp NE onto the NE platform
@@ -25,6 +25,9 @@ const args = process.argv.slice(2);
 const out = args.find((a) => !a.startsWith('--')) || '/tmp/terrain-probe';
 const noShots = args.includes('--noshots');
 const recordFlat = args.includes('--record-flat');
+// Lava fights also run on 3 fresh seeds (printed; --lavaseed=N replays N, N+1, N+2) next to the fixed ones, so a flake
+// that only shows with other AI timing still turns up.
+const LAVA_SEED = Number((args.find((a) => a.startsWith('--lavaseed=')) || '').slice(11)) || 100 + Math.floor(Math.random() * 1e9);
 const FLAT_FILE = new URL('./terrain-probe.flat.json', import.meta.url);
 mkdirSync(out, { recursive: true });
 
@@ -347,14 +350,14 @@ try {
       };
     };
     window.__unseed = () => { if (window.__rnd) Math.random = window.__rnd; };
-    /** Lava tick classifier for one bot: ticks of a stay that began while knocked (|kv| > 1.5) or just after a flight
-     *  are 'knocked'; any other lava tick means its own steering took it in. */
+    /** Lava tick classifier for one bot: ticks of a stay that began while knocked (|kv| > 4: past that the bot's lava
+     *  steering is off) or just after a flight are 'knocked'; any other lava tick means its own steering took it in. */
     window.__lavaWatch = () => {
       const w = { steered: 0, knocked: 0, inLava: false, wasKnock: false, air: 0, log: [] };
       w.step = (e) => {
         w.air = e.airborne ? 15 : w.air - 1;
         const on = !e.airborne && c.terrain.materialAt(e.position.x, e.position.z) === 'lava';
-        if (on && !w.inLava) w.wasKnock = Math.hypot(e.kvx, e.kvz) > 1.5 || w.air > 0;
+        if (on && !w.inLava) w.wasKnock = Math.hypot(e.kvx, e.kvz) > 4 || w.air > 0;
         w.inLava = on;
         if (!on) return;
         if (w.wasKnock) w.knocked++;
@@ -405,12 +408,12 @@ try {
   }, { b: F.bowl, l: F.lava });
   // More lava cases: the same scrapper fight with 5 more seeds; a thief fleeing over the river from right at its edge
   // (the Inferno Quarry case: it crept in and then drove straight across); bots knocked just inside the edge.
-  const lava2 = await page.evaluate((l) => {
+  const lava2 = await page.evaluate(([l, fresh]) => {
     const g = window.__game;
     const c = g.ctx;
     const mx = (l.x1 + l.x2) / 2;
     const out = { fight: [], flee: { steered: 0, knocked: 0, crossed: 0, runs: 0, log: [] }, exit: [] };
-    for (let seed = 2; seed <= 6; seed++) {
+    for (const seed of [2, 3, 4, 5, 6, fresh, fresh + 1, fresh + 2]) {
       window.__seed(seed);
       window.__load(window.__dev.DEV_TERRAIN);
       window.__place(mx, l.z - 5, 0, 0);
@@ -424,7 +427,7 @@ try {
         w.step(s);
         if (s.position.z < l.z - l.r) crossed = true;
       }
-      out.fight.push({ steered: w.steered, knocked: w.knocked, crossed, log: w.log });
+      out.fight.push({ seed, steered: w.steered, knocked: w.knocked, crossed, log: w.log.map((s) => `seed ${seed}: ${s}`) });
     }
     // Thief with loot, 0.1-0.4 m from the south edge facing the river, the plow south of it: it flees north.
     for (let k = 0; k < 8; k++) {
@@ -472,13 +475,14 @@ try {
     window.__unseed();
     c.enemies.clear();
     return out;
-  }, F.lava);
+  }, [F.lava, LAVA_SEED]);
   {
     const steered = bots.lavaTicks + lava2.fight.reduce((a, f) => a + f.steered, 0);
     const knocked = bots.knocked + lava2.fight.reduce((a, f) => a + f.knocked, 0);
     const got = (bots.crossed ? 1 : 0) + lava2.fight.filter((f) => f.crossed).length;
     const log = [...bots.lavaLog, ...lava2.fight.flatMap((f) => f.log)].slice(0, 6).join(' | ');
-    check('bots: steer around lava', steered === 0 && got >= 1, `6 seeded 10 s scrapper fights across the river: ${steered} ticks steered onto lava (${knocked} after knockbacks), got round the river in ${got}/6 (alive ${bots.alive}) ${log}`);
+    const n = 1 + lava2.fight.length;
+    check('bots: steer around lava', steered === 0 && got >= 1, `${n} 10 s scrapper fights across the river (seeds 1-6 + fresh ${LAVA_SEED}-${LAVA_SEED + 2}, --lavaseed=${LAVA_SEED} replays): ${steered} ticks steered onto lava (${knocked} after knockbacks), got round the river in ${got}/${n} (alive ${bots.alive}) ${log}`);
     const f = lava2.flee;
     check('bots: a thief fleeing from the river edge goes round it', f.steered === 0, `${f.runs} runs from 0.1-0.4 m off the edge: ${f.steered} ticks steered onto lava (${f.knocked} knocked), got across ${f.crossed}/${f.runs} ${f.log.join(' | ')}`);
     const ex = lava2.exit;

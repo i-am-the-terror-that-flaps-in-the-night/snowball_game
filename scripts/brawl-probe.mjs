@@ -1,4 +1,4 @@
-// Headless Brawl-mode probe: node scripts/brawl-probe.mjs [outDir] [--noshots] [--only=bots,kit,kitshots,flow,flowshots,restore,menus,hud]
+// Headless Brawl-mode probe: node scripts/brawl-probe.mjs [outDir] [--noshots] [--only=bots,kit,kitshots,lava,flow,flowshots,restore,menus,hud] [--lava-runs=N --lava-secs=S --lava-seed=B --lava-trace]
 // Boots Vite + headless Chrome, starts a Snowdome brawl, fast-forwards the sim with __game.tick() and reports numbers:
 // arena/snow/rivals setup, bot-vs-bot kills, streaks, AI behaviour, dash/whirl damage, coins, respawn, match end,
 // campaign restore, ms/tick. Each evaluate stays short (the sandbox may kill long-running Chrome calls).
@@ -209,6 +209,143 @@ await session('kitshots', async () => {
   });
   await shot('14-dash');
 }, true);
+
+// ================================================================== session 2c: rivals vs lava on the Quarry dome
+// --lava-runs=N (default 2) unseeded Quarry Brawl matches of --lava-secs=S (default 120) each. Every match plays on its
+// own Math.random seed (printed; --lava-seed=B replays seeds B, B+1, ...). Each lava entry is put down to its cause:
+// knockback (|kv| > 1.5 in the last 0.5 s, side-hops included), a flight (airborne in the last 20 ticks), a dash (during
+// one or within 1.5 s after) or plain steering. Dash and steering entries are the AI's own fault and fail the probe.
+// Also: the longest standstill next to lava (no stun / wind-up), which must stay short.
+await session('lava', async () => {
+  const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? Number(a.slice(k.length + 3)) : d; };
+  const RUNS = arg('lava-runs', 2), SECS = arg('lava-secs', 120);
+  const base = arg('lava-seed', Math.floor(Math.random() * 1e9));
+  const tot = { entries: 0, own: 0, knock: 0, flight: 0, dash: 0, steer: 0, ownTicks: 0, maxStall: 0, dashes: 0, rt: 0 };
+  const logs = [];
+  for (let run = 0; run < RUNS; run++) {
+    const seed = base + run;
+    const zone = await ev(([seed, trace]) => {
+      const g = window.__game, c = g.ctx, b = c.brawl;
+      window.__rnd ??= Math.random;
+      let a = seed >>> 0, first = true;
+      const prng = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      // first draw = the venue (pickBrawlZone: 0.4 -> quarry), then the seeded stream
+      Math.random = () => (first ? ((first = false), 0.4) : prng());
+      g.startBrawl('pro');
+      for (let i = 0; i < 260; i++) g.tick(1 / 60);
+      const L = (window.__lv = { entries: [], ticks: { knock: 0, flight: 0, dash: 0, steer: 0 }, maxStall: 0, stallLog: '', dashes: 0, rt: 0, per: new Map(), kt: b.hud().killTarget, trace, stallTrace: [] });
+      if (!b.__lvWrapped) {
+        b.__lvWrapped = true;
+        const orig = b.startDash.bind(b);
+        b.startDash = (r) => { window.__lv.dashes++; return orig(r); };
+      }
+      void L;
+      return { zone: c.zone.name, state: g.state, lava: b.lava.list.length };
+    }, [seed, process.argv.includes('--lava-trace')]);
+    if (!/Quarry/.test(zone.zone) || zone.state !== 'brawl') throw new Error(`lava: expected a live Quarry brawl, got ${JSON.stringify(zone)}`);
+    for (let t = 0; t < SECS; t += 20) {
+      await ev((secs) => {
+        const g = window.__game, c = g.ctx, b = c.brawl, L = window.__lv;
+        for (let i = 0; i < secs * 60; i++) {
+          c.plow.hp = c.plow.maxHp = 1e6;
+          b.timeLeft = Math.max(b.timeLeft, 30);
+          // keep the match live for the whole sample (no kill-target finish)
+          for (const f of b.fighters) if (f.entry.kills > L.kt - 4) f.entry.kills = L.kt - 4;
+          g.tick(1 / 60);
+          for (const r of b.rivals) {
+            if (!r.alive) { L.per.delete(r.id); continue; }
+            L.rt++;
+            let p = L.per.get(r.id);
+            if (!p) L.per.set(r.id, (p = { air: 0, knock: 0, post: 999, wasDash: false, inLava: false, cause: '', stall: 0, dashV: 0 }));
+            const air = r.vert.airborne;
+            p.air = air ? 20 : p.air - 1;
+            const kv = Math.hypot(r.kvx, r.kvz);
+            p.knock = kv > 1.5 ? 30 : p.knock - 1;
+            if (r.dashing) { if (!p.wasDash) p.dashV = r.speed; p.post = 0; } else p.post++;
+            p.wasDash = r.dashing;
+            const on = !air && c.terrain.materialAt(r.position.x, r.position.z) === 'lava';
+            if (on && !p.inLava) {
+              p.cause = p.knock > 0 ? 'knock' : p.air > 0 ? 'flight' : p.post < 90 ? 'dash' : 'steer';
+              if (L.entries.length < 400) L.entries.push({ cause: p.cause, d: `${p.cause} #${r.id} t${b.time.toFixed(1)} v${r.speed.toFixed(1)} kv${kv.toFixed(1)} h${r.heading.toFixed(2)}/${r.desH.toFixed(2)} @${r.position.x.toFixed(1)},${r.position.z.toFixed(1)} post${p.post} dashV${p.dashV.toFixed(1)}` });
+            }
+            p.inLava = on;
+            if (on) L.ticks[p.cause]++;
+            const ld = b.lava.dist(r.position.x, r.position.z);
+            // parked: next to lava, (almost) still, not stunned / winding up / airborne / being pushed
+            const busy = r.stunT > 0 || r.slamT >= 0 || r.whirlT >= 0 || r.poundT >= 0 || r.clapT >= 0 || air || kv > 0.5 || !b.active;
+            if (ld > 0 && ld < 2.5 && Math.abs(r.speed) < 0.5 && !busy) {
+              p.stall++;
+              if (L.trace && p.stall % 10 === 1 && (p.tr ??= []).length < 30) p.tr.push(`${p.stall}: h${r.heading.toFixed(2)}/${r.desH.toFixed(2)} v${r.speed.toFixed(1)}/${r.desSpeed.toFixed(1)} ld${ld.toFixed(2)} @${r.position.x.toFixed(1)},${r.position.z.toFixed(1)} ${r.mode} dodge${r.dodgeT.toFixed(2)} stuck${r.stuckT.toFixed(2)}`);
+              if (p.stall > L.maxStall) { L.maxStall = p.stall; L.stallLog = `#${r.id} t${b.time.toFixed(1)} @${r.position.x.toFixed(1)},${r.position.z.toFixed(1)} ld${ld.toFixed(2)} h${r.heading.toFixed(2)}/${r.desH.toFixed(2)}`; if (L.trace) L.stallTrace = p.tr.slice(); }
+            } else { p.stall = 0; if (p.tr) p.tr.length = 0; }
+          }
+        }
+      }, Math.min(20, SECS - t));
+    }
+    const res = await ev(() => {
+      const L = window.__lv, g = window.__game;
+      const n = (k) => L.entries.filter((e) => e.cause === k).length;
+      return { state: g.state, entries: L.entries.length, knock: n('knock'), flight: n('flight'), dash: n('dash'), steer: n('steer'), ticks: L.ticks, maxStall: L.maxStall, stallLog: L.stallLog, dashes: L.dashes, rt: L.rt, stallTrace: L.stallTrace, own: L.entries.filter((e) => e.cause === 'dash' || e.cause === 'steer').map((e) => e.d).slice(0, 6) };
+    });
+    log(`lava run ${run + 1}`, { seed, secs: SECS, entries: res.entries, knock: res.knock, flight: res.flight, dash: res.dash, steer: res.steer, ticks: res.ticks, maxStallTicks: res.maxStall, stall: res.stallLog, dashes: res.dashes, rivalTicks: res.rt, state: res.state });
+    for (const d of res.own) logs.push(`seed ${seed}: ${d}`);
+    for (const t of res.stallTrace) console.log('   stall', t);
+    tot.entries += res.entries; tot.knock += res.knock; tot.flight += res.flight; tot.dash += res.dash; tot.steer += res.steer;
+    tot.own += res.dash + res.steer; tot.ownTicks += res.ticks.dash + res.ticks.steer; tot.maxStall = Math.max(tot.maxStall, res.maxStall); tot.dashes += res.dashes; tot.rt += res.rt;
+  }
+  log('lava total', { runs: RUNS, secs: SECS, seeds: `${base}..${base + RUNS - 1}`, ...tot });
+  for (const l of logs) console.log('   own entry:', l);
+  if (tot.own > 0) errors.push(`[lava] ${tot.own} rival lava entries not caused by knockback or a flight (${tot.dash} after dashes, ${tot.steer} steered) over ${RUNS} x ${SECS} s; replay with --lava-seed=${base}`);
+  if (tot.maxStall > 150) errors.push(`[lava] a rival stood still next to lava for ${tot.maxStall} ticks; replay with --lava-seed=${base}`);
+  // Dash at a river: the Quarry trenches are short enough to steer round, so this swaps in a flat rock floor with one
+  // long lava river (100 m x 5 m). A rival 20 m from its edge, heading at it (straight or up to 0.5 rad off) at top
+  // speed, dashes (startDash directly, so only the in-dash check guards it) with its AI held on that course; again with
+  // a slam's +8 m/s on top. 4 spots x 4 angles x 2 sides x 2 = 64 runs; none may touch the lava. (Runs last: the
+  // terrain is not put back.)
+  const dashRes = await ev(() => {
+    const g = window.__game, c = g.ctx, b = c.brawl;
+    const RW = 2.5;
+    if (g.state !== 'brawl') { g.startBrawl('pro'); for (let i = 0; i < 260; i++) g.tick(1 / 60); }
+    c.terrain.load({ patches: [{ material: 'lava', x: -50, z: 0, x2: 50, z2: 0, r: RW }], baseMaterial: 'rock' });
+    c.world.obstacles.length = 0;
+    const lava = b.lava, half = b.hud().arenaHalf;
+    const T = b.rivals.find((r) => r.alive);
+    const steer = b.steer, think = b.think;
+    let H = 0;
+    b.steer = function (r, dt) { if (r === T) { r.desH = H; r.desSpeed = 30; return; } return steer.call(this, r, dt); };
+    b.think = function (r) { if (r !== T) return think.call(this, r); };
+    const res = { trials: 0, touched: 0, minEdge: 99, peak: 0, aborted: 0, log: [] };
+    for (const boost of [0, 8]) for (const side of [1, -1]) for (const x of [-30, -10, 10, 30]) for (const off of [0, 0.25, -0.25, 0.5]) {
+      for (const o of b.rivals) if (o !== T && o.alive) { o.position.set(-half + 4, 0, -half + 4); o.stunT = 99; o.speed = 0; o.kvx = o.kvz = 0; }
+      c.plow.reset({ x: half - 6, z: half - 6, heading: 0 });
+      c.plow.spawnProt = 99;
+      H = (side > 0 ? 0 : Math.PI) + off;
+      b.placeRival(T, x, -side * (RW + 20), H);
+      T.protectT = 99; T.stunT = 0; T.kvx = T.kvz = 0; T.slamT = -1; T.whirlT = -1; T.hp = T.maxHp;
+      T.speed = b.topSpeed(T);
+      b.startDash(T);
+      T.speed += boost;
+      let touched = false, minEdge = 99, peak = T.speed, dashTicks = 0;
+      for (let i = 0; i < 180; i++) {
+        g.tick(1 / 60);
+        if (T.dashing) dashTicks++;
+        peak = Math.max(peak, T.speed);
+        minEdge = Math.min(minEdge, lava.dist(T.position.x, T.position.z));
+        if (c.terrain.materialAt(T.position.x, T.position.z) === 'lava') touched = true;
+      }
+      res.trials++;
+      if (dashTicks < 29) res.aborted++;
+      res.peak = Math.max(res.peak, +peak.toFixed(1));
+      res.minEdge = Math.min(res.minEdge, +minEdge.toFixed(2));
+      if (touched && res.log.length < 6) res.log.push(`boost${boost} side${side} x${x} off${off}: minEdge ${minEdge.toFixed(2)} peak ${peak.toFixed(1)}`);
+      if (touched) res.touched++;
+    }
+    delete b.steer; delete b.think;
+    return res;
+  });
+  log('lava dash', dashRes);
+  if (dashRes.touched > 0 || dashRes.trials < 64) errors.push(`[lava] dash at a river: ${dashRes.touched}/${dashRes.trials} dashes from 20 m touched lava`);
+});
 
 // ================================================================== session 3: coins, respawn, match end, back to campaign
 await session('flow', async () => {

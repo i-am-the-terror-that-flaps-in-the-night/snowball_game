@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ARENA, type GameContext, type Obstacle } from '../../core/types';
 import type { Bot, Host } from './Bot';
 import { DecalPool, type Decal } from './decals';
+import { waveHitPlow } from '../combat/shared';
 
 /* THE DONALD's arena props, owned by the EnemyManager (update / clear) and driven by the boss AI (bosses.ts):
  *  - BUILD THE WALL: lines of snow-brick wall segments. Each line is telegraphed by a gold ground stripe, then
@@ -314,7 +315,8 @@ class DonaldProps {
       boss.reflectPool = 0;
       this.reflectT = 0.45;
       if (!plow.dead) {
-        h.hitPlow(boss, amt, { knockback: 3, unblockable: true });
+        // Not a body hit: the reflection reaches the plow at any height (mesa top, mid-air), see waveHitPlow.
+        waveHitPlow(ctx, boss, amt, { knockback: 3, unblockable: true });
         _v.set(plow.position.x, plow.position.y + 2.6, plow.position.z);
         ctx.fx.floatText(_v, `REFLECTED ${Math.round(amt)}`, '#ffd24a', 0.75);
         ctx.fx.burst(_v.set(plow.position.x, plow.position.y + 1.2, plow.position.z), { color: 0xffd24a, count: 12, speed: 6, size: 0.1, gravity: 10, life: 0.4 });
@@ -532,7 +534,7 @@ class DonaldProps {
       const [tx, tz] = this.farEdge(b.x, b.z);
       const vol = plow.stealSnow(1);
       if (vol > 0.01) ctx.snow?.addSnow(b.x, b.z, 2.5, vol * 0.8);
-      if (boss) h.hitPlow(boss, 8, { knockback: 0.5, unblockable: true, fromX: b.x, fromZ: b.z });
+      if (boss) waveHitPlow(ctx, boss, 8, { knockback: 0.5, unblockable: true, fromX: b.x, fromZ: b.z });
       this.flights.push({ bot: null, x0: plow.position.x, z0: plow.position.z, x1: tx, z1: tz, t: 0, dur: 1.0 });
       _v.set(plow.position.x, plow.position.y + 3, plow.position.z);
       fx.floatText(_v, 'DEPORTED!', '#7fe3ff', 1.3);

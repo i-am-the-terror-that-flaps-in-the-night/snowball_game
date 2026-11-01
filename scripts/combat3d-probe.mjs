@@ -13,7 +13,11 @@
 //   - Duel puppet (the opponent's plow on the guest): a replayed launch plays the jump sound, a replayed landing the land
 //     sound, snow puff and ring on the ground under it
 //   - persistent attacks on the Quarry pit slope: the FIRESTORM burning ground and a NUKE fallout pool drape over the
-//     slope (not a flat disc at y 0.07), and the burning ground keeps hurting a ground bot while the plow is airborne
+//     slope and the snow the melt left (raycasts vs the rendered SnowField: not hidden under it), and the burning ground
+//     keeps hurting a ground bot while the plow is airborne
+//   - The Omega Works (arena 5): FIRESTORM cast 2 m inside the Assembly Floor's edge stops at the edge (no sheet
+//     floating past it), burns a bot on the deck and not one on the ground past the edge; screenshots
+//   - THE DONALD's GOLD PLATED reflect hits a plow flying above his body band, and credits the boss's threat
 // Screenshots go to outDir.
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
@@ -93,6 +97,37 @@ try {
         inp.wasPressed = (k) => window.__in.press.has(k) || orig(k);
         inp.__wrapped = true;
       }
+    };
+    const THREE = await import('/node_modules/three/build/three.module.js');
+    /** Raycast straight down on a grid over a GroundDisc mesh vs the rendered SnowField: samples where the snow
+     *  surface sits above the disc (the disc is hidden under it). */
+    window.__cover = (disc) => {
+      const snowMesh = c.snow.mesh;
+      snowMesh.updateMatrixWorld(true);
+      disc.updateMatrixWorld(true);
+      disc.geometry.computeBoundingSphere();
+      const R = disc.geometry.boundingSphere.radius;
+      const rc = new THREE.Raycaster();
+      const down = new THREE.Vector3(0, -1, 0);
+      const o = new THREE.Vector3();
+      let n = 0;
+      let hidden = 0;
+      let worst = 0;
+      for (let gx = -1; gx <= 1; gx += 0.08)
+        for (let gz = -1; gz <= 1; gz += 0.08) {
+          if (gx * gx + gz * gz > 0.9) continue;
+          o.set(disc.position.x + gx * R, 80, disc.position.z + gz * R);
+          rc.set(o, down);
+          const hd = rc.intersectObject(disc, false)[0];
+          if (!hd) continue;
+          const hs = rc.intersectObject(snowMesh, false)[0];
+          n++;
+          if (hs && hs.point.y > hd.point.y + 0.002) {
+            hidden++;
+            worst = Math.max(worst, hs.point.y - hd.point.y);
+          }
+        }
+      return { n, hidden, worst };
     };
     window.__load = (def) => { c.terrain.load(def ?? {}); c.snow.reset(c.zone); c.world.resetProps(false, false); };
     window.__place = (x, z, heading) => {
@@ -353,9 +388,17 @@ try {
     c.snow.reset(c.zone);
     // Park on the spot where the jump peaks so the leap ring locks there, then drive the real ramp so the plow is at
     // that spot, flying, when BULLDOZA lands.
-    window.__place(ramp.peakPos.x, ramp.peakPos.z, ramp.ramp.rot);
+    // Lock the ring 5 m past the jump's peak along the jump: the plow at its peak is inside the 6 m shockwave but clear
+    // of BULLDOZA's body (contact at 4 m), so the check measures the dodge, not a body collision mid-air.
+    const jx = Math.sin(ramp.ramp.rot);
+    const jz = Math.cos(ramp.ramp.rot);
+    window.__place(ramp.peakPos.x + jx * 5, ramp.peakPos.z + jz * 5, ramp.ramp.rot);
     c.plow.hp = c.plow.maxHp = 1e6;
-    const boss = c.enemies.spawn('bulldoza', ramp.peakPos.x - 14, ramp.peakPos.z);
+    // Off to the side of the jump (across the ramp heading), so BULLDOZA's wind-up and descent never sit in the
+    // run-up lane and block the plow before it takes off.
+    const sx = Math.cos(ramp.ramp.rot);
+    const sz = -Math.sin(ramp.ramp.rot);
+    const boss = c.enemies.spawn('bulldoza', ramp.peakPos.x + sx * 14, ramp.peakPos.z + sz * 14);
     boss.enraged = true;
     boss.cd = 0;
     const hits = [];
@@ -419,10 +462,12 @@ try {
     for (let i = 0; i < pos.length; i += 3) {
       const x = disc.position.x + pos[i];
       const z = disc.position.z + pos[i + 2];
-      maxErr = Math.max(maxErr, Math.abs(pos[i + 1] - 0.07 - c.terrain.ground(x, z)));
+      maxErr = Math.max(maxErr, Math.abs(pos[i + 1] - 0.07 - c.terrain.ground(x, z) - c.snow.getDepth(x, z)));
       lo = Math.min(lo, pos[i + 1]);
       hi = Math.max(hi, pos[i + 1]);
     }
+    g.tick(1 / 60); // let the snow mesh pick up the melt
+    const cover = window.__cover(disc);
     // A ground bot walks into the burning ground; the plow is thrown up off the slope.
     const e = c.enemies.spawn('scrapper', cast.x - 5, cast.z + 2);
     e.stun = 99;
@@ -434,12 +479,14 @@ try {
       g.tick(1 / 60);
       if (c.plow.airborne) airT++;
     }
-    const res = { visible: disc.visible, maxErr, spread: hi - lo, centre: pos[1], cast, dealt: +(hp0 - e.hp).toFixed(1), botY: +e.position.y.toFixed(2), airT };
+    const res = { visible: disc.visible, maxErr, spread: hi - lo, centre: pos[1], cast, dealt: +(hp0 - e.hp).toFixed(1), botY: +e.position.y.toFixed(2), airT, cover };
     st.plowKind = kind;
     return res;
   });
   check('FIRESTORM burning ground drapes over the pit slope', storm.visible && storm.maxErr < 0.01 && storm.spread > 1,
     `disc heights span ${storm.spread.toFixed(2)} m, max off-ground ${storm.maxErr.toFixed(3)} m, centre at ${storm.centre.toFixed(2)} (cast floor ${storm.cast.surf.toFixed(2)})`);
+  check('FIRESTORM burning ground lies on the leftover snow, not under it (raycast vs the rendered SnowField)', storm.cover.n > 100 && storm.cover.hidden / storm.cover.n < 0.05,
+    `${storm.cover.hidden} of ${storm.cover.n} samples hidden under snow (worst ${storm.cover.worst.toFixed(3)} m)`);
   check('FIRESTORM burning ground keeps burning a ground bot while the plow is airborne', storm.airT >= 20 && storm.dealt > 0,
     `plow airborne ${storm.airT} ticks, scrapper (feet ${storm.botY}) took ${storm.dealt}`);
   await shot('quarry-firestorm-field', [storm.cast.x + 12, storm.cast.surf + 10, storm.cast.z + 12, storm.cast.x, storm.cast.surf - 1, storm.cast.z]);
@@ -467,17 +514,99 @@ try {
     for (let i = 0; i < pos.length; i += 3) {
       const x = m.position.x + pos[i];
       const z = m.position.z + pos[i + 2];
-      maxErr = Math.max(maxErr, Math.abs(pos[i + 1] - 0.06 - c.terrain.ground(x, z)));
+      maxErr = Math.max(maxErr, Math.abs(pos[i + 1] - 0.06 - c.terrain.ground(x, z) - c.snow.getDepth(x, z)));
       lo = Math.min(lo, pos[i + 1]);
       hi = Math.max(hi, pos[i + 1]);
     }
     for (let i = 0; i < 20; i++) g.tick(1 / 60);
+    const cover = window.__cover(m);
     Object.assign(st, { plowKind: saved.kind, meltDamage: saved.melt, poolDps: saved.dps, poolRadius: saved.r, poolSeconds: saved.s });
-    return { r: pl.r, maxErr, spread: hi - lo, x: pl.x, z: pl.z, y: pl.from.y };
+    return { r: pl.r, maxErr, spread: hi - lo, x: pl.x, z: pl.z, y: pl.from.y, cover };
   });
   check('NUKE fallout pool drapes over the pit slope', nuke.maxErr < 0.01 && nuke.spread > 1,
     `pool r ${nuke.r.toFixed(1)} m, heights span ${nuke.spread.toFixed(2)} m, max off-ground ${nuke.maxErr.toFixed(3)} m`);
+  check('NUKE fallout pool lies on the leftover snow, not under it', nuke.cover.n > 100 && nuke.cover.hidden / nuke.cover.n < 0.05,
+    `${nuke.cover.hidden} of ${nuke.cover.n} samples hidden under snow (worst ${nuke.cover.worst.toFixed(3)} m)`);
   await shot('quarry-nuke-pool', [nuke.x + 14, nuke.y + 12, nuke.z - 14, nuke.x, nuke.y - 1, nuke.z]);
+
+  /* ---------------------------------------------------------------- Omega Works deck edge: FIRESTORM stops at the edge */
+  const edge = await page.evaluate(() => {
+    const g = window.__game;
+    const c = g.ctx;
+    c.combat.clear();
+    window.__arena(5);
+    c.enemies.clear();
+    window.__place(16, 10, Math.PI / 2); // Assembly Floor (deck 1, top 7, hw 18): 2 m inside its east edge
+    c.plow.position.y = 7.3;
+    for (let i = 0; i < 20; i++) g.tick(1 / 60);
+    const st = c.stats;
+    const kind = st.plowKind;
+    st.plowKind = 'classic';
+    if (st.flameDps <= 0) st.flameDps = 30;
+    const onDeck = c.enemies.spawn('scrapper', 13, 13, { y: 7 });
+    onDeck.stun = 99;
+    const below = window.__bot('scrapper', 23, 13); // on the ground 5 m past the edge
+    for (let i = 0; i < 5; i++) g.tick(1 / 60);
+    const hp = [onDeck.hp, below.hp];
+    c.combat.critCharge = 1;
+    window.__in.press.add('KeyF');
+    g.tick(1 / 60);
+    window.__in.press.clear();
+    const from = { y: c.plow.surfaceY, deck: c.plow.deck };
+    const disc = c.combat.classic.fireField.mesh;
+    const pos = disc.geometry.attributes.position.array;
+    const t = c.terrain;
+    let offLevel = 0;
+    let maxX = -Infinity;
+    let floating = 0;
+    for (let i = 0; i < pos.length; i += 3) {
+      const x = disc.position.x + pos[i];
+      const z = disc.position.z + pos[i + 2];
+      const y = t.heightAt(x, z, from.y);
+      if (t.heightDeck !== 1 && Math.abs(y - from.y) > 1.2) offLevel++;
+      if (pos[i + 1] - y > 0.2) floating++;
+      maxX = Math.max(maxX, x);
+    }
+    for (let i = 0; i < 60; i++) g.tick(1 / 60);
+    const res = { from, offLevel, floating, n: pos.length / 3, maxX, dDeck: +(hp[0] - onDeck.hp).toFixed(1), dBelow: +(hp[1] - below.hp).toFixed(1), deckY: +onDeck.position.y.toFixed(2), belowY: +below.position.y.toFixed(2) };
+    st.plowKind = kind;
+    return res;
+  });
+  check('Omega deck edge: the FIRESTORM field stops at the deck edge (no sheet floating past it)', edge.from.deck === 1 && edge.offLevel === 0 && edge.floating === 0 && edge.maxX < 18.1,
+    `cast on deck ${edge.from.deck} at y ${edge.from.y.toFixed(2)}: ${edge.offLevel} of ${edge.n} vertices off the level, ${edge.floating} floating, max x ${edge.maxX.toFixed(2)} (edge 18)`);
+  check('Omega deck edge: the fire burns the bot on the deck, not the one on the ground past the edge', edge.dDeck > 0 && edge.dBelow === 0,
+    `deck bot (feet ${edge.deckY}) took ${edge.dDeck}, ground bot (feet ${edge.belowY}) took ${edge.dBelow}`);
+  await shot('omega-edge-firestorm', [32, 14, 22, 16, 5, 10]);
+  await shot('omega-edge-firestorm2', [26, 3, 10, 16, 6, 10]);
+
+  /* ---------------------------------------------------------------- THE DONALD's GOLD PLATED reflect at any height */
+  const reflect = await page.evaluate(() => {
+    const g = window.__game;
+    const c = g.ctx;
+    c.combat.clear();
+    window.__arena(0);
+    c.enemies.clear();
+    window.__place(0, 6, 0);
+    for (let i = 0; i < 5; i++) g.tick(1 / 60);
+    const boss = window.__bot('donald', 0, -2);
+    for (let i = 0; i < 5; i++) g.tick(1 / 60);
+    const minion = window.__bot('scrapper', 2, 6);
+    c.plow.vert.airborne = true;
+    c.plow.vert.vy = 16;
+    let h = 0;
+    for (let i = 0; i < 120 && h < 4; i++) {
+      g.tick(1 / 60);
+      h = c.plow.position.y - boss.position.y;
+    }
+    const hp0 = c.plow.hp;
+    window.__ev.damaged = 0;
+    boss.reflectPool = 12;
+    g.tick(1 / 60);
+    return { h: +h.toFixed(2), air: c.plow.airborne, dealt: +window.__ev.damaged.toFixed(1), hpLost: +(hp0 - c.plow.hp).toFixed(1), pool: boss.reflectPool,
+      threatBoss: +c.combat.threatOf(boss).toFixed(1), threatMinion: +c.combat.threatOf(minion).toFixed(1), band: 2.2 + Math.max(0, boss.radius - 1.2) * 0.5 };
+  });
+  check('DONALD GOLD PLATED: the reflect reaches a plow in the air above the body band, credited to the boss', reflect.air && reflect.h > reflect.band && reflect.dealt > 0 && reflect.threatBoss > 0 && reflect.threatMinion === 0,
+    `plow ${reflect.h} m above the boss (body band ${reflect.band.toFixed(2)}), reflect dealt ${reflect.dealt}, threat boss ${reflect.threatBoss} / minion ${reflect.threatMinion}`);
 
   /* ---------------------------------------------------------------- Duel puppet: replayed launch / landing */
   const puppet = await page.evaluate(async () => {

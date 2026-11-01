@@ -843,12 +843,13 @@
 .ss-hud.show { opacity: 1; }
 
 /* top-left: arena + round */
-.ss-hud-tl { position: absolute; left: 18px; top: 18px; padding: 10px 16px 11px; min-width: 210px; }
+.ss-hud-tl { position: absolute; left: 18px; top: 18px; padding: 10px 16px 11px; min-width: 210px; max-width: 300px; }
 .ss-hud-zone { font-family: var(--display); font-weight: 900; font-size: 22px; text-transform: uppercase; letter-spacing: 0.04em; text-shadow: 0 2px 0 rgba(0, 20, 50, 0.4); }
-.ss-hud-roundrow { display: flex; gap: 12px; align-items: baseline; margin-top: 3px; }
+.ss-hud-roundrow { display: flex; flex-wrap: wrap; gap: 0 12px; align-items: baseline; margin-top: 3px; }
 .ss-hud-round { font-family: var(--display); font-weight: 900; font-size: 26px; text-transform: uppercase; color: var(--hazard); text-shadow: 0 2px 0 rgba(120, 50, 0, 0.5); white-space: nowrap; }
 .ss-hud-round.boss { color: #ff4d63; letter-spacing: 0.04em; text-shadow: 0 2px 0 #4a0010, 0 0 14px rgba(255, 40, 70, 0.7); animation: ss-blink 1.1s ease-in-out infinite; }
 .ss-hud-enemies { font-size: 13px; font-weight: 800; opacity: 0.9; white-space: nowrap; }
+.ss-hud-best { font-family: var(--display); font-weight: 900; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); white-space: nowrap; }
 .ss-round-pips { display: flex; gap: 5px; margin-top: 7px; }
 .ss-rpip { width: 22px; height: 7px; border-radius: 0; transform: skewX(-20deg); background: rgba(255, 255, 255, 0.22); transition: background 0.3s, box-shadow 0.3s; display: grid; place-items: center; font-size: 0; }
 .ss-rpip.done { background: var(--hazard); }
@@ -864,7 +865,7 @@
 .ss-hud-tr.bump { animation: ss-bump 0.3s cubic-bezier(0.2, 1.8, 0.4, 1); }
 
 /* top-center: boss bars */
-.ss-bosses { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: min(620px, 48vw); display: flex; flex-direction: column; gap: 10px; }
+.ss-bosses { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: min(620px, 48vw, calc(100vw - 2 * 332px)); display: flex; flex-direction: column; gap: 10px; }
 .ss-bossbar { --bc: #ff2f4c; animation: ss-bb-in 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
 .ss-bossbar.down { opacity: 0; transition: opacity 0.6s ease 0.9s; }
 .ss-bb-head { display: flex; align-items: flex-end; gap: 8px; margin: 0 6px 5px; color: #fff; }
@@ -1188,9 +1189,10 @@
 .ss-bi-title { white-space: pre-line; line-height: 1.35; font-family: var(--display); font-weight: 900; font-size: clamp(16px, 1.8vw, 24px); font-style: italic; letter-spacing: 0.12em; color: #ffd0d6; text-shadow: 0 2px 0 #4a0010; animation: ss-bi-title 2.6s ease both; }
 
 /* ------------------------------------------------------------ toasts */
-.ss-toasts { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 40; width: min(640px, 92vw); }
-.ss-root.has-boss .ss-toasts { top: 112px; }
-.ss-root.has-twin .ss-toasts { top: 150px; }
+.ss-toasts { position: absolute; top: var(--hud-toast-y, 96px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 40; width: min(380px, 92vw); }
+/* In play the toasts start under every top HUD box their centred column (this box; longer toasts wrap) crosses: round
+ * box, boss bars, coin box, radar, wherever the layout below puts those. UI.layoutTop measures them when they change and
+ * sets --hud-toast-y. */
 .ss-toasts { transition: top 0.3s ease; }
 /* While a menu / results screen is up, reward toasts (stars, trophies) stack in the top-right corner instead of
    over the screen's headline. */
@@ -1282,7 +1284,7 @@
 .ss-radar-n { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); font-family: var(--display); font-weight: 900; font-size: 10px; line-height: 1; color: var(--ink-soft); }
 .ss-hud.brawl .ss-radar, .ss-hud.duel .ss-radar, .ss-hud.brawl .ss-lost, .ss-hud.duel .ss-lost { display: none; }
 /* Survival / Daily: next-arena countdown under the wave line. */
-.ss-hud-arena { margin-top: 6px; font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cyan); white-space: nowrap; }
+.ss-hud-arena { margin-top: 6px; font-family: var(--display); font-weight: 800; font-size: 12px; line-height: 1.25; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cyan); }
 .ss-hud-arena.last { color: var(--hazard); }
 /* Edge arrows: each sits at its edge point (transform set per frame), centred on it. */
 .ss-lost { position: absolute; inset: 0; pointer-events: none; }
@@ -1319,10 +1321,29 @@
 @keyframes ss-lost-pulse { from { transform: translateX(-3px); opacity: 0.75; } to { transform: translateX(2px); opacity: 1; } }
 
 /* ------------------------------------------------------------ responsive */
-/* Boss bars vs the top-left round box (up to ~300 px wide, ~140 px tall with the Survival arena line): centred bars
- * only clear it from ~1200 px wide, so narrower screens drop them under it. */
+/* Top HUD layout. The round box is at most 300 px wide (its rows wrap), so it ends by x = 318 (278 on short screens).
+ *   > 1200 px:        boss bars centred at the top, clear of the round box on both sides (base rule).
+ *   775 - 1200 px:    bars at the top between the round box and the coin box (at least 240 px wide).
+ *   <= 774 px, tall:  bars under the round box (UI.layoutTop sets --hud-tl-b) and under the radar, full width.
+ *   short (<= 560 px high): a compact HUD; bars between the round box and the coin box from 704 px wide, else under
+ *                     the round box and left of the radar.
+ * Toasts follow whatever the bars and boxes do (--hud-toast-y). */
 @media (max-width: 1200px) {
-  .ss-bosses { top: 146px; }
+  .ss-bosses { left: 332px; transform: none; width: min(620px, calc(100vw - 332px - 202px)); }
+}
+@media (max-width: 774px) {
+  .ss-hud-tl { min-width: 0; max-width: calc(100vw - 36px - 160px); padding: 8px 12px 9px; }
+  .ss-hud-zone { font-size: 17px; }
+  .ss-hud-round { font-size: 20px; }
+  .ss-hud-tr { padding: 7px 14px 7px 10px; gap: 8px; }
+  .ss-hud-tr .ss-coin { width: 24px; height: 24px; }
+  .ss-hud-tr .ss-coin::after { inset: 6px; }
+  .ss-hud-coins { font-size: 24px; }
+  .ss-radar { top: 70px; padding: 3px; }
+  .ss-radar-canvas { width: 112px; height: 112px; }
+  .ss-bosses { top: calc(var(--hud-tl-b, 120px) + 10px); left: 18px; right: 18px; width: auto; max-width: 620px; }
+  /* radar on (campaign / Survival): under it too (radar 70 + 122 px) */
+  .ss-hud.radar-on .ss-bosses { top: max(calc(var(--hud-tl-b, 120px) + 10px), 202px); }
 }
 @media (max-width: 1100px) {
   .ss-zone-grid { grid-template-columns: repeat(3, 1fr); }
@@ -1330,17 +1351,12 @@
 }
 @media (max-width: 760px) {
   .ss-zone-grid { grid-template-columns: repeat(2, 1fr); }
-  .ss-radar { top: 82px; padding: 3px; }
-  .ss-radar-canvas { width: 112px; height: 112px; }
   .ss-howto-cols { grid-template-columns: 1fr; }
   .ss-stats { grid-template-columns: repeat(3, 1fr); }
   .ss-card-grid { grid-template-columns: 1fr; }
   .ss-tab-label, .ss-tab-key, .ss-plow-tag, .ss-plow-sel span { display: none; }
   .ss-hud-bl { width: 220px; }
   .ss-hint { display: none; }
-  .ss-bosses { width: 60vw; }
-  /* Radar on (campaign / Survival): the bars end left of it (radar 118 px + 18 px margin + 16 px gap). */
-  .ss-hud.radar-on .ss-bosses { left: auto; right: 152px; transform: none; width: min(60vw, calc(100vw - 170px)); }
   .ss-combo-n { font-size: 54px; }
   .ss-bc-row { gap: 8px; }
   .ss-controls.compact { grid-template-columns: 1fr; }
@@ -1349,13 +1365,73 @@
   .ss-zone { min-height: 300px; }
   .ss-controls.compact { gap: 4px 22px; }
 }
-/* Short landscape screens: keep the bars at the top, between the round box and the coin box / radar. */
-@media (max-width: 1200px) and (max-height: 560px) {
-  .ss-hud .ss-bosses, .ss-hud.radar-on .ss-bosses { top: 14px; left: 312px; right: auto; transform: none; width: min(620px, calc(100vw - 312px - 204px)); }
-  .ss-bosses .ss-bb-title { display: none; }
-}
+/* Short screens (landscape phones): a compact HUD so the top boxes, the boss bars and the bottom panels all fit. */
 @media (max-height: 560px) {
-  .ss-radar-canvas { width: 112px; height: 112px; }
+  .ss-toasts { width: min(300px, 92vw); }
+  .ss-toast { padding: 6px 16px; font-size: 16px; }
+  .ss-hud-tl { min-width: 0; max-width: 260px; padding: 6px 12px 7px; }
+  .ss-hud-zone { font-size: 16px; }
+  .ss-hud-roundrow { margin-top: 1px; }
+  .ss-hud-round { font-size: 19px; }
+  .ss-hud-enemies, .ss-hud-best { font-size: 12px; }
+  .ss-round-pips { margin-top: 4px; }
+  .ss-rpip { height: 5px; }
+  .ss-hud-arena { margin-top: 3px; font-size: 10px; }
+  .ss-hud-tr { padding: 5px 12px 5px 8px; gap: 7px; }
+  .ss-hud-tr .ss-coin { width: 22px; height: 22px; }
+  .ss-hud-tr .ss-coin::after { inset: 5px; }
+  .ss-hud-coins { font-size: 22px; }
+  .ss-radar { top: 62px; padding: 3px; }
+  .ss-radar-canvas { width: 104px; height: 104px; }
+  .ss-hud-bl { padding: 6px 12px 8px; width: 220px; }
+  .ss-hp-head { margin-bottom: 3px; }
+  .ss-hp-label { font-size: 13px; }
+  .ss-hp-num { font-size: 20px; }
+  .ss-hp-bar { height: 16px; }
+  .ss-batt { margin-top: 4px; }
+  .ss-hud-bc { bottom: 8px; }
+  .ss-bc-row { gap: 10px; }
+  .ss-gauge { width: 92px; height: 92px; }
+  .ss-gauge::before { inset: 9px; }
+  .ss-gauge-r { font-size: 18px; }
+  .ss-gauge-tier { font-size: 9px; max-width: 70px; }
+  .ss-ab { width: 54px; height: 54px; }
+  .ss-ab-core { inset: 6px; }
+  .ss-ab-icon { font-size: 16px; }
+  /* the SLAM! tag pops above the row instead of holding a line under it */
+  .ss-slam-hint { position: absolute; bottom: calc(100% + 4px); white-space: nowrap; }
+  .ss-hud-br { padding: 6px 12px; }
+  /* compact boss bars: no title line, slimmer name and track */
+  .ss-bosses { gap: 6px; }
+  .ss-bosses .ss-bb-title { display: none; }
+  .ss-bb-head { margin-bottom: 3px; }
+  .ss-bb-name, .ss-bosses.twin .ss-bb-name { font-size: 18px; }
+  .ss-bb-badge, .ss-bosses.twin .ss-bb-badge { width: 22px; height: 22px; font-size: 13px; }
+  .ss-bb-hp { font-size: 13px; }
+  .ss-bb-track, .ss-bosses.twin .ss-bb-track { height: 16px; border-width: 2px; }
+  .ss-hud .ss-bosses, .ss-hud.radar-on .ss-bosses { top: 12px; left: 292px; right: auto; transform: none; width: min(620px, calc(100vw - 292px - 172px)); max-width: none; }
+}
+@media (max-height: 560px) and (max-width: 703px) {
+  .ss-hud .ss-bosses, .ss-hud.radar-on .ss-bosses { top: calc(var(--hud-tl-b, 90px) + 8px); left: 18px; width: calc(100vw - 36px - 110px - 14px); }
+}
+/* Very short (568 x 320): slimmer still, so round box + twin bars + a toast end above the bottom panels. */
+@media (max-height: 340px) {
+  .ss-toasts { width: min(260px, 92vw); }
+  .ss-toast { padding: 4px 12px; font-size: 13px; border-left-width: 4px; }
+  .ss-bosses { gap: 4px; }
+  .ss-bb-name, .ss-bosses.twin .ss-bb-name { font-size: 15px; }
+  .ss-bb-badge, .ss-bosses.twin .ss-bb-badge { width: 18px; height: 18px; font-size: 11px; border-radius: 6px; }
+  .ss-bb-track, .ss-bosses.twin .ss-bb-track { height: 12px; }
+  .ss-hud-bl { padding: 5px 10px 6px; }
+  .ss-hp-num { font-size: 18px; }
+  .ss-hp-bar { height: 12px; }
+  .ss-gauge { width: 80px; height: 80px; }
+  .ss-gauge::before { inset: 8px; }
+  .ss-gauge-r { font-size: 16px; }
+  .ss-ab { width: 48px; height: 48px; }
+  .ss-ab-core { inset: 5px; }
+  .ss-ab-icon { font-size: 14px; }
+  .ss-ab-name { font-size: 7.5px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ss-lost-tip::before { animation: none; }

@@ -16,6 +16,8 @@ import { lavaFringeFor, snowCellFor } from '../SnowField';
  * Every lava patch also gets a basalt crust ring: an annulus from just under the lava's edge out past SnowField's melt
  * fringe (the hollow where the snow thins to nothing at the lava), draped on the snow, opaque near the lava and fading
  * out on the full-depth snow. It hides the hollow's slope so a vent reads as a clean glowing pool in a dark crust.
+ * The ring never drapes a ramp (crustFade): over a ramp's face, lip and fall, and on any steep bank, its vertices fade
+ * out (a per-vertex `fade` the crust material multiplies in) and triangles touching a fully faded vertex are dropped.
  * The Thermal Divide's scorch film uses the snow grid's own cells and diagonals so it hugs the snow mesh exactly.
  *
  * All decals of one material share one merged mesh: at most 6 draws (scorch, lava, crust, ice, ramp decks, lips).
@@ -31,6 +33,47 @@ const CRUST_LIFT_IN = 0.02;
 const CRUST_LIFT_OUT = 0.06;
 /** The crust ring starts this far inside the lava edge (tucked under the pool, so no seam between the outlines). */
 const CRUST_TUCK = 0.2;
+/** Crust over ramps (crustFade): kept this far (m) off a ramp's sides, off its fall up to this far (m) before the
+ *  fall's foot (the last few cm of the drop), and faded in over this width (m) outside that footprint. */
+const RAMP_SIDE_CLEAR = 0.2;
+const FALL_TOE = 0.1;
+const RAMP_FADE = 0.3;
+/** Ramp decks and lip strips are inset this far (m) from the ramp's sides: past its 0.6 m soft side band
+ *  (Terrain shapeHeight), so their straight spans lie on the flat face. */
+const RAMP_EDGE_INSET = 0.65;
+/** Ground steeper than this (rise / run) fades the crust out too (a bank or crest it would tent over). */
+const CRUST_STEEP_LO = 0.35;
+const CRUST_STEEP_HI = 0.6;
+
+type Ramp = Extract<TerrainShape, { kind: 'ramp' }>;
+const smooth01 = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const _grad = { gx: 0, gz: 0 };
+
+/**
+ * Crust ring opacity factor (0..1) at (x, z): 0 on every ramp (face, soft sides + RAMP_SIDE_CLEAR, lip and fall down
+ * to FALL_TOE before its end) and on steep ground, rising to 1 within RAMP_FADE outside. Build time only.
+ */
+export function crustFade(terrain: Terrain, ramps: readonly Ramp[], x: number, z: number): number {
+  let f = 1;
+  for (const r of ramps) {
+    const dx = x - r.x;
+    const dz = z - r.z;
+    const v = dx * Math.sin(r.rot) + dz * Math.cos(r.rot);
+    const u = dx * Math.cos(r.rot) - dz * Math.sin(r.rot);
+    // signed distance outside the footprint box (negative inside)
+    const ou = Math.abs(u) - (r.w / 2 + RAMP_SIDE_CLEAR);
+    const ov = Math.max(-v, v - (r.len + (r.fall ?? 1) - FALL_TOE));
+    const d = ou > 0 || ov > 0 ? Math.hypot(Math.max(ou, 0), Math.max(ov, 0)) : Math.max(ou, ov);
+    f = Math.min(f, smooth01(d / RAMP_FADE));
+    if (f <= 0) return 0;
+  }
+  if (terrain.active) {
+    terrain.groundGrad(x, z, _grad);
+    const steep = Math.hypot(_grad.gx, _grad.gz);
+    f = Math.min(f, 1 - smooth01((steep - CRUST_STEEP_LO) / (CRUST_STEEP_HI - CRUST_STEEP_LO)));
+  }
+  return f;
+}
 
 interface Draped {
   mesh: THREE.Mesh;
@@ -41,7 +84,13 @@ interface Draped {
   onSnow: boolean;
 }
 
-interface Strip { xz: number[]; uv: number[]; index: number[] }
+interface Strip {
+  xz: number[];
+  uv: number[];
+  index: number[];
+  /** Per-vertex opacity (crust ring only): a `fade` attribute; triangles with a corner faded to 0 are dropped. */
+  fade?: number[];
+}
 
 /** Strip mesh covering a capsule (A -> B, radius r; A = B for a circle). uv = (metres along the axis, -1..1 across). */
 function capsuleStrip(p: MaterialPatch, step: number, across: number, grow = 0): { xz: number[]; uv: number[]; index: number[] } {
@@ -278,17 +327,21 @@ export function scorchMaterial(side: number, floor = 0.3): THREE.ShaderMaterial 
 
 let crustMat: THREE.ShaderMaterial | null = null;
 /** Basalt crust around lava: a thin glowing rim at the lava edge, dark cracked basalt, then a ragged fade onto the
- *  snow (uv.x = 0 at the lava .. 1 outside). Transparent, drawn over the snow / scorch, under the lava pool. */
+ *  snow (uv.x = 0 at the lava .. 1 outside), times the per-vertex `fade` attribute (crustFade; every geometry drawn
+ *  with it must carry one). Transparent, drawn over the snow / scorch, under the lava pool. */
 export function getCrustMaterial(): THREE.ShaderMaterial {
   return (crustMat ??= new THREE.ShaderMaterial({
     uniforms: { ...THREE.UniformsLib.fog, uTime: lavaTime },
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
+      attribute float fade;
       varying vec2 vUv;
       varying vec2 vW;
+      varying float vFade;
       void main() {
         vUv = uv;
         vW = position.xz;
+        vFade = fade;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
@@ -298,6 +351,7 @@ export function getCrustMaterial(): THREE.ShaderMaterial {
       uniform float uTime;
       varying vec2 vUv;
       varying vec2 vW;
+      varying float vFade;
       float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float n(vec2 p) {
         vec2 i = floor(p), f = fract(p);
@@ -315,7 +369,7 @@ export function getCrustMaterial(): THREE.ShaderMaterial {
         float pulse = 0.75 + 0.25 * sin(uTime * 2.3 + vUv.y * 0.8);
         c = mix(c, vec3(1.0, 0.33, 0.06) * 1.6 * pulse, max(rim, crack * 0.7));
         float edge = 0.5 + 0.22 * n2;
-        float alpha = (1.0 - smoothstep(edge, edge + 0.3, k)) * (1.0 - smoothstep(0.88, 1.0, k));
+        float alpha = (1.0 - smoothstep(edge, edge + 0.3, k)) * (1.0 - smoothstep(0.88, 1.0, k)) * vFade;
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(c, alpha);
         #include <colorspace_fragment>
@@ -476,20 +530,24 @@ export class GroundDecals {
     const crust: Strip[] = [];
     const ice: Strip[] = [];
     const grow = lavaFringeFor(cell) + 0.4;
+    const ramps = terrain.shapes.filter((s): s is Ramp => s.kind === 'ramp');
     for (const p of terrain.patches) {
       if (p.material === 'lava') {
         lava.push(capsuleStrip(p, 0.6, 6));
-        crust.push(crustRing(p, p.r - CRUST_TUCK, p.r + grow, 0.5));
+        const ring = crustRing(p, p.r - CRUST_TUCK, p.r + grow, 0.5);
+        ring.fade = [];
+        for (let i = 0; i < ring.xz.length; i += 2) ring.fade.push(crustFade(terrain, ramps, ring.xz[i], ring.xz[i + 1]));
+        crust.push(ring);
       } else if (p.material === 'ice') ice.push(capsuleStrip(p, 0.9, 6));
     }
-    const ramps = terrain.shapes.filter((s): s is Extract<TerrainShape, { kind: 'ramp' }> => s.kind === 'ramp');
     // ramps on ice patches are already glazed by the ice decal; the others get a deck by biome
     const decks: ReturnType<typeof rampStrip>[] = [];
     const lips: ReturnType<typeof rampStrip>[] = [];
     for (const s of ramps) {
       const glazed = terrain.materialAt(s.x + Math.sin(s.rot) * s.len * 0.5, s.z + Math.cos(s.rot) * s.len * 0.5) === 'ice';
-      if (!glazed && biome !== 'mars') decks.push(rampStrip(s, 0.5));
-      lips.push(rampStrip(s, 0.35, 0.93, 1));
+      // both stay on the ramp's flat face: a straight strip running out over its soft sides cuts into them at the lip
+      if (!glazed && biome !== 'mars') decks.push(rampStrip(s, RAMP_EDGE_INSET));
+      lips.push(rampStrip(s, RAMP_EDGE_INSET, 0.93, 1));
     }
     if (lava.length) {
       this.add(terrain, lava, getLavaMaterial(), false, 3, { onSnow: false });
@@ -529,11 +587,11 @@ export class GroundDecals {
     terrain: Terrain, parts: Strip[], mat: THREE.Material, receive: boolean, order: number,
     /** lift: height above the ground + snow, or a function of the strip's uv.x (crust ring: 0 at the lava .. 1). */
     /** hull: sample the ground as the highest of the vertex and four points this far around it, so a ring crossing a
-     *  crease (a ramp's lip or fall) between its vertices still clears the ground there. */
+     *  crease between its vertices still clears the ground there (not on faded vertices: those lie on the ramps). */
     opts: { worldUv?: boolean; rampUv?: boolean; lift?: number | ((u: number) => number); onSnow?: boolean; hull?: number } = {},
   ): void {
     const { worldUv = false, rampUv = false, lift = LIFT, onSnow = true, hull = 0 } = opts;
-    const groundAt = (x: number, z: number) => {
+    const groundAt = (x: number, z: number, hull: number) => {
       let y = terrain.ground(x, z);
       if (hull > 0 && terrain.active) {
         y = Math.max(y, terrain.ground(x + hull, z), terrain.ground(x - hull, z), terrain.ground(x, z + hull), terrain.ground(x, z - hull));
@@ -545,6 +603,7 @@ export class GroundDecals {
     const pos = new Float32Array(nv * 3);
     const uv = new Float32Array(nv * 2);
     const base = new Float32Array(nv);
+    const fades = parts.some((p) => p.fade) ? new Float32Array(nv).fill(1) : null;
     const index: number[] = [];
     let o = 0;
     for (const p of parts) {
@@ -552,9 +611,11 @@ export class GroundDecals {
       for (let i = 0; i < n; i++) {
         const x = p.xz[i * 2];
         const z = p.xz[i * 2 + 1];
+        const f = p.fade ? p.fade[i] : 1;
+        if (fades) fades[o + i] = f;
         pos[(o + i) * 3] = x;
         pos[(o + i) * 3 + 2] = z;
-        base[o + i] = groundAt(x, z) + (typeof lift === 'number' ? lift : lift(p.uv[i * 2]));
+        base[o + i] = groundAt(x, z, f < 1 ? 0 : hull) + (typeof lift === 'number' ? lift : lift(p.uv[i * 2]));
         pos[(o + i) * 3 + 1] = base[o + i];
         if (worldUv) {
           uv[(o + i) * 2] = x / 6;
@@ -568,7 +629,16 @@ export class GroundDecals {
           uv[(o + i) * 2 + 1] = p.uv[i * 2 + 1];
         }
       }
-      for (const k of p.index) index.push(k + o);
+      const pf = p.fade;
+      for (let k = 0; k < p.index.length; k += 3) {
+        const a = p.index[k];
+        const b = p.index[k + 1];
+        const c = p.index[k + 2];
+        // a corner on a ramp (faded to 0): not drawn, so no triangle reaches up onto the ramp's fall; the ring's own fade
+        // (crustFade's RAMP_FADE band outside the ramp) softens the edge this leaves
+        if (pf && (pf[a] <= 0 || pf[b] <= 0 || pf[c] <= 0)) continue;
+        index.push(a + o, b + o, c + o);
+      }
       o += n;
     }
     const geo = new THREE.BufferGeometry();
@@ -576,6 +646,7 @@ export class GroundDecals {
     if (onSnow) attr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('position', attr);
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    if (fades) geo.setAttribute('fade', new THREE.BufferAttribute(fades, 1));
     geo.setIndex(index);
     // Normals from the ground alone, once: the ground never moves, and the snow under the lit decals (ice: thin snow,
     // ramp decks) only adds a near-uniform offset. (Snow can't be used here: the world is dressed before the snow

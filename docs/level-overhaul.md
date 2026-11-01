@@ -141,10 +141,16 @@ record.
   zone; the biome (look + ground terrain) rotates every 5 waves in campaign order (glacier first, so FROSTBYTE closes
   the first block), the Daily seeds its start biome, and a biome switch re-seats the plow with `Plow.reset()` (keeps
   the run's hp only).
-- **[C] `run.airtime` stat** (plus its lifetime counterpart in `src/meta/achievements.ts`), for the airtime challenge
-  and trophy.
-- **[D] `killsBy.lava` and `killsBy.airSlam`** (new `KillSource` values in `src/core/events.ts` plus lifetime stats),
-  for the lava / air-slam challenges and trophies.
+- **Partly done. [C] `run.airtime` stat** (plus its lifetime counterpart in `src/meta/achievements.ts`), for the
+  airtime challenge and trophy. *Landed:* `run.airtime` (longest single flight, from `plowLanded` in
+  `src/core/Game.ts`, reported in `runFinished`) and the lifetime best `AIRTIME_BEST_CS` (`airtimeBestCs`, centiseconds)
+  in `src/meta/achievements.ts`. *Still missing:* the key in `LIFE` (`src/config/achievements.ts`; the meta module
+  keeps its own constant until then) and the airtime challenge / trophy (see [A] below).
+- **Partly done. [D] `killsBy.lava` and `killsBy.airSlam`** (new `KillSource` values in `src/core/events.ts` plus
+  lifetime stats), for the lava / air-slam challenges and trophies. *Landed:* the `KillSource` values `'lava'` (a bot
+  burned in lava) and `'airSlam'` (the airborne slam's shockwave), counted per run in `run.killsBy`. *Still missing:*
+  lifetime counters (`src/meta/achievements.ts` maps only slam / ram / whirl / other, so lava, air-slam and stomp kills
+  land in `killsOther`) and the challenges / trophies.
 - **Done. [E] Tutorial zone and menu backdrop:** `src/core/Game.ts` `TUTORIAL_ZONE`, the menu backdrop zone and the
   menu / default `ctx.zone` spread `ZONES[0]` and will inherit the glacier's terrain and ice. Pin an explicit flat
   tutorial zone (`terrain: undefined`, fixed look) and pick the backdrop from a random campaign biome per launch.
@@ -157,3 +163,11 @@ record.
   derive it from the room code (`duelVenueFor` in `src/config/duel.ts`, FNV-1a over the code), so it is effectively
   random and needs no protocol message, but the host cannot choose. A host choice can ride in the host's hello (a venue
   key) later, with `duelVenueFor` kept as the default.
+- **[B, deviation] Inferno Quarry jumps:** "Arenas" says lava rivers with jump ramps. As built, the two long rivers sit
+  in the north corners and each jump ramp (campaign and Brawl) launches over a short lava trench (`trench()` in
+  `src/world/biomes/terrains.ts`, about 7 m across a 6.5 m wide ramp). A long river running on past a ramp's sides left no
+  room to stop for a plow that dropped off a side edge or left the lip at an angle: a Brawl rival landed 2.8 m from the
+  river at 14 m/s and slid in. `tests/biomes.test.ts` ("ramp lanes") now drives every ramp at 14-24 m/s, up to 30° off
+  its heading, and needs 6 m of lava-free run-out past every landing. Out of that envelope: below 14 m/s a jump off a
+  lip corner can land in the trench, and dash-speed jumps (26+ m/s) off the Thermal Divide's ramps land within 6 m of
+  the hot-side vents. The basalt crust ring is kept off ramps (`crustFade` in `src/world/biomes/GroundDecals.ts`).

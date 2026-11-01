@@ -1,5 +1,5 @@
 // Biome look check: renders every campaign biome (arenas 1-5) and the Brawl venues, plus an ambience smoke test.
-//   node scripts/biome-probe.mjs [outDir] [--only=0,2] [--menu] [--game] [--sky] [--top] [--close] [--brawl] [--audio]
+//   node scripts/biome-probe.mjs [outDir] [--only=0,2] [--menu] [--game] [--sky] [--top] [--close] [--brawl] [--ramps] [--audio]
 // With no mode flag it renders menu + game + sky + top + close for the selected arenas, then the six Brawl venues.
 //   menu-<i>.png  menu camera on arena i (what the main-menu backdrop shows)
 //   game-<i>.png  follow camera after the countdown, driving forward from the spawn
@@ -8,6 +8,9 @@
 //   close-<i>-<x>_<z>.png  low close-up of each lava / ice patch (crater edges, crust ring, decal draping)
 //   brawl-<key>.png  a Brawl match in each venue (Snowdome classic + the five biomes)
 //   brawl-<key>-close-<x>_<z>.png  close-ups of the first lava patches of the Brawl Divide / Quarry
+//   ramp-<venue>-<i>-side.png / -back.png  (--ramps, Inferno Quarry + Brawl Quarry) each jump ramp from beside its lip
+//     and from past its lava trench; ramp-<venue>-<i>-cam.png  the follow camera with the plow driving at the ramp
+//     (venue: q = campaign, bq = Brawl). Prints how much of each crust ring is faded off the ramps.
 // Frames are read back with canvas.toDataURL right after a synchronous render (the DOM UI is not in them), so it
 // works on SwiftShader: PW_EXE=/opt/pw-browsers/chromium node scripts/biome-probe.mjs /tmp/biomes
 // Exits 1 on any console error / page error.
@@ -19,9 +22,9 @@ const args = process.argv.slice(2);
 const out = args.find((a) => !a.startsWith('--')) || '/tmp/biome-probe';
 const flag = (k) => args.includes(`--${k}`);
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7).split(',').filter(Boolean).map(Number);
-const modes = ['menu', 'game', 'sky', 'top', 'close', 'brawl', 'audio'].filter(flag);
+const modes = ['menu', 'game', 'sky', 'top', 'close', 'brawl', 'ramps', 'audio'].filter(flag);
 const all = modes.length === 0;
-const want = (m) => all ? m !== 'audio' : modes.includes(m);
+const want = (m) => all ? m !== 'audio' && m !== 'ramps' : modes.includes(m);
 mkdirSync(out, { recursive: true });
 const save = (path, url) => writeFileSync(path, Buffer.from(url.split(',')[1], 'base64'));
 
@@ -112,6 +115,66 @@ try {
       const r = await page.evaluate(() => window.__game.ctx.renderer.info.render);
       console.log(`brawl ${key}: calls=${r.calls} tris=${r.triangles}`);
     }
+  }
+  if (want('ramps')) {
+    // Jump ramps over lava (Inferno Quarry, Brawl Quarry): close-ups beside the lip and from past the trench, then the
+    // follow camera with the plow driving at each ramp (Brawl: the match camera, rivals and all).
+    const ramps = () => page.evaluate(() => window.__game.ctx.terrain.shapes.filter((s) => s.kind === 'ramp')
+      .map((r) => ({ x: r.x, z: r.z, rot: r.rot, len: r.len, fall: r.fall ?? 1 })));
+    const crust = () => page.evaluate(() => {
+      const m = window.__game.ctx.scene.getObjectByName('GroundDecals')?.children.find((o) => o.geometry?.getAttribute('fade'));
+      if (!m) return 'no crust mesh';
+      const f = m.geometry.getAttribute('fade');
+      let off = 0;
+      for (let i = 0; i < f.count; i++) if (f.getX(i) < 1) off++;
+      return `crust ${f.count} vertices, ${off} faded off ramps, ${m.geometry.getIndex().count / 3} triangles drawn`;
+    });
+    const shots = async (tag, list) => {
+      for (const [i, r] of list.entries()) {
+        const fx = Math.sin(r.rot), fz = Math.cos(r.rot), rx = Math.cos(r.rot), rz = -Math.sin(r.rot);
+        const lx = r.x + fx * r.len, lz = r.z + fz * r.len;
+        save(`${out}/ramp-${tag}-${i}-side.png`, await grab([lx + rx * 6 - fx * 1.5, 2.6, lz + rz * 6 - fz * 1.5], [lx + fx * 1.5, 0.6, lz + fz * 1.5]));
+        save(`${out}/ramp-${tag}-${i}-back.png`, await grab([lx + fx * 10 + rx * 3, 3.2, lz + fz * 10 + rz * 3], [lx, 0.8, lz]));
+      }
+    };
+    const drive = async (tag, list) => {
+      for (const [i, r] of list.entries()) {
+        await page.evaluate((r) => {
+          const g = window.__game, c = g.ctx, p = c.plow;
+          p.heading = r.rot;
+          p.position.x = r.x - Math.sin(r.rot) * 9;
+          p.position.z = r.z - Math.cos(r.rot) * 9;
+          p.speed = 8;
+          c.cameraRig?.snap?.();
+          c.input.down?.add?.('KeyW');
+          for (let k = 0; k < 24; k++) g.tick(1 / 60);
+          c.input.down?.delete?.('KeyW');
+        }, r);
+        save(`${out}/ramp-${tag}-${i}-cam.png`, await grab());
+      }
+    };
+    await dress(1);
+    const q = await ramps();
+    console.log(`ramps q: ${await crust()}`);
+    await shots('q', q);
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.startRun(1);
+      for (let k = 0; k < 280; k++) g.tick(1 / 60);
+    });
+    await drive('q', q);
+    await page.evaluate(async () => {
+      const { brawlZone } = await import('/src/config/zones.ts');
+      const g = window.__game, c = g.ctx;
+      g.startBrawl('pro');
+      const z = brawlZone('quarry');
+      if (c.zone !== z) { c.zone = z; c.world.setZone(z); c.snow.reset(z); c.world.resetProps(true, false); }
+      for (let k = 0; k < 300; k++) g.tick(1 / 60);
+    });
+    const bq = await ramps();
+    console.log(`ramps bq: ${await crust()}`);
+    await shots('bq', bq.slice(0, 2));
+    await drive('bq', bq.slice(0, 2));
   }
   if (want('audio')) {
     const r = await page.evaluate(async () => {

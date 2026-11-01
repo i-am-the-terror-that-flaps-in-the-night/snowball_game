@@ -282,6 +282,9 @@ interface BossSlot {
 const GAUGE_R = 46;
 const GAUGE_C = 2 * Math.PI * GAUGE_R;
 const INTRO_MS = 2600;
+/** Toasts: default top (px) and gap under the lowest top HUD box their column crosses. */
+const TOAST_TOP = 96;
+const TOAST_GAP = 12;
 
 export class UI implements UIAPI {
   private ctx: GameContext;
@@ -361,9 +364,13 @@ export class UI implements UIAPI {
   // hud
   private hud!: HTMLElement;
   private hudVisible = false;
+  /** Top HUD boxes the toasts start under (round box, boss bars, coin box, radar) and whether their sizes changed. */
+  private topBoxes: HTMLElement[] = [];
+  private topDirty = true;
+  private radarShown = false;
   private bossSlots: BossSlot[] = [];
   private h = {} as {
-    zone: HTMLElement; round: HTMLElement; enemies: HTMLElement; pips: HTMLElement; arena: HTMLElement;
+    zone: HTMLElement; round: HTMLElement; best: HTMLElement; enemies: HTMLElement; pips: HTMLElement; arena: HTMLElement;
     bosses: HTMLElement;
     coins: HTMLElement; coinBox: HTMLElement;
     combo: HTMLElement; comboN: HTMLElement;
@@ -1739,6 +1746,8 @@ export class UI implements UIAPI {
     H.zone = el('div', 'ss-hud-zone', '', tl);
     const rr = el('div', 'ss-hud-roundrow', undefined, tl);
     H.round = el('div', 'ss-hud-round', '', rr);
+    // Survival: the best wave as its own small item, so the row can wrap instead of widening the box
+    H.best = el('div', 'ss-hud-best hidden', '', rr);
     H.enemies = el('div', 'ss-hud-enemies', '', rr);
     H.pips = el('div', 'ss-round-pips', undefined, tl);
     // Survival / Daily: the biome rotates every 5 waves; a tag counts down to the next arena.
@@ -1830,6 +1839,8 @@ export class UI implements UIAPI {
     H.hint = el('div', 'ss-hint hidden', 'W/S drive  ·  A/D steer  ·  plow snow to grow a ball  ·  SPACE slam  ·  SHIFT dash strike  ·  E whirlwind  ·  F fire / thunderclap  ·  ESC pause', hud);
     this.bh = new BrawlHudView(this.ctx, hud, bc);
     this.radar = new RadarHud(this.ctx, hud);
+    this.topBoxes = [tl, H.bosses, H.coinBox, hud.querySelector<HTMLElement>('.ss-radar')!];
+    window.addEventListener('resize', () => (this.topDirty = true));
   }
 
   private buildBossSlot(parent: HTMLElement): BossSlot {
@@ -1942,7 +1953,33 @@ export class UI implements UIAPI {
       this.h.bosses.classList.toggle('twin', visible >= 2);
       this.rootEl.classList.toggle('has-boss', visible === 1);
       this.rootEl.classList.toggle('has-twin', visible >= 2);
+      this.topDirty = true;
     }
+  }
+
+  /**
+   * Place what depends on the top HUD's real size (only when it changed: text, boss count, radar, resize; never per
+   * frame). --hud-tl-b = bottom of the round box (narrow screens stack the boss bars under it, ui.css); --hud-toast-y =
+   * toast top, under every top box the centred toast column crosses, so a toast never lands on the boss bars, the round
+   * box or the radar however they are laid out.
+   */
+  private layoutTop(): void {
+    this.topDirty = false;
+    const root = this.rootEl;
+    const tl = this.topBoxes[0];
+    root.style.setProperty('--hud-tl-b', `${tl.offsetTop + tl.offsetHeight}px`);
+    const o = root.getBoundingClientRect();
+    const col = this.toastBox.getBoundingClientRect(); // the toasts' column (ui.css sizes it; longer toasts wrap)
+    const cl = col.left;
+    const cr = col.right;
+    let y = TOAST_TOP - TOAST_GAP;
+    for (const e of this.topBoxes) {
+      if (e.offsetParent === null) continue;
+      const b = e.getBoundingClientRect();
+      if (b.height >= 1 && b.left < cr && b.right > cl) y = Math.max(y, b.bottom - o.top);
+    }
+    root.style.setProperty('--hud-toast-y', `${Math.round(y + TOAST_GAP)}px`);
+    this.radar.relayout(); // the lost-bot arrows keep clear of the same boxes
   }
 
   private freeSlot(s: BossSlot): void {
@@ -2163,6 +2200,7 @@ export class UI implements UIAPI {
     if (visible === this.hudVisible) return;
     this.hudVisible = visible;
     this.hud.classList.toggle('show', visible);
+    this.topDirty = true;
     if (!visible) {
       this.resetHudFx();
       clearTimeout(this.hintTimer);
@@ -2204,14 +2242,20 @@ export class UI implements UIAPI {
     }
     if (s.brawl) this.bh.update(s.brawl);
     this.radar.update(s.radar);
+    if (!!s.radar !== this.radarShown) {
+      this.radarShown = !!s.radar;
+      this.topDirty = true;
+    }
 
     if (s.zoneName !== L.zone) {
       L.zone = s.zoneName;
       H.zone.textContent = s.zoneName;
+      this.topDirty = true;
     }
     const hideRound = !!s.hideRound;
     if (hideRound !== L.hideRound) {
       L.hideRound = hideRound;
+      this.topDirty = true;
       H.round.classList.toggle('hidden', hideRound);
       H.pips.classList.toggle('hidden', hideRound);
     }
@@ -2222,9 +2266,12 @@ export class UI implements UIAPI {
         L.round = sv.wave;
         L.total = -sv.best;
         L.bossRound = s.bossRound;
-        H.round.textContent = `${s.bossRound ? '☠ BOSS ' : ''}Wave ${sv.wave} · Best ${sv.best}`;
+        H.round.textContent = `${s.bossRound ? '☠ BOSS ' : ''}Wave ${sv.wave}`;
         H.round.classList.toggle('boss', s.bossRound);
+        H.best.textContent = `Best ${sv.best}`;
+        H.best.classList.remove('hidden');
         this.renderPips(0, 0);
+        this.topDirty = true;
       }
     } else if (s.round !== L.round || s.totalRounds !== L.total || s.bossRound !== L.bossRound) {
       L.round = s.round;
@@ -2232,7 +2279,9 @@ export class UI implements UIAPI {
       L.bossRound = s.bossRound;
       H.round.textContent = s.bossRound ? '☠ BOSS ROUND' : `Round ${s.round}/${s.totalRounds}`;
       H.round.classList.toggle('boss', s.bossRound);
+      H.best.classList.add('hidden');
       this.renderPips(s.round, s.totalRounds);
+      this.topDirty = true;
     }
     // Survival / Daily biome rotation: count down to the next arena over the last two waves of a block.
     const arena = sv && sv.arenaIn !== undefined && sv.arenaIn <= 2 && sv.nextArena
@@ -2243,15 +2292,18 @@ export class UI implements UIAPI {
       H.arena.textContent = arena;
       H.arena.classList.toggle('hidden', !arena);
       H.arena.classList.toggle('last', sv?.arenaIn === 1);
+      this.topDirty = true;
     }
     const en = Math.max(0, Math.round(s.enemiesRemaining));
     if (en !== L.enemies) {
       L.enemies = en;
       H.enemies.textContent = en > 0 ? `${en} bot${en === 1 ? '' : 's'} left` : 'Get ready…';
+      this.topDirty = true; // "9 bots" -> "10 bots" can wrap the round row
     }
 
     // bosses
     if (!brawl && (s.bosses.length || L.bossCount > 0)) this.updateBosses(s.bosses);
+    if (this.topDirty) this.layoutTop();
 
     // coins
     const coins = Math.floor(s.coins);

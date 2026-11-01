@@ -75,7 +75,7 @@ import {
 } from './bruteRival';
 import { makeSurface, type GroundMaterial } from '../world/Terrain';
 import {
-  AIR_STEER, ICE_ACCEL, ICE_GRIP, LAVA_DPS, LAVA_OUT, LavaCache, SLOPE_PULL, V_LANDED, bonkCeiling, launchVert, lavaAhead, makeVert, stepVertical, steerLava,
+  AIR_STEER, ICE_ACCEL, ICE_GRIP, LAVA_CLEAR, LAVA_DPS, LAVA_OUT, LavaCache, SLOPE_PULL, V_LANDED, bonkCeiling, launchVert, lavaAhead, makeVert, stepVertical, steerLava,
 } from '../world/terrainMotion';
 
 /* Snowdome Brawl: the player + BRAWL_BOTS rival AI plows in a huge arena, everyone hunting everyone.
@@ -926,7 +926,11 @@ export class BrawlManager implements BrawlAPI {
           r.dodgeT = 0.55;
           const side = wrap(Math.atan2(dx, dz) - r.heading) > 0 ? 1 : -1;
           r.dodgeH = Math.atan2(dx, dz) + side * Math.PI * 0.5;
-          if (r.dashCd <= 0 && skill > 0.6 && Math.random() < pers.dashLove) {
+          if (
+            r.dashCd <= 0 && skill > 0.6 && Math.random() < pers.dashLove &&
+            // (never hop into lava: the 15 m/s push slides 15 / decay m before it dies out)
+            !(this.lava.list.length && lavaAhead(this.lava, r.position.x, r.position.z, r.dodgeH, 1, RIVAL_R + 1 + 15 / (4 - 3 * r.ice), RIVAL_R * 0.6, ARENA.maxX - RIVAL_R))
+          ) {
             // Side-hop out of the lane (no heading snap): a burst of lateral velocity on the dash cooldown.
             r.kvx += Math.sin(r.dodgeH) * 15;
             r.kvz += Math.cos(r.dodgeH) * 15;
@@ -1131,10 +1135,10 @@ export class BrawlManager implements BrawlAPI {
         }
         // DASH STRIKE when aligned at mid range.
         const tol = 0.1 + 0.3 * (1 - r.s.skill);
-        // (never a dash across lava: the dash ignores lava steering until it ends)
+        // (never a dash towards lava: the course must stay clear for the dash and the braking glide after it)
         if (
           r.dashCd <= 0 && d > 5 && d < 15 && ang < tol && Math.random() < r.pers.dashLove * dt * 4 &&
-          !(this.lava.list.length && lavaAhead(this.lava, r.position.x, r.position.z, r.heading, 1, Math.min(d, 12), RIVAL_R * 0.6, ARENA.maxX - RIVAL_R))
+          !(this.lava.list.length && lavaAhead(this.lava, r.position.x, r.position.z, r.heading, 1, this.dashReach(r), RIVAL_R * 0.6, ARENA.maxX - RIVAL_R))
         ) {
           this.startDash(r);
           break;
@@ -1218,6 +1222,12 @@ export class BrawlManager implements BrawlAPI {
   }
 
   /* ================================================================== moves */
+
+  /** Metres a dash started now covers, plus the braking glide after it (a dash ignores lava braking until it ends). */
+  private dashReach(r: Rival): number {
+    const v = Math.max(r.speed, 0) + r.s.dashPower;
+    return RIVAL_R + v * DASH_T + (v * v) / (2 * r.s.accel * 1.4);
+  }
 
   private startDash(r: Rival): void {
     r.dashT = DASH_T;
@@ -1759,14 +1769,23 @@ export class BrawlManager implements BrawlAPI {
     let lavaStop = false;
     if (this.lava.sync(terr) && !air && r.kvx * r.kvx + r.kvz * r.kvz < 16) {
       const look = RIVAL_R + 1.5 + Math.abs(r.speed) * 0.35;
-      const brake = r.s.accel * 1.4 * (r.ice > 0 ? 1 - (1 - ICE_ACCEL) * r.ice : 1);
+      let brake = r.s.accel * 1.4 * (r.ice > 0 ? 1 - (1 - ICE_ACCEL) * r.ice : 1);
+      // (a downhill pull eats into the braking: count it, so the stop check looks far enough)
+      if (terr.active && (r.gx !== 0 || r.gz !== 0)) {
+        const pull = (terr.gravity * SLOPE_PULL * -(r.gx * Math.sin(r.heading) + r.gz * Math.cos(r.heading))) / Math.sqrt(1 + r.gx * r.gx + r.gz * r.gz);
+        if (pull > 0) brake = Math.max(brake * 0.4, brake - pull);
+      }
+      // A dash ignores the lava braking below: end it as soon as lava comes inside its stopping distance (+ margin),
+      // so the glide that follows brakes in time (the dash also turns slowly and drifts off the line checked at start).
+      if (r.dashing && lavaAhead(this.lava, r.position.x, r.position.z, r.heading, r.speed, RIVAL_R + 1.5 + (r.speed * r.speed) / (2 * brake), RIVAL_R * 0.6, ARENA.maxX - RIVAL_R)) r.dashT = 0;
       const k = steerLava(this.lava, r.position.x, r.position.z, r.heading, r.speed, r.desH, r.desSpeed, look, RIVAL_R * 0.8, r.id & 1 ? 1 : -1, this.topSpeed(r) * 0.6, brake, ARENA.maxX - RIVAL_R, _lavaOut);
       r.desH = wrap(_lavaOut.h);
       // (stopping short of lava brakes properly even when gliding over the cap after a dash: see below)
       lavaStop = k !== LAVA_OUT && _lavaOut.v === 0 && r.desSpeed > 0;
       if (!r.dashing && !stunned) r.desSpeed = _lavaOut.v;
-      // driving out: full turn rate even from a standstill (the slow-speed turn penalty would keep it burning)
-      if (k === LAVA_OUT && !r.dashing) lavaTurn = 1 / (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4));
+      // driving out, or stopped short of lava while turning away: full turn rate even from a standstill (the slow-speed
+      // turn penalty would keep it burning / parked at the edge for seconds)
+      if (k !== LAVA_CLEAR && !r.dashing) lavaTurn = 1 / (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4));
     }
     const diff = wrap(r.desH - r.heading);
     const turnRate = stunned ? 0 : r.s.turn * (r.dashing ? 0.4 : 1) * frozen * (0.45 + 0.55 * Math.min(1, Math.abs(r.speed) / 4)) * (air ? AIR_STEER : 1) * lavaTurn;

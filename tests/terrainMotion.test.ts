@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Terrain, makeSurface } from '../src/world/Terrain';
 import {
-  LAVA_AVOID, LAVA_CLEAR, LAVA_DPS, LAVA_OUT, LavaCache, MIN_AIR, V_HOP, V_LANDED, V_LAUNCHED, V_LEFT, avoidLava, bonkCeiling, launchVert,
+  LAVA_AVOID, LAVA_CLEAR, LAVA_DPS, LAVA_OUT, LavaCache, MIN_AIR, V_HOP, V_LANDED, V_LAUNCHED, V_LEFT, avoidLava, bonkCeiling, launchVert, lavaAhead,
   makeVert, slopeAccel, stepVertical, steerLava,
 } from '../src/world/terrainMotion';
 import { DEV_FEATURES, DEV_TERRAIN } from '../src/world/devTerrain';
@@ -408,6 +408,37 @@ describe('terrain hazards', () => {
     const out = { h: 0, v: 0 };
     expect(steerLava(lava, 0, 20, 1, 5, 1.2, 5, 3, 0.6, 1, 3, 24, Infinity, out)).toBe(LAVA_CLEAR);
     expect(out).toEqual({ h: 1.2, v: 5 });
+  });
+
+  it('a dash at a river ends once lava is inside the stopping distance (+ margin) and the glide brakes short of it', () => {
+    // Brawl rival numbers (pro): top 13 m/s + dash 22.8 (+8 from a slam mid-dash), braking 1.4 x accel 21.25.
+    const t = new Terrain(DEV_TERRAIN);
+    const lava = new LavaCache();
+    lava.sync(t);
+    const l = DEV_FEATURES.lava;
+    const mx = (l.x1 + l.x2) / 2;
+    const R = 1.6;
+    const brake = 21.25 * 1.4;
+    const run = (v0: number, gap: number, look: (v: number) => number) => {
+      let z = l.z + l.r + gap;
+      let v = v0;
+      let dashT = 0.5;
+      let minD = Infinity;
+      for (let i = 0; i < 180; i++) {
+        if (dashT > 0 && lavaAhead(lava, mx, z, Math.PI, v, look(v), R * 0.6)) dashT = 0;
+        if (dashT > 0) dashT -= DT;
+        else v = Math.max(0, v - brake * DT);
+        z -= v * DT;
+        minD = Math.min(minD, lava.dist(mx, z));
+      }
+      return minD;
+    };
+    const stop = (v: number) => R + 1.5 + (v * v) / (2 * brake);
+    // (straight at it: from closer than the stopping distance only turning away saves it, see the Brawl probe)
+    expect(run(13 + 22.8, 30, stop)).toBeGreaterThan(0.5);
+    expect(run(13 + 22.8 + 8, 40, stop)).toBeGreaterThan(0.5);
+    // the old fixed 12 m look-ahead (dash start check) let it slide in
+    expect(run(13 + 22.8, 30, () => 12)).toBeLessThan(0);
   });
 
   it('the dev terrain keeps the plow spawn flat and has every feature', () => {

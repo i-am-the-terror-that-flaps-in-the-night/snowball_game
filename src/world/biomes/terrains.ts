@@ -6,7 +6,9 @@
  *  - the plow spawn (PLOW_SPAWN, 0 / 18), the Duel spawns (0 / +-15) and the first metres of every gate lane stay flat
  *    and patch-free;
  *  - lava covers at most ~15% of the floor;
- *  - the centre stays readable for the boss fights (at most a shallow bowl / pit).
+ *  - the centre stays readable for the boss fights (at most a shallow bowl / pit);
+ *  - (every arena, Brawl too) no lava on a ramp's run-up or face, and 6 m of lava-free run-out past every landing off
+ *    it, side drops and angled launches included.
  *
  * Brawl variants are for the 180 x 180 m Snowdome (BRAWL_ARENA_HALF 90): features sit in the open pockets between the
  * fixed cover obstacles (Environment.buildObstacles) and clear of the Brawl spawn rings (r ~69 and ~34).
@@ -46,28 +48,41 @@ export const GLACIER_TERRAIN: TerrainDef = {
   ],
 };
 
-/* Inferno Quarry lava rivers (capsules). The south pair is crossed by jump ramps. */
-const QUARRY_RIVERS: MaterialPatch[] = [
-  { material: 'lava', x: -28, z: 7, x2: -11, z2: 13, r: 1.7 },
-  { material: 'lava', x: 11, z: 13, x2: 28, z2: 7, r: 1.7 },
-  { material: 'lava', x: -27, z: -17, x2: -17, z2: -27, r: 1.6 },
-  { material: 'lava', x: 27, z: -17, x2: 17, z2: -27, r: 1.6 },
-];
-const riverMid = (p: MaterialPatch) => [(p.x + p.x2!) / 2, (p.z + p.z2!) / 2] as const;
-const [wMx, wMz] = riverMid(QUARRY_RIVERS[0]);
-const [eMx, eMz] = riverMid(QUARRY_RIVERS[1]);
+/** A ramp's lava trench: a short capsule centred on (cx, cz) across heading `rot`, `half` m to each side of the lane.
+ *  Short on purpose: a long river running on past the ramp's sides leaves no run-out for a plow that drops off a side
+ *  edge, or launches at an angle, and lands in front of it (tests/biomes.test.ts "ramp lanes" checks every landing). */
+function trench(cx: number, cz: number, rot: number, half: number, r: number): MaterialPatch {
+  const px = Math.cos(rot);
+  const pz = -Math.sin(rot);
+  return { material: 'lava', x: cx - px * half, z: cz - pz * half, x2: cx + px * half, z2: cz + pz * half, r };
+}
 
-/** 2. Inferno Quarry: moderate. The quarry pit in the middle, berms by the spawn, lava rivers with jump ramps. */
+/** Inferno Quarry jumps (Brawl Quarry too): a ramp launching over a lava trench, its lip `gap` m before the trench's
+ *  axis. The trench starts 1.1 m past the foot of the ramp's fall: at least a snow cell (1 m in Brawl), so no snow
+ *  triangle spans from the fall to the lava and pokes up through the pool. */
+const QUARRY_JUMP = { gap: 3.5, len: 5.5, w: 6.5, h: 1.6, half: 2.2, r: 1.2 };
+const QUARRY_JUMPS: [number, number, number][] = [
+  [-19.5, 10, heading(0, 0, -0.33, 1)],
+  [19.5, 10, heading(0, 0, 0.33, 1)],
+];
+
+/** 2. Inferno Quarry: moderate. The quarry pit in the middle, berms by the spawn, two long lava rivers in the north
+ *  corners and two jump ramps over lava trenches in the south. */
 export const QUARRY_TERRAIN: TerrainDef = {
   shapes: [
     { kind: 'dome', x: 0, z: -1, r: 8.5, h: -2.4, rim: 0.6 },
     { kind: 'ridge', x1: -25, z1: 22, x2: -12, z2: 25, w: 3.2, h: 1.1 },
     { kind: 'ridge', x1: 12, z1: 25, x2: 25, z2: 22, w: 3.2, h: 1.1 },
-    // jump ramps launching south over the south rivers (from the pit side)
-    rampTo(wMx, wMz, heading(0, 0, -0.33, 1) , 3.4, 5.5, 4, 1.5),
-    rampTo(eMx, eMz, heading(0, 0, 0.33, 1), 3.4, 5.5, 4, 1.5),
+    ...QUARRY_JUMPS.map(([x, z, rot]) => {
+      const { gap, len, w, h } = QUARRY_JUMP;
+      return rampTo(x, z, rot, gap, len, w, h);
+    }),
   ],
-  patches: QUARRY_RIVERS,
+  patches: [
+    { material: 'lava', x: -27, z: -16.5, x2: -16.5, z2: -27, r: 1.8 },
+    { material: 'lava', x: 27, z: -16.5, x2: 16.5, z2: -27, r: 1.8 },
+    ...QUARRY_JUMPS.map(([x, z, rot]) => trench(x, z, rot, QUARRY_JUMP.half, QUARRY_JUMP.r)),
+  ],
   baseMaterial: 'rock',
 };
 
@@ -148,17 +163,21 @@ export const BRAWL_GLACIER_TERRAIN: TerrainDef = {
   }),
 };
 
+/** Brawl Quarry river (base quadrant): 10 m long, centred at (16, 42), running along x (searched clear of both spawn rings, the cover and every ramp lane in all four rotated copies). */
+const QUARRY_RIVER: [[number, number], [number, number]] = [[11, 42], [21, 42]];
+
+/** Brawl Quarry: at each A site a ramp along the tangent launches over a lava trench (the campaign's QUARRY_JUMP). */
 export const BRAWL_QUARRY_TERRAIN: TerrainDef = {
   shapes: quads<TerrainShape>((_q, [ax, az], [bx, bz]) => {
-    const r = tangent(ax, az);
-    // river across the tangent, ramp launching over it
-    return [rampTo(ax, az, r, 3.6, 5.5, 4.2, 1.6), { kind: 'dome', x: bx, z: bz, r: 6.5, h: -1.8, rim: 0.5 }];
+    const { gap, len, w, h } = QUARRY_JUMP;
+    return [rampTo(ax, az, tangent(ax, az), gap, len, w, h), { kind: 'dome', x: bx, z: bz, r: 6.5, h: -1.8, rim: 0.5 }];
   }),
-  patches: quads<MaterialPatch>((_q, [ax, az]) => {
-    const r = tangent(ax, az);
-    const px = Math.cos(r);
-    const pz = -Math.sin(r);
-    return [{ material: 'lava', x: ax - px * 6, z: az - pz * 6, x2: ax + px * 6, z2: az + pz * 6, r: 1.8 }];
+  patches: quads<MaterialPatch>((q, [ax, az]) => {
+    // Plus a 10 m river in the open pocket between the fountain ring and the outcrop (searched clear of the spawn
+    // ring, cover, ramp lanes and pit rims), so the venue keeps its lava look now the jump trenches are short.
+    const [x1, z1] = rot90(q, ...QUARRY_RIVER[0]);
+    const [x2, z2] = rot90(q, ...QUARRY_RIVER[1]);
+    return [trench(ax, az, tangent(ax, az), QUARRY_JUMP.half, QUARRY_JUMP.r), { material: 'lava', x: x1, z: z1, x2, z2, r: 1.8 }];
   }),
   baseMaterial: 'rock',
 };

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BIOMES, BIOME_ZONE, BRAWL_BIOMES, BRAWL_ZONE, ZONES, brawlZone, pickBrawlZone, zoneLook } from '../src/config/zones';
 import { ENEMY_GATES, PLOW_SPAWN } from '../src/core/types';
-import { Terrain } from '../src/world/Terrain';
+import { Terrain, makeSurface } from '../src/world/Terrain';
 import type { TerrainDef } from '../src/world/Terrain';
+import { V_LANDED, makeVert, stepVertical } from '../src/world/terrainMotion';
 import { DUEL_VENUES, DUEL_ZONE, duelVenueFor, duelZone, duelZoneFor } from '../src/config/duel';
 import { weatherLayers } from '../src/world/biomes/Weather';
 
@@ -190,10 +191,14 @@ describe('Brawl biome venues (180 m)', () => {
         for (const [x, z] of [[s, -90], [s, 90], [-90, s], [90, s]]) expect(Math.abs(t.ground(x, z))).toBeLessThanOrEqual(0.3);
       }
       expect(coverage(t, 90, 'lava')).toBeLessThanOrEqual(0.15);
+      // The Quarry is the lava venue: keep enough of it to read from the match camera.
+      if (key === 'quarry') expect(coverage(t, 90, 'lava')).toBeGreaterThan(0.004);
       expect(t.active).toBe(true);
     });
   }
 });
+
+const RUN_OUT = 6;
 
 describe('ramp lanes', () => {
   // every campaign arena and Brawl venue: no lava on a ramp's run-up (8 m behind the toe) or face, across its width
@@ -217,6 +222,52 @@ describe('ramp lanes', () => {
             expect(t.materialAt(x, z), `${name} ramp at ${r.x.toFixed(1)},${r.z.toFixed(1)}: lava at ${x.toFixed(1)},${z.toFixed(1)}`).not.toBe('lava');
           }
       }
+    });
+    if (!(def.patches ?? []).some((p) => p.material === 'lava')) continue;
+    // Every landing off a ramp leaves RUN_OUT m of lava-free ground ahead: enough for a rival braking on rock (~18 m/s²)
+    // from 14 m/s. Drives at top speeds of 14-24 m/s (engine levels; no dash), up to 30° off the ramp's heading, entering
+    // anywhere over its full-height deck, through the real vertical motion (stepVertical): straight jumps over the lava,
+    // angled ones leaving over a lip corner, and drops off a side edge. Horizontal speed is held constant, so V is the
+    // speed at the lip (in game the climb costs a little of it).
+    it(`${name}: every ramp landing has ${RUN_OUT} m of lava-free run-out`, () => {
+      const t = new Terrain(def);
+      const s = makeSurface();
+      const b = makeVert();
+      let landings = 0;
+      for (const r of ramps) {
+        if (r.kind !== 'ramp') continue;
+        const deck = r.w / 2 - 0.6; // the soft side edges are 0.6 m (Terrain shapeHeight)
+        for (let V = 14; V <= 24; V += 2)
+          for (let th = -30; th <= 30; th += 5)
+            for (let u0 = -deck; u0 <= deck + 1e-9; u0 += deck / 2) {
+              const h = r.rot + (th * Math.PI) / 180;
+              const hx = Math.sin(h);
+              const hz = Math.cos(h);
+              // the path crosses the toe line at u0, starting 10 m before it
+              let x = r.x + Math.cos(r.rot) * u0 - hx * 10;
+              let z = r.z - Math.sin(r.rot) * u0 - hz * 10;
+              Object.assign(b, makeVert(), { px: x, pz: z, y: t.ground(x, z), surfaceY: t.ground(x, z) });
+              let flew = false;
+              for (let k = 0; k < 150; k++) {
+                x += (hx * V) / 60;
+                z += (hz * V) / 60;
+                const code = stepVertical(t, b, x, z, 0, 1 / 60, s);
+                if (b.airborne) flew = true;
+                else if (!flew && t.materialAt(x, z) === 'lava') break; // drove into it without a jump: not a landing
+                if (code === V_LANDED) {
+                  landings++;
+                  for (let d = 0; d <= RUN_OUT; d += 0.25) {
+                    const lx = x + hx * d;
+                    const lz = z + hz * d;
+                    expect(t.materialAt(lx, lz), `${name} ramp at ${r.x.toFixed(1)},${r.z.toFixed(1)}, ${V} m/s, ${th}°, u ${u0.toFixed(1)}: landed at ${x.toFixed(1)},${z.toFixed(1)}, lava ${d} m on`).not.toBe('lava');
+                  }
+                  break;
+                }
+                if (flew && !b.airborne) flew = false; // a hop
+              }
+            }
+      }
+      expect(landings).toBeGreaterThan(0);
     });
   }
 });

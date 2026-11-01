@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FlameCone } from '../../fx/FlameCone';
 import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import { FX } from '../../config/upgrades';
-import { Kit, Reach, _fwd, _p, _q, _tip, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
+import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
 
@@ -267,7 +267,7 @@ export class ClassicKit extends Kit {
     this.fireFieldX = x;
     this.fireFieldZ = z;
     this.fireFieldTickT = 0;
-    this.fireField.place(ctx.terrain, x, z, FIRE_FIELD_RADIUS, from.y, from.deck, 0.07);
+    this.fireField.place(ctx.terrain, x, z, FIRE_FIELD_RADIUS, from.y, from.deck, 0.07, this.b.snow);
   }
 
   /** FIRESTORM burning ground: flickers, keeps everything inside alight, small contact damage. */
@@ -286,7 +286,10 @@ export class ClassicKit extends Kit {
       const rr = Math.sqrt(Math.random()) * FIRE_FIELD_RADIUS;
       const ex = this.fireFieldX + Math.sin(a) * rr;
       const ez = this.fireFieldZ + Math.cos(a) * rr;
-      _q.set(ex, waveFloor(ctx.terrain, this.fireFrom.y, ex, ez) + 0.4, ez);
+      const ey = waveFloor(ctx.terrain, this.fireFrom.y, ex, ez);
+      // Past a deck edge (floor far below the cast level) the field doesn't burn: no embers there either.
+      if (Math.abs(ey - this.fireFrom.y) > 2 * WAVE_BAND) continue;
+      _q.set(ex, ey + 0.4, ez);
       ctx.fx.burst(_q, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 2, speed: 2, size: 0.35, gravity: -7, life: 0.5 });
     }
     this.fireFieldTickT -= dt;

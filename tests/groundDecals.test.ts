@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { GroundDecals, crustRing } from '../src/world/biomes/GroundDecals';
+import { GroundDecals, crustFade, crustRing } from '../src/world/biomes/GroundDecals';
 import { Terrain } from '../src/world/Terrain';
-import type { MaterialPatch, TerrainDef } from '../src/world/Terrain';
-import { lavaFringeFor } from '../src/world/SnowField';
+import type { MaterialPatch, TerrainDef, TerrainShape } from '../src/world/Terrain';
+import { lavaFringeFor, snowCellFor } from '../src/world/SnowField';
+import { ZONES, brawlZone } from '../src/config/zones';
 
 /* Ground decals over lava (src/world/biomes/GroundDecals.ts): flat pools on the bare ground, a crust ring over the
- * snow's melt fringe, normals from the ground only, and the Divide's scorch film on the snow grid. No ramps / ice
- * here (those build canvas textures). */
+ * snow's melt fringe kept off ramps, normals from the ground only, and the Divide's scorch film on the snow grid. No
+ * ice and no ramp decks here (those build canvas textures: ramps are built with the 'mars' biome, which has none). */
 
 const VENT: MaterialPatch = { material: 'lava', x: -12, z: 6, r: 2 };
 const RIVER: MaterialPatch = { material: 'lava', x: -20, z: -10, x2: -8, z2: -14, r: 1.6 };
@@ -111,5 +112,80 @@ describe('ground decals over lava', () => {
       expect(Math.max(...ys(scorch).slice(0, 50).map((y, i) => y - 0.5 - new Terrain(DEF).ground(pos.getX(i), pos.getZ(i))))).toBeLessThan(0.05);
       d.dispose();
     }
+  });
+
+  type Ramp = Extract<TerrainShape, { kind: 'ramp' }>;
+  /** Is (x, z) on a ramp: its face, lip and fall (toe -> lip + fall), across its full width? */
+  const onRamp = (r: Ramp, x: number, z: number) => {
+    const dx = x - r.x;
+    const dz = z - r.z;
+    const v = dx * Math.sin(r.rot) + dz * Math.cos(r.rot);
+    const u = dx * Math.cos(r.rot) - dz * Math.sin(r.rot);
+    return v >= 0 && v <= r.len + (r.fall ?? 1) - 0.1 && Math.abs(u) <= r.w / 2;
+  };
+
+  it('the crust ring never drapes a ramp: Inferno Quarry and Brawl Quarry jumps', () => {
+    for (const [name, def, half] of [['Inferno Quarry', ZONES[1].terrain!, 30], ['Brawl Quarry', brawlZone('quarry').terrain!, 90]] as const) {
+      const t = new Terrain(def);
+      const ramps = def.shapes!.filter((s): s is Ramp => s.kind === 'ramp');
+      const grow = lavaFringeFor(snowCellFor(2 * half + 8)) + 0.4;
+      let near = 0;
+      for (const p of def.patches!.filter((q) => q.material === 'lava')) {
+        const ring = crustRing(p, p.r - 0.2, p.r + grow, 0.5);
+        let shown = 0;
+        for (let i = 0; i < ring.xz.length; i += 2) {
+          const x = ring.xz[i];
+          const z = ring.xz[i + 1];
+          const f = crustFade(t, ramps, x, z);
+          if (f > 0) {
+            // no visible crust vertex on a ramp, nor over ground raised above the lava's own level (the fall)
+            for (const r of ramps) expect(onRamp(r, x, z), `${name}: crust at ${x.toFixed(2)},${z.toFixed(2)} on a ramp`).toBe(false);
+            expect(t.ground(x, z), `${name}: crust at ${x.toFixed(2)},${z.toFixed(2)}`).toBeLessThan(0.3);
+          }
+          if (f >= 1) shown++;
+          if (ramps.some((r) => onRamp(r, x, z))) near++;
+        }
+        // the rest of the ring stays: most of it is untouched
+        expect(shown / (ring.xz.length / 2), name).toBeGreaterThan(0.6);
+      }
+      expect(near, `${name}: the rings do reach the ramps (the case this guards)`).toBeGreaterThan(0);
+    }
+  });
+
+  it('crust vertices on a ramp are faded, without the hull lift, and no drawn triangle touches one', () => {
+    const ramp: Ramp = { kind: 'ramp', x: 0, z: 0, rot: 0, len: 5.5, w: 5, h: 1.6, fall: 1.2 };
+    const lava: MaterialPatch = { material: 'lava', x: -2, z: 8.3, x2: 2, z2: 8.3, r: 1.3 };
+    const t = new Terrain({ shapes: [ramp], patches: [lava] });
+    const d = new GroundDecals(t, 'mars', () => 0.4, 30);
+    const crust = byShader(d, 'rim');
+    const pos = crust.geometry.getAttribute('position');
+    const fade = crust.geometry.getAttribute('fade');
+    expect(fade.count).toBe(pos.count);
+    let faded = 0;
+    let lit = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      expect(fade.getX(i)).toBeCloseTo(crustFade(t, [ramp], x, z), 4);
+      if (onRamp(ramp, x, z)) {
+        expect(fade.getX(i)).toBe(0);
+        // plain ground + snow + lift: never hoisted by the hull samples
+        expect(pos.getY(i)).toBeLessThan(t.ground(x, z) + 0.4 + 0.1);
+        faded++;
+      } else if (fade.getX(i) >= 1) lit++;
+    }
+    expect(faded).toBeGreaterThan(0);
+    expect(lit).toBeGreaterThan(faded);
+    const idx = crust.geometry.getIndex()!;
+    for (let k = 0; k < idx.count; k += 3) {
+      const m = Math.min(fade.getX(idx.getX(k)), fade.getX(idx.getX(k + 1)), fade.getX(idx.getX(k + 2)));
+      expect(m).toBeGreaterThan(0);
+    }
+    // a vent with no ramp nearby keeps its whole ring (every vertex fully opaque)
+    const flat = new GroundDecals(new Terrain(DEF), 'divide', () => 0.5, 30);
+    const f2 = byShader(flat, 'rim').geometry.getAttribute('fade');
+    for (let i = 0; i < f2.count; i++) expect(f2.getX(i)).toBe(1);
+    d.dispose();
+    flat.dispose();
   });
 });

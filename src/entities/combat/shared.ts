@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { EnemyHandle, EnemyManagerAPI, GameContext, ImpactKind, ImpactOpts, PlowAPI } from '../../core/types';
+import type { CombatAPI, EnemyHandle, EnemyManagerAPI, GameContext, ImpactKind, ImpactOpts, PlowAPI } from '../../core/types';
 import type { Lightning } from '../../fx/Lightning';
 import type { PilotBinding } from '../pilot';
 import type { Terrain } from '../../world/Terrain';
@@ -87,25 +87,34 @@ export function castOrigin(plow: PlowAPI, out: CastOrigin): CastOrigin {
   return out;
 }
 
+/** The opts waveHitPlow hands Combat.hitPlow: the CombatAPI opts plus `anyHeight` (Combat.hitPlow skips the body band
+ *  but still credits `attacker` for threat). One scratch object, filled per hit. */
+type WaveHitOpts = NonNullable<Parameters<CombatAPI['hitPlow']>[3]> & { anyHeight: boolean };
+const _waveOpts: WaveHitOpts = { knockback: undefined, unblockable: undefined, attacker: undefined, anyHeight: true };
+
 /**
  * A bot's NON-contact hit on the player's plow (boss ground shockwaves that already passed their own wave check,
- * THE DONALD's reflected / thrown hits): same damage scaling as EnemyManager.hitPlow, but sent without an `attacker`
- * so Combat.hitPlow skips the feet-to-feet body band (that band is for blades and bodies touching). The hit is still
- * credited to the nearest bot (Combat's threat note). Returns the damage dealt.
+ * THE DONALD's reflected / thrown hits): same damage scaling as EnemyManager.hitPlow, but sent with `anyHeight` so
+ * Combat.hitPlow skips the feet-to-feet body band (that band is for blades and bodies touching). The hit is credited
+ * to `e` itself (Combat's threat table; ARSENAL targeting reads it), not to the bot nearest the knockback origin.
+ * Returns the damage dealt.
  */
 export function waveHitPlow(
   ctx: GameContext,
-  e: { readonly position: THREE.Vector3; readonly dmgOutMult: number },
+  e: EnemyHandle & { readonly dmgOutMult: number },
   dmg: number,
   opts?: { knockback?: number; unblockable?: boolean; fromX?: number; fromZ?: number },
 ): number {
   const combat = ctx.combat;
   const plow = ctx.plow;
   if (!combat || !plow || plow.dead) return 0;
-  return combat.hitPlow(dmg * e.dmgOutMult * (ctx.zone.enemyDmgMult ?? 1), opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, {
-    knockback: opts?.knockback,
-    unblockable: opts?.unblockable,
-  });
+  const o = _waveOpts;
+  o.knockback = opts?.knockback;
+  o.unblockable = opts?.unblockable;
+  o.attacker = e;
+  const dealt = combat.hitPlow(dmg * e.dmgOutMult * (ctx.zone.enemyDmgMult ?? 1), opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, o);
+  o.attacker = undefined;
+  return dealt;
 }
 
 /** How a player attack filters its targets by height (Combat.collect): none, body (feet-to-feet) or ground wave. */

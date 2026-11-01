@@ -242,7 +242,10 @@ export class Combat implements CombatAPI {
 
   /* ------------------------------------------------------------------ bots -> plow */
 
-  hitPlow(amount: number, fromX: number, fromZ: number, opts?: { knockback?: number; unblockable?: boolean; direct?: 'round' | 'beam'; attacker?: EnemyHandle }): number {
+  hitPlow(
+    amount: number, fromX: number, fromZ: number,
+    opts?: { knockback?: number; unblockable?: boolean; direct?: 'round' | 'beam'; attacker?: EnemyHandle; anyHeight?: boolean },
+  ): number {
     const ctx = this.ctx;
     const plow = this.b.plow;
     const stats = this.b.stats;
@@ -250,13 +253,15 @@ export class Combat implements CombatAPI {
     if (!plow || plow.dead || amount <= 0 || plow.invulnerable || this.guardT > 0 || this.brute.poundT >= 0) return 0;
     // Height rule: a bot's body / blade only reaches a plow near its own height (a plow flying over it, or on a deck
     // above, is out of reach). Non-contact hits (boss ground shockwaves, which check the wave rule themselves in
-    // enemies/bosses.ts, and reflected / thrown hits) come through combat/shared.ts waveHitPlow with no `attacker`,
-    // so this body band never applies to them.
+    // enemies/bosses.ts, and THE DONALD's reflected / thrown hits) come through combat/shared.ts waveHitPlow with
+    // `anyHeight` (still naming the attacker for threat), so this body band never applies to them.
     const a = opts?.attacker;
-    if (a && !heightOk(a.position.y, plow.position.y, bodyBand(a.radius))) return 0;
+    if (a && !opts?.anyHeight && !heightOk(a.position.y, plow.position.y, bodyBand(a.radius))) return 0;
 
-    // Feedback fx sit on the surface under the plow (0 on flat arenas; on a deck, the deck top).
+    // Ground rings sit on the surface under the plow (0 on flat arenas; on a deck, the deck top); sparks and float
+    // texts follow the plow's body, which is above that surface while it is airborne.
     const base = plow.surfaceY || 0;
+    const body = plow.airborne ? plow.position.y : base;
 
     // Direction plow -> attacker.
     let dx = fromX - plow.position.x;
@@ -309,7 +314,7 @@ export class Combat implements CombatAPI {
       final = Math.max(0, plow.hp - 1);
       this.secondWindReadyAt = ctx.time + stats.secondWindCd;
       this.guardT = SECOND_WIND_GUARD;
-      _q.set(plow.position.x, base + 3.4, plow.position.z);
+      _q.set(plow.position.x, body + 3.4, plow.position.z);
       ctx.fx.floatText(_q, 'SECOND WIND!', '#9fe6ff', 1.3);
       _q.set(plow.position.x, base + 0.1, plow.position.z);
       ctx.fx.ring(_q, 6, 0x9fe6ff);
@@ -320,7 +325,7 @@ export class Combat implements CombatAPI {
       plow.damage(final);
       plow.feedSawFury(0, final);
       if (!lastStandBefore && !plow.dead && this.lastStandMult() > 1) {
-        _q.set(plow.position.x, base + 3.8, plow.position.z);
+        _q.set(plow.position.x, body + 3.8, plow.position.z);
         ctx.fx.floatText(_q, 'LAST STAND!', '#ff6a3a', 1.2);
         _q.set(plow.position.x, base + 0.1, plow.position.z);
         ctx.fx.ring(_q, 5, 0xff6a3a);
@@ -334,7 +339,7 @@ export class Combat implements CombatAPI {
     // Feedback.
     const fx = ctx.fx;
     const audio = this.b.audio;
-    _p.set(plow.position.x + dx * 1.5, base + 1.1, plow.position.z + dz * 1.5);
+    _p.set(plow.position.x + dx * 1.5, body + 1.1, plow.position.z + dz * 1.5);
     if (blocked > 0) {
       plow.getBladeTip(_tip);
       const br = Math.max(r, 0.3);
@@ -356,7 +361,7 @@ export class Combat implements CombatAPI {
       this.shake(THREE.MathUtils.clamp(0.15 + final * 0.016, 0.15, 0.6));
       if (this.b.local) ctx.impact.playerHit(final, fromX, fromZ);
       audio.play('plowHit', { volume: Math.min(1, (blocked > 0 ? 0.35 : 0.55) + final * 0.02), pitch: THREE.MathUtils.clamp(1.15 - final * 0.01, 0.75, 1.15) });
-      _q.set(plow.position.x, base + 2.8, plow.position.z);
+      _q.set(plow.position.x, body + 2.8, plow.position.z);
       fx.floatText(_q, `-${Math.round(final)}`, '#ff5a4a', 0.8 + Math.min(0.6, final * 0.015));
     } else if (blocked > 0) {
       this.shake(0.12);
