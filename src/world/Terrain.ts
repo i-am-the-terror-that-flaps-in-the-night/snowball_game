@@ -272,18 +272,46 @@ export class Terrain {
   }
 
   /**
-   * Deck sides an entity at height `y` (feet) and `height` tall cannot pass at (x, z) with radius r: the deck's top is
-   * more than STEP_UP above its feet AND its underside is below its head. Returns the deck to push out of, or null.
+   * Deck sides an entity at height `y` (feet), `height` tall, radius r cannot pass at (x, z). A deck blocks when its
+   * underside is below the entity's head AND its top is more than STEP_UP above the surface the entity would be on at
+   * the point where it touches the deck (so a ramp running up to a deck's lip flows onto it, while a pillar beside a
+   * deck, or a deck edge beside the ground, is a wall). Returns the deck to push out of, or null.
    */
   wallAt(x: number, z: number, y: number, height: number, r: number): Deck | null {
     for (let i = 0; i < this.decks.length; i++) {
       const d = this.decks[i];
       if (!this.inDeck(d, x, z, r)) continue;
-      const top = this.deckTop(d, x, z);
+      // Contact point: the closest point of the footprint to the entity's centre.
+      const c = Math.cos(d.rot);
+      const s = Math.sin(d.rot);
+      const dx = x - d.x;
+      const dz = z - d.z;
+      const lx = Math.max(-d.hw, Math.min(d.hw, dx * c - dz * s));
+      const lz = Math.max(-d.hd, Math.min(d.hd, dx * s + dz * c));
+      const cx = d.x + lx * c + lz * s;
+      const cz = d.z - lx * s + lz * c;
+      const top = this.deckTop(d, cx, cz);
       const under = top - d.thickness;
-      if (top > y + STEP_UP && under < y + height) return d;
+      if (under >= y + height) continue; // passes underneath
+      if (top <= y + STEP_UP) continue; // simple step up
+      // Would the entity be standing on something at the contact point that reaches this deck's top?
+      const support = this.supportExcluding(cx, cz, y, d);
+      if (top > support + STEP_UP) return d;
     }
     return null;
+  }
+
+  /** Highest surface at (x, z) reachable from feet height y (within STEP_UP), ignoring deck `skip`. */
+  private supportExcluding(x: number, z: number, y: number, skip: Deck): number {
+    let best = this.ground(x, z);
+    for (let i = 0; i < this.decks.length; i++) {
+      const d = this.decks[i];
+      if (d === skip || !this.inDeck(d, x, z)) continue;
+      const top = this.deckTop(d, x, z);
+      // Allow surfaces that rise ahead of the entity along a ramp: anything up to its own top reachable by stepping.
+      if (top > best && top <= Math.max(y, best) + STEP_UP + 2 * Math.abs(d.rise ?? 0) / (2 * d.hd)) best = top;
+    }
+    return best;
   }
 
   /** Push (x, z) radius r out of a deck's footprint along the shortest axis. Writes into `out`. */
