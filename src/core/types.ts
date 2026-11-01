@@ -552,6 +552,8 @@ export type SoundName =
   | 'streak' | 'shutdown' | 'respawn' | 'heal' | 'dashStrike' | 'whirlTick'
   // VOLT-9
   | 'zap' | 'thunder'
+  // ARSENAL pulse laser
+  | 'pulse'
   // BRUTUS
   | 'thud'
   // Paint Shop horns (slam sound cosmetics)

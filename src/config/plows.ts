@@ -79,7 +79,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'ARSENAL',
     icon: '🎯',
     tagline: 'Not a plow at all: a hover-tracked weapons platform. No blade, no snowball, all firepower.',
-    traits: ['No snowball: SPACE = minigun (hold, auto-aims)', 'E = laser beam · F = homing missile salvo', '+10% speed, -10% HP', 'Damage builds MISSILE STORM: full = 21 heavy missiles, 75 m reach'],
+    traits: ['No snowball: SPACE = pulse laser cannon (hold, auto-aims)', 'E = laser beam · F = homing missile salvo', '+10% speed, -10% HP', 'Damage builds MISSILE STORM: full = 21 heavy missiles, 75 m reach'],
     hpMult: 0.9,
     speedMult: 1.1,
     accelMult: 1.1,

@@ -24,20 +24,19 @@ const ULT_BOOST = 0.55;
 const ULT_TURN = 2;
 /** Ult missiles are drawn a bit bigger than salvo missiles. */
 const ULT_SCALE = 1.25;
-/** ARSENAL: the minigun turret tracks all the way round (360°); it holds fire until the barrels are within this
- *  many radians of the target, so rounds never leave sideways from a turret still swinging round. Then the burst a
+/** ARSENAL: the pulse-laser turret tracks all the way round (360°); it holds fire until the cannon is within this
+ *  many radians of the target, so bolts never leave sideways from a turret still swinging round. Then the burst a
  *  single press fires when the input source can't report held keys. */
 const GUN_ON_TARGET = 0.35;
 const GUN_BURST = 0.5;
 const GUN_KNOCK = 1.5;
-const TRACERS = 16;
-/** Minigun rounds: tracer speed (m/s), streak length (m), random scatter at the target (m) so a burst isn't one line. */
-const ROUND_SPEED = 120;
-const TRACER_LEN = 3;
-const ROUND_SCATTER = 0.35;
-/** Muzzle flash: seconds on screen per shot. Muzzle smoke every Nth round (cheap wisps, not a puff per shot). */
-const FLASH_SECONDS = 0.04;
-const SMOKE_EVERY = 4;
+const TRACERS = 24;
+/** Pulse-laser bolts: speed (m/s), bolt length (m), random scatter at the target (m) so a burst isn't one line. */
+const ROUND_SPEED = 160;
+const TRACER_LEN = 1.6;
+const ROUND_SCATTER = 0.3;
+/** Muzzle flare: seconds on screen per bolt. */
+const FLASH_SECONDS = 0.05;
 /** Laser beam: seconds it burns, hit width (m), damage tick. */
 const LASER_SECONDS = 1.5;
 const LASER_WIDTH = 0.9;
@@ -191,43 +190,35 @@ export class ArsenalKit extends Kit implements UltScript {
   }
 
   private buildArsenalFx(scene: THREE.Scene): void {
-    // Tracer: a thin white-hot core inside a wider orange glow, both tapering to a point at the tail (unit length
-    // along +Z, head at z = 1), so a round reads as a hot streak, not a uniform beam.
-    const streak = (r: number) => {
-      const g = new THREE.ConeGeometry(r, 1, 6, 1, true);
-      g.rotateX(Math.PI / 2); // tip -> -Z (tail), base -> +Z (head)
+    // Laser bolt: a white-hot core inside a wider red glow, rounded at both ends (unit length along +Z, head at z = 1).
+    // Normal blending with solid colours: additive red on sunlit snow washes out to white and the bolts vanish. Short
+    // and fast: a burst is a dotted line of bolts, not one beam.
+    const bolt = (r: number) => {
+      const g = new THREE.CapsuleGeometry(r, 1, 3, 8);
+      g.rotateX(Math.PI / 2); // axis -> Z
+      g.scale(1, 1, 1 / (1 + 2 * r)); // fit the whole capsule into a unit length
       g.translate(0, 0, 0.5);
       return g;
     };
-    const coreGeo = streak(0.045);
-    const glowGeo = streak(0.1);
-    // Normal (not additive) blending: additive orange on sunlit snow washes out to white, which is what made the old
-    // tracers read as pale laser pulses. Solid fire colours stay visible on any background.
+    const coreGeo = bolt(0.05);
+    const glowGeo = bolt(0.13);
     const add = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false });
-    const coreMat = add(0xffe680, 1);
-    const glowMat = add(0xff6a00, 0.75);
+    const coreMat = add(0xffe4ea, 1);
+    const glowMat = add(0xff1a36, 0.7);
     for (let i = 0; i < TRACERS; i++) {
       const mesh = new THREE.Group();
       mesh.add(new THREE.Mesh(glowGeo, glowMat), new THREE.Mesh(coreGeo, coreMat));
       mesh.visible = false;
+      mesh.renderOrder = 3;
       scene.add(mesh);
       this.tracers.push({ mesh, t: 0, from: new THREE.Vector3(), dir: new THREE.Vector3(), dist: 0 });
     }
-    // Muzzle flash: a ragged forward flame cone plus a hot core, flickered per shot (scale / roll / length).
-    const flameGeo = new THREE.ConeGeometry(0.22, 0.75, 7, 1, true);
-    flameGeo.rotateX(-Math.PI / 2); // tip -> +Z (out of the barrel)
-    flameGeo.translate(0, 0, 0.42);
-    const petalGeo = new THREE.PlaneGeometry(0.9, 0.22);
+    // Muzzle flare: a hot white core, a red halo and a thin ring at the emitter lens, flickered per bolt.
     this.flash = new THREE.Group();
-    this.flash.add(new THREE.Mesh(flameGeo, add(0xff7a10, 0.9)));
-    for (let i = 0; i < 2; i++) {
-      const petal = new THREE.Mesh(petalGeo, add(0xffb020, 0.85));
-      (petal.material as THREE.MeshBasicMaterial).side = THREE.DoubleSide;
-      petal.rotation.z = (i * Math.PI) / 2;
-      petal.position.z = 0.08;
-      this.flash.add(petal);
-    }
-    this.flash.add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), add(0xffe890, 1)));
+    this.flash.add(new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), add(0xffffff, 1)));
+    this.flash.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), add(0xff3048, 0.55)));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 6, 20), add(0xff6070, 0.9));
+    this.flash.add(ring);
     this.flash.visible = false;
     scene.add(this.flash);
     const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
@@ -294,7 +285,7 @@ export class ArsenalKit extends Kit implements UltScript {
     return dealt;
   }
 
-  /** Minigun (SPACE, held): an auto-aiming turret that tracks bots all the way round (360°), alternating muzzles. A duel puppet fires when the host's snapshot says so. */
+  /** Pulse laser (SPACE, held): an auto-aiming laser cannon that tracks bots all the way round (360°), 12+ bolts a second. A duel puppet fires when the host's snapshot says so. */
   updateGuns(dt: number): void {
     // Rounds in flight: the streak's head runs ahead at ROUND_SPEED, its tail TRACER_LEN behind, until the head lands.
     for (const tr of this.tracers) {
@@ -376,11 +367,11 @@ export class ArsenalKit extends Kit implements UltScript {
       ey = _p.y + Math.sin(this.gunPitch) * reach;
     }
     this.fireRound(_p, _q.set(ex, ey, ez), !!target);
-    this.b.audio.play('hit', { volume: 0.22, pitch: 1.7 + Math.random() * 0.2 });
-    if (this.b.local) this.ctx.fx.shake(0.04);
+    this.b.audio.play('pulse', { volume: 0.2, pitch: 0.95 + Math.random() * 0.15 });
+    if (this.b.local) this.ctx.fx.shake(0.02);
   }
 
-  /** One minigun round's visuals: muzzle flash, a travelling tracer, an ejected casing, the impact. */
+  /** One pulse-laser bolt's visuals: muzzle flare, a travelling bolt, the impact. */
   private fireRound(from: THREE.Vector3, to: THREE.Vector3, hit: boolean): void {
     const fx = this.ctx.fx;
     const tr = this.tracers.find((t) => t.t <= 0) ?? this.tracers.reduce((a, b) => (a.t > b.t ? a : b));
@@ -394,22 +385,19 @@ export class ArsenalKit extends Kit implements UltScript {
     tr.mesh.position.copy(from);
     tr.mesh.lookAt(_tip.copy(from).add(tr.dir));
     tr.mesh.scale.z = 0.05;
-    // Muzzle flash, flickered so consecutive shots never look identical.
+    // Muzzle flare, flickered so consecutive bolts never look identical.
     const f = this.flash;
     f.visible = true;
     this.flashT = FLASH_SECONDS;
     f.position.copy(from);
     f.lookAt(_tip);
-    f.rotateZ(Math.random() * Math.PI);
-    const k = 0.75 + Math.random() * 0.55;
-    f.scale.set(k, k, k * (0.8 + Math.random() * 0.7));
-    // Brass casing kicked out of the side, and a thin smoke wisp every few rounds.
-    fx.burst(from, { color: 0xd8a63a, count: 1, speed: 4, size: 0.07, gravity: 22, life: 0.45 });
-    if (++this.rounds % SMOKE_EVERY === 0) fx.smoke(from, { count: 1, color: 0x9aa0a8, size: 0.18, grow: 3, life: 0.5, speed: 0.4, up: 0.8, rise: 0.6, drag: 2, opacity: 0.3 });
-    // Impact: sparks kicked back toward the gun on a hit, a snow / dust puff where a miss lands.
+    const k = 0.7 + Math.random() * 0.5;
+    f.scale.setScalar(k);
+    this.rounds++;
+    // Impact: red-hot sparks kicked back toward the gun on a hit, a small scorch flash where a miss lands.
     _fwd.copy(tr.dir).negate();
-    if (hit) fx.sparks(to, _fwd, { count: 5, color: 0xffa030, speed: 9, spread: 0.6, size: 0.05, life: 0.18, gravity: 12 });
-    else fx.smoke(to, { count: 1, color: 0xe6edf5, size: 0.25, grow: 2.5, life: 0.4, speed: 0.6, up: 0.6, drag: 3, opacity: 0.5 });
+    if (hit) fx.sparks(to, _fwd, { count: 5, color: 0xff4a5a, speed: 9, spread: 0.7, size: 0.05, life: 0.16, gravity: 6 });
+    else fx.burst(to, { color: 0xff6a70, count: 3, speed: 2.5, size: 0.12, gravity: 2, life: 0.18 });
   }
 
   /**

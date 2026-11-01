@@ -2556,8 +2556,8 @@ export class Plow implements PlowAPI {
       d = Math.atan2(Math.sin(d), Math.cos(d));
       this.turretYaw += d * Math.min(1, dt * 12);
       this.turret.rotation.y = this.turretYaw;
-      // Minigun: spins up fast while firing, winds down slowly after.
-      const want = this.gunFiring ? 42 : 0;
+      // Pulse laser: the coils and fins spin up while firing, wind down slowly after.
+      const want = this.gunFiring ? 16 : 0;
       this.minigunSpin += (want - this.minigunSpin) * Math.min(1, dt * (this.gunFiring ? 8 : 1.6));
       this.minigun.rotation.z += this.minigunSpin * dt;
       // Barrels tilt to the aim (eased: the kit already slews it; this smooths snapshot steps in a duel).

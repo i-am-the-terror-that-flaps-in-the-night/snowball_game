@@ -50,12 +50,12 @@ and a giant fallout pool.
 
 Not a plow at all: a weapons platform with no blade and no snowball (+10% speed, -10% HP).
 
-- **Space (hold): minigun.** A six-barrel rotary gun that auto-aims at the best target all the way round you (360°), preferring bots near the nose.
+- **Space (hold): pulse laser.** A laser cannon firing 12+ red laser bolts a second (half the old minigun's damage per bolt at twice the rate, so the same damage per second) that auto-aims at the best target all the way round you (360°) and tilts from -35° to +45°, preferring bots near the nose.
 - **E: laser beam.** A 1.5 s beam that burns through everything in a line and tracks its target a little.
 - **F: swarm missiles.** A salvo of homing missiles that each hunt a different bot, ranking targets by their HP and
   the damage they've dealt you.
 
-Line: Minigun, Laser Lance, Swarm Missiles, Energy Barrier (a recharging shield, since there's no ball to hide
+Line: Pulse Laser, Laser Lance, Swarm Missiles, Energy Barrier (a recharging shield, since there's no ball to hide
 behind).
 
 **Ultimate: MISSILE STORM.** Any damage fills the meter. Every pod empties: 21 heavy missiles ripple out over about a

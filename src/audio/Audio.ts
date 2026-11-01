@@ -909,6 +909,12 @@ export class AudioSystem implements AudioAPI {
         this.tone('square', 2200 * p, 900 * p, t + 0.02, 0.06, 0.07, o, 0.001);
         this.noise(t, 0.12, 0.3, o, 'highpass', 3500 * p, 6000, 0.8, 0.001, 1.6);
         return 0.13;
+      case 'pulse':
+        // pulse-laser bolt: a quick bright 'pew' (falling square + sine) with a whisper of fizz
+        this.tone('square', 1900 * p, 520 * p, t, 0.07, 0.09, o, 0.001);
+        this.tone('sine', 2600 * p, 900 * p, t, 0.06, 0.1, o, 0.001);
+        this.noise(t, 0.04, 0.08, o, 'highpass', 4000 * p, 7000, 0.8, 0.001);
+        return 0.08;
       case 'thunder':
         // sharp crack, then a rolling low boom
         this.noise(t, 0.12, 0.9, o, 'highpass', 2000 * p, 5000, 0.7, 0.001, 1.4);

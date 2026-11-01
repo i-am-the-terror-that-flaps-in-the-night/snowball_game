@@ -370,9 +370,9 @@ export interface ArsenalParts {
   group: THREE.Group;
   /** Turret (yaw only; the owner swings it toward the gun target). */
   turret: THREE.Group;
-  /** Minigun elevation pivot (motor block, shroud, rotor, muzzle): rotation.x = -pitch. */
+  /** Pulse-laser elevation pivot (motor block, shroud, rotor, muzzle): rotation.x = -pitch. */
   gun: THREE.Group;
-  /** Minigun barrel cluster (spins about its local z while firing). */
+  /** Pulse-laser cannon (its coils and fins spin about its local z while firing). */
   rotor: THREE.Group;
   /** Muzzle markers on the turret (left, right), the laser lens and the missile pod tubes (model-local). */
   muzzles: THREE.Object3D[];
@@ -430,7 +430,7 @@ export function buildArsenalParts(m: IsotopePartsMats): ArsenalParts {
   // Sensor mast at the back.
   add(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), m.chrome, -0.6, 1.8, -1.55, ap);
   add(new THREE.BoxGeometry(0.4, 0.12, 0.12), m.dark, -0.6, 2.28, -1.55, ap);
-  // Turret: a ring, an armored housing with a red sensor visor and a six-barrel MINIGUN on the front (motor block,
+  // Turret: a ring, an armored housing with a red sensor visor and a PULSE-LASER cannon on the front (motor block,
   // shroud, spinning barrel cluster, ammo box + belt feed). Kept separate so it can yaw; the rotor spins.
   const turret = new THREE.Group();
   turret.position.set(0, 1.38, -0.2);
@@ -464,25 +464,29 @@ export function buildArsenalParts(m: IsotopePartsMats): ArsenalParts {
     const seg = add(new THREE.BoxGeometry(0.1, 0.07, 0.14), m.chrome, 0.65 - t * 0.38, 0.42 - Math.sin(t * Math.PI) * 0.12, 0.62 + t * 0.2, turret, false);
     seg.rotation.y = -0.6 + t * 0.4;
   }
-  // The rotor: six barrels around the axis, two clamp rings and a muzzle ring; spins about z.
+  // The rotor: a PULSE-LASER cannon along the axis: a heavy emitter barrel, three glowing focusing coils, four
+  // cooling fins and a glowing lens at the tip. The fins and coils spin about z while it fires (the barrel is round).
   const rotor = new THREE.Group();
   rotor.position.set(0, 0, 1.5 - GZ);
   gun.add(rotor);
-  const BL = 1.9;
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    const br = add(new THREE.CylinderGeometry(0.055, 0.062, BL, 8), m.chrome, Math.cos(a) * 0.17, Math.sin(a) * 0.17, BL / 2, rotor);
-    br.rotation.x = Math.PI / 2;
-    // Dark bore at the tip.
-    const bore = add(new THREE.CylinderGeometry(0.034, 0.034, 0.02, 6), m.dark, Math.cos(a) * 0.17, Math.sin(a) * 0.17, BL + 0.005, rotor, false);
-    bore.rotation.x = Math.PI / 2;
+  const BL = 1.7;
+  const barrel = add(new THREE.CylinderGeometry(0.12, 0.15, BL, 14), m.dark, 0, 0, BL / 2, rotor);
+  barrel.rotation.x = Math.PI / 2;
+  const sleeve = add(new THREE.CylinderGeometry(0.2, 0.2, 0.5, 14), m.chrome, 0, 0, 0.3, rotor);
+  sleeve.rotation.x = Math.PI / 2;
+  for (const z of [0.75, 1.05, 1.35]) {
+    const coil = add(new THREE.TorusGeometry(0.19, 0.045, 8, 18), glowMat, 0, 0, z, rotor, false);
+    coil.rotation.z = z; // irregular start angles so the spin reads
   }
-  for (const z of [0.12, 1.0, BL - 0.08]) {
-    const ring = add(new THREE.CylinderGeometry(z > 1 ? 0.28 : 0.26, z > 1 ? 0.28 : 0.26, z > 1 ? 0.14 : 0.08, 12), m.dark, 0, 0, z, rotor);
-    ring.rotation.x = Math.PI / 2;
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const fin = add(new THREE.BoxGeometry(0.04, 0.16, 0.7), m.chrome, Math.cos(a) * 0.26, Math.sin(a) * 0.26, 0.45, rotor);
+    fin.rotation.z = a;
   }
-  const hub = add(new THREE.CylinderGeometry(0.08, 0.08, BL, 8), m.dark, 0, 0, BL / 2, rotor);
-  hub.rotation.x = Math.PI / 2;
+  const lensRing = add(new THREE.CylinderGeometry(0.2, 0.17, 0.12, 14), m.chrome, 0, 0, BL - 0.02, rotor);
+  lensRing.rotation.x = Math.PI / 2;
+  const lensGlow = add(new THREE.CylinderGeometry(0.11, 0.11, 0.03, 14), glowMat, 0, 0, BL + 0.04, rotor, false);
+  lensGlow.rotation.x = Math.PI / 2;
   const mz = new THREE.Object3D();
   mz.position.set(0, 0, 1.5 - GZ + BL + 0.1);
   gun.add(mz);

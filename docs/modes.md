@@ -71,7 +71,7 @@ when it's selected the Tutorial trains you on the Classic Plow.
 
 Campaign and Survival arenas have 14 wooden crates and ice blocks (the Brawl Snowdome has 26) that block movement
 until they break. Ram one at speed or dash through it; slams, whirlwinds, every F ability and ultimate, missiles,
-the laser and stray minigun rounds smash them too. Bots break them as well: a bot you knock flying into one, a heavy
+the laser and stray pulse-laser bolts smash them too. Bots break them as well: a bot you knock flying into one, a heavy
 or boss mid-charge, or a Brawl rival dashing or driving fast. Broken props drop a couple of coins outside Brawl when
 you caused the break, either directly or by knocking a bot into it. A bot breaking one under its own power drops
 nothing. Everything stands back up each round. Props have only two states (standing / broken): one InstancedMesh

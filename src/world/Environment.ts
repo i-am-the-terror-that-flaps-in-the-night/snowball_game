@@ -96,10 +96,10 @@ const STYLES: Record<Theme | BiomeKey, Style> = {
     block: 0xd2ebfa, blockAlt: 0xb0d8f2, trim: 0x34506c, accents: [0x5ff0ff, 0x9a7bff, 0x3df5b0, 0xffffff], gate: 0x5fe8ff,
     stand: 0x5a6e82, standAlt: 0x46596c, tire: 0x1f2328, lamp: 0xe0f4ff, spot: 900, glow: 0.55, rock: 0x6f8aa3, mountain: 0x9ab8d6,
   },
-  // Inferno Quarry — warm brown basalt, ember orange
+  // Inferno Quarry — red-orange volcanic rock, ember orange
   quarry: {
-    block: 0x7a655a, blockAlt: 0x5e4d44, trim: 0x3a2e28, accents: [0xff6a1a, 0xffb02a, 0xff3a1a], gate: 0xff5a14,
-    stand: 0x6e584c, standAlt: 0x57453b, tire: 0x2a2421, lamp: 0xffb070, spot: 1400, glow: 0.7, rock: 0x5e4c44, mountain: 0x7a5040,
+    block: 0x9a4a30, blockAlt: 0x7a3824, trim: 0x3a1a10, accents: [0xff6a1a, 0xffb02a, 0xff3a1a], gate: 0xff5a14,
+    stand: 0x8a4430, standAlt: 0x6c3424, tire: 0x2a1812, lamp: 0xffa060, spot: 1400, glow: 0.7, rock: 0x7a3420, mountain: 0x8a3a24,
   },
   // Rust Basin — red dust, sandstone, mission white / blue
   mars: {
@@ -133,7 +133,7 @@ const ICE_SKIN: BrawlSkin = { pillar: 0xa8e4ff, rough: 0.15, glow: 0x15405a, cry
 const BRAWL_SKIN: Partial<Record<BiomeKey, BrawlSkin>> = {
   snowdome: ICE_SKIN,
   glacier: ICE_SKIN,
-  quarry: { pillar: 0x5e4e47, rough: 0.8, glow: 0x3a0c02, crystal: 0xff6a1a, stone: 0x6a5850, water: 0xff7a2a, statue: 0x9a908a },
+  quarry: { pillar: 0x7a3826, rough: 0.8, glow: 0x3a0c02, crystal: 0xff6a1a, stone: 0x8a4430, water: 0xff7a2a, statue: 0xb08070 },
   mars: { pillar: 0xb8683e, rough: 0.9, glow: 0x000000, crystal: 0x7fd8ff, stone: 0xa86a4a, water: 0xd8b090, statue: 0xe0a07c },
   divide: { pillar: 0xffffff, rough: 0.3, glow: 0x101830, crystal: 0xd070ff, stone: 0x6a5a68, water: 0xbfeaff, statue: 0xffffff },
   plaza: { pillar: 0xe8b423, rough: 0.35, glow: 0x4a3000, crystal: 0xfff0b0, stone: 0xf3efe6, water: 0x8fd0ff, statue: 0xf2c94a },
@@ -160,7 +160,7 @@ interface BiomeSky {
 }
 const BIOME_SKY: Partial<Record<BiomeKey, BiomeSky>> = {
   glacier: { bounce: 0x9fd0ff, aurora: 1, stars: 0.8, spots: [0xbfe8ff, 0xbfe8ff] },
-  quarry: { bounce: 0xff8a50, smoke: 0.45, spots: [0xff9a50, 0xffb870] },
+  quarry: { bounce: 0xff6a30, smoke: 0.45, spots: [0xff8a40, 0xffa860] },
   mars: { bounce: 0xd07850, sun: { dir: [-0.35, 0.3, -1], size: 0.024, color: 0xfff6ea } },
   divide: {
     bounce: 0xc8a0c0,
