@@ -94,10 +94,15 @@ fewer bots remain, and the last 2 bots route straight to you.
 
 ### ARSENAL in 3D
 
-- Minigun: pitch -10° to +30° on top of the 360° turn; holds fire outside that range.
+- Minigun: pitch -35° to +45° on top of the 360° turn; holds fire outside that range (lets you shoot down from
+  the Assembly Floor at bots about 11 m away and up at it from about 6 m).
 - Laser: aims anywhere within 80° of straight ahead (down limited to about -15°); stops at the first deck / ground hit.
 - Missiles: full 3D homing on any target on any level; if a deck is in the way they swing around its edge and dive.
 - Pitch / aim synced in Duel.
+- **Arena 6 balance check (after it is playable):** extend the autopilot balance script (`scripts/legend-probe.mjs`)
+  with a full Omega Works clear per plow at equal upgrade levels; compare clear time and damage taken. If ARSENAL
+  trails: more HP in arena 6 only (zone multipliers) or widen the minigun to -45° / +60°. If it leads clearly: trim
+  missile damage / lengthen the reload only where decks exist.
 
 ### Challenges and trophies
 

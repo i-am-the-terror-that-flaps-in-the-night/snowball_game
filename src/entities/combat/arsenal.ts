@@ -33,8 +33,8 @@ const LASER_SLEW = 1.6;
 /** Missiles: flight speed (m/s), turn rate (1/s), blast radius (m), splash share, fuse (s). */
 /** Minigun elevation limits (rad) and how fast the barrels tilt. Targets outside the band are skipped (the gun can't
  *  reach a bot straight above it on a deck). Line of sight through terrain / decks is required when terrain exists. */
-const GUN_PITCH_MIN = -10 * (Math.PI / 180);
-const GUN_PITCH_MAX = 30 * (Math.PI / 180);
+const GUN_PITCH_MIN = -35 * (Math.PI / 180);
+const GUN_PITCH_MAX = 45 * (Math.PI / 180);
 const GUN_PITCH_SLEW = 2.5;
 /** Muzzle height above the plow's feet used for aim maths. */
 const GUN_HEIGHT = 1.4;
