@@ -99,8 +99,8 @@ describe('FX curves', () => {
   });
 
   it('Thunderclap values', () => {
-    expect(FX.clapDamage(0)).toBe(70);
-    expect(FX.clapDamage(5)).toBe(200);
+    expect(FX.clapDamage(0)).toBe(36);
+    expect(FX.clapDamage(5)).toBeCloseTo(86);
     expect(FX.clapRadius(0)).toBe(10);
     expect(FX.clapRadius(5)).toBeCloseTo(14);
     expect(FX.clapStun(0)).toBeCloseTo(1.8);
@@ -110,7 +110,7 @@ describe('FX curves', () => {
 
   it('Ground Pound values', () => {
     expect(FX.poundDamage(0)).toBe(185);
-    expect(FX.poundDamage(5)).toBe(435);
+    expect(FX.poundDamage(5)).toBe(415);
     expect(FX.poundRadius(0)).toBe(9.5);
     expect(FX.poundStun(0)).toBeCloseTo(1.2);
     expect(FX.poundKnock(0)).toBe(12);

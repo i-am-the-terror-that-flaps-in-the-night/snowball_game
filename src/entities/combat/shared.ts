@@ -130,6 +130,8 @@ export interface CombatHost {
   readonly threat: Threat;
   /** The shared ultimate meter 0..1 (Critical Mass / FIRESTORM / ultimates; one net field). */
   crit: number;
+  /** Duel guest, this Combat drives the opponent's puppet (visual replay: hits nothing, inputs from snapshots). */
+  readonly puppet: boolean;
   /** No VOLT-9 / BRUTUS / ARSENAL ultimate is playing out. */
   readonly ultIdle: boolean;
   startUlt(kind: UltKind, plow: PlowAPI): void;
@@ -148,6 +150,51 @@ export interface CombatHost {
   onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain?: boolean, heal?: boolean): void;
 }
 
+/* ------------------------------------------------------------------ vehicle abilities (SPACE / E)
+ * Only the Classic is a snowplow (Plow handles its slam / whirl). Every other vehicle's SPACE and E are its kit's
+ * own: Combat.updateVehicle calls primary() and secondary() on the bound pilot's kit EVERY frame (dead or alive, so a
+ * kit can tick its own effects there too), with the key state already resolved for the input source:
+ *   - local / scripted pilot and the duel host's view of the guest: held = isDown(key) (false when the source cannot
+ *     report held keys), pressed = wasPressed(key);
+ *   - duel guest's puppet of the opponent: held / pressed come from the host's snapshot bits (VehicleKit.netBits,
+ *     NP.fire): held = bit set, pressed = the bit's rising edge (kits can tell with `puppet`).
+ *   - plow dead: held = pressed = false.
+ * E has a shared charge (Plow.eCharge, net-synced, refilled by Adrenaline): secondary() gets pressed = true only on
+ * a press while the charge is full (puppets: the rising edge, charge ignored); return true when the ability went off
+ * and Combat spends the charge (Plow.spendE). A press on an empty charge plays the 'error' buzz. SPACE has no shared
+ * charge: kits keep their own timers. F and the ultimate route as before (not through this interface). */
+
+/** One HUD ability slot (SPACE or E). */
+export interface AbilityDesc {
+  /** Emoji icon and short caps name, e.g. '⚡' / 'ARC'. */
+  icon: string;
+  label: string;
+  /** Controls-hint wording, e.g. 'hold for ARC LANCE' (default: the label). */
+  hint?: string;
+  /** SPACE only: recharge 0..1 for the slot's ring (1 = ready). Omit for a hold-to-fire weapon (always ready). E's
+   *  ring always shows Plow.eCharge. */
+  ready?(): number;
+  /** E only: seconds for the E charge to refill (Plow recharges at 1 / cooldown). Default stats.whirlCooldown. */
+  cooldown?(): number;
+}
+
+/** What a non-Classic kit plugs into Combat for SPACE / E (see the block above). */
+export interface VehicleKit {
+  /** HUD slots: SPACE and E. */
+  readonly primaryDesc: AbilityDesc;
+  readonly secondaryDesc: AbilityDesc;
+  /** SPACE, every frame. */
+  primary(dt: number, held: boolean, pressed: boolean): void;
+  /** E, every frame. `pressed` only when the E charge is full; return true to spend it. */
+  secondary(dt: number, held: boolean, pressed: boolean): boolean;
+  /** Snapshot bits for the duel guest's puppet (bit 0 = SPACE ability active, bit 1 = E ability active). Default:
+   *  bit 0 while SPACE is held (or for NET_LATCH s after a press), bit 1 for NET_LATCH s after secondary() fired. */
+  netBits?(): number;
+}
+
+/** Default puppet bits stay up this long after a press (snapshots are slower than frames: a 1-frame edge is lost). */
+export const NET_LATCH = 0.2;
+
 /** Base for the per-plow kits: short-hands onto the host so ability code reads like it did inside Combat. */
 export abstract class Kit {
   constructor(protected readonly h: CombatHost) {}
@@ -159,6 +206,10 @@ export abstract class Kit {
   }
   protected get lightning(): Lightning {
     return this.h.lightning;
+  }
+  /** Duel guest's puppet of the opponent (see VehicleKit). */
+  protected get puppet(): boolean {
+    return this.h.puppet;
   }
   protected shake(intensity: number): void {
     this.h.shake(intensity);

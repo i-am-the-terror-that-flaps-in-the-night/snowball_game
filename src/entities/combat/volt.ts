@@ -1,14 +1,47 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
+import { Kit, type AbilityDesc, type VehicleKit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
+
+/** TESLA ROVER: height of the coil tower's top orb above the plow's floor (arc origin; vehicles/volt.ts). */
+const TOWER_Y = 3.15;
+/** ARC LANCE (SPACE, hold): tick, damage per tick (x damage mult) on the locked bot, chain hops / share / reach,
+ *  aim cone (cos of the half angle off the nose) and reach (+ Mega Hopper: ball radius above the 1.2 m base). */
+const ARC_TICK = 0.15;
+export const ARC_DAMAGE = 2.1;
+const ARC_HOPS = 2;
+const ARC_CHAIN_FRAC = 0.35;
+const ARC_CHAIN_R = 6;
+const ARC_CONE = 0.5;
+export const arcRange = (ballR: number) => 9 + 2.5 * Math.max(0, ballR - 1.2);
+/** STATIC FIELD (E): a lingering electrified field that rides with the rover for STATIC_SECONDS, pulsing every
+ *  STATIC_PULSE s: each pulse deals STATIC_DAMAGE (x damage mult) and stuns for STATIC_STUN to everything inside the
+ *  radius (+ Tesla Field reach above its 4.5 m base). The first pulse is a bigger burst (STATIC_FIRST x). */
+// Design from the user: Static Field stays a lingering, pulsing stun field; balance it through STATIC_DAMAGE / stun
+// numbers, not by turning it back into a single ring.
+export const STATIC_DAMAGE = 14;
+/** STATIC FIELD leans only lightly on the coil (coilBoost to this power): an area stun, kept flat late. */
+const STATIC_COIL_EXP = 0.2;
+const STATIC_STUN = 0.7;
+const STATIC_SECONDS = 2.5;
+const STATIC_PULSE = 0.5;
+const STATIC_FIRST = 1.6;
+export const staticRadius = (fieldR: number) => 6.5 + Math.max(0, fieldR - 4.5);
+/** Thunderclap upgrades overcharge the whole coil: ARC LANCE and STATIC FIELD grow with the clap's base damage. */
+const coilBoost = (clapDamage: number) => Math.max(1, clapDamage / 36);
+/** ARC LANCE leans harder on the coil than the field does: coilBoost to this power (balance: single-target DPS late). */
+const ARC_COIL_EXP = 1.8;
+const _f = new THREE.Vector3();
+const _r = new THREE.Vector3();
 
 /** SUPERCELL (VOLT-9): SUPERCELL_WAVES waves of sky strikes on every bot within SUPERCELL_RADIUS, SUPERCELL_GAP s
  *  apart, each SUPERCELL_MULT x clap damage + a long shock. No Overload backlash. */
 const SUPERCELL_RADIUS = 18;
 const SUPERCELL_WAVES = 3;
 const SUPERCELL_GAP = 0.5;
-const SUPERCELL_MULT = 1.2;
+const SUPERCELL_MULT = 2.85;
+/** SUPERCELL also leans a little on the coil (coilBoost to this power) so late ults keep pace with the others. */
+const SUPERCELL_COIL_EXP = 0.12;
 /** Thunderclap storm: duration, extra sky strikes (each = share of clap damage), field dps share. */
 const STORM_SECONDS = 2.5;
 const STORM_STRIKES = 6;
@@ -21,7 +54,199 @@ const CLAP_BACKLASH = 6;
 const CLAP_HEAT_DECAY = 2.5;
 
 /** VOLT-9: Thunderclap + storm + Overload, Tesla Field, Chain Lightning, Battery Shield and the SUPERCELL. */
-export class VoltKit extends Kit implements UltScript {
+export class VoltKit extends Kit implements UltScript, VehicleKit {
+
+  /* ---- TESLA ROVER: SPACE ARC LANCE (hold) and E STATIC FIELD (VehicleKit, see ./shared.ts) ---- */
+  readonly primaryDesc: AbilityDesc = { icon: '⚡', label: 'ARC', hint: 'hold for ARC LANCE' };
+  readonly secondaryDesc: AbilityDesc = { icon: '💫', label: 'FIELD', hint: 'STATIC FIELD' };
+  /** ARC LANCE: tick timer, the locked bot (kept while it stays in reach), and scratch for the chain hops. */
+  private arcT = 0;
+  private arcN = 0;
+  private arcLock: EnemyHandle | null = null;
+  private arcBuf: EnemyHandle[] = [];
+  private arcHit = new Set<number>();
+  /** Is the lance firing this frame (HUD / tests). */
+  arcOn = false;
+
+  /** SPACE (hold): every ARC_TICK s an arc from the coil tower locks onto the nearest bot ahead (within ARC_CONE of
+   *  the nose, ARC_RANGE + Mega Hopper reach) and chains on to ARC_HOPS (+ Chain Lightning arcs) more nearby. */
+  primary(dt: number, held: boolean, _pressed: boolean): void {
+    this.arcT -= dt;
+    this.arcOn = held;
+    if (!held) {
+      this.arcLock = null;
+      return;
+    }
+    if (this.arcT > 0) return;
+    // Overclock speeds the arc up like every other ability.
+    const tick = ARC_TICK * Math.max(0.4, this.b.stats.cooldownMult || 1);
+    this.arcT += tick;
+    if (this.arcT < 0) this.arcT = 0;
+    const plow = this.b.plow;
+    if (!plow || plow.dead) return;
+    const ctx = this.ctx;
+    const st = this.b.stats;
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    plow.getForward(_f);
+    const range = arcRange(st.maxBallRadius);
+    const top = (plow.surfaceY || 0) + TOWER_Y;
+    _p.set(px - _f.x * 0.3, top, pz - _f.z * 0.3);
+    // Lock: keep the last bot while it stays alive, in reach and in a slightly wider cone; else the nearest ahead.
+    const near = this.collect(px, pz, range, Reach.Body);
+    let tgt: EnemyHandle | null = null;
+    let bd = Infinity;
+    for (let i = 0; i < near.length; i++) {
+      const e = near[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - px;
+      const dz = e.position.z - pz;
+      const d = Math.hypot(dx, dz) || 1e-3;
+      const cos = (dx * _f.x + dz * _f.z) / d;
+      if (e === this.arcLock && cos > ARC_CONE - 0.25) {
+        tgt = e;
+        break;
+      }
+      if (cos > ARC_CONE && d < bd) {
+        bd = d;
+        tgt = e;
+      }
+    }
+    this.clearTargets();
+    this.arcLock = tgt;
+    this.arcN++;
+    if (!tgt) {
+      // Nothing in reach: the arc fizzles into the snow ahead so the weapon still reads.
+      const a = (Math.random() - 0.5) * 0.8;
+      const r = range * (0.45 + Math.random() * 0.3);
+      const fx = Math.sin(a) * _f.z + Math.cos(a) * _f.x;
+      const fz = Math.cos(a) * _f.z - Math.sin(a) * _f.x;
+      _q.set(px + fx * r, (plow.surfaceY || 0) + 0.1, pz + fz * r);
+      this.lightning.bolt(_p, _q, { life: tick * 0.8, width: 0.16, jag: 0.9, color: 0x6fc8ff });
+      ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 4, speed: 5, size: 0.06, length: 0.04, gravity: 10, life: 0.25 });
+      if (this.arcN % 3 === 0) this.b.audio.play('zap', { volume: 0.18, pitch: 1.6 + Math.random() * 0.3 });
+      return;
+    }
+    const dmg = ARC_DAMAGE * st.damageMult * coilBoost(st.clapDamage) ** ARC_COIL_EXP;
+    this.arcHit.clear();
+    let src = tgt;
+    let hit: EnemyHandle | null = tgt;
+    const hops = ARC_HOPS + (st.chainCount >> 1);
+    const frac = ARC_CHAIN_FRAC + st.chainFrac * 0.5;
+    for (let hop = 0; hop <= hops && hit; hop++) {
+      this.arcHit.add(hit.id);
+      _q.set(hit.position.x, hit.position.y + hit.radius * 0.9, hit.position.z);
+      if (hop === 0) {
+        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: 0.42, jag: 1.0, color: 0xbff0ff });
+        this.lightning.bolt(_p, _q, { life: tick * 0.7, width: 0.18, jag: 1.6, color: 0x3fa8ff });
+      } else {
+        _r.set(src.position.x, src.position.y + src.radius * 0.9, src.position.z);
+        this.lightning.bolt(_r, _q, { life: tick * 1.1, width: 0.26, jag: 0.8, color: 0x9fe8ff });
+      }
+      ctx.fx.burst(_q, { color: 0x9fe8ff, count: 4, speed: 5, size: 0.08, gravity: 8, life: 0.25 });
+      const hp0 = hit.hp;
+      const killed = this.b.enemies.damage(hit, dmg * (hop === 0 ? 1 : frac) * this.hitMult(hit), { source: 'other', fromX: px, fromZ: pz });
+      const dealt = Math.max(0, hp0 - Math.max(0, hit.hp));
+      this.onPlayerHit(dealt, killed, hit, false, true);
+      if (dealt > 0 && hop === 0 && this.arcN % 4 === 0) ctx.fx.floatText(_q, `⚡${Math.round(dealt * 4)}`, '#9fe8ff', 0.75);
+      // Next hop: the nearest unhit bot within ARC_CHAIN_R of this one.
+      src = hit;
+      hit = null;
+      if (hop === hops) break;
+      const next = this.b.enemies.query(src.position.x, src.position.z, ARC_CHAIN_R, this.arcBuf);
+      let nd = Infinity;
+      for (let i = 0; i < next.length; i++) {
+        const e = next[i];
+        if (!e.alive || this.arcHit.has(e.id)) continue;
+        const d = Math.hypot(e.position.x - src.position.x, e.position.z - src.position.z);
+        if (d < nd) {
+          nd = d;
+          hit = e;
+        }
+      }
+    }
+    if (this.arcN % 2 === 0) this.b.audio.play('zap', { volume: 0.3, pitch: 1.25 + Math.random() * 0.25 });
+  }
+
+  /** E: STATIC FIELD — a shock ring bursts out of the coil tower: damage + a short stun on every bot within
+   *  STATIC_RADIUS (+ Tesla Field reach), lightning to each. A puppet replays the visuals. */
+  secondary(dt: number, _held: boolean, pressed: boolean): boolean {
+    const plow = this.b.plow;
+    let fired = false;
+    if (pressed && plow && !plow.dead) {
+      fired = true;
+      this.staticT = STATIC_SECONDS;
+      this.staticPulseT = 0;
+      this.staticFirst = true;
+      this.b.audio.play('zap', { pitch: 0.75 });
+      this.b.audio.play('zap', { pitch: 1.3, volume: 0.6 });
+      this.shake(0.3);
+    }
+    if (this.staticT > 0) {
+      this.staticT -= dt;
+      this.staticPulseT -= dt;
+      if (!plow || plow.dead) this.staticT = 0;
+      else if (this.staticPulseT <= 0) {
+        this.staticPulseT += STATIC_PULSE;
+        this.staticPulse(plow.position.x, plow.position.z, plow.surfaceY || 0, this.staticFirst);
+        this.staticFirst = false;
+      } else if (Math.random() < dt * 20) {
+        // Crackle along the field's edge between pulses.
+        const R = staticRadius(this.b.stats.fieldRadius);
+        const a = Math.random() * Math.PI * 2;
+        const floor = plow.surfaceY || 0;
+        _p.set(plow.position.x, floor + TOWER_Y, plow.position.z);
+        const bx = plow.position.x + Math.sin(a) * R;
+        const bz = plow.position.z + Math.cos(a) * R;
+        _q.set(bx, waveFloor(this.ctx.terrain, floor, bx, bz) + 0.15, bz);
+        this.lightning.bolt(_p, _q, { life: 0.12, width: 0.14, jag: 1.0, color: 0x6fc8ff });
+      }
+    }
+    return fired;
+  }
+
+  /** Static Field: seconds left, next pulse timer, is the next pulse the opening burst. */
+  staticT = 0;
+  private staticPulseT = 0;
+  private staticFirst = false;
+
+  /** One Static Field pulse round the rover: ring + bolts to the edge, damage and a stun to every bot inside. */
+  private staticPulse(px: number, pz: number, floor: number, first: boolean): void {
+    const ctx = this.ctx;
+    const st = this.b.stats;
+    const R = staticRadius(st.fieldRadius);
+    _q.set(px, floor + 0.12, pz);
+    ctx.fx.ring(_q, R, 0x7fdcff);
+    if (first) {
+      ctx.fx.ring(_q, R * 0.55, 0xffffff);
+      ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 26, speed: 13, size: 0.07, length: 0.05, gravity: 8, life: 0.4 });
+    }
+    _p.set(px, floor + TOWER_Y, pz);
+    for (let i = 0; i < (first ? 8 : 4); i++) {
+      const a = (i / (first ? 8 : 4)) * Math.PI * 2 + Math.random() * 0.8;
+      const bx = px + Math.sin(a) * R;
+      const bz = pz + Math.cos(a) * R;
+      _q.set(bx, waveFloor(ctx.terrain, floor, bx, bz) + 0.15, bz);
+      this.lightning.bolt(_p, _q, { life: 0.2, width: 0.2, jag: 1.0, color: 0x6fc8ff });
+    }
+    if (!first) this.b.audio.play('zap', { pitch: 1.1 + Math.random() * 0.2, volume: 0.4 });
+    const dmg = STATIC_DAMAGE * (first ? STATIC_FIRST : 1) * st.damageMult * coilBoost(st.clapDamage) ** STATIC_COIL_EXP;
+    const hits = this.collect(px, pz, R, Reach.Body);
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      _q.set(e.position.x, e.position.y + e.radius, e.position.z);
+      this.lightning.bolt(_p, _q, { life: 0.24, width: 0.28, jag: 1.2, color: 0xbff0ff });
+      ctx.fx.burst(_q, { color: 0xbff0ff, count: 6, speed: 6, size: 0.1, gravity: 8, life: 0.3 });
+      const hp0 = e.hp;
+      const killed = this.b.enemies.damage(e, dmg * this.hitMult(e), { source: 'other', freezeSeconds: STATIC_STUN, fromX: px, fromZ: pz });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e, true, true);
+      if (dealt > 0) ctx.fx.floatText(_q, `💫${Math.round(dealt)}`, '#bff0ff', 0.8);
+    }
+    this.clearTargets();
+  }
+
   /** Thunderclap recharge 0..1, stored Overload heat and when it was stored (heatNow bleeds it off since). */
   clapCharge = 1;
   clapHeat = 0;
@@ -335,7 +560,7 @@ export class VoltKit extends Kit implements UltScript {
     this.shake(0.7);
     this.impactHit('clap', _q.set(x, top + 1, z));
     this.b.audio.play('thunder', { pitch: 0.85 + 0.15 * i });
-    ultBlast(this.h, x, z, 0, SUPERCELL_RADIUS, st.clapDamage * SUPERCELL_MULT, { knock: 8, freeze: st.clapStun * 1.5, text: '⚡', color: '#bff0ff', bolt: true });
+    ultBlast(this.h, x, z, 0, SUPERCELL_RADIUS, st.clapDamage * SUPERCELL_MULT * coilBoost(st.clapDamage) ** SUPERCELL_COIL_EXP, { knock: 8, freeze: st.clapStun * 1.5, text: '⚡', color: '#bff0ff', bolt: true });
   }
 
   /** Battery Shield soaks damage before HP (hitPlow, after armour). Returns what gets through. */
@@ -370,6 +595,7 @@ export class VoltKit extends Kit implements UltScript {
   }
 
   clear(): void {
+    this.staticT = 0;
     this.clapCharge = 1;
     this.clapHeat = 0;
     this.lastClapAt = -999;
@@ -377,5 +603,8 @@ export class VoltKit extends Kit implements UltScript {
     this.stormStrikes = 0;
     this.shield = this.b.stats.shieldMax;
     this.shieldDelay = 0;
+    this.arcLock = null;
+    this.arcOn = false;
+    this.arcT = 0;
   }
 }

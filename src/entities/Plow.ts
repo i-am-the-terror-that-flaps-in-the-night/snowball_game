@@ -16,10 +16,10 @@ import { ctxPilot, type PilotBinding } from './pilot';
 import { NP } from '../net/protocol';
 import { getSnowballGeometry, getSnowballMaterial } from './snowballMesh';
 import { cooldown } from '../config/upgrades';
-import type { PlowKind } from '../config/plows';
+import { PLOWS, type PlowKind } from '../config/plows';
 import {
-  buildBruteParts, buildIsotopeParts, buildVoltParts, cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
-  FACTORY_PAINT, buildArsenalParts, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS, bladeTexture,
+  cleatZ, hazardTexture, type Cleat, buildBuzzsaw, type Buzzsaw, SAW_R,
+  FACTORY_PAINT, buildDecals, emitTrail, TRAIL_REAR, PLOW_WHEEL_POS, bladeTexture,
 } from './plowModels';
 import type { CosmeticSlot } from '../config/cosmetics';
 import { bakeGeometry, mergeBaked, mergeStatic } from '../render/mergeStatic';
@@ -29,6 +29,11 @@ import { cosmeticsState, resolveLook, type EquippedLook } from '../meta/cosmetic
 import { GearVisuals } from './gearVisuals';
 import { STEP_UP, makeSurface, type Deck } from '../world/Terrain';
 import { AIR_SLAM_MIN_HEIGHT } from './combat/air';
+import type { VehicleBuildIn } from './vehicles/types';
+import { buildVoltVehicle } from './vehicles/volt';
+import { buildBruteVehicle } from './vehicles/brute';
+import { buildIsotopeVehicle } from './vehicles/isotope';
+import { buildArsenalVehicle } from './vehicles/arsenal';
 import {
   AIR_STEER, ICE_ACCEL, ICE_BRAKE, ICE_DRAG, ICE_GRIP, LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, makeVert, slopeAccel, stepVertical,
 } from '../world/terrainMotion';
@@ -318,6 +323,8 @@ export class Plow implements PlowAPI {
   private cleats: Cleat[] = [];
   /** All BRUTUS track cleats as instances (matrices follow cleatZ). */
   private cleatMesh!: THREE.InstancedMesh;
+  /** BRUTUS WRECKING MECH pose (fists / saws), driven by its combat kit (combat/brute.ts). */
+  bruteRig: { pose(dt: number, punchL: number, punchR: number, saw: number, twist: number): void } | null = null;
   private cleatPhase = NaN;
   /** Buzzsaws upgrade (BRUTUS): one saw per blade end. */
   private saws: Buzzsaw[] = [];
@@ -492,75 +499,42 @@ export class Plow implements PlowAPI {
     this.flame = add(flameGeo, this.flameMat, -0.72, 2.55, 0.05, this.body, false);
     this.flame.visible = false;
 
-    /* ---- VOLT-9: a low, sleek electric wedge — bubble canopy, glowing light bars, rear wing, Tesla coils. ---- */
-    const volt = buildVoltParts({ paint: this.paintMat, coil: this.coilMat });
+    /* ---- Per-vehicle bodies (one builder per file under ./vehicles/): VOLT-9, BRUTUS, ISOTOPE, ARSENAL. ---- */
+    const vin: VehicleBuildIn = {
+      mats: { paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat, coil: this.coilMat, hub: this.hubMat, head: this.headMat },
+      chassis: chassisGeo,
+    };
+    const volt = buildVoltVehicle(vin);
     this.voltParts = volt.group;
-    // The coil top spheres merge with the rest of the coil material; empty markers keep the arc endpoints.
-    add(chassisGeo, darkMat, 0, 0.62, 0.05, this.voltParts);
-    this.coilTops = volt.coilTops.map((top) => {
-      const o = new THREE.Object3D();
-      o.position.copy(top.position);
-      top.parent!.add(o);
-      return o;
-    });
-    mergeStatic(this.voltParts);
-    this.voltParts.add(...makeShadowProxy(this.voltParts, this.voltParts));
-    this.underglowMat = volt.underglowMat;
-    this.voltParts.visible = false;
-    this.body.add(this.voltParts);
+    this.coilTops = volt.parts.coilTops;
+    this.underglowMat = volt.parts.underglowMat;
 
-    /* ---- BRUTUS: a tracked bulldozer — tank treads, armored engine block, caged cab, twin stacks, ripper. ---- */
-    const brute = buildBruteParts({ paint: this.paintMat, dark: darkMat, glass: glassMat, chrome: chromeMat, hub: this.hubMat, head: this.headMat });
+    const brute = buildBruteVehicle(vin);
     this.bruteParts = brute.group;
-    this.cleats = brute.cleats;
-    this.cleatSpan = brute.cleatSpan;
-    // Cleats -> one InstancedMesh (own copy of the iron material, so the merged iron parts never switch to the
-    // instanced program and back every frame). Stack caps move up to the group so the stacks merge too.
-    const bp = this.bruteParts;
-    add(chassisGeo, darkMat, 0, 0.62, 0.05, bp);
-    const c0 = this.cleats[0].mesh;
-    this.cleatMesh = new THREE.InstancedMesh(c0.geometry, (c0.material as THREE.Material).clone(), this.cleats.length);
-    this.cleatMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.cleatMesh.frustumCulled = false;
-    for (const c of this.cleats) c.mesh.removeFromParent();
-    for (const o of [...bp.children]) if ((o as THREE.Mesh).isMesh) for (const ch of [...o.children]) bp.attach(ch);
-    mergeStatic(bp);
-    bp.add(...makeShadowProxy(bp, bp));
-    bp.add(this.cleatMesh);
+    this.cleats = brute.parts.cleats;
+    this.cleatSpan = brute.parts.cleatSpan;
+    this.cleatMesh = brute.parts.cleatMesh;
+    this.bruteRig = brute.parts;
     this.setCleats(0);
-    this.bruteParts.visible = false;
-    this.body.add(this.bruteParts);
 
-    /* ---- ISOTOPE: lead-lined reactor hauler — hazmat hull, caged glowing core, coolant tanks, trefoils. ---- */
-    const iso = buildIsotopeParts({ paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat });
+    const iso = buildIsotopeVehicle(vin);
     this.isoParts = iso.group;
-    this.coreMat = iso.coreMat;
-    add(chassisGeo, darkMat, 0, 0.62, 0.05, this.isoParts);
-    mergeStatic(this.isoParts);
-    this.isoParts.add(...makeShadowProxy(this.isoParts, this.isoParts));
-    this.isoParts.visible = false;
-    this.body.add(this.isoParts);
+    this.coreMat = iso.parts.coreMat;
 
-    /* ---- ARSENAL: weapons platform — wedge hull, yawing twin-cannon turret, nose laser, missile pods. ---- */
-    const ars = buildArsenalParts({ paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat });
+    const ars = buildArsenalVehicle(vin);
     this.arsenalParts = ars.group;
-    this.turret = ars.turret;
-    this.minigun = ars.rotor;
-    this.gunMount = ars.gun;
-    this.muzzles = ars.muzzles;
-    this.laserMount = ars.laser;
-    this.pods = ars.pods;
-    this.armGlowMat = ars.glowMat;
-    add(chassisGeo, darkMat, 0, 0.62, 0.05, this.arsenalParts);
-    this.turret.removeFromParent();
-    mergeStatic(this.arsenalParts);
-    mergeStatic(this.turret, { keep: [this.gunMount] });
-    mergeStatic(this.gunMount, { keep: [this.minigun] });
-    mergeStatic(this.minigun);
-    this.arsenalParts.add(this.turret);
-    this.arsenalParts.add(...makeShadowProxy(this.arsenalParts, this.arsenalParts));
-    this.arsenalParts.visible = false;
-    this.body.add(this.arsenalParts);
+    this.turret = ars.parts.turret;
+    this.minigun = ars.parts.minigun;
+    this.gunMount = ars.parts.gunMount;
+    this.muzzles = ars.parts.muzzles;
+    this.laserMount = ars.parts.laser;
+    this.pods = ars.parts.pods;
+    this.armGlowMat = ars.parts.glowMat;
+
+    for (const g of [this.voltParts, this.bruteParts, this.isoParts, this.arsenalParts]) {
+      g.visible = false;
+      this.body.add(g);
+    }
 
     // Beacon light (colour/intensity per plow in update).
     this.beaconLight = new THREE.PointLight(0xffa020, 0, 7, 2);
@@ -1192,9 +1166,25 @@ export class Plow implements PlowAPI {
     this.updateStreaks(0);
   }
 
+  /** Not the Classic: no blade, never plows or holds a ball; SPACE / E are the kit's (PLOWS[kind].noBall). */
+  get vehicle(): boolean {
+    return !!PLOWS[this.kind]?.noBall;
+  }
+
+  /** E charge 0..1 (the whirl on the Classic, the kit's E ability on the other vehicles). */
+  get eCharge(): number {
+    return this.whirlCharge;
+  }
+
+  /** Combat spends the E charge when a vehicle kit's secondary ability goes off. */
+  spendE(): void {
+    this.whirlCharge = 0;
+  }
+
   /** Swap the paint job + parts for the selected starter plow. */
   private setKind(kind: PlowKind): void {
     this.kind = kind;
+    if (this.vehicle) this.heldVolume = 0;
     const volt = kind === 'volt';
     const brute = kind === 'brute';
     const iso = kind === 'isotope';
@@ -1209,13 +1199,14 @@ export class Plow implements PlowAPI {
     this.classicParts.visible = kind === 'classic';
     this.isoParts.visible = iso;
     this.arsenalParts.visible = ars;
-    // ARSENAL has no blade (and never holds a ball).
-    this.bladeGroup.visible = !ars;
+    // Only the Classic has a blade (BRUTUS's buzzsaws are on its own mech body).
+    this.bladeGroup.visible = kind === 'classic';
+    this.applyBladeVis();
     this.voltParts.visible = volt;
     this.bruteParts.visible = brute;
     this.bruteBlade.visible = brute;
-    for (const m of this.wheelMeshes) m.visible = !brute;
-    for (const w of this.wheelDebris) w.visible = this.wheelsOff && !brute;
+    for (const m of this.wheelMeshes) m.visible = !brute && !ars; // BRUTUS and the BATTLE TANK run on tracks
+    for (const w of this.wheelDebris) w.visible = this.wheelsOff && !brute && !ars;
     // Dash flame: out of the stack (Classic), a rear thruster (VOLT-9) or the right-hand twin stack (BRUTUS).
     if (volt) {
       this.exhaustTip.set(0, 1.05, -2.05);
@@ -1398,11 +1389,18 @@ export class Plow implements PlowAPI {
       }
       this.bladeProxy = makeShadowProxy([this.bladeCaps, this.bladeArms], this.bladeGroup)[0];
       this.bladeGroup.add(this.bladeProxy);
+      this.applyBladeVis();
     }
     // Mounted high (~1.3 m world) so the flat saws ride above the snow and the berms the blade pushes aside.
     this.saws[0].group.position.set(-w / 2 - 0.6, 1.0, 0.45);
     this.saws[1].group.position.set(w / 2 + 0.6, 1.0, 0.45);
     for (const g of this.ghosts) g.blade.scale.x = w;
+  }
+
+  /** Blade sheet / caps / arms + ram (+ their shadow proxy): Classic only. */
+  private applyBladeVis(): void {
+    const on = !this.vehicle;
+    for (const o of [this.bladeSheet, this.bladeCaps, this.bladeArms, this.bladeProxy]) if (o) o.visible = on;
   }
 
   /** Wheel instance matrices from spin / steer (the same Euler -> matrix path the wheel groups took). */
@@ -1480,16 +1478,21 @@ export class Plow implements PlowAPI {
       if (this.dashEase > 0) this.dashEase = Math.max(0, this.dashEase - dt);
       if (this.dashCharge < 1) this.dashCharge = Math.min(1, this.dashCharge + (stats.dashCooldown > 0 ? dt / stats.dashCooldown : 1));
     }
-    if (this.whirlT < 0 && this.whirlCharge < 1) this.whirlCharge = Math.min(1, this.whirlCharge + (stats.whirlCooldown > 0 ? dt / stats.whirlCooldown : 1));
+    // E charge: the whirl's on the Classic; on the other vehicles the kit's E ability (Combat spends it, the kit's
+    // ability descriptor sets the recharge).
+    const eCd = this.vehicle ? b.combat.secondaryCooldown : stats.whirlCooldown;
+    if (this.whirlT < 0 && this.whirlCharge < 1) this.whirlCharge = Math.min(1, this.whirlCharge + (eCd > 0 ? dt / eCd : 1));
 
     const throttle = input.throttle;
     const steer = input.steer;
 
     // ---- abilities
     if (input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
-    const armed = this.kind === 'arsenal';
+    // Only the Classic plows snow, holds a ball and slams / whirls: every other vehicle's SPACE / E belong to its
+    // combat kit (Combat.updateVehicle routes them to VehicleKit.primary / secondary).
+    const armed = this.vehicle;
     // Airborne and clear of the surface, SPACE is the air slam (Combat's AirKit dives, ball or not): no ground slam,
-    // and no 'error' buzz for a missing ball. ARSENAL's SPACE is its autocannon either way.
+    // and no 'error' buzz for a missing ball.
     if (armed || (this.vert.airborne && this.vert.y - this.vert.surfaceY >= AIR_SLAM_MIN_HEIGHT)) this.slamBuffer = 0;
     if (this.slamBuffer > 0 && this.slamPhase === 0 && this.slamCd <= 0 && this.whirlT < 0) {
       this.slamBuffer = 0;
@@ -1502,12 +1505,7 @@ export class Plow implements PlowAPI {
       }
     }
     if (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight')) this.tryDash();
-    if (input.wasPressed('KeyE')) {
-      // ARSENAL: E fires the laser; its recharge rides on the whirl charge (stats.whirlCooldown = laser recharge).
-      if (!armed) this.tryWhirl();
-      else if (this.whirlCharge >= 1 && !this.dead && b.combat.fireLaser()) this.whirlCharge = 0;
-      else b.audio.play('error', { volume: 0.4 });
-    }
+    if (!armed && input.wasPressed('KeyE')) this.tryWhirl();
 
     // ---- slam state machine
     this.lungeVel = 0;
@@ -2183,7 +2181,7 @@ export class Plow implements PlowAPI {
     this.wheelDebris.forEach((w, k) => {
       const i = k ? 3 : 0;
       w.rotation.set(this.wheelSpin[i], i < 2 ? this.wheelSteer[i] : 0, 0);
-      w.visible = this.kind !== 'brute';
+      w.visible = this.kind !== 'brute' && this.kind !== 'arsenal';
     });
     this.wheelsOff = true;
     this.writeWheels();
@@ -2419,6 +2417,7 @@ export class Plow implements PlowAPI {
     g.group.visible = true;
     g.group.position.copy(this.position);
     g.group.rotation.set(0, this.heading + this.spinAngle, 0);
+    g.blade.visible = !this.vehicle;
     if (this.kind === 'volt') g.mat.color.setHSL(0.54 + Math.random() * 0.03, 1, 0.6);
     else if (this.kind === 'brute') g.mat.color.setHSL(0.13 + Math.random() * 0.02, 1, 0.5);
     else if (this.kind === 'isotope') g.mat.color.setHSL(0.3 + Math.random() * 0.03, 1, 0.55);

@@ -4,7 +4,7 @@ import { ballVolume, type CombatAPI, type EnemyHandle, type GameContext, type Im
 import { LAST_STAND_HP } from '../config/upgrades';
 import { ctxPilot, type PilotBinding } from './pilot';
 import { NP } from '../net/protocol';
-import { Reach, Threat, _fwd, _p, _q, _tip, bodyBand, heightOk, waveHits, BLAST_BAND, type CastOrigin, type CombatHost } from './combat/shared';
+import { NET_LATCH, Reach, Threat, _fwd, _p, _q, _tip, bodyBand, heightOk, waveHits, BLAST_BAND, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './combat/shared';
 import { Ultimates } from './combat/ultimates';
 import { BURN_VULN, ClassicKit } from './combat/classic';
 import { VoltKit } from './combat/volt';
@@ -62,6 +62,14 @@ export class Combat implements CombatAPI {
   /** Stomps, the air slam and BRUTUS's air pound (landing attacks). */
   private readonly air: AirKit;
   private readonly ult: Ultimates;
+  /** Duel guest: this Combat drives the opponent's puppet (set by readPuppet, cleared by bind). */
+  private puppet = false;
+  /** Puppet: last snapshot vehicle bits (NP.fire) and the bits already acted on (edge detection). */
+  private netBits = 0;
+  private netSeen = 0;
+  /** Default VehicleKit.netBits latches (s left). */
+  private priLatch = 0;
+  private secLatch = 0;
 
   constructor(ctx: GameContext, binding?: PilotBinding) {
     this.ctx = ctx;
@@ -100,6 +108,9 @@ export class Combat implements CombatAPI {
       get ultIdle() {
         return c.ult.idle;
       },
+      get puppet() {
+        return c.puppet;
+      },
       startUlt: (kind, plow) => this.ult.start(kind, plow),
       shake: (i) => this.shake(i),
       impactHit: (kind, pos, strength, opts) => this.impactHit(kind, pos, strength, opts),
@@ -120,6 +131,88 @@ export class Combat implements CombatAPI {
     this.b = binding ?? ctxPilot(this.ctx);
     this.arsenal.resetNet();
     this.threat.clear();
+    this.puppet = false;
+    this.netBits = this.netSeen = 0;
+    this.priLatch = this.secLatch = 0;
+  }
+
+  /* ------------------------------------------------------------------ vehicle SPACE / E (combat/shared.ts VehicleKit) */
+
+  /** The bound pilot's SPACE / E kit, or null on the Classic (its Plow slams and whirls). */
+  get vehicle(): VehicleKit | null {
+    switch (this.b.stats.plowKind) {
+      case 'volt':
+        return this.volt;
+      case 'brute':
+        return this.brute;
+      case 'isotope':
+        return this.isotope;
+      case 'arsenal':
+        return this.arsenal;
+      default:
+        return null;
+    }
+  }
+
+  /** Seconds for the E charge to refill on a vehicle (its E descriptor, else stats.whirlCooldown). */
+  get secondaryCooldown(): number {
+    const cd = this.vehicle?.secondaryDesc.cooldown;
+    return cd ? cd() : this.b.stats.whirlCooldown;
+  }
+
+  /** HUD: the SPACE / E slots of the bound vehicle (null on the Classic). */
+  get abilityHud(): { primary: AbilityDesc; primaryReady: number; secondary: AbilityDesc } | null {
+    const v = this.vehicle;
+    if (!v) return null;
+    const hud = this.hud;
+    hud.primary = v.primaryDesc;
+    hud.primaryReady = v.primaryDesc.ready ? v.primaryDesc.ready() : 1;
+    hud.secondary = v.secondaryDesc;
+    return hud;
+  }
+  private hud = { primary: null as unknown as AbilityDesc, primaryReady: 1, secondary: null as unknown as AbilityDesc };
+
+  /** Route SPACE / E to the vehicle kit (every frame; see VehicleKit for the held / pressed rules). */
+  private updateVehicle(dt: number): void {
+    const v = this.vehicle;
+    if (!v) return;
+    const plow = this.b.plow;
+    const alive = !!plow && !plow.dead;
+    let h1 = false;
+    let p1 = false;
+    let h2 = false;
+    let p2 = false;
+    if (this.puppet) {
+      const bits = alive ? this.netBits : 0;
+      const rise = bits & ~this.netSeen;
+      this.netSeen = bits;
+      h1 = (bits & 1) !== 0;
+      p1 = (rise & 1) !== 0;
+      h2 = (bits & 2) !== 0;
+      p2 = (rise & 2) !== 0;
+    } else if (alive) {
+      const input = this.b.input;
+      h1 = !!input.isDown?.('Space');
+      p1 = input.wasPressed('Space');
+      h2 = !!input.isDown?.('KeyE');
+      const e = input.wasPressed('KeyE');
+      const charged = plow.eCharge >= 1;
+      if (e && !charged) this.b.audio.play('error', { volume: 0.4 });
+      p2 = e && charged;
+    }
+    v.primary(dt, h1, p1);
+    const fired = v.secondary(dt, h2, p2);
+    if (fired && !this.puppet) plow.spendE();
+    this.priLatch = h1 || p1 ? NET_LATCH : Math.max(0, this.priLatch - dt);
+    this.secLatch = fired ? NET_LATCH : Math.max(0, this.secLatch - dt);
+  }
+
+  /** NP.fire: the vehicle kit's puppet bits (0 on the Classic). */
+  private vehicleBits(): number {
+    const v = this.vehicle;
+    if (!v) return 0;
+    if (v.netBits) return v.netBits();
+    return (this.priLatch > 0 ? 1 : 0) | (this.secLatch > 0 ? 2 : 0);
   }
 
   /** Camera shake: full strength for the local pilot's own combat, a fraction for a duel opponent's. */
@@ -144,7 +237,7 @@ export class Combat implements CombatAPI {
     out[o + NP.flameT] = this.classic.flameT;
     out[o + NP.poundT] = this.brute.poundT;
     out[o + NP.stormT] = this.volt.stormT;
-    out[o + NP.fire] = (ar.gunsOn ? 1 : 0) | (ar.laserT > 0 ? 2 : 0);
+    out[o + NP.fire] = this.vehicleBits();
     out[o + NP.turret] = this.b.plow ? this.b.plow.turretAim : 0;
     out[o + NP.laser] = ar.laserOff;
   }
@@ -153,12 +246,12 @@ export class Combat implements CombatAPI {
   readPuppet(s: Float32Array, o: number): void {
     const ar = this.arsenal;
     const bits = Math.round(s[o + NP.fire]);
+    // Vehicle SPACE / E replay through updateVehicle (held bits + rising edges).
+    this.puppet = true;
+    this.netBits = bits;
     ar.netFire = bits;
     ar.netTurret = s[o + NP.turret];
     ar.netLaserOff = s[o + NP.laser];
-    const laser = (bits & 2) !== 0;
-    if (laser && !ar.netLaser && ar.laserT <= 0) this.fireLaser();
-    ar.netLaser = laser;
   }
 
   /** Duel guest, own plow: adopt the host's meters. `keepF`: the pilot just pressed F locally (keep the prediction). */
@@ -406,7 +499,7 @@ export class Combat implements CombatAPI {
     return this.melee.whirlTick(x, z, radius, ballR, tick, final, hitIds);
   }
 
-  /** ARSENAL laser (E; the Plow pays the whirl charge). False if the laser can't fire. */
+  /** ARSENAL laser beam directly (tests / tools; in play E reaches it through updateVehicle). False if it can't fire. */
   fireLaser(): boolean {
     return this.arsenal.fireLaser();
   }
@@ -491,6 +584,7 @@ export class Combat implements CombatAPI {
     this.iframe = 0;
     this.iframeDmg = 0;
     this.targets.length = 0;
+    this.priLatch = this.secLatch = 0;
   }
 
   update(dt: number): void {
@@ -509,6 +603,7 @@ export class Combat implements CombatAPI {
     this.brute.updateSaws(dt);
     this.isotope.updateMeltdown(dt);
     this.threat.update(dt);
+    this.updateVehicle(dt);
     this.arsenal.updateGuns(dt);
     this.arsenal.updateLaser(dt);
     this.arsenal.updateMissiles(dt);

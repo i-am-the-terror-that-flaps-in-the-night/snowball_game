@@ -17,7 +17,8 @@ export interface PlowDef {
   slamMult: number;
   /** What F does with this plow. */
   fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
-  /** No blade and no snowball (ARSENAL): Space / E fire weapons instead of slam / whirlwind. */
+  /** Not a snowplow (every kind but the Classic): no blade, never plows snow or holds a ball, and SPACE / E are the
+   *  vehicle's own abilities (combat/shared.ts VehicleKit.primary / secondary) instead of slam / whirlwind. */
   noBall?: boolean;
 }
 
@@ -39,47 +40,50 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     id: 'volt',
     name: 'VOLT-9',
     icon: '⚡',
-    tagline: 'Experimental electric plow. Quick and twitchy, crackling with stored charge.',
-    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (electrified blade), -15% HP', 'F: Thunderclap storm (free, costs HP)', 'Damage builds SUPERCELL: full = 3 waves of sky lightning'],
+    tagline: 'TESLA ROVER: a quick, twitchy rover under a crackling coil tower. No blade, all voltage.',
+    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (overcharged coils), -15% HP', 'SPACE (hold): Arc Lance chains lightning through 3 bots ahead · E: Static Field, a pulsing stun field that rides with you for 2.5 s', 'F: Thunderclap storm (free, costs HP) · damage builds SUPERCELL: 3 waves of sky lightning'],
     hpMult: 0.85,
     speedMult: 1.12,
     accelMult: 1.25,
     dashPowerMult: 1.2,
     slamMult: 1.15,
     fAbility: 'zap',
+    noBall: true,
   },
   brute: {
     id: 'brute',
     name: 'BRUTUS',
     icon: '🦏',
-    tagline: 'Armored demolition rig. Slow to get rolling, impossible to stop once it is.',
-    traits: ['+35% HP, +20% damage, bigger blade', '-8% acceleration, -10% dash', 'F: Ground Pound shockwave (free)', 'Damage builds EARTHQUAKE: full = 3 rolling shockwaves'],
+    tagline: 'Tracked wrecking mech. Two piston fists, two buzzsaws, no patience.',
+    traits: ['+35% HP, +20% damage', '-8% acceleration, -10% dash', 'SPACE: Wrecking Fist 3-punch combo; E: Saw Charge', 'F: Ground Pound shockwave (free)', 'Damage builds EARTHQUAKE: full = 3 rolling shockwaves'],
     hpMult: 1.35,
     speedMult: 1,
     accelMult: 0.92,
     dashPowerMult: 0.9,
     slamMult: 1.2,
     fAbility: 'pound',
+    noBall: true,
   },
   isotope: {
     id: 'isotope',
     name: 'ISOTOPE',
     icon: '☢️',
-    tagline: 'Lead-lined reactor hauler. Everything it touches glows, and then it falls apart.',
-    traits: ['Irradiated bots take +15% damage', '+5% speed, +10% HP', 'F: Meltdown blast + fallout pool (free)', 'Radiation damage builds Critical Mass: full = NUKE on F'],
+    tagline: 'REACTOR HAULER: a nuclear flatbed with a glowing reactor on its back. No blade; everything it hoses glows, then falls apart.',
+    traits: ['Irradiated bots take +30% damage and burn', '+5% speed, +10% HP', 'SPACE (hold): Rad Sprayer cone irradiates bots ahead · E: Fallout Trail of gripping toxic puddles for 4 s', 'F: Meltdown blast + fallout pool (free) · radiation builds Critical Mass: full = NUKE on F'],
     hpMult: 1.1,
     speedMult: 1.05,
     accelMult: 1,
     dashPowerMult: 1,
     slamMult: 1,
     fAbility: 'meltdown',
+    noBall: true,
   },
   arsenal: {
     id: 'arsenal',
     name: 'ARSENAL',
     icon: '🎯',
-    tagline: 'Not a plow at all: a hover-tracked weapons platform. No blade, no snowball, all firepower.',
-    traits: ['No snowball: SPACE = pulse laser cannon (hold, auto-aims)', 'E = laser beam · F = homing missile salvo', '+10% speed, -10% HP', 'Damage builds MISSILE STORM: full = 21 heavy missiles, 75 m reach'],
+    tagline: 'BATTLE TANK: crawler tracks, an armoured hull and a turret-mounted pulse-laser cannon. No blade, no snowball, all firepower.',
+    traits: ['No snowball: SPACE = pulse laser turret (hold, auto-aims across a 240° arc round the nose)', 'E = laser beam · F = homing missile salvo', '+10% speed, -10% HP', 'Damage builds MISSILE STORM: full = 21 heavy missiles, 75 m reach'],
     hpMult: 0.9,
     speedMult: 1.1,
     accelMult: 1.1,

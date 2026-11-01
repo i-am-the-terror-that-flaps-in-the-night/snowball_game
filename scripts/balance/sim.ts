@@ -1,6 +1,7 @@
 /* Headless balance sim: drives the real Combat kits (no browser) against dummy bots and duel opponents.
- * Plow-driven attacks (slam, whirl, dash strike) are scheduled from a simple engagement model (see MELEE below);
- * everything Combat owns (F abilities, ultimates, auras, burns, guns, laser, missiles) runs for real. */
+ * Plow-driven attacks (the Classic's slam / whirl, everyone's dash strike) are scheduled from a simple engagement
+ * model (see MELEE below); everything Combat owns (F abilities, ultimates, auras, burns, the vehicles' SPACE / E
+ * kits via held keys, missiles) runs for real. */
 import * as THREE from 'three';
 import { Combat } from '../../src/entities/Combat';
 import { computeStatsFor } from '../../src/core/Progression';
@@ -78,6 +79,14 @@ function fakePlow(stats: PlayerStats, x = 0, z = 0, heading = 0) {
     position: new THREE.Vector3(x, 0, z), heading, hp: stats.maxHp, maxHp: stats.maxHp, dead: false, radius: 1.6,
     turretAim: 0, turretHeading: heading, hop: 0, gunFiring: false, heldBallRadius: 0, sawHalo: 0, speed: 0,
     dashing: false, whirling: false, invulnerable: false, hornSound: undefined,
+    /** E charge (Plow.eCharge / spendE); the Rotation refills it like Plow.update does. */
+    whirlCharge: 1,
+    get eCharge() {
+      return p.whirlCharge;
+    },
+    spendE: () => {
+      p.whirlCharge = 0;
+    },
     getForward: (o: THREE.Vector3) => o.set(Math.sin(p.heading), 0, Math.cos(p.heading)),
     getBladeTip: (o: THREE.Vector3) => o.set(p.position.x + Math.sin(p.heading) * 2.5, 0, p.position.z + Math.cos(p.heading) * 2.5),
     mountWorld: (_k: string, _i: number, o: THREE.Vector3) => o.set(p.position.x, 1, p.position.z),
@@ -150,7 +159,6 @@ class Rotation {
   private hits = new Set<number>();
   private dashT = 0;
   private dashN = 0;
-  private laserT = 0;
   t = 0;
   fills: number[] = [];
   private fillStart = 0;
@@ -160,20 +168,26 @@ class Rotation {
   step(dt: number, ctx: GameContext): void {
     const { p } = this;
     const st = p.stats;
-    const arsenal = st.plowKind === 'arsenal';
+    // Not the Classic: SPACE / E are the vehicle kit's (Combat routes them; VehicleKit in combat/shared.ts).
+    const vehicle = p.c.vehicle;
     this.t += dt;
     (ctx as { time: number }).time += dt;
     p.press.clear();
     this.drain();
     // F whenever the plow's F ability is ready ('hold': not with a full meter, which would fire the ultimate).
     if (p.c.flameReady >= 1 && (this.ult === 'use' || crit(p.c).critCharge < 1)) p.press.add('KeyF');
-    if (arsenal) p.held.add('Space');
     const tgt = this.target();
-    // Melee (or the laser on ARSENAL's E).
     const plow = p.plow;
-    if (arsenal) {
-      this.laserT -= dt;
-      if (this.laserT <= 0 && p.c.fireLaser()) this.laserT = st.whirlCooldown;
+    if (vehicle) {
+      // SPACE held throughout (and pressed whenever its own recharge says ready); E pressed whenever the E charge is
+      // full, the charge refilling as Plow.update refills it.
+      p.held.add('Space');
+      const ready = vehicle.primaryDesc.ready;
+      if (ready && ready() >= 1) p.press.add('Space');
+      p.held.add('KeyE');
+      const cd = p.c.secondaryCooldown;
+      if (plow.whirlCharge < 1) plow.whirlCharge = Math.min(1, plow.whirlCharge + (cd > 0 ? dt / cd : 1));
+      else p.press.add('KeyE');
     } else {
       this.ball = Math.min(ballVolume(st.maxBallRadius), this.ball + MELEE.SNOW_INTAKE * st.collectRate * dt);
       const want = ballVolume(st.maxBallRadius * MELEE.SLAM_BALL);

@@ -378,7 +378,7 @@ export class UI implements UIAPI {
     batt: HTMLElement; battFill: HTMLElement; crit: HTMLElement; critFill: HTMLElement;
     gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
     slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
-    dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement;
+    dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement; primary: HTMLElement;
     heat: HTMLElement; heatFill: HTMLElement; heatTxt: HTMLElement;
     snowFill: HTMLElement; snowTxt: HTMLElement;
     count: HTMLElement; hint: HTMLElement;
@@ -387,7 +387,7 @@ export class UI implements UIAPI {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
+    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
   };
   private hintTimer = 0;
 
@@ -544,9 +544,11 @@ export class UI implements UIAPI {
     setKey(this.h.dash, 'dash');
     setKey(this.h.whirl, 'whirl');
     setKey(this.h.flame, 'ability');
-    this.h.hint.textContent = PLOWS[this.ctx.stats.plowKind]?.noBall
-      ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  hold ${k('slam')} pulse laser  ·  ` +
-        `${k('dash')} dash strike  ·  ${k('whirl')} laser  ·  ${k('ability')} missiles  ·  ESC pause`
+    setKey(this.h.primary, 'slam');
+    const ab = PLOWS[this.ctx.stats.plowKind]?.noBall ? this.ctx.combat?.abilityHud : null;
+    this.h.hint.textContent = ab
+      ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  ${k('slam')} ${ab.primary.hint ?? ab.primary.label}  ·  ` +
+        `${k('dash')} dash strike  ·  ${k('whirl')} ${ab.secondary.hint ?? ab.secondary.label}  ·  ${k('ability')} F-ability  ·  ESC pause`
       : `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ${k('slam')} slam  ·  ` +
         `${k('dash')} dash strike  ·  ${k('whirl')} whirlwind  ·  ${k('ability')} F-ability  ·  ESC pause`;
   }
@@ -1817,6 +1819,9 @@ export class UI implements UIAPI {
     const inner = el('div', 'ss-gauge-inner', undefined, H.gauge);
     H.radius = el('div', 'ss-gauge-r', '0.00m', inner);
     H.tier = el('div', 'ss-gauge-tier', 'Snowball', inner);
+    // Non-Classic vehicles: their SPACE ability takes the snowball gauge's place (icon / name from the kit).
+    H.primary = this.buildAbility(row, '⚡', 'FIRE', 'SPACE', 'primary');
+    H.primary.style.display = 'none';
     H.whirl = this.buildAbility(row, '🌀', 'WHIRL', 'E', 'whirl');
     H.flame = this.buildAbility(row, '🔥', 'FIRE', 'F', 'flame');
     H.flame.style.display = 'none';
@@ -2387,6 +2392,30 @@ export class UI implements UIAPI {
       this.setAbility(H.whirl, w, L.whirl);
       L.whirl = w;
     }
+    // SPACE / E slots: the vehicle kit's descriptors (no ball to slam), or the Classic's gauge + WHIRL.
+    const ab = s.abilities ?? null;
+    const abKey = ab ? `${ab.primary.icon}${ab.primary.label}|${ab.secondary.icon}${ab.secondary.label}` : '';
+    if (abKey !== L.abKey) {
+      L.abKey = abKey;
+      L.primary = -2;
+      H.whirl.querySelector('.ss-ab-icon')!.textContent = ab ? ab.secondary.icon : '🌀';
+      H.whirl.querySelector('.ss-ab-name')!.textContent = ab ? ab.secondary.label : 'WHIRL';
+      if (ab) {
+        H.primary.querySelector('.ss-ab-icon')!.textContent = ab.primary.icon;
+        H.primary.querySelector('.ss-ab-name')!.textContent = ab.primary.label;
+      }
+      H.primary.style.display = ab ? '' : 'none';
+      H.gauge.classList.toggle('hidden', !!ab);
+      if (ab) H.slam.classList.remove('show');
+      this.refreshKeys();
+    }
+    if (ab) {
+      const p = Math.round(clamp01(ab.primaryReady) * 50) / 50;
+      if (p !== L.primary) {
+        this.setAbility(H.primary, p, L.primary);
+        L.primary = p;
+      }
+    }
     // F icon follows the plow: Inferno fire (Classic), Thunderclap (VOLT-9) or Ground Pound (BRUTUS).
     if (s.fAbility !== L.fKind) {
       L.fKind = s.fAbility;
@@ -2397,10 +2426,6 @@ export class UI implements UIAPI {
       const rockets = s.fAbility === 'missiles';
       H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : rockets ? '🚀' : '🔥';
       H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : rockets ? 'MISSILES' : 'FIRE';
-      // ARSENAL: E is the laser, and there is no ball to slam.
-      H.whirl.querySelector('.ss-ab-icon')!.textContent = rockets ? '🔴' : '🌀';
-      H.whirl.querySelector('.ss-ab-name')!.textContent = rockets ? 'LASER' : 'WHIRL';
-      H.gauge.classList.toggle('hidden', rockets);
       // The ultimate meter under the HP bar, one per plow.
       const ult = ULT_HUD[s.fAbility];
       H.crit.dataset.ult = s.fAbility;

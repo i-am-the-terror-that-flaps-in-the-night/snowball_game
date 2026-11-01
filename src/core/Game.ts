@@ -1104,6 +1104,7 @@ export class Game {
     hud.coins = ctx.progression.coins;
     hud.dashReady = ctx.plow.dashReady;
     hud.whirlReady = ctx.plow.whirlReady;
+    hud.abilities = ctx.combat.abilityHud ?? null;
     hud.flameReady = ctx.combat.flameReady;
     hud.fAbility = PLOWS[ctx.stats.plowKind].fAbility;
     hud.shield = ctx.combat.shieldFrac;

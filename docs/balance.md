@@ -148,7 +148,7 @@ amount of damage, while damage dealt grows about 20× by the high tier.
   plow. Every meter is now `base × ultPower / cooldownMult` (`ultCharge` in combat/ultimates.ts). It grows with the
   pilot, and with Overclock, which speeds up every ability and so the damage.
 - Bases were re-tuned for about 25 s fresh in the five-bot fight: FIRESTORM 700 became 870, NUKE 900 became 1500,
-  SUPERCELL 900 became 2300, EARTHQUAKE 900 became 1800, ORBITAL 1000 became 1700.
+  SUPERCELL 900 became 2300, EARTHQUAKE 900 became 1800, ORBITAL 1000 became 1700 (MISSILE STORM later dropped to 1200: it charges about 30% faster).
 - Fight fills are now 21 to 32 s at every tier, except BRUTUS / ISOTOPE at mid (13 to 14 s: Buzzsaws and Rad Aura
   unlock and hit every bot in reach). Boss fills are 10 to 46 s. Everything is over the 12 s floor at high tier.
 - Inferno is all burst and only fire fills the FIRESTORM meter, so the Classic sits furthest from its boss time (fight

@@ -5,7 +5,7 @@ import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type
 /** Ultimates for VOLT-9 / BRUTUS / ARSENAL (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
  *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
  *  nothing refills it. */
-const ULT_CHARGE = { volt: 2300, brute: 1800, arsenal: 1700 } as const;
+const ULT_CHARGE = { volt: 2700, brute: 1800, arsenal: 1200 } as const;
 const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🚀 MISSILE STORM' } as const;
 /** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every
  *  upgrade, so the meter grows with the pilot's power and with Overclock (faster abilities, more damage): it takes

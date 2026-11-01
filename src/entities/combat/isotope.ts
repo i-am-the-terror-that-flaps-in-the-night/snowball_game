@@ -1,27 +1,225 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, Reach, WAVE_BAND, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
+import { Kit, type AbilityDesc, type VehicleKit, Reach, WAVE_BAND, _p, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
 
 /** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
  *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
-export const RAD_VULN = 1.15;
+// Design floor from the user (stronger irradiation): balance ISOTOPE through damage numbers, not by lowering RAD_VULN
+// below 1.3 or removing the radiation burn / the trail's grip.
+export const RAD_VULN = 1.3;
 const RAD_SECONDS = 3;
+/** Radiation burns too: every RAD_TICK s an irradiated bot takes RAD_DPS x RAD_TICK (x damage mult x reactorBoost). */
+const RAD_TICK = 0.5;
+export const RAD_DPS = 5.5;
 const POOL_TICK = 0.3;
 const MAX_POOLS = 4;
 const CHAIN_RADIUS = 4;
 /** NUKE (ISOTOPE): Critical Mass fills from radiation damage dealt (this much on a fresh plow, see ultCharge); the
  *  next F arms a NUKE that goes off instantly — NUKE_DMG_MULT x Meltdown damage across NUKE_RADIUS, falling off to
  *  NUKE_RIM_FRAC at the edge, plus a giant fallout pool. */
-const NUKE_CHARGE_DMG = 1500;
+const NUKE_CHARGE_DMG = 1800;
 const NUKE_RADIUS = 18;
 const NUKE_DMG_MULT = 2.6;
 const NUKE_RIM_FRAC = 0.35;
 const NUKE_KNOCK = 26;
 
+/** RAD SPRAYER (SPACE, hold): tick, damage per tick on the nearest bot in the cone (x damage mult x reactorBoost),
+ *  share for the others in the cone, cone half angle (cos), reach (+ Mega Hopper: ball radius above the 1.2 m base),
+ *  nozzle position on the hauler's nose (vehicles/isotope.ts), and the share of its damage that fills Critical Mass. */
+const SPRAY_TICK = 0.12;
+export const SPRAY_DAMAGE = 1.6;
+const SPRAY_SPLASH = 0.55;
+const SPRAY_COS = Math.cos(0.75);
+/** Avalanche Core on the hauler: a 50% wider spray cone. */
+const SPRAY_COS_WIDE = Math.cos(1.05);
+export const sprayRange = (ballR: number) => 8.5 + 2 * Math.max(0, ballR - 1.2);
+const NOZZLE_Y = 1.25;
+const NOZZLE_Z = 2.3;
+const SPRAY_CRIT = 0.5;
+/** FALLOUT TRAIL (E): seconds of trail, a puddle every TRAIL_DROP s (TRAIL_N pooled), each PUDDLE_LIFE s; damage tick
+ *  and dps (Half-Life pool dps share), radius (Half-Life pool radius share). */
+const TRAIL_SECONDS = 4;
+const TRAIL_DROP = 0.3;
+const TRAIL_N = 12;
+const PUDDLE_LIFE = 3.5;
+const TRAIL_TICK = 0.3;
+/** Whirlwind Turbine levels (whirlDamage above its base 10) make the coolant hotter; Snow Compactor (collectRate
+ *  above its base 0.12) makes it thicker, so puddles linger longer (up to 2x); Frost Core: the sludge holds bots. */
+export const trailDps = (poolDps: number, whirlDamage = 10) => (22 + poolDps * 0.6) * Math.max(1, whirlDamage / 10);
+export const puddleLife = (collectRate: number) => PUDDLE_LIFE * Math.min(2, Math.max(1, collectRate / 0.12));
+const SLUDGE_HOLD = 0.6;
+/** Every puddle grips: a bot dosed in one is held this long (Frost Core: SLUDGE_HOLD). */
+const SLUDGE_GRIP = 0.3;
+export const trailRadius = (poolR: number) => 1.6 + poolR * 0.12;
+/** Meltdown upgrades overheat the whole reactor: RAD SPRAYER and FALLOUT TRAIL grow with Meltdown's base damage,
+ *  slowly at first and steeply late (the early levels already pay off through Meltdown and its pools). */
+export const reactorBoost = (meltDamage: number) => 1 + 1.0 * Math.max(0, meltDamage / 125 - 1) ** 2.5;
+const _f = new THREE.Vector3();
+const _d = new THREE.Vector3();
+
 /** ISOTOPE: Meltdown + fallout pools, Rad Aura, radiation, Chain Reaction and the NUKE. */
-export class IsotopeKit extends Kit {
+export class IsotopeKit extends Kit implements VehicleKit {
+
+  /* ---- REACTOR HAULER: SPACE RAD SPRAYER (hold) and E FALLOUT TRAIL (VehicleKit, see ./shared.ts) ---- */
+  readonly primaryDesc: AbilityDesc = { icon: '☣️', label: 'SPRAY', hint: 'hold for RAD SPRAYER' };
+  readonly secondaryDesc: AbilityDesc = { icon: '🟢', label: 'TRAIL', hint: 'FALLOUT TRAIL' };
+  /** RAD SPRAYER: tick timer / count; is it spraying this frame (HUD / tests). */
+  private sprayT = 0;
+  private sprayN = 0;
+  sprayOn = false;
+  /** FALLOUT TRAIL: seconds of trail left, next drop timer, damage tick timer, bots dosed this tick. */
+  trailT = 0;
+  private dropT = 0;
+  private trailTickT = 0;
+  private trailDosed = new Set<number>();
+  private puddles: { disc: GroundDisc; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; t: number; life: number; from: CastOrigin }[] = [];
+
+  /** SPACE (hold): every SPRAY_TICK s the nozzle on the hauler's nose hoses a glowing cone (SPRAY_COS half angle,
+   *  sprayRange + Mega Hopper) that doses every bot in it: radiation damage, irradiated. The nearest takes full
+   *  damage, the rest SPRAY_SPLASH of it. Meltdown upgrades overheat the reactor (reactorBoost). */
+  primary(dt: number, held: boolean, _pressed: boolean): void {
+    this.sprayT -= dt;
+    this.sprayOn = held;
+    if (!held || this.sprayT > 0) return;
+    const st = this.b.stats;
+    const tick = SPRAY_TICK * Math.max(0.4, st.cooldownMult || 1);
+    this.sprayT = Math.max(0, this.sprayT + tick);
+    const plow = this.b.plow;
+    if (!plow || plow.dead) return;
+    const ctx = this.ctx;
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    plow.getForward(_f);
+    const floor = plow.surfaceY || 0;
+    const range = sprayRange(st.maxBallRadius);
+    this.sprayN++;
+    // Nozzle jet: green streaks + a glowing mist down the cone.
+    _p.set(px + _f.x * NOZZLE_Z, floor + NOZZLE_Y, pz + _f.z * NOZZLE_Z);
+    _d.set(_f.x, -0.08, _f.z);
+    ctx.fx.sparks(_p, _d, { color: 0x7dff4a, count: 7, speed: range * 2.4, spread: 0.32, size: 0.12, length: 0.06, gravity: 3, life: 0.36 });
+    {
+      _d.set(_f.x * range * 1.6, 0.6, _f.z * range * 1.6);
+      ctx.fx.smoke(_p, { count: 2, color: 0x5dff3a, additive: 0.6, size: 0.7, grow: 3.4, life: 0.45, speed: 1.2, up: 0, rise: 0.4, drag: 2.2, spread: 0.2, opacity: 0.55, dir: _d });
+    }
+    if (this.sprayN % 3 === 0) this.b.audio.play('whirlTick', { volume: 0.22, pitch: 0.55 + Math.random() * 0.1 });
+    const cone = st.avalancheCore ? SPRAY_COS_WIDE : SPRAY_COS;
+    const hits = this.collect(px, pz, range + 1, Reach.Body);
+    let near: EnemyHandle | null = null;
+    let nd = Infinity;
+    let n = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - px;
+      const dz = e.position.z - pz;
+      const d = Math.hypot(dx, dz) || 1e-3;
+      if (d - e.radius > range || (dx * _f.x + dz * _f.z) / d < cone) continue;
+      hits[n++] = e;
+      if (d < nd) {
+        nd = d;
+        near = e;
+      }
+    }
+    if (near) {
+      const dmg = SPRAY_DAMAGE * reactorBoost(st.meltDamage);
+      for (let i = 0; i < n; i++) {
+        const e = hits[i];
+        const hp0 = e.hp;
+        this.radHit(e, dmg * (e === near ? 1 : SPRAY_SPLASH), true, SPRAY_CRIT);
+        if (this.sprayN % 2 === 0) {
+          _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
+          ctx.fx.burst(_q, { color: 0x9dff5a, count: 3, speed: 3, size: 0.1, gravity: -2, life: 0.4 });
+          const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+          if (e === near && dealt > 0 && this.sprayN % 6 === 0) ctx.fx.floatText(_q, `☣${Math.round(dealt * 3)}`, '#9dff5a', 0.75);
+        }
+      }
+    }
+    this.clearTargets();
+  }
+
+  /** E: FALLOUT TRAIL — for TRAIL_SECONDS the reactor dumps coolant: a toxic puddle every TRAIL_DROP s behind the
+   *  hauler (Half-Life: wider, hotter) that doses bots driving through. Ticks the puddles every frame. */
+  secondary(dt: number, _held: boolean, pressed: boolean): boolean {
+    let fired = false;
+    const plow = this.b.plow;
+    if (pressed && plow && !plow.dead) {
+      fired = true;
+      this.trailT = TRAIL_SECONDS;
+      this.dropT = 0;
+      _q.set(plow.position.x, (plow.surfaceY || 0) + 1.2, plow.position.z);
+      this.ctx.fx.smoke(_q, { count: 8, color: 0x7dff4a, additive: 0.5, size: 0.6, grow: 2.5, life: 0.7, speed: 3, up: 2, rise: 0.6, drag: 2, spread: 0.6, opacity: 0.6 });
+      this.b.audio.play('burst', { volume: 0.5, pitch: 0.6 });
+      this.b.audio.play('steal', { volume: 0.4, pitch: 0.7 });
+    }
+    if (this.trailT > 0) {
+      this.trailT -= dt;
+      this.dropT -= dt;
+      if (plow && !plow.dead && this.dropT <= 0) {
+        this.dropT += TRAIL_DROP;
+        plow.getForward(_f);
+        const x = plow.position.x - _f.x * 1.9;
+        const z = plow.position.z - _f.z * 1.9;
+        this.layPuddle(x, z, trailRadius(this.b.stats.poolRadius), castOrigin(plow, this.trailFrom));
+        _q.set(x, (plow.surfaceY || 0) + 0.5, z);
+        this.ctx.fx.burst(_q, { color: 0x7dff4a, count: 3, speed: 1.5, size: 0.2, gravity: -2, life: 0.5 });
+      }
+    }
+    this.updatePuddles(dt);
+    return fired;
+  }
+
+  private readonly trailFrom: CastOrigin = { y: 0, deck: -1 };
+
+  private layPuddle(x: number, z: number, r: number, from: CastOrigin): void {
+    let pd = this.puddles.find((p) => p.t <= 0);
+    if (!pd) pd = this.puddles.reduce((a, b) => (a.t < b.t ? a : b));
+    pd.x = x;
+    pd.z = z;
+    pd.r = r;
+    pd.t = pd.life = puddleLife(this.b.stats.collectRate);
+    pd.from.y = from.y;
+    pd.from.deck = from.deck;
+    pd.disc.place(this.ctx.terrain, x, z, r, from.y, from.deck, 0.05, this.b.snow);
+  }
+
+  /** Puddles: fade, bubble, and every TRAIL_TICK dose each bot standing in one (once per tick, overlaps don't stack). */
+  private updatePuddles(dt: number): void {
+    const ctx = this.ctx;
+    this.trailTickT -= dt;
+    const tick = this.trailTickT <= 0;
+    if (tick) {
+      this.trailTickT += TRAIL_TICK;
+      if (this.trailTickT < 0) this.trailTickT = 0;
+      this.trailDosed.clear();
+    }
+    const st = this.b.stats;
+    const dmg = trailDps(st.poolDps, st.whirlDamage) * reactorBoost(st.meltDamage) * TRAIL_TICK;
+    for (let k = 0; k < this.puddles.length; k++) {
+      const pd = this.puddles[k];
+      if (pd.t <= 0) continue;
+      pd.t -= dt;
+      if (pd.t <= 0) {
+        pd.disc.hide();
+        continue;
+      }
+      pd.mat.opacity = (0.62 + 0.12 * Math.sin(ctx.time * 7 + pd.x)) * Math.min(1, pd.t / 0.6, (pd.life - pd.t) / 0.15 + 0.3);
+      if (!tick) continue;
+      if (Math.random() < 0.4) {
+        _q.set(pd.x + (Math.random() - 0.5) * pd.r, pd.from.y + 0.25, pd.z + (Math.random() - 0.5) * pd.r);
+        ctx.fx.burst(_q, { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.18, gravity: -3, life: 0.6 });
+      }
+      const hits = this.b.enemies.query(pd.x, pd.z, pd.r, this.buf);
+      for (let i = 0; i < hits.length; i++) {
+        const e = hits[i];
+        if (!e.alive || this.trailDosed.has(e.id) || !this.reaches(e, Reach.Wave, pd.from)) continue;
+        this.trailDosed.add(e.id);
+        this.radHit(e, dmg, false, SPRAY_CRIT, st.frostCore ? SLUDGE_HOLD : SLUDGE_GRIP);
+      }
+    }
+  }
+
   /** Meltdown recharge 0..1. */
   meltCharge = 1;
   /** Fallout pools (pooled glowing discs draped over the floor). `from`: the floor the pool was cast on; the pool only
@@ -29,6 +227,8 @@ export class IsotopeKit extends Kit {
   private pools: { disc: GroundDisc; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; t: number; life: number; tickT: number; from: CastOrigin }[] = [];
   /** Irradiated bots -> seconds of radiation left. */
   readonly rads = new Map<EnemyHandle, number>();
+  /** Radiation burn tick timer. */
+  private radBurnT = 0;
   /** Chain Reaction blasts queued by irradiated wrecks. */
   readonly chainQueue: { x: number; y: number; z: number }[] = [];
   private radFxT = 0;
@@ -47,6 +247,11 @@ export class IsotopeKit extends Kit {
     for (let i = 0; i < MAX_POOLS; i++) {
       const mat = new THREE.MeshBasicMaterial({ color: 0x5dff3a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
       this.pools.push({ disc: new GroundDisc(h.ctx.scene, mat), mat, x: 0, z: 0, r: 1, t: 0, life: 1, tickT: 0, from: { y: 0, deck: -1 } });
+    }
+    for (let i = 0; i < TRAIL_N; i++) {
+      // Normal blending (an additive glow vanishes on white snow): an opaque-ish toxic green sludge.
+      const mat = new THREE.MeshBasicMaterial({ color: 0x46d414, transparent: true, opacity: 0, depthWrite: false });
+      this.puddles.push({ disc: new GroundDisc(h.ctx.scene, mat), mat, x: 0, z: 0, r: 1, t: 0, life: 1, from: { y: 0, deck: -1 } });
     }
   }
 
@@ -71,13 +276,13 @@ export class IsotopeKit extends Kit {
   }
 
   /** Radiation damage to one bot (player credit, irradiates it). */
-  private radHit(e: EnemyHandle, amount: number, heal = false): void {
+  private radHit(e: EnemyHandle, amount: number, heal = false, critFrac = 1, freezeSeconds = 0): void {
     if (!e.alive) return;
     this.irradiate(e);
     const hp0 = e.hp;
-    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, freezeSeconds: freezeSeconds || undefined });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-    this.h.crit = Math.min(1, this.h.crit + dealt / ultCharge(this.b.stats, NUKE_CHARGE_DMG));
+    this.h.crit = Math.min(1, this.h.crit + (dealt * critFrac) / ultCharge(this.b.stats, NUKE_CHARGE_DMG));
     this.onPlayerHit(dealt, killed, e, false, heal);
   }
 
@@ -277,6 +482,23 @@ export class IsotopeKit extends Kit {
     this.radFxT -= dt;
     const glow = this.radFxT <= 0;
     if (glow) this.radFxT = 0.25;
+    // Radiation burn: every RAD_TICK s each irradiated bot takes RAD_DPS (player credit, fills Critical Mass like
+    // every radiation hit, no lifesteal).
+    this.radBurnT -= dt;
+    const burn = this.radBurnT <= 0 && this.rads.size > 0;
+    if (this.radBurnT <= 0) this.radBurnT += RAD_TICK;
+    if (burn) {
+      const st = this.b.stats;
+      const amt = RAD_DPS * RAD_TICK * reactorBoost(st.meltDamage);
+      for (const [e] of this.rads) {
+        if (!e.alive) continue;
+        const hp0 = e.hp;
+        const killed = this.b.enemies.damage(e, amt * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' });
+        const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+        this.onPlayerHit(dealt, killed, e, false, false);
+        if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultCharge(st, NUKE_CHARGE_DMG));
+      }
+    }
     for (const [e, t] of this.rads) {
       const left = t - dt;
       if (left <= 0 || !e.alive) {
@@ -310,6 +532,13 @@ export class IsotopeKit extends Kit {
     for (const pl of this.pools) {
       pl.t = 0;
       pl.disc.hide();
+    }
+    this.trailT = 0;
+    this.sprayOn = false;
+    this.trailDosed.clear();
+    for (const pd of this.puddles) {
+      pd.t = 0;
+      pd.disc.hide();
     }
   }
 }

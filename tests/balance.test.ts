@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { KINDS, duelGunDamage, duelTtk, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
+import { KINDS, clusterDps, duelGunDamage, duelTtk, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
+import type { PlowKind } from '../src/config/plows';
 import { computeStatsFor } from '../src/core/Progression';
 import { ultCharge } from '../src/entities/combat/ultimates';
 
@@ -25,24 +26,34 @@ describe('ultimate meters', () => {
     expect(ultCharge(computeStatsFor({ packedIce: 10, voltClap: 8, overclock: 8 }, 'volt'), 1000)).toBeGreaterThan(ultCharge(big, 1000) * 1.8);
   });
 
-  it.each(KINDS)('%s: fills in 20-35 s fresh, and no faster than 12 s late-game (in a fight or on a boss)', (kind) => {
+  it.each(KINDS)('%s: fills in 20-35 s fresh (ARSENAL 15+: its storm charges faster by request), and no faster than 12 s late-game (in a fight or on a boss)', (kind) => {
     const fresh = ultFill(kind, 'fresh', 150);
-    expect(fresh).toBeGreaterThan(20);
+    expect(fresh).toBeGreaterThan(kind === 'arsenal' ? 15 : 20);
     expect(fresh).toBeLessThan(35);
     expect(ultFill(kind, 'high', 150)).toBeGreaterThan(12);
     expect(ultFillBoss(kind, 'high', 90)).toBeGreaterThan(12);
   });
 });
 
+/** Vehicles whose SPACE / E (VehicleKit.primary / secondary) are still no-op stubs: left out of the DPS ordering
+ *  below until their builder lands them (each builder deletes its own entry). */
+const PENDING = new Set<PlowKind>([]);
+
 describe('sustained damage', () => {
-  it.each(['fresh', 'high'] as const)('%s: every plow within 25%% of the mean single-target DPS, ARSENAL never above it', (tier) => {
-    const dps = KINDS.map((k) => singleDps(k, tier, 30));
-    const melee = dps.slice(0, 4);
-    const mean = melee.reduce((a, b) => a + b, 0) / melee.length;
-    for (const d of melee) expect(Math.abs(d / mean - 1)).toBeLessThan(0.25);
-    const arsenal = dps[KINDS.indexOf('arsenal')];
-    expect(arsenal).toBeLessThanOrEqual(mean * 1.02);
+  it.each(['fresh', 'high'] as const)('%s: every plow within 25%% of the mean single-target DPS; VOLT-9 / BRUTUS / ISOTOPE match ARSENAL (within 8%%)', (tier) => {
+    const live = KINDS.filter((k) => !PENDING.has(k));
+    const dps = new Map(live.map((k) => [k, singleDps(k, tier, 30)] as const));
+    const mean = [...dps.values()].reduce((a, b) => a + b, 0) / dps.size;
+    for (const d of dps.values()) expect(Math.abs(d / mean - 1)).toBeLessThan(0.25);
+    const arsenal = dps.get('arsenal')!;
     expect(arsenal).toBeGreaterThan(mean * 0.7);
+    for (const k of live) if (k !== 'classic' && k !== 'arsenal') expect(Math.abs(dps.get(k)! / arsenal - 1)).toBeLessThan(0.08);
+  });
+
+  it.each(['fresh', 'high'] as const)('%s: VOLT-9 / BRUTUS / ISOTOPE out-damage ARSENAL on a cluster', (tier) => {
+    const arsenal = clusterDps('arsenal', tier, 30);
+    expect(arsenal).toBeGreaterThan(0);
+    for (const k of KINDS) if (k !== 'classic' && k !== 'arsenal' && !PENDING.has(k)) expect(clusterDps(k, tier, 30)).toBeGreaterThan(arsenal);
   });
 });
 

@@ -295,6 +295,20 @@ export interface PlowAPI {
 }
 
 /** Melee damage resolution shared by the player and the bots. */
+/** One HUD ability slot a vehicle kit describes (combat/shared.ts AbilityDesc). */
+export interface AbilityHudSlot {
+  icon: string;
+  label: string;
+  /** Controls-hint wording (e.g. 'hold for ARC LANCE'); default the label. */
+  hint?: string;
+}
+/** SPACE / E slots of a non-Classic vehicle; `primaryReady` 0..1 (1 = ready). */
+export interface AbilityHud {
+  primary: AbilityHudSlot;
+  primaryReady: number;
+  secondary: AbilityHudSlot;
+}
+
 export interface CombatAPI {
   /** A bot's melee attack hits the plow. Applies, in order: shield (if the attacker is within ±60° of the
    *  plow's front and a ball is held, stats.shieldBlock of the damage is blocked and the ball loses snow
@@ -321,6 +335,8 @@ export interface CombatAPI {
   readonly overloadHeat: number;
   /** Self-damage the NEXT Thunderclap would deal at the current heat (capped so it leaves 1 HP); 0 off VOLT-9. */
   readonly overloadCost: number;
+  /** The bound vehicle's SPACE / E HUD slots (combat/shared.ts VehicleKit descriptors), null on the Classic. */
+  readonly abilityHud?: AbilityHud | null;
   /** Reset combat state. `betweenRounds` (round / wave cleared mid-run) keeps run-long meters like ISOTOPE's
    *  Critical Mass; a new run clears everything. */
   clear(betweenRounds?: boolean): void;
@@ -607,6 +623,8 @@ export interface HudState {
   whirlReady: number;
   /** 0..1 F-ability recharge (Inferno or Thunderclap), or -1 when not owned. */
   flameReady: number;
+  /** Non-Classic vehicles: SPACE / E slots from the kit (null / absent on the Classic: slam gauge + WHIRL). */
+  abilities?: AbilityHud | null;
   /** What F does right now (icon). */
   fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
   /** Battery Shield 0..1, or -1 when not owned. */

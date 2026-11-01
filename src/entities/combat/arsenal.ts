@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
+import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 import { makeSurface } from '../../world/Terrain';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -24,10 +24,27 @@ const ULT_BOOST = 0.55;
 const ULT_TURN = 2;
 /** Ult missiles are drawn a bit bigger than salvo missiles. */
 const ULT_SCALE = 1.25;
-/** ARSENAL: the pulse-laser turret tracks all the way round (360°); it holds fire until the cannon is within this
- *  many radians of the target, so bolts never leave sideways from a turret still swinging round. Then the burst a
+/** BATTLE TANK: the pulse-laser turret only auto-aims within GUN_ARC rad either side of the hull's nose (a 240° arc:
+ *  bots squarely behind are safe) and swings at most TURRET_SLEW rad/s. It holds fire until the cannon is within
+ *  GUN_ON_TARGET rad of the target, so bolts never leave sideways from a turret still swinging round. Then the burst a
  *  single press fires when the input source can't report held keys. */
+const GUN_ARC = 120 * (Math.PI / 180);
+const GUN_ARC_COS = Math.cos(GUN_ARC);
+const TURRET_SLEW = 3.2;
 const GUN_ON_TARGET = 0.35;
+/* The snowball / spin shop lines, re-purposed on the BATTLE TANK so every bought level still does something:
+ * Mega Hopper stretches the pulse laser's reach (HOPPER_RANGE m per m of max ball radius over the base 1.2 m),
+ * Whirlwind Turbine speeds the turret traverse and the laser beam's bend (WHIRL_SLEW per m of spin radius over 4 m),
+ * Snow Compactor widens the laser beam (COMPACT_WIDTH m per unit of pack rate over the base 0.12). */
+const HOPPER_RANGE = 5;
+const WHIRL_SLEW = 0.35;
+const COMPACT_WIDTH = 3;
+/** Pulse-laser reach (m) with Mega Hopper. */
+export const tankGunRange = (st: { gunRange: number; maxBallRadius: number }): number => st.gunRange + HOPPER_RANGE * Math.max(0, st.maxBallRadius - 1.2);
+/** Turret / laser-bend slew multiplier with Whirlwind Turbine. */
+export const tankSlewMult = (st: { whirlRadius: number }): number => 1 + WHIRL_SLEW * Math.max(0, st.whirlRadius - 4);
+/** Laser beam half-width (m) with Snow Compactor. */
+export const tankBeamWidth = (st: { collectRate: number }): number => LASER_WIDTH + COMPACT_WIDTH * Math.max(0, st.collectRate - 0.12);
 const GUN_BURST = 0.5;
 const GUN_KNOCK = 1.5;
 const TRACERS = 24;
@@ -125,7 +142,12 @@ const _hit = { t: 0, x: 0, y: 0, z: 0, what: 'ground' as 'ground' | number };
 const _surf = makeSurface();
 
 /** ARSENAL: autocannon, laser, swarm missiles and the MISSILE STORM (plus the duel guest's view of them). */
-export class ArsenalKit extends Kit implements UltScript {
+export class ArsenalKit extends Kit implements UltScript, VehicleKit {
+  readonly primaryDesc: AbilityDesc = { icon: '🔫', label: 'PULSE', hint: 'hold for PULSE LASER' };
+  readonly secondaryDesc: AbilityDesc = { icon: '🔴', label: 'LASER', hint: 'LASER BEAM' };
+  /** SPACE state handed in by Combat (primary) for updateGuns this frame. */
+  private trigHeld = false;
+  private trigPressed = false;
   /** Autocannon timer + burst window, alternating muzzle, tracer pool. */
   private gunT = 0;
   private gunBurstT = 0;
@@ -149,10 +171,11 @@ export class ArsenalKit extends Kit implements UltScript {
   /** Laser beam pitch (rad, + up) and the minigun barrels' elevation (rad, + up; the Plow tilts the barrels with it). */
   laserPitch = 0;
   gunPitch = 0;
-  /** Duel guest: weapon state from host snapshots. netFire < 0 = not a puppet (own input drives the guns);
-   *  netTurret NaN = aim locally. */
+  /** Commanded turret yaw off the hull nose (rad, within ±GUN_ARC), slewed at TURRET_SLEW; the Plow eases to it. */
+  private turretCmd = 0;
+  /** Duel guest: last host snapshot fire bits (diagnostics only; Combat routes them through primary / secondary),
+   *  -1 = not a puppet. netTurret NaN = aim locally. */
   netFire = -1;
-  netLaser = false;
   netTurret = NaN;
   /** Duel guest: the host's laser bend (NaN = aim locally). */
   netLaserOff = NaN;
@@ -166,9 +189,24 @@ export class ArsenalKit extends Kit implements UltScript {
   /** Back to driving its own guns (a re-bind). */
   resetNet(): void {
     this.netFire = -1;
-    this.netLaser = false;
     this.netTurret = NaN;
     this.netLaserOff = NaN;
+  }
+
+  /** SPACE (VehicleKit): the pulse laser; updateGuns (run right after by Combat) reads the trigger. */
+  primary(_dt: number, held: boolean, pressed: boolean): void {
+    this.trigHeld = held;
+    this.trigPressed = pressed;
+  }
+
+  /** E (VehicleKit): the laser beam; spends the E charge when it fires. */
+  secondary(_dt: number, _held: boolean, pressed: boolean): boolean {
+    return pressed && this.fireLaser();
+  }
+
+  /** Puppet bits: bit 0 = pulse laser firing, bit 1 = laser beam burning. */
+  netBits(): number {
+    return (this.gunsOn ? 1 : 0) | (this.laserT > 0 ? 2 : 0);
   }
 
   /** MISSILE STORM: every pod empties, ULT_MISSILES heavy missiles spread over the top threats within ULT_RANGE. */
@@ -285,7 +323,7 @@ export class ArsenalKit extends Kit implements UltScript {
     return dealt;
   }
 
-  /** Pulse laser (SPACE, held): an auto-aiming laser cannon that tracks bots all the way round (360°), 12+ bolts a second. A duel puppet fires when the host's snapshot says so. */
+  /** Pulse laser (SPACE, held): an auto-aiming laser cannon that tracks bots within a 240° arc round the nose, 12+ bolts a second. A duel puppet fires when the host's snapshot says so. */
   updateGuns(dt: number): void {
     // Rounds in flight: the streak's head runs ahead at ROUND_SPEED, its tail TRACER_LEN behind, until the head lands.
     for (const tr of this.tracers) {
@@ -303,6 +341,9 @@ export class ArsenalKit extends Kit implements UltScript {
       tr.mesh.scale.z = Math.max(0.05, h - tail);
     }
     if (this.flashT > 0 && (this.flashT -= dt) <= 0) this.flash.visible = false;
+    const held = this.trigHeld;
+    const pressed = this.trigPressed;
+    this.trigHeld = this.trigPressed = false;
     const st = this.b.stats;
     const plow = this.b.plow;
     this.gunsOn = false;
@@ -310,32 +351,35 @@ export class ArsenalKit extends Kit implements UltScript {
     if (st.gunDamage <= 0 || !plow) return;
     if (this.gunT > 0) this.gunT -= dt;
     if (plow.dead) return;
-    const input = this.b.input;
-    let firing: boolean;
-    if (this.netFire >= 0) firing = (this.netFire & 1) !== 0;
-    else {
-      if (input.wasPressed('Space')) this.gunBurstT = GUN_BURST;
-      else if (this.gunBurstT > 0) this.gunBurstT -= dt;
-      firing = this.gunBurstT > 0 || !!input.isDown?.('Space');
-    }
+    // A press without held-key reporting fires a short burst; a puppet follows the host's held bit only.
+    if (pressed && !this.puppet) this.gunBurstT = GUN_BURST;
+    else if (this.gunBurstT > 0) this.gunBurstT -= dt;
+    const firing = held || this.gunBurstT > 0;
     this.gunsOn = firing;
     plow.gunFiring = firing;
     const px = plow.position.x;
     const pz = plow.position.z;
     const py = plow.position.y + GUN_HEIGHT;
-    const target = this.gunTarget(px, py, pz, plow.heading, st.gunRange);
-    // Turret tracks the target (or settles forward); a duel guest copies the host's aim.
-    if (!Number.isNaN(this.netTurret)) plow.turretAim = this.netTurret;
-    else if (target) plow.turretAim = wrapAngle(Math.atan2(target.position.x - px, target.position.z - pz) - plow.heading);
-    else plow.turretAim = 0;
+    const range = tankGunRange(st);
+    const target = this.gunTarget(px, py, pz, plow.heading, range);
+    // Turret swings (at TURRET_SLEW, never past the arc's edge) toward the target or settles forward; a duel guest
+    // copies the host's aim.
+    const targetYaw = target ? Math.atan2(target.position.x - px, target.position.z - pz) : 0;
+    if (!Number.isNaN(this.netTurret)) plow.turretAim = this.turretCmd = this.netTurret;
+    else {
+      const want = target ? THREE.MathUtils.clamp(wrapAngle(targetYaw - plow.heading), -GUN_ARC, GUN_ARC) : 0;
+      const ts = TURRET_SLEW * tankSlewMult(st) * dt;
+      this.turretCmd += THREE.MathUtils.clamp(want - this.turretCmd, -ts, ts);
+      plow.turretAim = this.turretCmd;
+    }
     // Barrels tilt toward the target's chest (limited band, limited speed).
     const wantPitch = target ? this.pitchTo(px, py, pz, target) || 0 : 0;
     const pstep = GUN_PITCH_SLEW * dt;
     this.gunPitch += THREE.MathUtils.clamp(wantPitch - this.gunPitch, -pstep, pstep);
     plow.gunPitch = this.gunPitch;
     if (!firing || this.gunT > 0) return;
-    // 360° tracking: wait for the turret to come round (and the barrels to lift) before a round leaves the barrels.
-    if (target && Math.abs(wrapAngle(plow.turretAim + plow.heading - plow.turretHeading)) > GUN_ON_TARGET) return;
+    // Wait for the turret to come round (and the barrels to lift) before a round leaves the barrels.
+    if (target && Math.abs(wrapAngle(targetYaw - plow.turretHeading)) > GUN_ON_TARGET) return;
     if (target && Math.abs(wantPitch - this.gunPitch) > GUN_ON_TARGET) return;
     this.gunT += 1 / Math.max(0.5, st.gunRate);
     if (this.gunT < 0) this.gunT = 0;
@@ -354,8 +398,8 @@ export class ArsenalKit extends Kit implements UltScript {
       const cp = Math.cos(this.gunPitch);
       const hx = Math.sin(h);
       const hz = Math.cos(h);
-      const t = this.b.authoritative ? (this.ctx.world?.blastPropRay(_p.x, _p.z, hx, hz, st.gunRange) ?? -1) : -1;
-      let reach = t >= 0 ? t : st.gunRange;
+      const t = this.b.authoritative ? (this.ctx.world?.blastPropRay(_p.x, _p.z, hx, hz, range) ?? -1) : -1;
+      let reach = t >= 0 ? t : range;
       // Rounds stop at the first ramp, deck or hill in the way.
       const ter = this.ctx.terrain;
       if (ter?.active) {
@@ -421,7 +465,7 @@ export class ArsenalKit extends Kit implements UltScript {
     return ter.lineOfSight(x, y, z, e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
   }
 
-  /** Minigun target: any bot in range (360°) within the barrels' elevation band and in sight, favouring bots near the
+  /** Pulse-laser target: any bot in range within the 240° arc round the nose, within the barrels' elevation band and in sight, favouring bots near the
    *  nose and close by, then threats. */
   private gunTarget(x: number, y: number, z: number, heading: number, range: number): EnemyHandle | null {
     const hits = this.collect(x, z, range);
@@ -441,6 +485,8 @@ export class ArsenalKit extends Kit implements UltScript {
         if (d > range + e.radius) continue;
         if (Number.isNaN(this.pitchTo(x, y, z, e))) continue;
         const cos = d > e.radius ? (dx * fx + dz * fz) / d : 1;
+        // Outside the 240° arc (squarely behind the hull): the turret can't reach it.
+        if (cos < GUN_ARC_COS) continue;
         // Off-nose bots cost up to 2x their distance; a bot that has been hurting you gets pulled forward.
         const cost = d * (1.5 - 0.5 * cos) - 0.1 * this.h.threat.of(e);
         if (cost < bestCost) {
@@ -525,7 +571,7 @@ export class ArsenalKit extends Kit implements UltScript {
       want = this.aimYaw;
       wantPitch = this.aimPitch;
     }
-    const step = LASER_SLEW * dt;
+    const step = LASER_SLEW * tankSlewMult(st) * dt;
     this.laserOff += THREE.MathUtils.clamp(want - this.laserOff, -step, step);
     this.laserPitch += THREE.MathUtils.clamp(wantPitch - this.laserPitch, -step, step);
     const h = plow.heading + this.laserOff;
@@ -543,11 +589,12 @@ export class ArsenalKit extends Kit implements UltScript {
     _q.set(_p.x + fx * cp * L, _p.y + sp * L, _p.z + fz * cp * L);
     const flick = 0.85 + Math.random() * 0.3;
     const fade = Math.min(1, this.laserT / 0.2, (LASER_SECONDS - this.laserT) / 0.08 + 0.2);
+    const wk = (tankBeamWidth(st) / LASER_WIDTH) * flick * fade;
     for (const [m, w] of [[this.laserCore, 0.09], [this.laserGlow, 0.32]] as const) {
       m.visible = true;
       m.position.copy(_p);
       m.lookAt(_q);
-      m.scale.set(w * flick * fade, w * flick * fade, L);
+      m.scale.set(w * wk, w * wk, L);
     }
     // Sparks along the beam + where it lands; scorched snow only while it runs along the ground.
     const k = Math.random();
@@ -564,7 +611,8 @@ export class ArsenalKit extends Kit implements UltScript {
     if (this.laserTickT > 0) return;
     this.laserTickT = LASER_TICK;
     if (this.b.authoritative && grounded) this.ctx.world?.blastPropRay(_p.x, _p.z, fx, fz, L);
-    // Hits: bots whose chest is within LASER_WIDTH of the 3D beam segment.
+    // Hits: bots whose chest is within the beam's half-width (LASER_WIDTH, wider with Snow Compactor) of the 3D segment.
+    const beamW = tankBeamWidth(st);
     const dirX = fx * cp;
     const dirY = sp;
     const dirZ = fz * cp;
@@ -579,7 +627,7 @@ export class ArsenalKit extends Kit implements UltScript {
       const ox = dx - dirX * along;
       const oy = dy - dirY * along;
       const oz = dz - dirZ * along;
-      if (Math.hypot(ox, oy, oz) > LASER_WIDTH + e.radius) continue;
+      if (Math.hypot(ox, oy, oz) > beamW + e.radius) continue;
       const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2, 'beam');
       if (dealt > 0 && Math.random() < 0.35) {
         _tip.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
@@ -912,7 +960,7 @@ export class ArsenalKit extends Kit implements UltScript {
     this.laserOff = 0;
     this.laserPitch = 0;
     this.gunPitch = 0;
-    this.netLaser = false;
+    this.trigHeld = this.trigPressed = false;
     this.laserCore.visible = this.laserGlow.visible = false;
     for (const tr of this.tracers) {
       tr.t = 0;

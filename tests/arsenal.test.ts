@@ -114,3 +114,42 @@ describe('ARSENAL targeting', () => {
     expect(c.planSalvo(4, 0, 0)).toEqual([null, null, null, null]);
   });
 });
+
+/* ------------------------------------------------------------------ BATTLE TANK pulse-laser nerf */
+
+type Guns = { gunTarget(x: number, y: number, z: number, h: number, r: number): EnemyHandle | null; updateGuns(dt: number): void };
+
+describe('BATTLE TANK turret', () => {
+  it('auto-aims only within a 240° arc round the hull nose: a bot squarely behind is safe', () => {
+    const behind = bot(0, -6, 100);
+    const flank = bot(-6, -3, 100); // ~117° off the nose: still inside
+    const { c } = rig([behind]);
+    const guns = c.vehicle as unknown as Guns;
+    expect(guns.gunTarget(0, 1.4, 0, 0, 26)).toBeNull();
+    const { c: c2 } = rig([behind, flank]);
+    expect((c2.vehicle as unknown as Guns).gunTarget(0, 1.4, 0, 0, 26)).toBe(flank);
+  });
+
+  it('the turret swings at a limited rate and never past the arc edge', () => {
+    const { c } = rig([bot(-6, -3.2, 100)]);
+    const plow = (c as unknown as { b: { plow: { turretAim: number; turretHeading: number; gunFiring: boolean; gunPitch: number } } }).b.plow;
+    Object.assign(plow, { turretHeading: 0, gunFiring: false, gunPitch: 0 });
+    const guns = c.vehicle as unknown as Guns;
+    guns.updateGuns(0.1);
+    expect(Math.abs(plow.turretAim)).toBeGreaterThan(0.2);
+    expect(Math.abs(plow.turretAim)).toBeLessThan(0.4);
+    for (let i = 0; i < 30; i++) guns.updateGuns(0.1);
+    expect(Math.abs(plow.turretAim)).toBeLessThanOrEqual((120 * Math.PI) / 180 + 1e-9);
+  });
+});
+
+describe('BATTLE TANK: the snowball shop lines still pay off', () => {
+  it('Mega Hopper adds reach, Whirlwind Turbine traverse, Snow Compactor beam width', async () => {
+    const { tankGunRange, tankSlewMult, tankBeamWidth } = await import('../src/entities/combat/arsenal');
+    const base = computeStatsFor({}, 'arsenal');
+    const up = computeStatsFor({ hopper: 5, whirl: 3, compactor: 5 }, 'arsenal');
+    expect(tankGunRange(up)).toBeGreaterThan(tankGunRange(base) + 1);
+    expect(tankSlewMult(up)).toBeGreaterThan(tankSlewMult(base) * 1.3);
+    expect(tankBeamWidth(up)).toBeGreaterThan(tankBeamWidth(base) + 0.1);
+  });
+});
