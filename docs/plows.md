@@ -50,7 +50,7 @@ and a giant fallout pool.
 
 Not a plow at all: a weapons platform with no blade and no snowball (+10% speed, -10% HP).
 
-- **Space (hold): minigun.** A six-barrel rotary gun that auto-aims at the best target in a wide arc in front of you.
+- **Space (hold): minigun.** A six-barrel rotary gun that auto-aims at the best target all the way round you (360°), preferring bots near the nose.
 - **E: laser beam.** A 1.5 s beam that burns through everything in a line and tracks its target a little.
 - **F: swarm missiles.** A salvo of homing missiles that each hunt a different bot, ranking targets by their HP and
   the damage they've dealt you.

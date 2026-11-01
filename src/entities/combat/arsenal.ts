@@ -10,13 +10,20 @@ const ORBITAL_RANGE = 50;
 const ORBITAL_DELAY = 1;
 const ORBITAL_MULT = 10;
 const ORBITAL_RADIUS = 4.5;
-/** ARSENAL: autocannon lock-on half-angle (80° either side of the nose, as a cos) and the burst a single press fires
- *  when the input source can't report held keys. */
-const GUN_LOCK_HALF = 1.4;
-const GUN_LOCK_COS = Math.cos(GUN_LOCK_HALF);
+/** ARSENAL: the minigun turret tracks all the way round (360°); it holds fire until the barrels are within this
+ *  many radians of the target, so rounds never leave sideways from a turret still swinging round. Then the burst a
+ *  single press fires when the input source can't report held keys. */
+const GUN_ON_TARGET = 0.35;
 const GUN_BURST = 0.5;
 const GUN_KNOCK = 1.5;
-const TRACERS = 12;
+const TRACERS = 16;
+/** Minigun rounds: tracer speed (m/s), streak length (m), random scatter at the target (m) so a burst isn't one line. */
+const ROUND_SPEED = 120;
+const TRACER_LEN = 3;
+const ROUND_SCATTER = 0.35;
+/** Muzzle flash: seconds on screen per shot. Muzzle smoke every Nth round (cheap wisps, not a puff per shot). */
+const FLASH_SECONDS = 0.04;
+const SMOKE_EVERY = 4;
 /** Laser beam: seconds it burns, hit width (m), damage tick. */
 const LASER_SECONDS = 1.5;
 const LASER_WIDTH = 0.9;
@@ -43,7 +50,12 @@ export class ArsenalKit extends Kit implements UltScript {
   private gunT = 0;
   private gunBurstT = 0;
   private gunSide = 0;
-  private tracers: { mesh: THREE.Mesh; t: number }[] = [];
+  /** Rounds in flight: a short two-tone streak travelling from the muzzle to `dist` along `dir`. */
+  private tracers: { mesh: THREE.Group; t: number; from: THREE.Vector3; dir: THREE.Vector3; dist: number }[] = [];
+  /** Muzzle flash (flame cone + hot core) and the round counter for smoke wisps. */
+  private flash!: THREE.Group;
+  private flashT = 0;
+  private rounds = 0;
   /** Laser beam time left and damage tick. */
   laserT = 0;
   private laserTickT = 0;
@@ -138,15 +150,45 @@ export class ArsenalKit extends Kit implements UltScript {
   }
 
   private buildArsenalFx(scene: THREE.Scene): void {
-    const trGeo = new THREE.BoxGeometry(0.07, 0.07, 1);
-    trGeo.translate(0, 0, 0.5);
-    const trMat = new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+    // Tracer: a thin white-hot core inside a wider orange glow, both tapering to a point at the tail (unit length
+    // along +Z, head at z = 1), so a round reads as a hot streak, not a uniform beam.
+    const streak = (r: number) => {
+      const g = new THREE.ConeGeometry(r, 1, 6, 1, true);
+      g.rotateX(Math.PI / 2); // tip -> -Z (tail), base -> +Z (head)
+      g.translate(0, 0, 0.5);
+      return g;
+    };
+    const coreGeo = streak(0.045);
+    const glowGeo = streak(0.1);
+    // Normal (not additive) blending: additive orange on sunlit snow washes out to white, which is what made the old
+    // tracers read as pale laser pulses. Solid fire colours stay visible on any background.
+    const add = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false });
+    const coreMat = add(0xffe680, 1);
+    const glowMat = add(0xff6a00, 0.75);
     for (let i = 0; i < TRACERS; i++) {
-      const mesh = new THREE.Mesh(trGeo, trMat);
+      const mesh = new THREE.Group();
+      mesh.add(new THREE.Mesh(glowGeo, glowMat), new THREE.Mesh(coreGeo, coreMat));
       mesh.visible = false;
       scene.add(mesh);
-      this.tracers.push({ mesh, t: 0 });
+      this.tracers.push({ mesh, t: 0, from: new THREE.Vector3(), dir: new THREE.Vector3(), dist: 0 });
     }
+    // Muzzle flash: a ragged forward flame cone plus a hot core, flickered per shot (scale / roll / length).
+    const flameGeo = new THREE.ConeGeometry(0.22, 0.75, 7, 1, true);
+    flameGeo.rotateX(-Math.PI / 2); // tip -> +Z (out of the barrel)
+    flameGeo.translate(0, 0, 0.42);
+    const petalGeo = new THREE.PlaneGeometry(0.9, 0.22);
+    this.flash = new THREE.Group();
+    this.flash.add(new THREE.Mesh(flameGeo, add(0xff7a10, 0.9)));
+    for (let i = 0; i < 2; i++) {
+      const petal = new THREE.Mesh(petalGeo, add(0xffb020, 0.85));
+      (petal.material as THREE.MeshBasicMaterial).side = THREE.DoubleSide;
+      petal.rotation.z = (i * Math.PI) / 2;
+      petal.position.z = 0.08;
+      this.flash.add(petal);
+    }
+    this.flash.add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), add(0xffe890, 1)));
+    this.flash.visible = false;
+    scene.add(this.flash);
     const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
     beamGeo.rotateX(Math.PI / 2);
     beamGeo.translate(0, 0, 0.5);
@@ -197,14 +239,24 @@ export class ArsenalKit extends Kit implements UltScript {
     return dealt;
   }
 
-  /** Autocannon (SPACE, held): twin auto-aiming cannons on a turret that locks up to 80° either side of the nose,
-   *  alternating muzzles. A duel puppet fires when the host's snapshot says so. */
+  /** Minigun (SPACE, held): an auto-aiming turret that tracks bots all the way round (360°), alternating muzzles. A duel puppet fires when the host's snapshot says so. */
   updateGuns(dt: number): void {
+    // Rounds in flight: the streak's head runs ahead at ROUND_SPEED, its tail TRACER_LEN behind, until the head lands.
     for (const tr of this.tracers) {
       if (tr.t <= 0) continue;
-      tr.t -= dt;
-      if (tr.t <= 0) tr.mesh.visible = false;
+      tr.t += dt;
+      const head = tr.t * ROUND_SPEED;
+      if (head - TRACER_LEN >= tr.dist) {
+        tr.t = 0;
+        tr.mesh.visible = false;
+        continue;
+      }
+      const h = Math.min(head, tr.dist);
+      const tail = Math.max(0, head - TRACER_LEN);
+      tr.mesh.position.copy(tr.from).addScaledVector(tr.dir, tail);
+      tr.mesh.scale.z = Math.max(0.05, h - tail);
     }
+    if (this.flashT > 0 && (this.flashT -= dt) <= 0) this.flash.visible = false;
     const st = this.b.stats;
     const plow = this.b.plow;
     this.gunsOn = false;
@@ -230,6 +282,8 @@ export class ArsenalKit extends Kit implements UltScript {
     else if (target) plow.turretAim = wrapAngle(Math.atan2(target.position.x - px, target.position.z - pz) - plow.heading);
     else plow.turretAim = 0;
     if (!firing || this.gunT > 0) return;
+    // 360° tracking: wait for the turret to come round before a round leaves the barrels.
+    if (target && Math.abs(wrapAngle(plow.turretAim + plow.heading - plow.turretHeading)) > GUN_ON_TARGET) return;
     this.gunT += 1 / Math.max(0.5, st.gunRate);
     if (this.gunT < 0) this.gunT = 0;
     const side = (this.gunSide = 1 - this.gunSide);
@@ -238,12 +292,10 @@ export class ArsenalKit extends Kit implements UltScript {
     let ez: number;
     let ey = _p.y;
     if (target) {
-      ex = target.position.x;
-      ez = target.position.z;
-      ey = target.position.y + Math.min(1.2, target.radius * 0.6);
+      ex = target.position.x + (Math.random() - 0.5) * ROUND_SCATTER;
+      ez = target.position.z + (Math.random() - 0.5) * ROUND_SCATTER;
+      ey = target.position.y + Math.min(1.2, target.radius * 0.6) + (Math.random() - 0.5) * ROUND_SCATTER;
       this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK, 'round');
-      _q.set(ex, ey, ez);
-      this.ctx.fx.burst(_q, { color: 0xffd060, count: 4, speed: 6, size: 0.12, gravity: 10, life: 0.25 });
     } else {
       const h = plow.turretHeading;
       const hx = Math.sin(h);
@@ -253,19 +305,44 @@ export class ArsenalKit extends Kit implements UltScript {
       ex = _p.x + hx * reach;
       ez = _p.z + hz * reach;
     }
-    const tr = this.tracers.find((t) => t.t <= 0) ?? this.tracers[0];
-    tr.t = 0.06;
-    tr.mesh.visible = true;
-    tr.mesh.position.copy(_p);
-    _q.set(ex, ey, ez);
-    tr.mesh.lookAt(_q);
-    tr.mesh.scale.set(1, 1, Math.max(0.5, _p.distanceTo(_q)));
-    this.ctx.fx.burst(_p, { color: 0xffe08a, count: 3, speed: 4, size: 0.18, gravity: 0, life: 0.08 });
+    this.fireRound(_p, _q.set(ex, ey, ez), !!target);
     this.b.audio.play('hit', { volume: 0.22, pitch: 1.7 + Math.random() * 0.2 });
     if (this.b.local) this.ctx.fx.shake(0.04);
   }
 
-  /** Autocannon target: inside the lock cone and range, favouring bots near the nose and close by, then threats. */
+  /** One minigun round's visuals: muzzle flash, a travelling tracer, an ejected casing, the impact. */
+  private fireRound(from: THREE.Vector3, to: THREE.Vector3, hit: boolean): void {
+    const fx = this.ctx.fx;
+    const tr = this.tracers.find((t) => t.t <= 0) ?? this.tracers.reduce((a, b) => (a.t > b.t ? a : b));
+    tr.from.copy(from);
+    tr.dir.subVectors(to, from);
+    tr.dist = tr.dir.length();
+    if (tr.dist < 1e-3) tr.dir.set(0, 0, 1);
+    else tr.dir.multiplyScalar(1 / tr.dist);
+    tr.t = 1e-4;
+    tr.mesh.visible = true;
+    tr.mesh.position.copy(from);
+    tr.mesh.lookAt(_tip.copy(from).add(tr.dir));
+    tr.mesh.scale.z = 0.05;
+    // Muzzle flash, flickered so consecutive shots never look identical.
+    const f = this.flash;
+    f.visible = true;
+    this.flashT = FLASH_SECONDS;
+    f.position.copy(from);
+    f.lookAt(_tip);
+    f.rotateZ(Math.random() * Math.PI);
+    const k = 0.75 + Math.random() * 0.55;
+    f.scale.set(k, k, k * (0.8 + Math.random() * 0.7));
+    // Brass casing kicked out of the side, and a thin smoke wisp every few rounds.
+    fx.burst(from, { color: 0xd8a63a, count: 1, speed: 4, size: 0.07, gravity: 22, life: 0.45 });
+    if (++this.rounds % SMOKE_EVERY === 0) fx.smoke(from, { count: 1, color: 0x9aa0a8, size: 0.18, grow: 3, life: 0.5, speed: 0.4, up: 0.8, rise: 0.6, drag: 2, opacity: 0.3 });
+    // Impact: sparks kicked back toward the gun on a hit, a snow / dust puff where a miss lands.
+    _fwd.copy(tr.dir).negate();
+    if (hit) fx.sparks(to, _fwd, { count: 5, color: 0xffa030, speed: 9, spread: 0.6, size: 0.05, life: 0.18, gravity: 12 });
+    else fx.smoke(to, { count: 1, color: 0xe6edf5, size: 0.25, grow: 2.5, life: 0.4, speed: 0.6, up: 0.6, drag: 3, opacity: 0.5 });
+  }
+
+  /** Minigun target: any bot in range (360°), favouring bots near the nose and close by, then threats. */
   private gunTarget(x: number, z: number, heading: number, range: number): EnemyHandle | null {
     const hits = this.collect(x, z, range);
     const fx = Math.sin(heading);
@@ -280,7 +357,6 @@ export class ArsenalKit extends Kit implements UltScript {
       const d = Math.hypot(dx, dz);
       if (d > range + e.radius) continue;
       const cos = d > e.radius ? (dx * fx + dz * fz) / d : 1;
-      if (cos < GUN_LOCK_COS) continue;
       // Off-nose bots cost up to 2x their distance; a bot that has been hurting you gets pulled forward.
       const cost = d * (1.5 - 0.5 * cos) - 0.1 * this.h.threat.of(e);
       if (cost < bestCost) {
@@ -543,7 +619,12 @@ export class ArsenalKit extends Kit implements UltScript {
     this.laserOff = 0;
     this.netLaser = false;
     this.laserCore.visible = this.laserGlow.visible = false;
-    for (const tr of this.tracers) tr.mesh.visible = false;
+    for (const tr of this.tracers) {
+      tr.t = 0;
+      tr.mesh.visible = false;
+    }
+    this.flash.visible = false;
+    this.flashT = 0;
     for (const m of this.missiles) {
       m.live = false;
       m.mesh.visible = false;
