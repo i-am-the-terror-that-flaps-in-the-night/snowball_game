@@ -341,6 +341,7 @@ export class ArsenalKit extends Kit implements UltScript {
     const wantPitch = target ? this.pitchTo(px, py, pz, target) || 0 : 0;
     const pstep = GUN_PITCH_SLEW * dt;
     this.gunPitch += THREE.MathUtils.clamp(wantPitch - this.gunPitch, -pstep, pstep);
+    plow.gunPitch = this.gunPitch;
     if (!firing || this.gunT > 0) return;
     // 360° tracking: wait for the turret to come round (and the barrels to lift) before a round leaves the barrels.
     if (target && Math.abs(wrapAngle(plow.turretAim + plow.heading - plow.turretHeading)) > GUN_ON_TARGET) return;

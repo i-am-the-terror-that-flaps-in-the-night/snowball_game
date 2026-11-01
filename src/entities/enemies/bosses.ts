@@ -7,6 +7,8 @@ import { donaldProps, type WallLine } from './donaldProps';
 import { ARENA } from '../../core/types';
 import { waveHitPlow, waveHits } from '../combat/shared';
 import { makeSurface } from '../../world/Terrain';
+import { CampWatch, deckLeap, pickHatches, type LeapPlan } from '../../world/omega/zone';
+import { OMEGA_HATCHES, OMEGA_TERRAIN } from '../../world/omega/layout';
 
 /* Boss AI. Every big move has a readable wind-up (>= 0.6s): glowing parts, the bot backing up / revving,
  * and a ground decal (red chevron stripe for charges/dashes, a filling warning ring for AOE moves). */
@@ -848,22 +850,67 @@ function sleet(h: Host, e: Bot, dt: number): void {
 
 /* ------------------------------------------------------------------ MEGAPLOW Ω */
 
+/** Deck leap (The Omega Works): when the player camps on a deck MEGAPLOW can't drive onto for CAMP_SECONDS, it
+ *  winds up for DECK_LEAP_WIND s (a warning ring on the deck where it will land), leaps up after them along
+ *  world/omega/zone.ts deckLeap's arc, and lands with a shockwave of DECK_LEAP_R. */
+const DECK_LEAP_WIND = 1.1;
+const DECK_LEAP_R = 6;
+const DECK_LEAP_DMG = 1.1;
+interface DeckLeapState {
+  camp: CampWatch;
+  plan: LeapPlan | null;
+}
+const DECK_LEAPS = new WeakMap<Bot, DeckLeapState>();
+const _navOut = { x: 0, z: 0 };
+
+function deckLeapState(e: Bot): DeckLeapState {
+  let s = DECK_LEAPS.get(e);
+  if (!s) DECK_LEAPS.set(e, (s = { camp: new CampWatch(), plan: null }));
+  return s;
+}
+
+/** A leap plan from the boss to the player's deck, or null (same level, too far, or a deck overhead in the way). */
+function planDeckLeap(h: Host, e: Bot): LeapPlan | null {
+  const t = h.ctx.terrain;
+  if (!t || !t.decks.length) return null;
+  const pp = h.ctx.plow.position;
+  const plan = deckLeap(t, e.position.x, e.vert.surfaceY, e.position.z, pp.x, pp.y, pp.z);
+  if (!plan) return null;
+  // Not from under a deck (it would bonk the underside): the approach routes it out into the open first.
+  const apex = Math.max(e.vert.surfaceY, plan.y) + 3;
+  if (t.ceilingAt(e.position.x, e.position.z, e.vert.surfaceY + 0.5) < apex) return null;
+  return plan;
+}
+
+/** Summon minions: through the gates, or in The Omega Works out of the hatches nearest the player. */
+function summon(h: Host, type: EnemyType, gate: number): void {
+  if (h.ctx.zone.theme !== 'omega') return h.spawnAtGate(type, gate);
+  const pp = h.ctx.plow.position;
+  const i = pickHatches(pp.x, pp.y, pp.z, 1, gate)[0];
+  if (i === undefined) return h.spawnAtGate(type, gate);
+  const hh = OMEGA_HATCHES[i];
+  const y = hh.deck < 0 ? 0 : (OMEGA_TERRAIN.decks!.find((d) => d.id === hh.deck)?.top ?? 0);
+  h.ctx.enemies.spawn(type, hh.x, hh.z, { hpMult: h.ctx.zone.enemyHpMult, heading: Math.atan2(pp.x - hh.x, pp.z - hh.z), y: y + 0.5 });
+}
+
 function omega(h: Host, e: Bot, dt: number): void {
   const d = h.dist(e);
   if (e.phase < 1 && e.hpFrac <= 0.66) {
     e.phase = 1;
     h.bossPhase(e, 'PHASE 2');
-    h.spawnAtGate('scrapper', 0);
-    h.spawnAtGate('scrapper', 1);
-    h.spawnAtGate('scrapper', 2);
+    summon(h, 'scrapper', 0);
+    summon(h, 'scrapper', 1);
+    summon(h, 'scrapper', 2);
   }
   if (e.phase < 2 && e.hpFrac <= 0.33) {
     e.phase = 2;
     e.enraged = true;
     h.bossPhase(e, 'PHASE 3 — ENRAGED!');
-    h.spawnAtGate('brute', 1);
-    h.spawnAtGate('brute', 2);
+    summon(h, 'brute', 1);
+    summon(h, 'brute', 2);
   }
+  const dl = deckLeapState(e);
+  const campReady = dl.camp.update(dt, e.vert.surfaceY, h.ctx.plow.position.y);
   const spd = e.def.speed * (e.enraged ? 1.35 : 1);
   const PR = 8;
   const C: ChargeCfg = { speed: 18, maxT: e.enraged ? 1.4 : 2.5, dmg: e.def.ramDamage * 1.4, knock: 24 };
@@ -930,6 +977,65 @@ function omega(h: Host, e: Bot, dt: number): void {
         h.label(e, 'CORE EXPOSED!', '#ff6a7a', 1.1);
       }
       break;
+    case 'deckLeapWind': {
+      const plan = dl.plan;
+      const p = e.prog;
+      e.desSpeed = 0;
+      e.windup = p;
+      e.glow = p;
+      e.rear = p * 0.6;
+      e.jitter = 0.03 + 0.05 * p;
+      if (!plan) {
+        e.set('recover', 0.3);
+        break;
+      }
+      face(e, plan.x, plan.z);
+      e.turnRate = 3;
+      h.ring(e, plan.x, plan.z, DECK_LEAP_R, p, 0xff1744, (0.4 + 0.45 * p) * (0.75 + 0.25 * Math.sin(h.time * 24)));
+      if (e.stateT > 0) break;
+      // Launch along the planned arc (horizontal speed is carried through the air by EnemyManager.integrate).
+      const hs = Math.hypot(plan.vx, plan.vz);
+      const head = hs > 1e-3 ? Math.atan2(plan.vx, plan.vz) : e.heading;
+      e.heading = e.desHeading = head;
+      e.speed = hs;
+      e.ivx = plan.vx;
+      e.ivz = plan.vz;
+      e.kvx = e.kvz = 0;
+      e.windup = e.jitter = e.rear = 0;
+      e.glow = 1;
+      h.ctx.enemies.launch(e, plan.vy);
+      e.set('deckLeap', plan.t + 1.5);
+      h.sfx('dash', 0.8, 0.45, 0.1);
+      h.fxAt(e.position.x, e.groundY + 0.3, e.position.z, 0xff5a7a, 30, 7, 0.32, 14, 0.8);
+      break;
+    }
+    case 'deckLeap': {
+      const plan = dl.plan;
+      e.desSpeed = 0;
+      e.glow = 1;
+      if (plan) h.ring(e, plan.x, plan.z, DECK_LEAP_R, 1, 0xff1744, 0.55 + 0.3 * Math.sin(h.time * 30));
+      const flown = e.stateDur - e.stateT;
+      if ((e.airborne || flown < 0.05) && e.stateT > 0) break;
+      // Touchdown on the deck: a shockwave round where it lands.
+      h.clearTele(e);
+      e.speed = 0;
+      e.ivx = e.ivz = 0;
+      const fx = h.ctx.fx;
+      _v.set(e.position.x, e.groundY + 0.1, e.position.z);
+      fx.ring(_v, DECK_LEAP_R, 0xff3355);
+      fx.ring(_v, DECK_LEAP_R * 0.6, 0xffffff);
+      _v.y += 0.5;
+      fx.burst(_v, { color: 0xffffff, count: 50, speed: 12, size: 0.32, gravity: 14, life: 0.9 });
+      fx.burst(_v, { color: 0xff2bd6, count: 20, speed: 9, size: 0.14, gravity: 18, life: 0.6 });
+      fx.shake(1.0);
+      h.sfx('thud', 1, 0.6, 0.1);
+      h.sfx('shockwave', 1, 0.75, 0.1);
+      if (d < DECK_LEAP_R + h.pr * 0.4 && plowInWave(h, e)) waveHitPlow(h.ctx, e, e.def.ramDamage * DECK_LEAP_DMG, { knockback: 18, unblockable: true });
+      dl.plan = null;
+      dl.camp.reset();
+      e.set('recover', 0.9);
+      break;
+    }
     case 'exposed':
       e.desSpeed = 0;
       e.glow = 1;
@@ -951,9 +1057,22 @@ function omega(h: Host, e: Bot, dt: number): void {
         }
       }
       break;
-    default:
-      goTo(e, h.px, h.pz, spd, 3);
+    default: {
+      // The Omega Works: route via ramps / round decks when the player is on another level.
+      const nav = h.ctx.enemies.nav;
+      if (nav && nav.next(e.position.x, e.position.z, e.vert.deck, h.px, h.pz, h.ctx.plow.deck, _navOut)) goTo(e, _navOut.x, _navOut.z, spd, 1);
+      else goTo(e, h.px, h.pz, spd, 3);
       e.turnRate = 1.1 * (e.enraged ? 1.3 : 1);
+      // Camping on a deck it can't drive onto: leap up after the player.
+      if (campReady && !e.airborne && (dl.plan = planDeckLeap(h, e))) {
+        e.set('deckLeapWind', DECK_LEAP_WIND);
+        h.sfx('charge', 0.7, 0.55, 0.15);
+        h.label(e, 'LEAP!', '#ff4a7a', 1.1);
+        break;
+      }
+      // Player up on a deck above it: no charges or pounds into the deck side, just follow the routing (up a ramp)
+      // until the camp timer fires the leap.
+      if (dl.camp.t > 0) break;
       if (e.cd <= 0) {
         if (d < e.radius + h.pr + 1.4) {
           if (e.phase >= 1 && Math.random() < 0.45) {
@@ -971,6 +1090,7 @@ function omega(h: Host, e: Bot, dt: number): void {
           h.sfx('charge', 0.8, 0.5, 0.15);
         }
       }
+    }
   }
 }
 

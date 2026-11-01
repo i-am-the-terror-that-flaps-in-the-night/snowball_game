@@ -339,10 +339,15 @@ export class Plow implements PlowAPI {
   private gearVis!: GearVisuals;
   private turret!: THREE.Group;
   private minigun!: THREE.Group;
+  /** Minigun elevation pivot; follows gunPitch. */
+  private gunMount!: THREE.Group;
+  private gunTilt = 0;
   /** Minigun barrel spin (rad/s), easing toward full speed while gunFiring. */
   private minigunSpin = 0;
   /** Set by Combat each frame: the ARSENAL autocannon is firing. */
   gunFiring = false;
+  /** Minigun elevation (rad, + up) from ARSENAL's auto-aim; the barrels tilt to it. */
+  gunPitch = 0;
   private muzzles: THREE.Object3D[] = [];
   private laserMount!: THREE.Object3D;
   private pods: THREE.Object3D[] = [];
@@ -541,6 +546,7 @@ export class Plow implements PlowAPI {
     this.arsenalParts = ars.group;
     this.turret = ars.turret;
     this.minigun = ars.rotor;
+    this.gunMount = ars.gun;
     this.muzzles = ars.muzzles;
     this.laserMount = ars.laser;
     this.pods = ars.pods;
@@ -548,7 +554,8 @@ export class Plow implements PlowAPI {
     add(chassisGeo, darkMat, 0, 0.62, 0.05, this.arsenalParts);
     this.turret.removeFromParent();
     mergeStatic(this.arsenalParts);
-    mergeStatic(this.turret, { keep: [this.minigun] });
+    mergeStatic(this.turret, { keep: [this.gunMount] });
+    mergeStatic(this.gunMount, { keep: [this.minigun] });
     mergeStatic(this.minigun);
     this.arsenalParts.add(this.turret);
     this.arsenalParts.add(...makeShadowProxy(this.arsenalParts, this.arsenalParts));
@@ -2553,6 +2560,9 @@ export class Plow implements PlowAPI {
       const want = this.gunFiring ? 42 : 0;
       this.minigunSpin += (want - this.minigunSpin) * Math.min(1, dt * (this.gunFiring ? 8 : 1.6));
       this.minigun.rotation.z += this.minigunSpin * dt;
+      // Barrels tilt to the aim (eased: the kit already slews it; this smooths snapshot steps in a duel).
+      this.gunTilt += (this.gunPitch - this.gunTilt) * Math.min(1, dt * 14);
+      this.gunMount.rotation.x = -this.gunTilt;
       this.armGlowMat.emissiveIntensity = 0.9 + 0.4 * Math.sin(this.ctx.time * 5);
     }
     if (this.kind === 'isotope') {

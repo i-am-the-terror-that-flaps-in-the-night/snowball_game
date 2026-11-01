@@ -370,6 +370,8 @@ export interface ArsenalParts {
   group: THREE.Group;
   /** Turret (yaw only; the owner swings it toward the gun target). */
   turret: THREE.Group;
+  /** Minigun elevation pivot (motor block, shroud, rotor, muzzle): rotation.x = -pitch. */
+  gun: THREE.Group;
   /** Minigun barrel cluster (spins about its local z while firing). */
   rotor: THREE.Group;
   /** Muzzle markers on the turret (left, right), the laser lens and the missile pod tubes (model-local). */
@@ -442,12 +444,17 @@ export function buildArsenalParts(m: IsotopePartsMats): ArsenalParts {
     plate.rotation.y = sx * 0.08;
   }
   add(new THREE.BoxGeometry(0.62, 0.08, 0.05), glowMat, 0, 0.5, 0.88, turret, false);
-  // Minigun: the barrel axis runs along +z at (0, GY).
+  // Minigun: the barrel axis runs along +z at (0, GY). Motor block, shroud, rotor and muzzle sit on `gun`, which
+  // pivots at the motor block so the barrels can tilt up / down with the auto-aim (Plow sets gun.rotation.x).
   const GY = 0.26;
-  add(new THREE.BoxGeometry(0.62, 0.5, 0.6), m.dark, 0, GY, 0.85, turret); // motor block
-  const shroud = add(new THREE.CylinderGeometry(0.3, 0.34, 0.42, 14), m.chrome, 0, GY, 1.3, turret);
+  const GZ = 0.85;
+  const gun = new THREE.Group();
+  gun.position.set(0, GY, GZ);
+  turret.add(gun);
+  add(new THREE.BoxGeometry(0.62, 0.5, 0.6), m.dark, 0, 0, 0, gun); // motor block
+  const shroud = add(new THREE.CylinderGeometry(0.3, 0.34, 0.42, 14), m.chrome, 0, 0, 1.3 - GZ, gun);
   shroud.rotation.x = Math.PI / 2;
-  const collar = add(new THREE.CylinderGeometry(0.35, 0.35, 0.08, 14), m.dark, 0, GY, 1.1, turret);
+  const collar = add(new THREE.CylinderGeometry(0.35, 0.35, 0.08, 14), m.dark, 0, 0, 1.1 - GZ, gun);
   collar.rotation.x = Math.PI / 2;
   // Ammo box on the right cheek + a segmented belt curling into the motor block.
   add(new THREE.BoxGeometry(0.34, 0.36, 0.5), m.trim, 0.82, 0.3, 0.55, turret);
@@ -459,8 +466,8 @@ export function buildArsenalParts(m: IsotopePartsMats): ArsenalParts {
   }
   // The rotor: six barrels around the axis, two clamp rings and a muzzle ring; spins about z.
   const rotor = new THREE.Group();
-  rotor.position.set(0, GY, 1.5);
-  turret.add(rotor);
+  rotor.position.set(0, 0, 1.5 - GZ);
+  gun.add(rotor);
   const BL = 1.9;
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
@@ -477,10 +484,10 @@ export function buildArsenalParts(m: IsotopePartsMats): ArsenalParts {
   const hub = add(new THREE.CylinderGeometry(0.08, 0.08, BL, 8), m.dark, 0, 0, BL / 2, rotor);
   hub.rotation.x = Math.PI / 2;
   const mz = new THREE.Object3D();
-  mz.position.set(0, GY, 1.5 + BL + 0.1);
-  turret.add(mz);
+  mz.position.set(0, 0, 1.5 - GZ + BL + 0.1);
+  gun.add(mz);
   const muzzles: THREE.Object3D[] = [mz, mz];
-  return { group: ap, turret, rotor, muzzles, laser, pods, glowMat };
+  return { group: ap, turret, gun, rotor, muzzles, laser, pods, glowMat };
 }
 
 /* ------------------------------------------------------------------ BRUTUS */
