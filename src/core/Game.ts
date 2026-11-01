@@ -1,3 +1,4 @@
+import { Terrain } from '../world/Terrain';
 import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
@@ -142,6 +143,7 @@ export class Game {
       progression,
       stats: progression.computeStats(),
       zone: ZONES[0],
+      terrain: new Terrain(),
       time: 0,
     } as GameContext;
     this.ctx = ctx;
@@ -808,6 +810,7 @@ export class Game {
       // Slow-motion while the wreck animation plays.
       const simDt = (state === 'wrecked' ? dt * 0.35 : dt) * timeScale;
       ctx.time += simDt;
+    ctx.terrain.update(simDt);
       ctx.plow.update(simDt);
       ctx.snow.update(simDt);
       if (state === 'playing') ctx.waves.update(simDt);
@@ -860,6 +863,7 @@ export class Game {
     const timeScale = ctx.impact.step(dt);
     const simDt = dt * timeScale;
     ctx.time += simDt;
+    ctx.terrain.update(simDt);
     ctx.plow.update(simDt);
     ctx.snow.update(simDt);
     ctx.enemies.update(simDt);
@@ -1023,6 +1027,7 @@ export class Game {
     // Impact visuals only: an online match never hit-stops.
     ctx.impact.step(dt);
     ctx.time += dt;
+    ctx.terrain.update(dt);
     this.duel.update(dt);
     if (this.state === 'duel') {
       const fight = this.duel.phase === 'fight' && !this.duel.menuOpen;

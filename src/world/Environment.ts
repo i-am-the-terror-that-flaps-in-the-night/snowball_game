@@ -569,6 +569,7 @@ export class Environment implements WorldAPI {
 
   setZone(zone: ZoneDef): void {
     this.zone = zone;
+    this.ctx.terrain.load(zone.terrain ?? {});
     this.style = STYLES[zone.theme] ?? STYLES.meadow;
     const scene = this.ctx.scene;
     this.fog.color.setHex(zone.fogColor);

@@ -1,4 +1,5 @@
 import type { EnemyType } from './enemies';
+import type { TerrainDef } from '../world/Terrain';
 
 export interface SpawnGroup {
   type: EnemyType;
@@ -47,6 +48,8 @@ export interface ZoneDef {
   snowTint: number;
   /** Falling snow particle density, 0..1. */
   snowfall: number;
+  /** Ground shapes, material patches and (The Omega Works) decks. Omitted = flat snow. */
+  terrain?: TerrainDef;
   /** Decoration theme for Environment. */
   theme: 'meadow' | 'pines' | 'lake' | 'blizzard' | 'peak' | 'rally' | 'brawl';
 }

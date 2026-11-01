@@ -1,3 +1,4 @@
+import type { Terrain } from '../world/Terrain';
 import type * as THREE from 'three';
 import type { EventBus } from './events';
 import type { Input } from './input';
@@ -758,6 +759,8 @@ export interface GameContext {
   /** Current computed stats; replaced (new object) when upgrades change. */
   stats: PlayerStats;
   zone: ZoneDef;
+  /** Ground shape + decks of the current arena (world/Terrain.ts). Flat unless the arena defines `terrain`. */
+  terrain: Terrain;
   world: WorldAPI;
   snow: SnowFieldAPI;
   plow: PlowAPI;
