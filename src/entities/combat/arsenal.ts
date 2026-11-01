@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
+import { makeSurface } from '../../world/Terrain';
 
 /** ORBITAL STRIKE (ARSENAL): marks up to ORBITAL_TARGETS top-priority bots within ORBITAL_RANGE, then after
  *  ORBITAL_DELAY a sky laser hits each — ORBITAL_MULT x missile damage in ORBITAL_RADIUS. */
@@ -28,10 +29,21 @@ const SMOKE_EVERY = 4;
 const LASER_SECONDS = 1.5;
 const LASER_WIDTH = 0.9;
 const LASER_TICK = 0.1;
-/** Laser tracking: the beam bends up to LASER_TRACK rad off the nose toward the top target, at LASER_SLEW rad/s. */
-const LASER_TRACK = 0.4;
 const LASER_SLEW = 1.6;
 /** Missiles: flight speed (m/s), turn rate (1/s), blast radius (m), splash share, fuse (s). */
+/** Minigun elevation limits (rad) and how fast the barrels tilt. Targets outside the band are skipped (the gun can't
+ *  reach a bot straight above it on a deck). Line of sight through terrain / decks is required when terrain exists. */
+const GUN_PITCH_MIN = -10 * (Math.PI / 180);
+const GUN_PITCH_MAX = 30 * (Math.PI / 180);
+const GUN_PITCH_SLEW = 2.5;
+/** Muzzle height above the plow's feet used for aim maths. */
+const GUN_HEIGHT = 1.4;
+/** Laser: may bend up to LASER_CONE off the nose in ANY direction (left / right / up), but not below LASER_PITCH_MIN. */
+const LASER_CONE = 80 * (Math.PI / 180);
+const LASER_PITCH_MIN = -15 * (Math.PI / 180);
+/** Missiles re-check line of sight to their target this often (s); when a deck is in the way they fly round its edge. */
+const MISSILE_LOS_EVERY = 0.2;
+
 const MISSILES_MAX = 12;
 const MISSILE_SPEED = 26;
 const MISSILE_TURN = 5;
@@ -42,7 +54,21 @@ const MISSILE_RANGE = 45;
 /** A missile whose target dies looks for a new one within this many metres of itself. */
 const MISSILE_RETARGET = 25;
 
-type Missile = { mesh: THREE.Group; pos: THREE.Vector3; vel: THREE.Vector3; target: EnemyHandle | null; t: number; live: boolean };
+type Missile = {
+  mesh: THREE.Group;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  target: EnemyHandle | null;
+  t: number;
+  live: boolean;
+  /** Detour point round a deck between the missile and its target (null = fly straight at it). */
+  via: THREE.Vector3 | null;
+  losT: number;
+};
+
+const _a = new THREE.Vector3();
+const _hit = { t: 0, x: 0, y: 0, z: 0, what: 'ground' as 'ground' | number };
+const _surf = makeSurface();
 
 /** ARSENAL: autocannon, laser, swarm missiles and the ORBITAL STRIKE (plus the duel guest's view of them). */
 export class ArsenalKit extends Kit implements UltScript {
@@ -66,6 +92,9 @@ export class ArsenalKit extends Kit implements UltScript {
   /** Is the autocannon firing this frame (snapshot bit). Laser beam yaw off the nose. */
   gunsOn = false;
   laserOff = 0;
+  /** Laser beam pitch (rad, + up) and the minigun barrels' elevation (rad, + up; the Plow tilts the barrels with it). */
+  laserPitch = 0;
+  gunPitch = 0;
   /** Duel guest: weapon state from host snapshots. netFire < 0 = not a puppet (own input drives the guns);
    *  netTurret NaN = aim locally. */
   netFire = -1;
@@ -215,7 +244,7 @@ export class ArsenalKit extends Kit implements UltScript {
       g.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(noseGeo, noseMat), new THREE.Mesh(fireGeo, fireMat));
       g.visible = false;
       scene.add(g);
-      this.missiles.push({ mesh: g, pos: new THREE.Vector3(), vel: new THREE.Vector3(), target: null, t: 0, live: false });
+      this.missiles.push({ mesh: g, pos: new THREE.Vector3(), vel: new THREE.Vector3(), target: null, t: 0, live: false, via: null, losT: 0 });
     }
   }
 
@@ -276,14 +305,20 @@ export class ArsenalKit extends Kit implements UltScript {
     plow.gunFiring = firing;
     const px = plow.position.x;
     const pz = plow.position.z;
-    const target = this.gunTarget(px, pz, plow.heading, st.gunRange);
+    const py = plow.position.y + GUN_HEIGHT;
+    const target = this.gunTarget(px, py, pz, plow.heading, st.gunRange);
     // Turret tracks the target (or settles forward); a duel guest copies the host's aim.
     if (!Number.isNaN(this.netTurret)) plow.turretAim = this.netTurret;
     else if (target) plow.turretAim = wrapAngle(Math.atan2(target.position.x - px, target.position.z - pz) - plow.heading);
     else plow.turretAim = 0;
+    // Barrels tilt toward the target's chest (limited band, limited speed).
+    const wantPitch = target ? this.pitchTo(px, py, pz, target) || 0 : 0;
+    const pstep = GUN_PITCH_SLEW * dt;
+    this.gunPitch += THREE.MathUtils.clamp(wantPitch - this.gunPitch, -pstep, pstep);
     if (!firing || this.gunT > 0) return;
-    // 360° tracking: wait for the turret to come round before a round leaves the barrels.
+    // 360° tracking: wait for the turret to come round (and the barrels to lift) before a round leaves the barrels.
     if (target && Math.abs(wrapAngle(plow.turretAim + plow.heading - plow.turretHeading)) > GUN_ON_TARGET) return;
+    if (target && Math.abs(wantPitch - this.gunPitch) > GUN_ON_TARGET) return;
     this.gunT += 1 / Math.max(0.5, st.gunRate);
     if (this.gunT < 0) this.gunT = 0;
     const side = (this.gunSide = 1 - this.gunSide);
@@ -298,12 +333,20 @@ export class ArsenalKit extends Kit implements UltScript {
       this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK, 'round');
     } else {
       const h = plow.turretHeading;
+      const cp = Math.cos(this.gunPitch);
       const hx = Math.sin(h);
       const hz = Math.cos(h);
       const t = this.b.authoritative ? (this.ctx.world?.blastPropRay(_p.x, _p.z, hx, hz, st.gunRange) ?? -1) : -1;
-      const reach = t >= 0 ? t : st.gunRange;
-      ex = _p.x + hx * reach;
-      ez = _p.z + hz * reach;
+      let reach = t >= 0 ? t : st.gunRange;
+      // Rounds stop at the first ramp, deck or hill in the way.
+      const ter = this.ctx.terrain;
+      if (ter?.active) {
+        const hit = ter.raycast(_p.x, _p.y, _p.z, hx * cp, Math.sin(this.gunPitch), hz * cp, reach, _hit);
+        if (hit) reach = hit.t;
+      }
+      ex = _p.x + hx * cp * reach;
+      ez = _p.z + hz * cp * reach;
+      ey = _p.y + Math.sin(this.gunPitch) * reach;
     }
     this.fireRound(_p, _q.set(ex, ey, ez), !!target);
     this.b.audio.play('hit', { volume: 0.22, pitch: 1.7 + Math.random() * 0.2 });
@@ -342,27 +385,59 @@ export class ArsenalKit extends Kit implements UltScript {
     else fx.smoke(to, { count: 1, color: 0xe6edf5, size: 0.25, grow: 2.5, life: 0.4, speed: 0.6, up: 0.6, drag: 3, opacity: 0.5 });
   }
 
-  /** Minigun target: any bot in range (360°), favouring bots near the nose and close by, then threats. */
-  private gunTarget(x: number, z: number, heading: number, range: number): EnemyHandle | null {
+  /**
+   * Elevation (rad) from a muzzle at (x, y, z) to the best point on a bot's body within [min, max]: its chest when
+   * that is in the band, else the nearest reachable part of it (a bot hugging the plow sits below the muzzle but its
+   * top is still in reach). NaN when no part of the bot is inside the band.
+   */
+  private pitchTo(x: number, y: number, z: number, e: EnemyHandle, min = GUN_PITCH_MIN, max = GUN_PITCH_MAX): number {
+    const d = Math.max(0.5, Math.hypot(e.position.x - x, e.position.z - z) - e.radius * 0.5);
+    const lo = Math.atan2(e.position.y - y, d);
+    const hi = Math.atan2(e.position.y + Math.min(2.4, e.radius * 1.2) - y, d);
+    if (hi < min || lo > max) return NaN;
+    const chest = Math.atan2(e.position.y + Math.min(1.2, e.radius * 0.6) - y, d);
+    return Math.min(Math.min(hi, max), Math.max(Math.max(lo, min), chest));
+  }
+
+  /** Can a weapon at (x, y, z) see the bot (terrain / decks in the way)? Always true on flat arenas. */
+  private canSee(x: number, y: number, z: number, e: EnemyHandle): boolean {
+    const ter = this.ctx.terrain;
+    if (!ter?.active) return true;
+    return ter.lineOfSight(x, y, z, e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
+  }
+
+  /** Minigun target: any bot in range (360°) within the barrels' elevation band and in sight, favouring bots near the
+   *  nose and close by, then threats. */
+  private gunTarget(x: number, y: number, z: number, heading: number, range: number): EnemyHandle | null {
     const hits = this.collect(x, z, range);
     const fx = Math.sin(heading);
     const fz = Math.cos(heading);
     let best: EnemyHandle | null = null;
     let bestCost = Infinity;
-    for (let i = 0; i < hits.length; i++) {
-      const e = hits[i];
-      if (!e.alive) continue;
-      const dx = e.position.x - x;
-      const dz = e.position.z - z;
-      const d = Math.hypot(dx, dz);
-      if (d > range + e.radius) continue;
-      const cos = d > e.radius ? (dx * fx + dz * fz) / d : 1;
-      // Off-nose bots cost up to 2x their distance; a bot that has been hurting you gets pulled forward.
-      const cost = d * (1.5 - 0.5 * cos) - 0.1 * this.h.threat.of(e);
-      if (cost < bestCost) {
-        bestCost = cost;
-        best = e;
+    for (let pass = 0; pass < 3; pass++) {
+      best = null;
+      bestCost = Infinity;
+      for (let i = 0; i < hits.length; i++) {
+        const e = hits[i];
+        if (!e.alive) continue;
+        const dx = e.position.x - x;
+        const dz = e.position.z - z;
+        const d = Math.hypot(dx, dz);
+        if (d > range + e.radius) continue;
+        if (Number.isNaN(this.pitchTo(x, y, z, e))) continue;
+        const cos = d > e.radius ? (dx * fx + dz * fz) / d : 1;
+        // Off-nose bots cost up to 2x their distance; a bot that has been hurting you gets pulled forward.
+        const cost = d * (1.5 - 0.5 * cos) - 0.1 * this.h.threat.of(e);
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = e;
+        }
       }
+      // Line of sight only for the winner (one raycast); a hidden winner drops out and the next best gets a look.
+      if (!best || this.canSee(x, y, z, best)) break;
+      const k = hits.indexOf(best);
+      hits.splice(k, 1);
+      best = null;
     }
     this.clearTargets();
     return best;
@@ -375,17 +450,25 @@ export class ArsenalKit extends Kit implements UltScript {
     this.laserT = LASER_SECONDS;
     this.laserTickT = 0;
     this.laserOff = 0;
+    this.laserPitch = 0;
     this.b.audio.play('zap', { pitch: 0.45, volume: 0.9 });
     this.b.audio.play('charge', { pitch: 1.6, volume: 0.5 });
     return true;
   }
 
-  /** Where the laser wants to point, as a yaw off the nose: the top-priority bot within reach and LASER_TRACK (plus a
-   *  little slack so a bot just outside still pulls the beam to the edge), or straight ahead. */
-  private laserAim(x: number, z: number, heading: number, range: number): number {
+  /** Where the laser wants to point: the top-priority visible bot within reach and within LASER_CONE of the nose in any
+   *  direction (3D: up onto decks, across at jumping bots, not below LASER_PITCH_MIN), as a yaw off the nose and a
+   *  pitch. Writes into this.aimYaw / this.aimPitch; straight ahead when nothing qualifies. */
+  private aimYaw = 0;
+  private aimPitch = 0;
+  private laserAim(x: number, y: number, z: number, heading: number, range: number): void {
     const hits = this.collect(x, z, range);
-    let best = 0;
+    this.aimYaw = 0;
+    this.aimPitch = 0;
     let bestScore = -Infinity;
+    const cosCone = Math.cos(LASER_CONE);
+    const fx = Math.sin(heading);
+    const fz = Math.cos(heading);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive) continue;
@@ -393,16 +476,17 @@ export class ArsenalKit extends Kit implements UltScript {
       const dz = e.position.z - z;
       const d = Math.hypot(dx, dz);
       if (d > range + e.radius || d < 0.5) continue;
-      const off = wrapAngle(Math.atan2(dx, dz) - heading);
-      if (Math.abs(off) > LASER_TRACK + 0.25) continue;
+      const pitch = this.pitchTo(x, y, z, e, LASER_PITCH_MIN, LASER_CONE);
+      if (Number.isNaN(pitch)) continue;
+      // Inside the 80° cone: the 3D angle between the nose and the aim direction.
+      if (((dx * fx + dz * fz) / d) * Math.cos(pitch) < cosCone) continue;
       const score = this.h.threat.score(e, x, z);
-      if (score > bestScore) {
-        bestScore = score;
-        best = THREE.MathUtils.clamp(off, -LASER_TRACK, LASER_TRACK);
-      }
+      if (score <= bestScore || !this.canSee(x, y, z, e)) continue;
+      bestScore = score;
+      this.aimYaw = wrapAngle(Math.atan2(dx, dz) - heading);
+      this.aimPitch = pitch;
     }
     this.clearTargets();
-    return best;
   }
 
   updateLaser(dt: number): void {
@@ -419,40 +503,68 @@ export class ArsenalKit extends Kit implements UltScript {
     plow.mountWorld('laser', 0, _p);
     // The beam bends toward its target, but only so far and so fast: steering still does most of the aiming.
     // A duel guest hits nothing locally: it follows the host's bend instead of aiming.
-    const want = Number.isNaN(this.netLaserOff) ? this.laserAim(_p.x, _p.z, plow.heading, R) : this.netLaserOff;
+    let want = this.netLaserOff;
+    let wantPitch = 0;
+    if (Number.isNaN(want)) {
+      this.laserAim(_p.x, _p.y, _p.z, plow.heading, R);
+      want = this.aimYaw;
+      wantPitch = this.aimPitch;
+    }
     const step = LASER_SLEW * dt;
     this.laserOff += THREE.MathUtils.clamp(want - this.laserOff, -step, step);
+    this.laserPitch += THREE.MathUtils.clamp(wantPitch - this.laserPitch, -step, step);
     const h = plow.heading + this.laserOff;
+    const cp = Math.cos(this.laserPitch);
+    const sp = Math.sin(this.laserPitch);
     const fx = Math.sin(h);
     const fz = Math.cos(h);
-    _q.set(_p.x + fx * R, _p.y, _p.z + fz * R);
+    // The beam stops at the first deck, ramp or hill it meets.
+    let L = R;
+    const ter = this.ctx.terrain;
+    if (ter?.active) {
+      const hit = ter.raycast(_p.x, _p.y, _p.z, fx * cp, sp, fz * cp, R, _hit);
+      if (hit) L = Math.max(0.5, hit.t);
+    }
+    _q.set(_p.x + fx * cp * L, _p.y + sp * L, _p.z + fz * cp * L);
     const flick = 0.85 + Math.random() * 0.3;
     const fade = Math.min(1, this.laserT / 0.2, (LASER_SECONDS - this.laserT) / 0.08 + 0.2);
     for (const [m, w] of [[this.laserCore, 0.09], [this.laserGlow, 0.32]] as const) {
       m.visible = true;
       m.position.copy(_p);
       m.lookAt(_q);
-      m.scale.set(w * flick * fade, w * flick * fade, R);
+      m.scale.set(w * flick * fade, w * flick * fade, L);
     }
-    // Sparks + scorched snow along the beam.
+    // Sparks along the beam + where it lands; scorched snow only while it runs along the ground.
     const k = Math.random();
-    _tip.set(_p.x + fx * R * k, 0.5, _p.z + fz * R * k);
+    _tip.set(_p.x + fx * cp * L * k, _p.y + sp * L * k, _p.z + fz * cp * L * k);
     this.ctx.fx.burst(_tip, { color: Math.random() < 0.5 ? 0xff4030 : 0xffd0c0, count: 2, speed: 4, size: 0.16, gravity: -3, life: 0.3 });
-    this.b.snow.melt(_p.x + fx * R * 0.5, _p.z + fz * R * 0.5, 1.2, 0.6 * dt);
-    this.b.snow.melt(_p.x + fx * R * k, _p.z + fz * R * k, 1.2, 1.2 * dt);
+    if (L < R) this.ctx.fx.burst(_q, { color: 0xffd0c0, count: 2, speed: 6, size: 0.12, gravity: 4, life: 0.25 });
+    const grounded = Math.abs(this.laserPitch) < 0.2;
+    if (grounded) {
+      this.b.snow.melt(_p.x + fx * L * 0.5, _p.z + fz * L * 0.5, 1.2, 0.6 * dt);
+      this.b.snow.melt(_p.x + fx * L * k, _p.z + fz * L * k, 1.2, 1.2 * dt);
+    }
     if (this.b.local) this.ctx.fx.shake(0.05);
     this.laserTickT -= dt;
     if (this.laserTickT > 0) return;
     this.laserTickT = LASER_TICK;
-    if (this.b.authoritative) this.ctx.world?.blastPropRay(_p.x, _p.z, fx, fz, R);
-    const hits = this.collect(_p.x + fx * R * 0.5, _p.z + fz * R * 0.5, R * 0.5 + 2);
+    if (this.b.authoritative && grounded) this.ctx.world?.blastPropRay(_p.x, _p.z, fx, fz, L);
+    // Hits: bots whose chest is within LASER_WIDTH of the 3D beam segment.
+    const dirX = fx * cp;
+    const dirY = sp;
+    const dirZ = fz * cp;
+    const hits = this.collect(_p.x + dirX * L * 0.5, _p.z + dirZ * L * 0.5, L * 0.5 + 2);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       const dx = e.position.x - _p.x;
+      const dy = e.position.y + Math.min(1.2, e.radius * 0.6) - _p.y;
       const dz = e.position.z - _p.z;
-      const along = dx * fx + dz * fz;
-      if (along < -e.radius || along > R + e.radius) continue;
-      if (Math.abs(dx * fz - dz * fx) > LASER_WIDTH + e.radius) continue;
+      const along = dx * dirX + dy * dirY + dz * dirZ;
+      if (along < -e.radius || along > L + e.radius) continue;
+      const ox = dx - dirX * along;
+      const oy = dy - dirY * along;
+      const oz = dz - dirZ * along;
+      if (Math.hypot(ox, oy, oz) > LASER_WIDTH + e.radius) continue;
       const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2, 'beam');
       if (dealt > 0 && Math.random() < 0.35) {
         _tip.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
@@ -532,6 +644,8 @@ export class ArsenalKit extends Kit implements UltScript {
       m.target = plan[i];
       m.t = 0;
       m.live = true;
+      m.via = null;
+      m.losT = 0;
       m.mesh.visible = true;
       m.mesh.position.copy(m.pos);
       this.ctx.fx.burst(m.pos, { color: 0xd8dde2, count: 4, speed: 3, size: 0.4, gravity: -1, life: 0.6 });
@@ -558,14 +672,27 @@ export class ArsenalKit extends Kit implements UltScript {
   }
 
   private flyMissiles(dt: number): void {
+    const ter = this.ctx.terrain;
     for (const m of this.missiles) {
       if (!m.live) continue;
       m.t += dt;
-      if (m.target && !m.target.alive) m.target = this.retarget(m);
+      if (m.target && !m.target.alive) {
+        m.target = this.retarget(m);
+        m.via = null;
+      }
       const tgt = m.target;
       if (m.t > 0.25) {
         if (tgt) {
-          _q.set(tgt.position.x, tgt.position.y + Math.min(1, tgt.radius * 0.5), tgt.position.z).sub(m.pos).normalize().multiplyScalar(MISSILE_SPEED);
+          // Full 3D homing on any level. With decks around, re-check line of sight now and then: when a deck is in
+          // the way, fly to a point just off its nearest edge at the target's height first, then dive in.
+          if (ter?.active && ter.decks.length && (m.losT -= dt) <= 0) {
+            m.losT = MISSILE_LOS_EVERY;
+            m.via = this.missileDetour(m, tgt);
+          }
+          if (m.via && m.pos.distanceTo(m.via) < 2.5) m.via = null;
+          if (m.via) _q.copy(m.via);
+          else _q.set(tgt.position.x, tgt.position.y + Math.min(1, tgt.radius * 0.5), tgt.position.z);
+          _q.sub(m.pos).normalize().multiplyScalar(MISSILE_SPEED);
         } else {
           // Nothing to chase: keep going and nose down.
           _q.copy(m.vel).setY(0).normalize().multiplyScalar(MISSILE_SPEED);
@@ -573,14 +700,57 @@ export class ArsenalKit extends Kit implements UltScript {
         }
         m.vel.lerp(_q, Math.min(1, MISSILE_TURN * dt * (0.4 + m.t)));
       } else m.vel.y -= 10 * dt;
+      _a.copy(m.pos);
       m.pos.addScaledVector(m.vel, dt);
       _p.copy(m.pos).add(m.vel);
       m.mesh.position.copy(m.pos);
       m.mesh.lookAt(_p);
       if (Math.random() < dt * 40) this.ctx.fx.burst(m.pos, { color: Math.random() < 0.3 ? 0xffa040 : 0xc8ccd2, count: 1, speed: 0.6, size: 0.35, gravity: -1.5, life: 0.5 });
-      const hitTarget = tgt && Math.hypot(tgt.position.x - m.pos.x, tgt.position.z - m.pos.z) < tgt.radius + 0.4 && m.pos.y < tgt.position.y + tgt.radius * 2 + 1;
-      if (hitTarget || m.pos.y <= 0.15 || m.t > MISSILE_FUSE) this.explodeMissile(m, tgt);
+      const hitTarget = tgt && Math.hypot(tgt.position.x - m.pos.x, tgt.position.z - m.pos.z) < tgt.radius + 0.4 && m.pos.y < tgt.position.y + tgt.radius * 2 + 1 && m.pos.y > tgt.position.y - 1;
+      // Hit the ground / a deck / a ramp on the way? (one short raycast over this frame's step)
+      let struck = false;
+      if (ter?.active) {
+        const step = m.vel.length() * dt;
+        if (step > 1e-4) {
+          const hit = ter.raycast(_a.x, _a.y, _a.z, m.vel.x / (step / dt), m.vel.y / (step / dt), m.vel.z / (step / dt), step, _hit);
+          if (hit) {
+            m.pos.set(hit.x, hit.y, hit.z);
+            struck = true;
+          }
+        }
+      }
+      const floor = ter?.active ? ter.surfaceAt(m.pos.x, m.pos.z, m.pos.y, _surf).y : 0;
+      if (hitTarget || struck || m.pos.y <= floor + 0.15 || m.t > MISSILE_FUSE) this.explodeMissile(m, tgt);
     }
+  }
+
+  /** A detour point round the deck between a missile and its target, or null when the way is clear. */
+  private missileDetour(m: Missile, tgt: EnemyHandle): THREE.Vector3 | null {
+    const ter = this.ctx.terrain;
+    const ty = tgt.position.y + Math.min(1, tgt.radius * 0.5);
+    const dx = tgt.position.x - m.pos.x;
+    const dy = ty - m.pos.y;
+    const dz = tgt.position.z - m.pos.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1) return null;
+    const hit = ter.raycast(m.pos.x, m.pos.y, m.pos.z, dx / len, dy / len, dz / len, len - 0.5, _hit);
+    if (!hit || hit.what === 'ground') return null;
+    const deck = ter.decks.find((d) => d.id === hit.what);
+    if (!deck) return null;
+    // Nearest point on the deck's footprint edge to the target, pushed 3 m outward, at the target's height.
+    const c = Math.cos(deck.rot);
+    const s = Math.sin(deck.rot);
+    const rx = tgt.position.x - deck.x;
+    const rz = tgt.position.z - deck.z;
+    let lx = rx * c - rz * s;
+    let lz = rx * s + rz * c;
+    const px = deck.hw - Math.abs(lx);
+    const pz = deck.hd - Math.abs(lz);
+    if (px < pz) lx = Math.sign(lx || 1) * (deck.hw + 3);
+    else lz = Math.sign(lz || 1) * (deck.hd + 3);
+    const out = m.via ?? new THREE.Vector3();
+    out.set(deck.x + lx * c + lz * s, ty + 1, deck.z - lx * s + lz * c);
+    return out;
   }
 
   private explodeMissile(m: Missile, direct: EnemyHandle | null): void {
@@ -589,10 +759,12 @@ export class ArsenalKit extends Kit implements UltScript {
     const st = this.b.stats;
     const x = m.pos.x;
     const z = m.pos.z;
-    _q.set(x, Math.max(0.5, m.pos.y), z);
+    const ter = this.ctx.terrain;
+    const floorY = ter?.active ? ter.surfaceAt(x, z, m.pos.y + 0.5, _surf).y : 0;
+    _q.set(x, Math.max(floorY + 0.5, m.pos.y), z);
     this.ctx.fx.burst(_q, { color: 0xff8a20, count: 18, speed: 9, size: 0.35, gravity: -2, life: 0.5 });
     this.ctx.fx.burst(_q, { color: 0x3a3634, count: 6, speed: 2, size: 0.8, gravity: -2, life: 1 });
-    this.ctx.fx.ring(_q.set(x, 0.15, z), MISSILE_BLAST, 0xffb040);
+    this.ctx.fx.ring(_q.set(x, floorY + 0.15, z), MISSILE_BLAST, 0xffb040);
     this.b.audio.play('explosion', { volume: 0.45, pitch: 1.2 + Math.random() * 0.2 });
     this.shake(0.18);
     this.b.snow.melt(x, z, MISSILE_BLAST * 0.6, 0.6);
@@ -600,6 +772,8 @@ export class ArsenalKit extends Kit implements UltScript {
     const hits = this.collect(x, z, MISSILE_BLAST);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
+      // A blast on one level doesn't reach bots on a deck above or below it.
+      if (e !== direct && Math.abs(e.position.y - floorY) > MISSILE_BLAST) continue;
       const full = e === direct;
       const dealt = this.weaponHit(e, st.missileDamage * (full ? 1 : MISSILE_SPLASH), x, z, full ? 9 : 6);
       if (dealt > 0) {
@@ -617,6 +791,8 @@ export class ArsenalKit extends Kit implements UltScript {
     this.gunsOn = false;
     this.laserT = 0;
     this.laserOff = 0;
+    this.laserPitch = 0;
+    this.gunPitch = 0;
     this.netLaser = false;
     this.laserCore.visible = this.laserGlow.visible = false;
     for (const tr of this.tracers) {
