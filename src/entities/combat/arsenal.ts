@@ -3,6 +3,8 @@ import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 import { makeSurface } from '../../world/Terrain';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { MissileTrail } from './missileTrail';
 
 /** ORBITAL STRIKE (ARSENAL): marks up to ORBITAL_TARGETS top-priority bots within ORBITAL_RANGE, then after
  *  ORBITAL_DELAY a sky laser hits each — ORBITAL_MULT x missile damage in ORBITAL_RADIUS. */
@@ -45,11 +47,31 @@ const LASER_PITCH_MIN = -15 * (Math.PI / 180);
 const MISSILE_LOS_EVERY = 0.2;
 
 const MISSILES_MAX = 12;
-const MISSILE_SPEED = 26;
-const MISSILE_TURN = 5;
+/** Missile flight: ejected from the pod with no thrust for MISSILE_EJECT s, then the motor lights and it accelerates
+ *  along its nose from MISSILE_V0 to MISSILE_SPEED (m/s). It turns at most MISSILE_TURN rad/s (more as it slows near
+ *  the end), so it flies wide arcs and can overshoot a target that jinks. Guidance leads the target and lofts: it
+ *  climbs to MISSILE_LOFT m above the line while far away, then dives in. Pods fire in a ripple, MISSILE_RIPPLE apart. */
+const MISSILE_EJECT = 0.16;
+const MISSILE_V0 = 9;
+const MISSILE_SPEED = 30;
+const MISSILE_ACCEL = 70;
+const MISSILE_TURN = 3.6;
+const MISSILE_TURN_LATE = 6;
+/** Terminal homing: inside this range (m) the seeker turns up to MISSILE_TERMINAL x harder, so close targets get hit
+ *  instead of orbited (turn radius at full speed is ~speed / turn rate). */
+const MISSILE_TERMINAL_RANGE = 12;
+const MISSILE_TERMINAL = 2.6;
+const MISSILE_LOFT = 5;
+const MISSILE_RIPPLE = 0.07;
+/** Proximity fuse (m from the target's centre on top of its radius). */
+const MISSILE_PROX = 1.3;
+/** Smoke puffs per second along the trail while the motor burns. */
+const MISSILE_SMOKE = 8;
+/** Missile body: half-length (m) from the centre to the nozzle (the trail starts there). */
+const MISSILE_TAIL = 0.78;
 const MISSILE_BLAST = 3.2;
 const MISSILE_SPLASH = 0.6;
-const MISSILE_FUSE = 3.5;
+const MISSILE_FUSE = 4.5;
 const MISSILE_RANGE = 45;
 /** A missile whose target dies looks for a new one within this many metres of itself. */
 const MISSILE_RETARGET = 25;
@@ -64,6 +86,21 @@ type Missile = {
   /** Detour point round a deck between the missile and its target (null = fly straight at it). */
   via: THREE.Vector3 | null;
   losT: number;
+  /** Nose direction (unit) and airspeed once the motor is lit; `lit` flips at the end of the eject phase. */
+  fwd: THREE.Vector3;
+  speed: number;
+  lit: boolean;
+  /** Seconds until this missile leaves its pod (ripple fire); the missile is hidden until then. */
+  delay: number;
+  /** Target position last frame (lead estimate) and a per-missile wobble phase. */
+  last: THREE.Vector3;
+  wob: number;
+  smokeT: number;
+  /** Which pod tube it fires from (mountWorld index). */
+  pod: number;
+  /** The exhaust flame (scaled / flickered while lit) and the exhaust + smoke trail. */
+  flame: THREE.Object3D;
+  trail: MissileTrail;
 };
 
 const _a = new THREE.Vector3();
@@ -228,23 +265,37 @@ export class ArsenalKit extends Kit implements UltScript {
       m.renderOrder = 3;
       scene.add(m);
     }
-    const bodyGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.7, 8);
+    // A proper missile: ~1.6 m long, slim body, pointed nose, red band, four tail fins, nozzle flame.
+    const bodyGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.3, 10);
     bodyGeo.rotateX(Math.PI / 2);
-    const noseGeo = new THREE.ConeGeometry(0.09, 0.22, 8);
+    const noseGeo = new THREE.ConeGeometry(0.12, 0.42, 10);
     noseGeo.rotateX(Math.PI / 2);
-    noseGeo.translate(0, 0, 0.46);
+    noseGeo.translate(0, 0, 0.86);
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8ecef, roughness: 0.4, metalness: 0.3 });
     const noseMat = new THREE.MeshStandardMaterial({ color: 0xd8262a, roughness: 0.4 });
     const fireMat = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
-    const fireGeo = new THREE.ConeGeometry(0.08, 0.5, 8);
+    const fireGeo = new THREE.ConeGeometry(0.13, 1.0, 10);
     fireGeo.rotateX(-Math.PI / 2);
-    fireGeo.translate(0, 0, -0.6);
+    fireGeo.translate(0, 0, -1.15);
+    // Four tail fins (two crossed plates).
+    const finA = new THREE.BoxGeometry(0.62, 0.025, 0.34);
+    const finB = new THREE.BoxGeometry(0.025, 0.62, 0.34);
+    finA.translate(0, 0, -0.5);
+    finB.translate(0, 0, -0.5);
+    const finGeo = mergeGeometries([finA, finB]);
+    finA.dispose();
+    finB.dispose();
     for (let i = 0; i < MISSILES_MAX; i++) {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(noseGeo, noseMat), new THREE.Mesh(fireGeo, fireMat));
+      const flame = new THREE.Mesh(fireGeo, fireMat);
+      g.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(noseGeo, noseMat), new THREE.Mesh(finGeo, bodyMat), flame);
       g.visible = false;
       scene.add(g);
-      this.missiles.push({ mesh: g, pos: new THREE.Vector3(), vel: new THREE.Vector3(), target: null, t: 0, live: false, via: null, losT: 0 });
+      this.missiles.push({
+        mesh: g, pos: new THREE.Vector3(), vel: new THREE.Vector3(), target: null, t: 0, live: false, via: null, losT: 0,
+        fwd: new THREE.Vector3(0, 0, 1), speed: 0, lit: false, delay: 0, last: new THREE.Vector3(), wob: i * 1.7, smokeT: 0, pod: 0, flame,
+        trail: new MissileTrail(scene),
+      });
     }
   }
 
@@ -636,19 +687,28 @@ export class ArsenalKit extends Kit implements UltScript {
     for (let i = 0; i < plan.length; i++) {
       const m = this.missiles.find((x) => !x.live);
       if (!m) break;
-      plow.mountWorld('pod', i * 5 + (i >> 1), m.pos);
+      m.pod = i * 5 + (i >> 1);
+      plow.mountWorld('pod', m.pod, m.pos);
+      // Ejected up and out of the pod (no thrust yet), nose tipped up and outward; the motor lights after the eject.
       const side = m.pos.x - px;
       const sideZ = m.pos.z - pz;
       const sl = Math.hypot(side, sideZ) || 1;
-      m.vel.set((side / sl) * 6 + Math.sin(plow.heading) * 6, 11 + Math.random() * 3, (sideZ / sl) * 6 + Math.cos(plow.heading) * 6);
+      const fx = Math.sin(plow.heading);
+      const fz = Math.cos(plow.heading);
+      m.vel.set((side / sl) * 3 + fx * 4, 6 + Math.random() * 1.5, (sideZ / sl) * 3 + fz * 4);
+      m.fwd.set((side / sl) * 0.35 + fx * 0.55, 0.75, (sideZ / sl) * 0.35 + fz * 0.55).normalize();
+      m.speed = 0;
+      m.lit = false;
+      m.delay = i * MISSILE_RIPPLE;
       m.target = plan[i];
+      if (m.target) m.last.copy(m.target.position);
       m.t = 0;
+      m.smokeT = 0;
       m.live = true;
       m.via = null;
       m.losT = 0;
-      m.mesh.visible = true;
-      m.mesh.position.copy(m.pos);
-      this.ctx.fx.burst(m.pos, { color: 0xd8dde2, count: 4, speed: 3, size: 0.4, gravity: -1, life: 0.6 });
+      m.mesh.visible = false; // shown when its turn in the ripple comes
+      m.flame.visible = false;
     }
   }
 
@@ -673,46 +733,109 @@ export class ArsenalKit extends Kit implements UltScript {
 
   private flyMissiles(dt: number): void {
     const ter = this.ctx.terrain;
+    const fx = this.ctx.fx;
+    // Trails face the camera; headless sims (balance harness) have none, so trails are skipped there.
+    const cam = this.ctx.camera?.position;
     for (const m of this.missiles) {
-      if (!m.live) continue;
+      if (!m.live) {
+        if (cam) m.trail.update(dt, null, cam); // lingering smoke after the blast
+        continue;
+      }
+      // Ripple fire: wait in the pod for this missile's turn, riding along with the plow.
+      if (m.delay > 0) {
+        m.delay -= dt;
+        const plow = this.b.plow;
+        if (plow) plow.mountWorld('pod', m.pod, m.pos);
+        if (m.delay > 0) continue;
+        m.mesh.visible = true;
+        fx.burst(m.pos, { color: 0xd8dde2, count: 4, speed: 3, size: 0.4, gravity: -1, life: 0.6 });
+      }
       m.t += dt;
       if (m.target && !m.target.alive) {
         m.target = this.retarget(m);
         m.via = null;
+        if (m.target) m.last.copy(m.target.position);
       }
       const tgt = m.target;
-      if (m.t > 0.25) {
+      _a.copy(m.pos);
+      if (!m.lit) {
+        // Eject: tumbling up out of the pod under gravity, no thrust.
+        m.vel.y -= 14 * dt;
+        m.pos.addScaledVector(m.vel, dt);
+        if (m.t >= MISSILE_EJECT) {
+          // Ignition: flash + puff, the motor takes over along the nose.
+          m.lit = true;
+          m.speed = Math.max(MISSILE_V0, m.vel.length());
+          m.flame.visible = true;
+          m.trail.start(_tip.copy(m.pos).addScaledVector(m.fwd, -MISSILE_TAIL));
+          fx.burst(m.pos, { color: 0xffc060, count: 6, speed: 5, size: 0.25, gravity: 0, life: 0.18 });
+          fx.smoke(m.pos, { count: 2, color: 0xd6dade, size: 0.5, grow: 2.5, life: 0.9, speed: 1, up: 0.2, drag: 3, opacity: 0.55 });
+        }
+      } else {
+        // Guidance: aim point = detour round a deck, else the target's predicted position (lead) lofted while far.
         if (tgt) {
-          // Full 3D homing on any level. With decks around, re-check line of sight now and then: when a deck is in
-          // the way, fly to a point just off its nearest edge at the target's height first, then dive in.
           if (ter?.active && ter.decks.length && (m.losT -= dt) <= 0) {
             m.losT = MISSILE_LOS_EVERY;
             m.via = this.missileDetour(m, tgt);
           }
           if (m.via && m.pos.distanceTo(m.via) < 2.5) m.via = null;
           if (m.via) _q.copy(m.via);
-          else _q.set(tgt.position.x, tgt.position.y + Math.min(1, tgt.radius * 0.5), tgt.position.z);
-          _q.sub(m.pos).normalize().multiplyScalar(MISSILE_SPEED);
+          else {
+            const ty = tgt.position.y + Math.min(1, tgt.radius * 0.5);
+            const dist = Math.hypot(tgt.position.x - m.pos.x, ty - m.pos.y, tgt.position.z - m.pos.z);
+            const tgo = dist / Math.max(1, m.speed);
+            // Target velocity from its motion since last frame (no velocity on EnemyHandle), capped.
+            const vx = THREE.MathUtils.clamp((tgt.position.x - m.last.x) / Math.max(dt, 1e-3), -20, 20);
+            const vz = THREE.MathUtils.clamp((tgt.position.z - m.last.z) / Math.max(dt, 1e-3), -20, 20);
+            const loft = MISSILE_LOFT * THREE.MathUtils.smoothstep(dist, 10, 30);
+            _q.set(tgt.position.x + vx * tgo * 0.8, ty + loft, tgt.position.z + vz * tgo * 0.8);
+          }
+          m.last.copy(tgt.position);
         } else {
-          // Nothing to chase: keep going and nose down.
-          _q.copy(m.vel).setY(0).normalize().multiplyScalar(MISSILE_SPEED);
-          _q.y = -8;
+          // Nothing to chase: fly on, nose slowly dropping.
+          _q.copy(m.pos).addScaledVector(m.fwd, 10);
+          _q.y -= 4;
         }
-        m.vel.lerp(_q, Math.min(1, MISSILE_TURN * dt * (0.4 + m.t)));
-      } else m.vel.y -= 10 * dt;
-      _a.copy(m.pos);
-      m.pos.addScaledVector(m.vel, dt);
-      _p.copy(m.pos).add(m.vel);
+        // Turn the nose toward the aim point at a limited rate (wide arcs, can overshoot), plus a slight wobble.
+        _tip.subVectors(_q, m.pos).normalize();
+        const late = THREE.MathUtils.clamp((m.t - 1.2) / 1.5, 0, 1);
+        const toAim = m.pos.distanceTo(_q);
+        const terminal = 1 + (MISSILE_TERMINAL - 1) * (1 - THREE.MathUtils.smoothstep(toAim, 3, MISSILE_TERMINAL_RANGE));
+        const maxTurn = (MISSILE_TURN + (MISSILE_TURN_LATE - MISSILE_TURN) * late) * terminal * dt;
+        const ang = m.fwd.angleTo(_tip);
+        if (ang > 1e-4) m.fwd.lerp(_tip, Math.min(1, maxTurn / ang)).normalize();
+        m.wob += dt * 9;
+        _fwd.set(Math.cos(m.wob), Math.sin(m.wob * 1.3), Math.sin(m.wob)).multiplyScalar(0.02);
+        m.fwd.add(_fwd).normalize();
+        // Thrust: speed builds along the nose; the missile flies where it points.
+        m.speed = Math.min(MISSILE_SPEED, m.speed + MISSILE_ACCEL * dt);
+        m.vel.copy(m.fwd).multiplyScalar(m.speed);
+        m.pos.addScaledVector(m.vel, dt);
+        // Exhaust flicker and a lingering smoke trail.
+        const f = 0.8 + Math.random() * 0.6;
+        m.flame.scale.set(f, f, 0.8 + Math.random() * 0.9);
+        m.smokeT -= dt;
+        if (m.smokeT <= 0) {
+          m.smokeT += 1 / MISSILE_SMOKE;
+          fx.smoke(m.pos, { count: 1, color: 0xcfd3d8, size: 0.32, grow: 3, life: 1.1, speed: 0.25, up: 0.15, drag: 2.5, opacity: 0.42 });
+          if (Math.random() < 0.35) fx.burst(m.pos, { color: 0xffa040, count: 1, speed: 0.6, size: 0.22, gravity: 0, life: 0.12 });
+        }
+      }
+      _p.copy(m.pos).add(m.lit ? m.fwd : m.vel);
       m.mesh.position.copy(m.pos);
       m.mesh.lookAt(_p);
-      if (Math.random() < dt * 40) this.ctx.fx.burst(m.pos, { color: Math.random() < 0.3 ? 0xffa040 : 0xc8ccd2, count: 1, speed: 0.6, size: 0.35, gravity: -1.5, life: 0.5 });
-      const hitTarget = tgt && Math.hypot(tgt.position.x - m.pos.x, tgt.position.z - m.pos.z) < tgt.radius + 0.4 && m.pos.y < tgt.position.y + tgt.radius * 2 + 1 && m.pos.y > tgt.position.y - 1;
-      // Hit the ground / a deck / a ramp on the way? (one short raycast over this frame's step)
+      if (m.lit && cam) m.trail.update(dt, _tip.copy(m.pos).addScaledVector(m.fwd, -MISSILE_TAIL), cam);
+      // Proximity fuse on the target; otherwise ground / deck impact or fuse timeout.
+      const hitTarget =
+        !!tgt &&
+        m.lit &&
+        Math.hypot(tgt.position.x - m.pos.x, tgt.position.y + Math.min(1, tgt.radius * 0.5) - m.pos.y, tgt.position.z - m.pos.z) < tgt.radius + MISSILE_PROX;
       let struck = false;
       if (ter?.active) {
-        const step = m.vel.length() * dt;
+        const step = _a.distanceTo(m.pos);
         if (step > 1e-4) {
-          const hit = ter.raycast(_a.x, _a.y, _a.z, m.vel.x / (step / dt), m.vel.y / (step / dt), m.vel.z / (step / dt), step, _hit);
+          _fwd.subVectors(m.pos, _a).multiplyScalar(1 / step);
+          const hit = ter.raycast(_a.x, _a.y, _a.z, _fwd.x, _fwd.y, _fwd.z, step, _hit);
           if (hit) {
             m.pos.set(hit.x, hit.y, hit.z);
             struck = true;
@@ -756,6 +879,7 @@ export class ArsenalKit extends Kit implements UltScript {
   private explodeMissile(m: Missile, direct: EnemyHandle | null): void {
     m.live = false;
     m.mesh.visible = false;
+    m.trail.stop();
     const st = this.b.stats;
     const x = m.pos.x;
     const z = m.pos.z;
@@ -803,7 +927,9 @@ export class ArsenalKit extends Kit implements UltScript {
     this.flashT = 0;
     for (const m of this.missiles) {
       m.live = false;
+      m.delay = 0;
       m.mesh.visible = false;
+      m.trail.clear();
     }
   }
 }
