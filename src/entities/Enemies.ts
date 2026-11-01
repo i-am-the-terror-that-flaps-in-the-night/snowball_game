@@ -610,6 +610,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       ai?.(this, e, dt);
       e.desSpeed *= e.spdMult;
       if (this.hunting && !e.isBoss) this.hunt(e);
+      else if (this.nav && !e.isBoss) this.route(e);
     }
     e.wallHit = false;
     const terr = this.ctx.terrain;
@@ -685,6 +686,17 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     e.desHeading = Math.atan2(tx - e.position.x, tz - e.position.z);
     e.desSpeed = Math.max(4.5, e.def.speed) * e.spdMult;
+  }
+
+  /** Level routing (The Omega Works): a minion whose player is on another level (up on a deck, under it, across a
+   *  bridge) heads for the zone's next waypoint (a ramp, round a deck) instead of driving into the deck side. Same
+   *  level: its own AI is untouched. */
+  private route(e: Bot): void {
+    if (e.entering || e.state === 'flee' || e.stun > 0 || e.stagger > 0 || e.vert.airborne) return;
+    const plow = this.ctx.plow;
+    if (!this.nav!.next(e.position.x, e.position.z, e.vert.deck, this.px, this.pz, plow.deck, this.navOut)) return;
+    e.desHeading = Math.atan2(this.navOut.x - e.position.x, this.navOut.z - e.position.z);
+    e.desSpeed = Math.max(e.desSpeed, Math.max(4.5, e.def.speed) * 0.85 * e.spdMult);
   }
 
   /** Deck sides (The Omega Works): push the bot out of any deck it cannot step onto. */
