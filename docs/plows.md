@@ -58,8 +58,8 @@ Not a plow at all: a weapons platform with no blade and no snowball (+10% speed,
 Line: Minigun, Laser Lance, Swarm Missiles, Energy Barrier (a recharging shield, since there's no ball to hide
 behind).
 
-**Ultimate: MISSILE STORM.** Any damage fills the meter. Every pod empties: 20 heavy missiles ripple out over about a
-second and spread over the biggest threats up to 75 m away (a normal salvo reaches 45 m). Each hits for 3× missile
+**Ultimate: MISSILE STORM.** Any damage fills the meter. Every pod empties: 21 heavy missiles ripple out over about a
+second and spread over the biggest threats up to 75 m away (a normal salvo reaches 45 m). Each hits for 3.5× missile
 damage in a bigger blast.
 
 ## Ultimates and the kill-cam

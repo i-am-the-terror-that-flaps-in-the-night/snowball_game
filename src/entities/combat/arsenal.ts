@@ -10,10 +10,10 @@ import { MissileTrail } from './missileTrail';
  *  spread over the top threats within ULT_RANGE (a normal salvo reaches MISSILE_RANGE), the same way planSalvo spreads
  *  a normal salvo. Each hits for ULT_MULT x missile damage in a ULT_BLAST m blast, flies a little faster (ULT_SPEED)
  *  and burns longer (ULT_FUSE) to cover the range. The ultimate lasts until the last one lands (ULT_MAX_T cap). */
-const ULT_MISSILES = 20;
+const ULT_MISSILES = 21;
 const ULT_RANGE = 75;
 const ULT_RIPPLE = 0.05;
-const ULT_MULT = 3;
+const ULT_MULT = 3.5;
 const ULT_BLAST = 4.2;
 const ULT_SPEED = 36;
 const ULT_FUSE = 7;
