@@ -76,6 +76,10 @@ const KNOCK_SCALE = 0.7;
  * the VICTIM's Combat.hitPlow, which applies their ball shield, dash / whirl reductions, armour, Iron Hide, Last Stand,
  * Battery Shield, Second Wind and i-frames — the same path bots use against the player.
  */
+/** Per-vehicle Duel damage multiplier (applied before the caps): VOLT-9's kit is tuned for crowds and lagged the
+ *  field plow-vs-plow. */
+export const DUEL_KIND_MULT: Partial<Record<string, number>> = { volt: 1.8 };
+
 export class OpponentTarget implements EnemyManagerAPI {
   readonly bosses: readonly EnemyHandle[] = [];
   /** Off during countdowns / between rounds. */
@@ -115,7 +119,7 @@ export class OpponentTarget implements EnemyManagerAPI {
     const victim = this.handle.plow;
     if (!this.enabled || enemy !== this.handle || victim.dead || !(amount > 0)) return false;
     const power = Math.max(1, this.attackerStats().ultPower || 1);
-    let scaled = (amount * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
+    let scaled = (amount * (DUEL_KIND_MULT[this.attackerStats().plowKind] ?? 1) * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';

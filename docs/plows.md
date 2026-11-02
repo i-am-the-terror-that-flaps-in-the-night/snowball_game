@@ -16,6 +16,8 @@ ground.
 
 ## VOLT-9 (Tesla Rover)
 
+In the Duel its attacks hit 1.8x as hard (its kit is built for crowds).
+
 No blade: a low, wide rover under a crackling coil tower. It doesn't plow snow or carry a snowball, though deep
 snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% damage, but -15% HP.
 

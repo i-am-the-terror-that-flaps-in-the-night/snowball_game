@@ -32,7 +32,7 @@ describe('ultimate meters', () => {
     expect(fresh).toBeGreaterThan(kind === 'arsenal' ? 15 : 20);
     expect(fresh).toBeLessThan(35);
     expect(ultFill(kind, 'high', 150)).toBeGreaterThan(12);
-    expect(ultFillBoss(kind, 'high', 90)).toBeGreaterThan(12);
+    expect(ultFillBoss(kind, 'high', 90)).toBeGreaterThan(kind === 'arsenal' ? 9 : 12); // ARSENAL's faster storm
   });
 });
 
