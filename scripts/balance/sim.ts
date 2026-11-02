@@ -133,13 +133,13 @@ interface Pilot {
   held: Set<string>;
 }
 
-function pilot(ctx: GameContext, stats: PlayerStats, plow: FakePlow, enemies: unknown): Pilot {
+function pilot(ctx: GameContext, stats: PlayerStats, plow: FakePlow, enemies: unknown, pvp = false): Pilot {
   const press = new Set<string>();
   const held = new Set<string>();
   const input = { throttle: 0, steer: 0, wasPressed: (k: string) => press.has(k), isDown: (k: string) => held.has(k) };
   const ults: number[] = [];
   const events = { emit: (type: string, e?: { nuke?: boolean }) => type === 'ability' && e?.nuke && ults.push(ctx.time) };
-  const binding = { stats, plow, enemies, input, audio: noop, snow, events, local: false, authoritative: true, look: null } as unknown as PilotBinding;
+  const binding = { stats, plow, enemies, input, audio: noop, snow, events, local: false, authoritative: true, look: null, pvp } as unknown as PilotBinding;
   const c = new Combat(ctx, binding);
   c.clear();
   return { c, stats, plow, press, held, ults };
@@ -355,8 +355,8 @@ export function duelTtk(atk: PlowKind, def: PlowKind, tier: Tier, cap = 60, only
   let cd: Pilot | null = null;
   const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow);
   target.enabled = true;
-  const A = pilot(ctx, sa, pa, target);
-  cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false });
+  const A = pilot(ctx, sa, pa, target, true);
+  cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);
   const rot = only ? null : new Rotation(A, () => target.handle, 'use');
   for (let i = 0, n = Math.round(cap / DT); i < n; i++) {
     if (rot) rot.step(DT, ctx);
@@ -385,8 +385,8 @@ export function duelGunDamage(tier: Tier, seconds = 2, def: PlowKind = 'classic'
   let cd: Pilot | null = null;
   const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow);
   target.enabled = true;
-  const A = pilot(ctx, sa, pa, target);
-  cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false });
+  const A = pilot(ctx, sa, pa, target, true);
+  cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);
   A.held.add('Space');
   for (let i = 0, n = Math.round(seconds / DT); i < n; i++) {
     (ctx as { time: number }).time += DT;

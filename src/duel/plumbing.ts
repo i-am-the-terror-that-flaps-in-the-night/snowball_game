@@ -24,6 +24,7 @@ export class DuelPilot implements PilotBinding {
   look: Partial<Record<CosmeticSlot, string>> | null = null;
   /** Equipped gear ids to show on this plow (an opponent's), or null for the save's. */
   gear: string[] | null = null;
+  readonly pvp = true;
 
   constructor(
     readonly local: boolean,

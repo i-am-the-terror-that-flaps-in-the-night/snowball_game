@@ -49,6 +49,8 @@ export interface PilotBinding {
   readonly look: Partial<Record<CosmeticSlot, string>> | null;
   /** Equipped gear ids to show instead of the save's (a duel opponent's), or null. */
   readonly gear?: readonly string[] | null;
+  /** True for the online Duel's pilots (plow vs plow), where PvE-only damage bonuses don't apply. */
+  readonly pvp?: boolean;
 }
 
 /** The single-player pilot: everything comes from the GameContext (read lazily, so systems built later work). */

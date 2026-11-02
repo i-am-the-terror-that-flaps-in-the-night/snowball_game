@@ -84,7 +84,8 @@ puddle sludge holds bots (0.6 s per tick).
 
 ## ARSENAL 🎯 (Battle Tank)
 
-Not a plow at all: a battle tank with no blade and no snowball (+10% speed, -10% HP). Crawler tracks under armoured
+Not a plow at all: a battle tank with no blade and no snowball (+10% speed, -10% HP). **Every weapon hits bots 3x as
+hard** (Campaign, Survival, Brawl); in the Duel it fights at normal strength. Crawler tracks under armoured
 skirts (the treads scroll and the sprockets turn as it drives), a sloped glacis with the laser projector set into it,
 a six-sided turret carrying the long pulse-laser cannon, a commander's cupola with a whip antenna that rocks back when
 it surges, and box missile launchers on the rear fenders. Snow slows it like any other vehicle; DASH is shared.

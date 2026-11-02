@@ -5,6 +5,9 @@ import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type
 /** Ultimates for VOLT-9 / BRUTUS / ARSENAL (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
  *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
  *  nothing refills it. */
+/** ARSENAL's meter needs this much more damage against bots (its hits there are PVE_MULT x; overkill on dying bots
+ *  is not counted, so it's below PVE_MULT): tuned so MISSILE STORM fills about as fast as it did before the bonus. */
+const PVE_ULT = 2.2;
 const ULT_CHARGE = { volt: 2700, brute: 1800, arsenal: 1200 } as const;
 const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🚀 MISSILE STORM' } as const;
 /** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every
@@ -47,7 +50,9 @@ export class Ultimates {
     if (kind !== 'volt' && kind !== 'brute' && kind !== 'arsenal') return;
     if (this.lock > 0 || this.t >= 0) return;
     const was = h.crit;
-    h.crit = Math.min(1, h.crit + dealt / ultCharge(h.b.stats, ULT_CHARGE[kind]));
+    // ARSENAL's PvE damage bonus doesn't speed its meter up: it charges as in the Duel.
+    const pve = kind === 'arsenal' && !h.b.pvp ? PVE_ULT : 1;
+    h.crit = Math.min(1, h.crit + dealt / pve / ultCharge(h.b.stats, ULT_CHARGE[kind]));
     if (was < 1 && h.crit >= 1 && h.b.local) {
       h.ctx.ui.toast(`${ULT_NAME[kind]} READY · F`, 'info');
       h.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });

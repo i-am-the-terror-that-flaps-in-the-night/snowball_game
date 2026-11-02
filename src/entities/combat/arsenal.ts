@@ -10,6 +10,8 @@ import { MissileTrail } from './missileTrail';
  *  spread over the top threats within ULT_RANGE (a normal salvo reaches MISSILE_RANGE), the same way planSalvo spreads
  *  a normal salvo. Each hits for ULT_MULT x missile damage in a ULT_BLAST m blast, flies a little faster (ULT_SPEED)
  *  and burns longer (ULT_FUSE) to cover the range. The ultimate lasts until the last one lands (ULT_MAX_T cap). */
+/** Every ARSENAL weapon hits bots this many times harder outside the Duel (the tank's duel balance is unchanged). */
+export const PVE_MULT = 3;
 const ULT_MISSILES = 21;
 const ULT_RANGE = 75;
 const ULT_RIPPLE = 0.05;
@@ -311,7 +313,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const dz = e.position.z - fromZ;
     const d = Math.hypot(dx, dz) || 1;
     const hp0 = e.hp;
-    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), {
+    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.pveMult * this.hitMult(e), {
       source: 'other',
       knockback: new THREE.Vector3((dx / d) * knock, 0, (dz / d) * knock),
       fromX,
@@ -639,7 +641,12 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   /** Damage one salvo missile does to `e` (direct hit), for working out how many it takes. */
   private missileHitOn(e: EnemyHandle): number {
-    return Math.max(1, this.b.stats.missileDamage * this.b.stats.damageMult * this.hitMult(e));
+    return Math.max(1, this.b.stats.missileDamage * this.b.stats.damageMult * this.pveMult * this.hitMult(e));
+  }
+
+  /** PVE_MULT against bots, 1 in the Duel. */
+  private get pveMult(): number {
+    return this.b.pvp ? 1 : PVE_MULT;
   }
 
   /** Live missiles already flying at `e`, in salvo-missile hits (a storm missile counts ULT_MULT). */

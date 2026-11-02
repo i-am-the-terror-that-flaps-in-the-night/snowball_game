@@ -62,7 +62,8 @@ function rig(bots: EnemyHandle[]) {
   };
   const scene = new THREE.Scene();
   const ctx = { scene, time: 0 } as unknown as GameContext;
-  const binding = { stats, plow, enemies, input: { throttle: 0, steer: 0, wasPressed: () => false }, local: true, authoritative: true } as unknown as PilotBinding;
+  // pvp: missile counts below are in duel damage (no PVE_MULT).
+  const binding = { stats, plow, enemies, input: { throttle: 0, steer: 0, wasPressed: () => false }, local: true, authoritative: true, pvp: true } as unknown as PilotBinding;
   const c = new Combat(ctx, binding);
   return { c, stats };
 }
