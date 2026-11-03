@@ -127,6 +127,9 @@ export interface PlayerStats {
   flameCooldown: number;
   /** Which starter plow is being driven (config/plows.ts). */
   plowKind: 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal';
+  /** A vehicle set to the snowball kit (⚙ Settings): it plows, rolls a ball, slams and whirls like the Classic
+   *  instead of its own SPACE / E (its F and ultimate stay). Never set in the Duel. */
+  snowKit?: boolean;
   /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = auto-aim autocannon (dmg per round, rounds/s,
    *  reach m), E = laser beam (dps, reach m; recharge is whirlCooldown), F = homing missile salvo. */
   gunDamage: number;

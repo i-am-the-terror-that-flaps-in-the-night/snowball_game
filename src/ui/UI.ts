@@ -6,7 +6,7 @@ import type { BrawlDifficulty, BrawlEntry, BrawlResult, GameContext, HudBoss, Hu
 import { MIN_BALL_RADIUS } from '../core/types';
 import { SHOP_UPGRADES, type UpgradeCategory, type UpgradeDef } from '../config/upgrades';
 import { GEAR, GEAR_MAX_LEVEL, GEAR_SLOTS, RARITY_COLOR, grantLabel, type GearDef, type GearSlot } from '../config/gear';
-import { PLOWS, type PlowKind } from '../config/plows';
+import { PLOWS, isVehicle, type PlowKind } from '../config/plows';
 import { ZONES, type ZoneDef } from '../config/zones';
 import { ENEMIES, type EnemyDef, type EnemyType } from '../config/enemies';
 import {
@@ -545,7 +545,7 @@ export class UI implements UIAPI {
     setKey(this.h.whirl, 'whirl');
     setKey(this.h.flame, 'ability');
     setKey(this.h.primary, 'slam');
-    const ab = PLOWS[this.ctx.stats.plowKind]?.noBall ? this.ctx.combat?.abilityHud : null;
+    const ab = isVehicle(this.ctx.stats) ? this.ctx.combat?.abilityHud : null;
     this.h.hint.textContent = ab
       ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  ${k('slam')} ${ab.primary.hint ?? ab.primary.label}  ·  ` +
         `${k('dash')} dash strike  ·  ${k('whirl')} ${ab.secondary.hint ?? ab.secondary.label}  ·  ${k('ability')} F-ability  ·  ESC pause`

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GameContext } from './types';
+import type { PlowKind } from '../config/plows';
 import { ACTIONS, type Action } from './input';
 import { configureBloom } from '../render/post';
 
@@ -24,12 +25,14 @@ export interface Settings {
   bloom: boolean;
   /** Slow-mo cinematic when an ultimate wipes 3+ bots. */
   ultCam: boolean;
+  /** Vehicles switched to the snowball kit (SPACE slam / E whirlwind) instead of their own SPACE / E. */
+  snowKit: Partial<Record<PlowKind, boolean>>;
   /** Rebound primary key per action (KeyboardEvent.code). Missing = default. */
   keys: Partial<Record<Action, string>>;
 }
 
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} };
+  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {} };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -57,6 +60,7 @@ function load(): Settings {
       reduceFlash: p.reduceFlash === true,
       bloom: p.bloom !== false,
       ultCam: p.ultCam !== false,
+      snowKit: p.snowKit && typeof p.snowKit === 'object' ? Object.fromEntries(Object.entries(p.snowKit).filter(([, v]) => v === true)) : {},
       keys,
     };
   } catch {

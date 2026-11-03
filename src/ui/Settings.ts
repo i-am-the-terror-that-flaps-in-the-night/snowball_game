@@ -1,3 +1,4 @@
+import { PLOWS, type PlowKind } from '../config/plows';
 import './settings.css';
 import type { GameContext } from '../core/types';
 import { ACTIONS, DEFAULT_KEYS, RESERVED_KEYS, keyLabel, type Action } from '../core/input';
@@ -36,6 +37,7 @@ export class SettingsMenu {
   private flashBtns = new Map<boolean, HTMLButtonElement>();
   private bloomBtns = new Map<boolean, HTMLButtonElement>();
   private ultCamBtns = new Map<boolean, HTMLButtonElement>();
+  private kitBtns: { k: PlowKind; on: boolean; b: HTMLButtonElement }[] = [];
   private reduceShakeBtns = new Map<boolean, HTMLButtonElement>();
   private sliders: { input: HTMLInputElement; val: HTMLElement; get: () => number }[] = [];
   private padStatus!: HTMLElement;
@@ -196,6 +198,23 @@ export class SettingsMenu {
       }, uSeg));
     }
 
+    const kit = this.section('🚜 Main attacks');
+    el('div', 'ss-set-note', "SPECIAL = each vehicle's own SPACE / E. SNOWBALL = plow snow, slam with SPACE and whirl with E like the Classic (F and the ultimate stay). Takes effect on the next run; the Duel always uses SPECIAL.", kit);
+    for (const k of ['volt', 'brute', 'isotope', 'arsenal'] as const) {
+      const row = el('div', 'ss-set-row', undefined, kit);
+      el('span', 'ss-set-label', PLOWS[k].name, row);
+      const seg = el('div', 'ss-set-seg', undefined, row);
+      for (const [on, label] of [[false, 'SPECIAL'], [true, 'SNOWBALL']] as [boolean, string][]) {
+        const b = this.btn(label, 'ss-ice ss-small', () => {
+          if (on) settings.snowKit[k] = true;
+          else delete settings.snowKit[k];
+          saveSettings();
+          this.refresh();
+        }, seg);
+        this.kitBtns.push({ k, on, b });
+      }
+    }
+
     const ctl = this.section('🎮 Controls');
     el('div', 'ss-set-note', 'Click a key, then press the new one. Arrow keys, right Shift and Esc keep working as alternates.', ctl);
     const grid = el('div', 'ss-set-keys', undefined, ctl);
@@ -242,6 +261,7 @@ export class SettingsMenu {
     for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
     for (const [on, b] of this.bloomBtns) b.classList.toggle('ss-set-on', settings.bloom === on);
     for (const [on, b] of this.ultCamBtns) b.classList.toggle('ss-set-on', settings.ultCam === on);
+    for (const { k, on, b } of this.kitBtns) b.classList.toggle('ss-set-on', !!settings.snowKit[k] === on);
     for (const [on, b] of this.reduceShakeBtns) b.classList.toggle('ss-set-on', settings.reduceShake === on);
     for (const a of ACTIONS) {
       const b = this.keyBtns.get(a.id)!;

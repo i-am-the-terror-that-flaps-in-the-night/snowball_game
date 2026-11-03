@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('settings', () => {
   it('defaults when nothing is stored', async () => {
-    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, keys: {} });
+    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {} });
   });
 
   it('defaults on corrupted storage', async () => {

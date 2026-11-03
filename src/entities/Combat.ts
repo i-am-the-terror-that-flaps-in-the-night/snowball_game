@@ -140,6 +140,7 @@ export class Combat implements CombatAPI {
 
   /** The bound pilot's SPACE / E kit, or null on the Classic (its Plow slams and whirls). */
   get vehicle(): VehicleKit | null {
+    if (this.b.stats.snowKit) return null;
     switch (this.b.stats.plowKind) {
       case 'volt':
         return this.volt;
@@ -175,7 +176,11 @@ export class Combat implements CombatAPI {
   /** Route SPACE / E to the vehicle kit (every frame; see VehicleKit for the held / pressed rules). */
   private updateVehicle(dt: number): void {
     const v = this.vehicle;
-    if (!v) return;
+    if (!v) {
+      // Snowball kit on ARSENAL: the pulse laser's trigger must not stay latched from before the switch.
+      if (this.b.stats.plowKind === 'arsenal') this.arsenal.primary(dt, false, false);
+      return;
+    }
     const plow = this.b.plow;
     const alive = !!plow && !plow.dead;
     let h1 = false;

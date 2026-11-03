@@ -766,6 +766,7 @@ export class Game {
     const { ctx } = this;
     ctx.stats = ctx.progression.computeStats();
     if (this.mode === 'survival') this.survival.adjustStats(ctx.stats);
+    ctx.stats.snowKit = !!settings.snowKit[ctx.stats.plowKind];
     ctx.plow.applyStats(ctx.stats);
   }
 

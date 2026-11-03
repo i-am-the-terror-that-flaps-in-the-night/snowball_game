@@ -1166,9 +1166,12 @@ export class Plow implements PlowAPI {
     this.updateStreaks(0);
   }
 
+  /** Vehicle switched to the snowball kit (stats.snowKit). */
+  private snowKit = false;
+
   /** Not the Classic: no blade, never plows or holds a ball; SPACE / E are the kit's (PLOWS[kind].noBall). */
   get vehicle(): boolean {
-    return !!PLOWS[this.kind]?.noBall;
+    return !!PLOWS[this.kind]?.noBall && !this.snowKit;
   }
 
   /** E charge 0..1 (the whirl on the Classic, the kit's E ability on the other vehicles). */
@@ -1182,8 +1185,9 @@ export class Plow implements PlowAPI {
   }
 
   /** Swap the paint job + parts for the selected starter plow. */
-  private setKind(kind: PlowKind): void {
+  private setKind(kind: PlowKind, snowKit = false): void {
     this.kind = kind;
+    this.snowKit = snowKit;
     if (this.vehicle) this.heldVolume = 0;
     const volt = kind === 'volt';
     const brute = kind === 'brute';
@@ -1200,7 +1204,7 @@ export class Plow implements PlowAPI {
     this.isoParts.visible = iso;
     this.arsenalParts.visible = ars;
     // Only the Classic has a blade (BRUTUS's buzzsaws are on its own mech body).
-    this.bladeGroup.visible = kind === 'classic';
+    this.bladeGroup.visible = kind === 'classic' || !this.vehicle;
     this.applyBladeVis();
     this.voltParts.visible = volt;
     this.bruteParts.visible = brute;
@@ -1362,7 +1366,7 @@ export class Plow implements PlowAPI {
   }
 
   applyStats(stats: PlayerStats): void {
-    if (stats.plowKind !== this.kind) this.setKind(stats.plowKind);
+    if (stats.plowKind !== this.kind || !!stats.snowKit !== this.snowKit) this.setKind(stats.plowKind, !!stats.snowKit);
     const ratio = this.maxHp > 0 ? this.hp / this.maxHp : 1;
     this.maxHp = stats.maxHp;
     this.hp = Math.max(0, Math.min(this.maxHp, ratio * this.maxHp));

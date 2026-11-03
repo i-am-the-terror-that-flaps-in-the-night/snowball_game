@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PLOWS } from '../../config/plows';
+import { isVehicle } from '../../config/plows';
 import { SLAM_DAMAGE_K } from '../../core/types';
 import { GRAVITY } from '../../world/Terrain';
 import { MIN_AIR } from '../../world/terrainMotion';
@@ -137,7 +137,7 @@ export class AirKit extends Kit {
     const plow = this.b.plow;
     if (this.slamPending || plow.position.y - plow.surfaceY < AIR_SLAM_MIN_HEIGHT) return;
     // Only the Classic air-slams: every other vehicle's SPACE is its kit's primary ability (VehicleKit.primary).
-    if (PLOWS[this.b.stats.plowKind]?.noBall) return;
+    if (isVehicle(this.b.stats)) return;
     if (!this.b.input.wasPressed('Space')) return;
     // Only if the plow started a ground slam on this very press (it was just under the height at its input read):
     // cancel that one. A slam begun before lift-off plays out untouched.

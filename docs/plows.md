@@ -4,6 +4,10 @@ Pick your plow in the Garage. Every plow has the same base kit (slam, ram, dash 
 ability, a four-upgrade line in the Garage, and an **ultimate**. ARSENAL is the exception: it replaces the base kit
 with guns.
 
+**⚙ Settings → Main attacks:** each vehicle can be switched from SPECIAL (its own SPACE / E) to SNOWBALL: it gets a
+blade, plows snow into a ball, slams with SPACE and whirls with E like the Classic, and keeps its own F and ultimate.
+It takes effect on the next run; the Duel always uses SPECIAL.
+
 ## Classic Plow
 
 +25% HP and full slam damage. **F: Inferno**, a free fire cone that burns bots and ends in a fireball.

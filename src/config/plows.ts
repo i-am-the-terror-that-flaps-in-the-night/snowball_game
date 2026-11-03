@@ -22,6 +22,11 @@ export interface PlowDef {
   noBall?: boolean;
 }
 
+/** SPACE / E are the vehicle's own kit (not slam / whirlwind): a non-Classic kind not switched to the snowball kit. */
+export function isVehicle(st: { plowKind: PlowKind; snowKit?: boolean }): boolean {
+  return !!PLOWS[st.plowKind]?.noBall && !st.snowKit;
+}
+
 export const PLOWS: Record<PlowKind, PlowDef> = {
   classic: {
     id: 'classic',
