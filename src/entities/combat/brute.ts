@@ -23,9 +23,9 @@ const POUND_LEAP_RADIUS = 1.2;
 /** Dive speed (m/s) of a Ground Pound pressed while airborne (same as the air slam's). */
 const AIR_POUND_DIVE = 28;
 /* ---- WRECKING FIST (SPACE): seconds between punches, combo drop, finisher recovery, arm animation length. */
-const FIST_GAP = 0.38;
+const FIST_GAP = 0.26;
 const FIST_DROP = 0.9;
-const FIST_RECOVER = 0.8;
+const FIST_RECOVER = 0;
 const FIST_ANIM = 0.3;
 /** Fist reach (m past the hull) and damage per jab (x fistSize, x Momentum line); the finisher hits FIST_FINISH x. */
 const FIST_REACH = 3;
@@ -89,7 +89,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
     icon: '👊',
     label: 'FIST',
     hint: 'hold for WRECKING FIST',
-    ready: () => (this.fistRecover > 0 ? 1 - this.fistRecover / FIST_RECOVER : 1),
+    ready: () => 1, // no recovery: the combo loops for as long as SPACE is held
   };
   readonly secondaryDesc: AbilityDesc = { icon: '🪚', label: 'SAWS', hint: 'SAW CHARGE' };
   /** Wrecking Fist: next punch in the combo (0, 1, 2 = the finisher), time to the next punch, combo drop timer,
@@ -161,7 +161,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
     this.fistStep = fin ? 0 : step + 1;
     this.fistIdle = 0;
     this.fistT = FIST_GAP;
-    if (fin) this.fistRecover = FIST_RECOVER;
+    if (fin && FIST_RECOVER > 0) this.fistRecover = FIST_RECOVER;
     if (fin) this.armT[0] = this.armT[1] = 0;
     else this.armT[step] = 0;
     plow.getForward(_fwd);

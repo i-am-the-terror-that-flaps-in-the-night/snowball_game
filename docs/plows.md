@@ -18,7 +18,7 @@ Reserve (keep part of your ball after a slam), Slam Combo (back-to-back slams hi
 **Ultimate: FIRESTORM.** Fire damage fills the meter; when it's full, F fires a 360° fire nova that leaves burning
 ground.
 
-## VOLT-9 (Tesla Rover)
+## VOLT-9
 
 In the Duel its attacks hit 1.8x as hard (its kit is built for crowds).
 
@@ -43,12 +43,12 @@ no Overload backlash.
 
 ## BRUTUS
 
-The **WRECKING MECH**: tracks, a hunched armoured torso, two piston fists and a flat buzzsaw on each front corner.
+A wrecking mech: tracks, a hunched armoured torso, two piston fists and a flat buzzsaw on each front corner.
 No blade, no snowball (snow still drags on the tracks). +35% HP and +20% damage, but -8% acceleration and -10% dash.
 
-- **SPACE (hold): Wrecking Fist.** Punch, punch, finisher (one every 0.38 s). The bot nearest the fist line takes
-  the full hit, the rest of the fist's arc 35%. The finisher (both fists) hits 2.2x, stuns 0.5 s and hurls the bot
-  away; then 0.8 s recovery (the SPACE ring). The combo drops after 0.9 s without a punch.
+- **SPACE (hold): Wrecking Fist.** Punch, punch, finisher, one every 0.26 s with **no cooldown**: the combo loops for
+  as long as you hold SPACE. The bot nearest the fist line takes the full hit, the rest of the fist's arc 35%. The
+  finisher (both fists) hits 2.2x, stuns 0.5 s and hurls the bot away. In the Duel BRUTUS hits at 0.7x so it stays fair.
 - **E: Saw Charge.** A 0.6 s forward charge (17 m/s) with both saws screaming: every bot around the nose is shredded
   every 0.1 s and flung aside. Recharge = the E (Whirlwind Turbine) cooldown.
 - **F: Ground Pound**, a free leap you can't be hit during, then an AoE damage ring with knockback and stun.
@@ -60,7 +60,7 @@ Whirlwind Turbine = Saw Charge damage and recharge; Iron Hide and Ground Pound u
 
 **Ultimate: EARTHQUAKE.** Any damage fills the meter. Three shockwaves roll out to 19 m (1.07x pound damage each, a little more as Ground Pound is upgraded).
 
-## ISOTOPE ☢️ (Reactor Hauler)
+## ISOTOPE ☢️
 
 A long, low nuclear flatbed: a stubby armoured cab, a big glowing reactor capsule lying on the bed with control rods
 bobbing out of it, twin cooling stacks, a spinning vent fan and a sprayer nozzle over the nose. No blade, no snowball
@@ -88,7 +88,7 @@ puddle sludge holds bots (0.6 s per tick).
 **Ultimate: NUKE.** Radiation damage fills the ☢ Critical Mass bar; when it's full, F fires an instant huge blast
 (2.6x Meltdown damage) and a giant fallout pool.
 
-## ARSENAL 🎯 (Battle Tank)
+## ARSENAL 🎯
 
 Not a plow at all: a battle tank with no blade and no snowball (+10% speed, -10% HP). **Every weapon hits bots 3x as
 hard** (Campaign, Survival, Brawl); in the Duel it fights at normal strength. Crawler tracks under armoured

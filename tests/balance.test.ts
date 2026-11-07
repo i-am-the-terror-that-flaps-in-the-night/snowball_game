@@ -49,7 +49,10 @@ describe('sustained damage', () => {
     for (const d of dps.values()) expect(Math.abs(d / mean - 1)).toBeLessThan(0.25);
     const arsenal = dps.get('arsenal')!;
     expect(arsenal).toBeGreaterThan(mean * 0.7);
-    for (const k of live) if (k !== 'classic' && k !== 'arsenal') expect(Math.abs(dps.get(k)! / arsenal - 1)).toBeLessThan(0.18); // 18%: overkill on dying dummies trims ARSENAL's 3x a little
+    // BRUTUS's Wrecking Fist was buffed by request (no recovery, faster punches): at least ARSENAL, at most +45%.
+    expect(dps.get('brute')! / arsenal).toBeGreaterThan(0.95);
+    expect(dps.get('brute')! / arsenal).toBeLessThan(1.45);
+    for (const k of live) if (k !== 'classic' && k !== 'arsenal' && k !== 'brute') expect(Math.abs(dps.get(k)! / arsenal - 1)).toBeLessThan(0.18); // 18%: overkill on dying dummies trims ARSENAL's 3x a little
   });
 
   it.each(['fresh', 'high'] as const)('%s: VOLT-9 / BRUTUS / ISOTOPE out-damage ARSENAL on a cluster (before its PvE bonus)', (tier) => {

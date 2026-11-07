@@ -66,11 +66,11 @@ function rig(botZ = 4) {
 }
 
 describe('BRUTUS Wrecking Fist (SPACE)', () => {
-  it('holding SPACE throws jab, jab, finisher (harder, stuns, big knockback), then recovers', () => {
+  it('holding SPACE throws jab, jab, finisher (harder, stuns, big knockback), and loops with no recovery', () => {
     const r = rig();
     r.held.add('Space');
     r.press.add('Space');
-    r.run(1.0);
+    r.run(0.7);
     expect(r.hits.length).toBe(3);
     const jab = fistDamage(r.stats) * r.stats.damageMult;
     expect(r.hits[0].amount).toBeCloseTo(jab, 3);
@@ -78,10 +78,11 @@ describe('BRUTUS Wrecking Fist (SPACE)', () => {
     expect(r.hits[2].amount).toBeGreaterThan(jab * 2);
     expect(r.hits[2].stun).toBeGreaterThan(0);
     expect(r.hits[2].knock).toBeGreaterThan(r.hits[0].knock * 3);
-    // Recovering: the SPACE ring is not full right after the finisher.
-    expect(r.c.abilityHud!.primaryReady).toBeLessThan(1);
-    r.run(0.8);
+    // No cooldown: the ring stays full and the next combo starts straight away.
     expect(r.c.abilityHud!.primaryReady).toBe(1);
+    r.run(0.3);
+    expect(r.hits.length).toBe(4);
+    expect(r.hits[3].amount).toBeCloseTo(jab, 3);
     // Arms animated: the left fist went out on the first jab.
     expect(Math.max(...r.poses.map((p) => p[0]))).toBeGreaterThan(0.9);
   });
