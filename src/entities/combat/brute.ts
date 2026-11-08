@@ -28,9 +28,14 @@ const FIST_DROP = 0.9;
 const FIST_RECOVER = 0;
 const FIST_ANIM = 0.3;
 /** Fist reach (m past the hull) and damage per jab (x fistSize, x Momentum line); the finisher hits FIST_FINISH x. */
-const FIST_REACH = 3;
+const FIST_REACH = 4;
 const FIST_BASE = 4.8;
 const FIST_FINISH = 2.2;
+/** The finisher's SHOCKWAVE: a blast that rolls SHOCK_LEN m on past the fist, SHOCK_W m wide, hitting every bot in
+ *  its path for SHOCK_MULT x a jab and shoving it away. */
+const SHOCK_LEN = 8;
+const SHOCK_W = 1.8;
+const SHOCK_MULT = 1;
 /** Bots beside the one the fist lands on take this share. */
 const FIST_SPLASH = 0.35;
 const FIST_KNOCK = 5;
@@ -168,7 +173,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
     const reach = FIST_REACH * fistSize(st);
     const cx = plow.position.x + _fwd.x * (plow.radius + reach * 0.5);
     const cz = plow.position.z + _fwd.z * (plow.radius + reach * 0.5);
-    const R = reach * (fin ? 0.8 : 0.6);
+    const R = reach * (fin ? 0.9 : 0.8);
     const dmg = fistDamage(st) * (fin ? FIST_FINISH : 1);
     const hits = this.collect(cx, cz, R, Reach.Body);
     // Primary: the bot nearest the fist line.
@@ -206,6 +211,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       }
     }
     this.clearTargets();
+    if (fin) this.shockwave(plow, cx, cz, reach, dmg / FIST_FINISH);
     // Fist FX at the knuckles: a puff on every jab, a shock ring + snow blast on the finisher.
     _q.set(cx, (plow.surfaceY || 0) + 1, cz);
     if (fin) {
@@ -221,6 +227,43 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       ctx.fx.burst(_q, { color: landed ? 0xfff2b0 : 0xffffff, count: landed ? 12 : 5, speed: 6, size: 0.12, gravity: 12, life: 0.3 });
       if (landed) this.shake(0.12);
       this.b.audio.play(landed ? 'ram' : 'dash', { pitch: landed ? 1.1 + step * 0.15 : 1.8, volume: landed ? 0.6 : 0.25 });
+    }
+  }
+
+  /** Finisher SHOCKWAVE: rolls on SHOCK_LEN m past the fist, hitting each bot in the lane once. */
+  private shockwave(plow: PlowAPI, cx: number, cz: number, reach: number, jab: number): void {
+    const ctx = this.ctx;
+    const st = this.b.stats;
+    const fx = _fwd.x;
+    const fz = _fwd.z;
+    const ex = cx + fx * SHOCK_LEN * 0.5;
+    const ez = cz + fz * SHOCK_LEN * 0.5;
+    const hits = this.collect(ex, ez, SHOCK_LEN * 0.5 + SHOCK_W, Reach.Body);
+    const near = reach * 0.9;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive || this.puppet) continue;
+      const dx = e.position.x - cx;
+      const dz = e.position.z - cz;
+      const along = dx * fx + dz * fz;
+      const side = Math.abs(dx * fz - dz * fx);
+      // Past the fist's own blast, inside the lane.
+      if (Math.hypot(dx, dz) < near || along < 0 || along > SHOCK_LEN || side > SHOCK_W + e.radius) continue;
+      const hp0 = e.hp;
+      const killed = this.b.enemies.damage(e, jab * SHOCK_MULT * st.damageMult * this.hitMult(e), {
+        source: 'ram',
+        knockback: new THREE.Vector3(fx * 12, 0, fz * 12),
+        fromX: plow.position.x,
+        fromZ: plow.position.z,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e);
+    }
+    this.clearTargets();
+    // A line of snow bursts rolling out along the lane.
+    for (let k = 1; k <= 4; k++) {
+      _q.set(cx + fx * k * 2, (plow.surfaceY || 0) + 0.3, cz + fz * k * 2);
+      ctx.fx.burst(_q, { color: 0xfff2b0, count: 8, speed: 5, size: 0.16, gravity: 14, life: 0.35 });
     }
   }
 

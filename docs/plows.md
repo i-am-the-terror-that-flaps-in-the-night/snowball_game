@@ -48,7 +48,8 @@ No blade, no snowball (snow still drags on the tracks). +35% HP and +20% damage,
 
 - **SPACE (hold): Wrecking Fist.** Punch, punch, finisher, one every 0.26 s with **no cooldown**: the combo loops for
   as long as you hold SPACE. The bot nearest the fist line takes the full hit, the rest of the fist's arc 35%. The
-  finisher (both fists) hits 2.2x, stuns 0.5 s and hurls the bot away. In the Duel BRUTUS hits at 0.7x so it stays fair.
+  finisher (both fists) hits 2.2x, stuns 0.5 s, hurls the bot away and sends a **shockwave** rolling 8 m on down a
+  lane ahead, hitting every bot in it for a jab's damage and shoving it back. Fists reach 4 m past the hull. In the Duel BRUTUS hits at 0.7x so it stays fair.
 - **E: Saw Charge.** A 0.6 s forward charge (17 m/s) with both saws screaming: every bot around the nose is shredded
   every 0.1 s and flung aside. Recharge = the E (Whirlwind Turbine) cooldown.
 - **F: Ground Pound**, a free leap you can't be hit during, then an AoE damage ring with knockback and stun.

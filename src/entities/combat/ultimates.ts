@@ -8,7 +8,7 @@ import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type
 /** ARSENAL's meter needs this much more damage against bots (its hits there are PVE_MULT x; overkill on dying bots
  *  is not counted, so it's below PVE_MULT): tuned so MISSILE STORM fills in about 19 s fresh (the faster charge asked for). */
 const PVE_ULT = 1.75;
-const ULT_CHARGE = { volt: 2700, brute: 1800, arsenal: 1200 } as const;
+const ULT_CHARGE = { volt: 2700, brute: 2100, arsenal: 1200 } as const;
 const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🚀 MISSILE STORM' } as const;
 /** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every
  *  upgrade, so the meter grows with the pilot's power and with Overclock (faster abilities, more damage): it takes
