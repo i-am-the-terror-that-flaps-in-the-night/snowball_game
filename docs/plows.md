@@ -2,7 +2,7 @@
 
 Pick your plow in the Garage. Every plow has the same base kit (slam, ram, dash strike, whirlwind) plus its own F
 ability, a four-upgrade line in the Garage, and an **ultimate**. ARSENAL is the exception: it replaces the base kit
-with guns.
+with magnets and lasers.
 
 **⚙ Settings → Main attacks:** each vehicle can be switched from SPECIAL (its own SPACE / E) to SNOWBALL: it gets a
 blade, plows snow into a ball, slams with SPACE and whirls with E like the Classic, and keeps its own F and ultimate.
@@ -99,34 +99,50 @@ puddle sludge holds bots (0.6 s per tick).
 
 ## ARSENAL 🎯
 
-Not a plow at all: a battle tank with no blade and no snowball (+10% speed, -10% HP). **Every weapon hits bots 3x as
-hard** (Campaign, Survival, Brawl); in the Duel it fights at normal strength. Crawler tracks under armoured
-skirts (the treads scroll and the sprockets turn as it drives), a sloped glacis with the laser projector set into it,
-a six-sided turret carrying the long pulse-laser cannon, a commander's cupola with a whip antenna that rocks back when
-it surges, and box missile launchers on the rear fenders. Snow slows it like any other vehicle; DASH is shared.
+Not a plow at all: a futuristic magnetic / laser vehicle with no blade and no snowball (+10% speed, -10% HP). **Every
+weapon hits bots 3x as hard** (Campaign, Survival, Brawl); in the Duel it fights at normal strength. Two huge rugged
+off-road wheels carry the nose (armoured hubs, glowing cyan rims, they spin with the ground speed); there are no
+wheels at the back: the rear hovers on a **gyro core**, three thin armoured rings nested like a gyroscope, each
+spinning on its own axis round a small white-hot crystal, held in an armoured cradle between two short struts and
+throwing faint light rings onto the snow. The rings spin up with speed and while the pulse laser fires, and the rear
+bobs gently. A sloped dark gunmetal hull sits between, with a low turret carrying the pulse emitter and the Grav Lance
+lens in the nose. Snow slows it like any other vehicle; DASH is shared.
 
-- **Space (hold): pulse laser.** A turret laser cannon firing 12+ red laser bolts a second that auto-aims at the best
-  target inside a **240° arc centred on the hull's nose** (bots squarely behind you are out of reach) and tilts from
-  -35° to +45°, preferring bots near the nose. The turret swings at a steady 3.2 rad/s and only fires once it is on
-  target, so switching between far-apart bots costs a moment.
-- **E: laser beam.** A 1.5 s beam that burns through everything in a line and tracks its target a little.
-- **F: swarm missiles.** A salvo of homing missiles that each hunt a different bot, ranking targets by their HP and
-  the damage they've dealt you.
+- **Space (hold): pulse laser.** A continuous cyan beam from the turret emitter to its target that flares on every
+  damage pulse (12+ a second) and auto-aims at the best target inside a **240° arc centred on the hull's nose** (bots
+  squarely behind you are out of reach), tilting from -35° to +45° and preferring bots near the nose. The turret
+  swings at a steady 3.2 rad/s and only locks on once it is on target, so switching between far-apart bots costs a
+  moment.
+- **E: Grav Lance.** 1.5 s in three stages. SPLIT: the lens fans out into thin cyan beams (4 + level, 8 at most), each
+  locking a different bot within reach in front of you (the most dangerous first). PULL: the beams drag their bots
+  toward a point 5 m ahead of the nose (bosses barely move) with small damage ticks. MERGE: the beams converge into
+  one thick, blinding pulse straight ahead (0.25 s) that does most of the damage to everything in its path, with a
+  flash and a shockwave ring. A lone bot takes the same damage the old laser beam did. In the Duel the beams only
+  nudge the other pilot toward the point.
+- **F: Polarity Burst.** The gyro rings snap flat into one spinning disc and a cyan event horizon opens 16 m round a
+  singularity point 4 m ahead. For about a second every bot inside is dragged toward it (bosses less), streaking in;
+  then it collapses and detonates: a cyan shockwave hits everything in the clump and flings it outward. A lone bot
+  takes missile count x missile damage (the old salvo's worth); with more caught each share is thinner but the total
+  bigger.
 
-Line: Pulse Laser, Laser Lance, Swarm Missiles, Energy Barrier (a recharging shield, since there's no ball to hide
+Line: Pulse Laser, Grav Lance, Polarity Burst, Energy Barrier (a recharging shield, since there's no ball to hide
 behind), Scrap Magnet (passive: a magnetic field, 7 m and wider with levels, does a
 trickle of damage to bots inside, about a quarter of Rad Aura before the PvE bonus; every bot you wreck within 12 m sheds
-a scrap shard that flies in and orbits the hull 3.5 m out for 15 s, up to 4 + level shards (12 at most); each shard
+a scrap shard that flies in and orbits the vehicle 3.5 m out for 15 s, up to 4 + level shards (12 at most); each shard
 that passes through a bot hits it, each bot at most every 0.4 s per shard; all of it gets the 3x PvE bonus against
-bots, and in the Duel only the field and shards from wrecks count).
+bots, and in the Duel only the field and shards from wrecks count). The line ids are the old ones (armCannon,
+armLaser, armMissiles, ...), so saved levels carry over.
 
-The snowball lines still pay off on the tank: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds
-pulse-laser reach (+5 m per extra metre of max ball radius), Whirlwind Turbine speeds the turret traverse and the laser
-beam's bend (+35% per extra metre of spin radius) and Snow Compactor widens the laser beam.
+The snowball lines still pay off: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds pulse-laser
+reach (+5 m per extra metre of max ball radius), Whirlwind Turbine speeds the turret traverse (+35% per extra metre
+of spin radius) and Snow Compactor widens the Grav Lance's merge pulse.
 
-**Ultimate: MISSILE STORM.** Any damage fills the meter. Every pod empties: 21 heavy missiles ripple out over about a
-second and spread over the biggest threats up to 75 m away (a normal salvo reaches 45 m). Each hits for 4× missile
-damage in a bigger blast.
+**Ultimate: SINGULARITY.** Any damage fills the meter. A black hole opens over the densest crowd within 40 m (or
+12 m ahead when nothing is near): a true black core with a bright photon ring, gravitational lensing that bends the
+arena behind it, and a tilted, swirling accretion disc. For 3 s it drags every bot within 40 m of it toward the core,
+ever faster (bosses less), with small damage ticks and a building rumble; then it shrinks to a point and explodes:
+a blinding flash (toned down with Reduce flashing), a huge shockwave, big damage to everything within 40 m (full
+within 12 m, half at the rim, thinner shares the more it catches) and everything flung outward.
 
 ## Ultimates and the kill-cam
 

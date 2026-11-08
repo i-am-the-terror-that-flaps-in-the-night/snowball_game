@@ -244,10 +244,10 @@ export class Combat implements CombatAPI {
     out[o + NP.stormT] = this.volt.stormT;
     out[o + NP.fire] = this.vehicleBits();
     out[o + NP.turret] = this.b.plow ? this.b.plow.turretAim : 0;
-    out[o + NP.laser] = ar.laserOff;
+    out[o + NP.laser] = ar.laserOff; // the Grav Lance fires straight ahead: always 0 (layout kept)
   }
 
-  /** Duel guest, the opponent's puppet: follow the host's autocannon / laser / turret (visuals only). */
+  /** Duel guest, the opponent's puppet: follow the host's pulse laser / Grav Lance / turret (visuals only). */
   readPuppet(s: Float32Array, o: number): void {
     const ar = this.arsenal;
     const bits = Math.round(s[o + NP.fire]);
@@ -256,7 +256,6 @@ export class Combat implements CombatAPI {
     this.netBits = bits;
     ar.netFire = bits;
     ar.netTurret = s[o + NP.turret];
-    ar.netLaserOff = s[o + NP.laser];
   }
 
   /** Duel guest, own plow: adopt the host's meters. `keepF`: the pilot just pressed F locally (keep the prediction). */
@@ -277,7 +276,6 @@ export class Combat implements CombatAPI {
     this.volt.lastClapAt = this.ctx.time;
     // The guest hits nothing locally, so its turret follows the host's aim.
     this.arsenal.netTurret = s[o + NP.turret];
-    this.arsenal.netLaserOff = s[o + NP.laser];
   }
 
   /** Duel guest, the opponent's puppet: re-arm the F ability so the replayed press fires it (visuals only — this
@@ -504,14 +502,9 @@ export class Combat implements CombatAPI {
     return this.melee.whirlTick(x, z, radius, ballR, tick, final, hitIds);
   }
 
-  /** ARSENAL laser beam directly (tests / tools; in play E reaches it through updateVehicle). False if it can't fire. */
+  /** ARSENAL Grav Lance directly (tests / tools; in play E reaches it through updateVehicle). False if it can't fire. */
   fireLaser(): boolean {
     return this.arsenal.fireLaser();
-  }
-
-  /** ARSENAL salvo plan for `n` missiles fired from (x, z) (see ArsenalKit.planSalvo). */
-  planSalvo(n: number, x: number, z: number): (EnemyHandle | null)[] {
-    return this.arsenal.planSalvo(n, x, z);
   }
 
   /** Break destructible props in a circle (player attacks; a duel guest's predicted attacks never do). */
@@ -613,7 +606,7 @@ export class Combat implements CombatAPI {
     this.updateVehicle(dt);
     this.arsenal.updateGuns(dt);
     this.arsenal.updateLaser(dt);
-    this.arsenal.updateMissiles(dt);
+    this.arsenal.updateBurst(dt);
     this.arsenal.updateScrap(dt);
     this.isotope.updatePools(dt);
     this.isotope.updateAura(dt);

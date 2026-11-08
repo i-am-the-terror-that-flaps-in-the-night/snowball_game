@@ -9,8 +9,8 @@
 //            guest keyboard lands on the host, Inferno from the host keyboard; pause keeps the match running;
 //            LEAVE ends it for both; single-player still works afterwards.
 //   arsenal  ARSENAL vs ARSENAL: the guest HOLDING Space keeps its autocannon firing on the host (held keys travel in
-//            the input packet), well off the nose; its turret follows the host's aim; the host's guns and laser show
-//            on the guest's puppet; the guest's laser and missiles land on the host.
+//            the input packet), well off the nose; its turret follows the host's aim; the host's pulse laser and Grav
+//            Lance show on the guest's puppet; the guest's Grav Lance and Polarity Burst land on the host.
 // Each session runs in a fresh Chrome (the sandbox kills long-lived headless Chrome). The duel clock is sim time, so
 // both pages are fast-forwarded in lockstep (render loops paused except for screenshots).
 import { createServer } from 'vite';
@@ -406,18 +406,16 @@ await session('arsenal', async (host, guest) => {
   const seen = await guest.evaluate(() => ({ fire: window.__game.duel.opponentCombat.arsenal.netFire, turret: window.__game.duel.opponentCombat.arsenal.netTurret }));
   await host.keyboard.up('Space');
   check((seen.fire & 1) === 1, "the guest sees the host's autocannon firing", seen);
-  // Host laser with the guest ~20° off the host's nose: the beam bends, and the guest draws the same bend.
+  // Host Grav Lance with the guest ~20° off the host's nose: the guest's puppet plays it too.
   await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(-3, 0, -4); });
   await run(host, guest, 0.2);
   await host.keyboard.press('KeyE');
   await run(host, guest, 0.6);
-  const laser = await guest.evaluate(() => ({ t: window.__game.duel.opponentCombat.arsenal.laserT, off: window.__game.duel.opponentCombat.arsenal.laserOff }));
-  const hostOff = await host.evaluate(() => window.__game.ctx.combat.arsenal.laserOff);
-  check(laser.t > 0, "the guest sees the host's laser", laser);
-  check(Math.abs(hostOff) > 0.1 && Math.abs(laser.off - hostOff) < 0.15, "the guest's view of the host laser bends like the host's", { hostOff, guest: laser.off });
+  const laser = await guest.evaluate(() => ({ t: window.__game.duel.opponentCombat.arsenal.laserT }));
+  check(laser.t > 0, "the guest sees the host's Grav Lance", laser);
   await shot(guest, '17-guest-sees-arsenal');
   await run(host, guest, 1.5);
-  // Guest laser + missiles land on the host. Face the host straight on for the laser.
+  // Guest Grav Lance + Polarity Burst land on the host. Face the host straight on (the burst's clump is 4 m ahead).
   await park();
   await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -6); op.heading = 0; });
   await run(host, guest, 0.5);
@@ -425,14 +423,15 @@ await session('arsenal', async (host, guest) => {
   await guest.keyboard.press('KeyE');
   await run(host, guest, 1.2);
   b1 = await hostHits();
-  check(b1.other > b0.other && b1.hp < b0.hp, 'guest laser (E) burns the host', { b0, b1 });
+  check(b1.other > b0.other && b1.hp < b0.hp, 'guest Grav Lance (E) hits the host', { b0, b1 });
   await park();
+  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -5); op.heading = 0; });
   await run(host, guest, 0.3);
   b0 = await hostHits();
   await guest.keyboard.press('KeyF');
   await run(host, guest, 2.5);
   b1 = await hostHits();
-  check(b1.other > b0.other && b1.hp < b0.hp, 'guest missiles (F) home in on the host', { b0, b1 });
+  check(b1.other > b0.other && b1.hp < b0.hp, 'guest Polarity Burst (F) detonates on the host', { b0, b1 });
   await syncCheck(host, guest, 'arsenal');
 }, undefined, false);
 

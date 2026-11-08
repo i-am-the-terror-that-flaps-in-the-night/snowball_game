@@ -100,7 +100,7 @@ export const COSMETICS: readonly CosmeticDef[] = [
   { id: 'paint_red', slot: 'paint', name: 'Fire Engine', blurb: 'Loud, proud and red.', price: 200, body: 0xd81f2e, trim: 0xf2f2f2, accent: 0xffd23a },
   { id: 'paint_lime', slot: 'paint', name: 'Toxic Lime', blurb: 'Visible from orbit.', price: 300, body: 0x7cd61c, trim: 0x3f7a12, accent: 0x1d1f24 },
   { id: 'paint_purple', slot: 'paint', name: 'Midnight Grape', blurb: 'Deep purple, deeper menace.', price: 400, body: 0x5b2ca0, trim: 0xffc531, accent: 0xffc531 },
-  { id: 'paint_pink', slot: 'paint', name: 'Bubblegum', blurb: 'Pretty in pink. Brutal in practice.', price: 550, body: 0xff5aa8, trim: 0xffe0ef, accent: 0xffffff },
+  { id: 'paint_pink', slot: 'paint', name: 'Hot Pink', blurb: 'Loud, proud and very, very pink.', price: 550, body: 0xff1493, trim: 0xff69b4, accent: 0xffffff },
   { id: 'paint_black', slot: 'paint', name: 'Stealth Black', blurb: 'Matte black. No reflections, no mercy.', price: 750, body: 0x22252b, trim: 0x44484f, accent: 0xff3b2f, roughness: 0.9, metalness: 0.05 },
   { id: 'paint_chrome', slot: 'paint', name: 'Ice Chrome', blurb: 'Mirror-polished frost.', price: 1200, req: { stars: 6 }, body: 0xf2f8ff, trim: 0xc6dcee, accent: 0x7fdcff, metalness: 1, roughness: 0.04, mirror: true },
   { id: 'paint_gold', slot: 'paint', name: 'Champion Gold', blurb: 'For plows that have seen it all.', price: 2000, req: { achievements: 15 }, body: 0xffbf2e, trim: 0xd9901a, accent: 0xfff3c4, metalness: 1, roughness: 0.12, mirror: true },

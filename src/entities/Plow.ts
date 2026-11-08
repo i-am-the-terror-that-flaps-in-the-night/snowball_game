@@ -33,7 +33,7 @@ import type { VehicleBuildIn } from './vehicles/types';
 import { buildVoltVehicle } from './vehicles/volt';
 import { buildBruteVehicle } from './vehicles/brute';
 import { buildIsotopeVehicle } from './vehicles/isotope';
-import { buildArsenalVehicle } from './vehicles/arsenal';
+import { buildArsenalVehicle, type ArsenalVehicleParts } from './vehicles/arsenal';
 import {
   AIR_STEER, ICE_ACCEL, ICE_BRAKE, ICE_DRAG, ICE_GRIP, LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, makeVert, slopeAccel, stepVertical,
 } from '../world/terrainMotion';
@@ -340,7 +340,7 @@ export class Plow implements PlowAPI {
   private steelMat!: THREE.MeshStandardMaterial;
   private hubMat!: THREE.MeshStandardMaterial;
   private voltParts!: THREE.Group;
-  /** ARSENAL: weapons platform parts, the yawing turret and its weapon mounts. */
+  /** ARSENAL: the wheel + gyro vehicle body, its yawing emitter turret and weapon mounts. */
   private arsenalParts!: THREE.Group;
   /** Equipped gear attachments (entities/gearVisuals.ts). */
   private gearVis!: GearVisuals;
@@ -351,14 +351,20 @@ export class Plow implements PlowAPI {
   private gunTilt = 0;
   /** Minigun barrel spin (rad/s), easing toward full speed while gunFiring. */
   private minigunSpin = 0;
-  /** Set by Combat each frame: the ARSENAL autocannon is firing. */
+  /** Set by Combat each frame: the ARSENAL pulse laser is firing. */
   gunFiring = false;
   /** Minigun elevation (rad, + up) from ARSENAL's auto-aim; the barrels tilt to it. */
   gunPitch = 0;
   private muzzles: THREE.Object3D[] = [];
   private laserMount!: THREE.Object3D;
-  private pods: THREE.Object3D[] = [];
+  private gyroMount!: THREE.Object3D;
   private armGlowMat!: THREE.MeshStandardMaterial;
+  private arsRig!: ArsenalVehicleParts;
+  /** Set by Combat each frame (ARSENAL): 0..1 gyro rings folded flat into a disc (Polarity Burst), and 0..1 extra
+   *  core charge glow (Grav Lance / Singularity). */
+  gyroFlat = 0;
+  gyroCharge = 0;
+  private gyroFlatEase = 0;
   /** Turret yaw relative to the hull (rad) and where Combat wants it. */
   private turretYaw = 0;
   turretAim = 0;
@@ -528,8 +534,9 @@ export class Plow implements PlowAPI {
     this.gunMount = ars.parts.gunMount;
     this.muzzles = ars.parts.muzzles;
     this.laserMount = ars.parts.laser;
-    this.pods = ars.parts.pods;
+    this.gyroMount = ars.parts.gyro;
     this.armGlowMat = ars.parts.glowMat;
+    this.arsRig = ars.parts;
 
     for (const g of [this.voltParts, this.bruteParts, this.isoParts, this.arsenalParts]) {
       g.visible = false;
@@ -1018,10 +1025,10 @@ export class Plow implements PlowAPI {
     return out.set(Math.sin(this.heading), 0, Math.cos(this.heading));
   }
 
-  /** ARSENAL weapon mounts in world space: a turret muzzle (i = 0 left / 1 right), the nose laser, or a missile
-   *  pod tube (i wraps). */
-  mountWorld(kind: 'muzzle' | 'laser' | 'pod', i: number, out: THREE.Vector3): THREE.Vector3 {
-    const o = kind === 'laser' ? this.laserMount : kind === 'muzzle' ? this.muzzles[i % this.muzzles.length] : this.pods[i % this.pods.length];
+  /** ARSENAL mounts in world space: the pulse emitter tip ('muzzle', i wraps), the Grav Lance nose lens ('laser') or
+   *  the gyro core at the rear ('gyro'). */
+  mountWorld(kind: 'muzzle' | 'laser' | 'gyro', i: number, out: THREE.Vector3): THREE.Vector3 {
+    const o = kind === 'laser' ? this.laserMount : kind === 'muzzle' ? this.muzzles[i % this.muzzles.length] : this.gyroMount;
     this.body.updateWorldMatrix(true, true);
     return o.getWorldPosition(out);
   }
@@ -1209,7 +1216,7 @@ export class Plow implements PlowAPI {
     this.voltParts.visible = volt;
     this.bruteParts.visible = brute;
     this.bruteBlade.visible = brute;
-    for (const m of this.wheelMeshes) m.visible = !brute && !ars; // BRUTUS and the BATTLE TANK run on tracks
+    for (const m of this.wheelMeshes) m.visible = !brute && !ars; // BRUTUS runs on tracks, ARSENAL on its own front wheels + gyro
     for (const w of this.wheelDebris) w.visible = this.wheelsOff && !brute && !ars;
     // Dash flame: out of the stack (Classic), a rear thruster (VOLT-9) or the right-hand twin stack (BRUTUS).
     if (volt) {
@@ -1219,7 +1226,7 @@ export class Plow implements PlowAPI {
       this.exhaustTip.set(0.55, 3.1, -1.45);
       this.flame.rotation.set(0, 0, 0);
     } else if (ars) {
-      this.exhaustTip.set(0, 1.1, -2.0);
+      this.exhaustTip.set(0, 1.06, -3.3); // out of the back of the gyro core
       this.flame.rotation.set(-Math.PI / 2, 0, 0);
     } else if (iso) {
       this.exhaustTip.set(0.55, 2.38, 0.12);
@@ -2551,7 +2558,7 @@ export class Plow implements PlowAPI {
     const pf = lowHp ? 0.5 + 0.5 * Math.sin(this.time * 22) : pulse;
     this.beaconMat.emissiveIntensity = 0.6 + pf * 2.2;
     this.beaconLight.intensity = 2 + pf * 8;
-    this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : this.kind === 'isotope' ? 0x5dff3a : 0xffa020);
+    this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : this.kind === 'isotope' ? 0x5dff3a : this.kind === 'arsenal' ? 0x38e8ff : 0xffa020);
     // ISOTOPE: the reactor core breathes; it flickers hot while Meltdown recharges.
     if (this.kind === 'arsenal') {
       // Turret swings toward Combat's target (relative yaw, wrapped), sensor glow breathes.
@@ -2566,7 +2573,10 @@ export class Plow implements PlowAPI {
       // Barrels tilt to the aim (eased: the kit already slews it; this smooths snapshot steps in a duel).
       this.gunTilt += (this.gunPitch - this.gunTilt) * Math.min(1, dt * 14);
       this.gunMount.rotation.x = -this.gunTilt;
-      this.armGlowMat.emissiveIntensity = 0.9 + 0.4 * Math.sin(this.ctx.time * 5);
+      this.armGlowMat.emissiveIntensity = 1.1 + 0.4 * Math.sin(this.ctx.time * 5) + this.gyroCharge * 1.5;
+      // Gyro core, front wheels, hover bob. The rings snap flat fast and unfold a little slower.
+      this.gyroFlatEase += (this.gyroFlat - this.gyroFlatEase) * Math.min(1, dt * (this.gyroFlat > this.gyroFlatEase ? 14 : 4));
+      this.arsRig.update(dt, { speed: this.speed, firing: this.gunFiring, flat: this.gyroFlatEase, charge: this.gyroCharge });
     }
     if (this.kind === 'isotope') {
       const ready = this.b.combat?.flameReady ?? 1;

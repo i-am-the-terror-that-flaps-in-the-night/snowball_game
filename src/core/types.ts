@@ -132,13 +132,15 @@ export interface PlayerStats {
   /** A vehicle set to the snowball kit (⚙ Settings): it plows, rolls a ball, slams and whirls like the Classic
    *  instead of its own SPACE / E (its F and ultimate stay). Never set in the Duel. */
   snowKit?: boolean;
-  /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = auto-aim autocannon (dmg per round, rounds/s,
-   *  reach m), E = laser beam (dps, reach m; recharge is whirlCooldown), F = homing missile salvo. */
+  /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = auto-aim pulse laser (dmg per tick, ticks/s,
+   *  reach m), E = Grav Lance (damage scale in dps of the old beam, reach m, thin beams; recharge is whirlCooldown),
+   *  F = Polarity Burst (missileCount x missileDamage per bot caught, recharge missileCooldown). */
   gunDamage: number;
   gunRate: number;
   gunRange: number;
   laserDps: number;
   laserRange: number;
+  lanceBeams: number;
   missileCount: number;
   missileDamage: number;
   missileCooldown: number;
@@ -397,8 +399,8 @@ export interface DamageOpts {
   /** Radius of the player's slammed ball (for Frostbyte's ball CLASH). */
   ballRadius?: number;
   /** Rapid weapon fire (ARSENAL): against a plow both kinds skip the hit i-frames (they land faster than the window).
-   *  'round' (autocannon) also skips the Duel's area-ability diminishing returns; 'beam' (laser ticks) keeps them, so
-   *  one laser press can't melt a human opponent. Against bots both face only part of the armour (Enemies). */
+   *  'round' (pulse-laser ticks) also skips the Duel's area-ability diminishing returns; 'beam' (Grav Lance ticks) keeps them, so
+   *  one Grav Lance can't melt a human opponent. Against bots both face only part of the armour (Enemies). */
   direct?: 'round' | 'beam';
 }
 
@@ -420,6 +422,9 @@ export interface EnemyManagerAPI {
   /** Throw a bot into the air with vertical speed `vy` (m/s, + up); it keeps its horizontal motion, falls with
    *  ctx.terrain.gravity and emits 'enemyLanded' on touchdown (boss leaps, stomps, blasts). */
   launch(e: EnemyHandle, vy: number): void;
+  /** Optional: drag a bot along at (vx, vz) m/s (its knockback velocity eases toward that this frame; ARSENAL's grav
+   *  weapons call it every frame while pulling). Managers without it (the Duel's OpponentTarget) aren't pulled. */
+  pull?(e: EnemyHandle, vx: number, vz: number, dt: number): void;
   /** Optional level routing consulted by the last-bot hunt (Enemies.ts sets / clears nothing itself: arena code
    *  assigns it, e.g. The Omega Works' NavGraph, and sets it back to null on leaving). */
   nav?: BotNav | null;

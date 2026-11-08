@@ -156,7 +156,7 @@ const ULT_HUD: Record<HudState['fAbility'], { bar: string; tag: string; icon: st
   zap: { bar: '⚡', tag: 'SUPERCELL', icon: '🌩️', name: 'CELL', baseIcon: '⚡', baseName: 'CLAP' },
   pound: { bar: '🌍', tag: 'EARTHQUAKE', icon: '🌍', name: 'QUAKE', baseIcon: '💥', baseName: 'POUND' },
   meltdown: { bar: '☢', tag: 'NUKE', icon: '☢️', name: 'NUKE', baseIcon: '☢️', baseName: 'MELT' },
-  missiles: { bar: '🚀', tag: 'MISSILE STORM', icon: '🚀', name: 'STORM', baseIcon: '🚀', baseName: 'MISSILES' },
+  missiles: { bar: '🌀', tag: 'SINGULARITY', icon: '🕳️', name: 'VOID', baseIcon: '🌀', baseName: 'BURST' },
 };
 
 const ENEMY_ICON: Record<EnemyType, string> = {
@@ -2424,8 +2424,8 @@ export class UI implements UIAPI {
       const pound = s.fAbility === 'pound';
       const melt = s.fAbility === 'meltdown';
       const rockets = s.fAbility === 'missiles';
-      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : rockets ? '🚀' : '🔥';
-      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : rockets ? 'MISSILES' : 'FIRE';
+      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : rockets ? '🌀' : '🔥';
+      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : rockets ? 'BURST' : 'FIRE';
       // The ultimate meter under the HP bar, one per plow.
       const ult = ULT_HUD[s.fAbility];
       H.crit.dataset.ult = s.fAbility;

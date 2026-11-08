@@ -1,16 +1,22 @@
 import * as THREE from 'three';
-import type { EnemyHandle, PlowAPI } from '../../core/types';
+import type { EnemyHandle } from '../../core/types';
+import { settings } from '../../core/settings';
+import { SingularityFx } from '../../fx/singularity';
 import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
-import { ultBlast, type UltScript } from './ultimates';
-import { makeSurface } from '../../world/Terrain';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { MissileTrail } from './missileTrail';
+import type { UltScript } from './ultimates';
 
-/** MISSILE STORM (ARSENAL's ultimate): ULT_MISSILES heavy missiles ripple out of the pods ULT_RIPPLE s apart and are
- *  spread over the top threats within ULT_RANGE (a normal salvo reaches MISSILE_RANGE), the same way planSalvo spreads
- *  a normal salvo. Each hits for ULT_MULT x missile damage in a ULT_BLAST m blast, flies a little faster (ULT_SPEED)
- *  and burns longer (ULT_FUSE) to cover the range. The ultimate lasts until the last one lands (ULT_MAX_T cap). */
-/** Every ARSENAL weapon hits bots this many times harder outside the Duel (the tank's duel balance is unchanged). */
+/* ARSENAL: a magnetic / laser vehicle (two huge front wheels, a hovering gyro core at the back).
+ *   SPACE  PULSE LASER   held: an auto-aiming continuous cyan beam (240° arc round the nose, turret traverse), damage
+ *                        in ticks (gunRate per second), each tick a visible pulse.
+ *   E      GRAV LANCE    1.5 s: SPLIT (thin beams lock onto up to lanceBeams bots ahead), PULL (they tug their bots
+ *                        to a point ahead, small ticks), MERGE (one thick pulse straight ahead: most of the damage).
+ *   F      POLARITY BURST the gyro folds into a disc, an event horizon expands to BURST_R m, every bot inside is pulled
+ *                        to a singularity point ahead for ~1 s, then it detonates (damage, outward knockback).
+ *   ULT    SINGULARITY   a black hole opens at the densest cluster within SING_SEEK m, drags every bot within SING_R
+ *                        m into it for SING_PULL_T s (small ticks), collapses and explodes.
+ *   passive SCRAP MAGNET wreck scrap orbits the vehicle as blades. */
+
+/** Every ARSENAL weapon hits bots this many times harder outside the Duel (the vehicle's duel balance is unchanged). */
 export const PVE_MULT = 3;
 /** SCRAP MAGNET (passive): field tick (s); wrecks within SCRAP_PULL m shed a shard that flies in over SCRAP_FLY s and
  *  orbits SCRAP_ORBIT m out (SCRAP_SPIN rad/s) for SCRAP_LIFE s; a shard hits bots within SCRAP_HIT_R m of it, each
@@ -25,166 +31,182 @@ const SCRAP_HIT_R = 0.7;
 const SCRAP_HIT_CD = 0.4;
 const SCRAP_POOL = 12;
 interface Shard { mesh: THREE.Mesh; state: 0 | 1 | 2; t: number; from: THREE.Vector3; slot: number; hitAt: Map<EnemyHandle, number> }
-const ULT_MISSILES = 21;
-const ULT_RANGE = 75;
-const ULT_RIPPLE = 0.05;
-const ULT_MULT = 4;
-const ULT_BLAST = 4.2;
-const ULT_SPEED = 36;
-const ULT_FUSE = 7;
-const ULT_MAX_T = 9;
-/** Storm missiles boost straight up for this long after leaving the pod (s), then pitch over onto their targets. */
-const ULT_BOOST = 0.55;
-/** Storm missiles turn this much harder than salvo missiles (they pitch over from vertical at speed). */
-const ULT_TURN = 2;
-/** Ult missiles are drawn a bit bigger than salvo missiles. */
-const ULT_SCALE = 1.25;
-/** BATTLE TANK: the pulse-laser turret only auto-aims within GUN_ARC rad either side of the hull's nose (a 240° arc:
- *  bots squarely behind are safe) and swings at most TURRET_SLEW rad/s. It holds fire until the cannon is within
- *  GUN_ON_TARGET rad of the target, so bolts never leave sideways from a turret still swinging round. Then the burst a
- *  single press fires when the input source can't report held keys. */
+
+/** PULSE LASER: the turret only auto-aims within GUN_ARC rad either side of the hull's nose (a 240° arc: bots squarely
+ *  behind are safe) and swings at most TURRET_SLEW rad/s. It holds fire until the emitter is within GUN_ON_TARGET rad
+ *  of the target. GUN_BURST: what a single press fires when the input source can't report held keys. */
 const GUN_ARC = 120 * (Math.PI / 180);
 const GUN_ARC_COS = Math.cos(GUN_ARC);
 const TURRET_SLEW = 3.2;
 const GUN_ON_TARGET = 0.35;
-/* The snowball / spin shop lines, re-purposed on the BATTLE TANK so every bought level still does something:
+/* The snowball / spin shop lines, re-purposed on ARSENAL so every bought level still does something:
  * Mega Hopper stretches the pulse laser's reach (HOPPER_RANGE m per m of max ball radius over the base 1.2 m),
- * Whirlwind Turbine speeds the turret traverse and the laser beam's bend (WHIRL_SLEW per m of spin radius over 4 m),
- * Snow Compactor widens the laser beam (COMPACT_WIDTH m per unit of pack rate over the base 0.12). */
+ * Whirlwind Turbine speeds the turret traverse (WHIRL_SLEW per m of spin radius over 4 m),
+ * Snow Compactor widens the Grav Lance's merge pulse (COMPACT_WIDTH m per unit of pack rate over the base 0.12). */
 const HOPPER_RANGE = 5;
 const WHIRL_SLEW = 0.35;
 const COMPACT_WIDTH = 3;
 /** Pulse-laser reach (m) with Mega Hopper. */
 export const tankGunRange = (st: { gunRange: number; maxBallRadius: number }): number => st.gunRange + HOPPER_RANGE * Math.max(0, st.maxBallRadius - 1.2);
-/** Turret / laser-bend slew multiplier with Whirlwind Turbine. */
+/** Turret slew multiplier with Whirlwind Turbine. */
 export const tankSlewMult = (st: { whirlRadius: number }): number => 1 + WHIRL_SLEW * Math.max(0, st.whirlRadius - 4);
-/** Laser beam half-width (m) with Snow Compactor. */
-export const tankBeamWidth = (st: { collectRate: number }): number => LASER_WIDTH + COMPACT_WIDTH * Math.max(0, st.collectRate - 0.12);
+/** Grav Lance merge-pulse half-width (m) with Snow Compactor. */
+export const tankBeamWidth = (st: { collectRate: number }): number => LANCE_WIDTH + COMPACT_WIDTH * Math.max(0, st.collectRate - 0.12);
 const GUN_BURST = 0.5;
 const GUN_KNOCK = 1.5;
-const TRACERS = 24;
-/** Pulse-laser bolts: speed (m/s), bolt length (m), random scatter at the target (m) so a burst isn't one line. */
-const ROUND_SPEED = 160;
-const TRACER_LEN = 1.6;
-const ROUND_SCATTER = 0.3;
-/** Muzzle flare: seconds on screen per bolt. */
-const FLASH_SECONDS = 0.05;
-/** Laser beam: seconds it burns, hit width (m), damage tick. */
-const LASER_SECONDS = 1.5;
-const LASER_WIDTH = 0.9;
-const LASER_TICK = 0.1;
-const LASER_SLEW = 1.6;
-/** Missiles: flight speed (m/s), turn rate (1/s), blast radius (m), splash share, fuse (s). */
-/** Minigun elevation limits (rad) and how fast the barrels tilt. Targets outside the band are skipped (the gun can't
- *  reach a bot straight above it on a deck). Line of sight through terrain / decks is required when terrain exists. */
+/** Pulse beam: seconds it takes to fade after the trigger is released; how fast a tick's brightening decays (1/s). */
+const BEAM_FADE = 0.12;
+const BEAM_PULSE_DECAY = 12;
+/** Emitter elevation limits (rad) and how fast it tilts. Targets outside the band are skipped. Line of sight through
+ *  terrain / decks is required when terrain exists. */
 const GUN_PITCH_MIN = -35 * (Math.PI / 180);
 const GUN_PITCH_MAX = 45 * (Math.PI / 180);
 const GUN_PITCH_SLEW = 2.5;
-/** Muzzle height above the plow's feet used for aim maths. */
+/** Emitter height above the plow's feet used for aim maths. */
 const GUN_HEIGHT = 1.4;
-/** Laser: may bend up to LASER_CONE off the nose in ANY direction (left / right / up), but not below LASER_PITCH_MIN. */
-const LASER_CONE = 80 * (Math.PI / 180);
-const LASER_PITCH_MIN = -15 * (Math.PI / 180);
-/** Missiles re-check line of sight to their target this often (s); when a deck is in the way they fly round its edge. */
-const MISSILE_LOS_EVERY = 0.2;
 
-const MISSILES_MAX = 12;
-/** Missile meshes: a full salvo plus a full MISSILE STORM can be in the air at once. */
-const MISSILE_POOL = MISSILES_MAX + ULT_MISSILES;
-/** Missile flight: ejected from the pod with no thrust for MISSILE_EJECT s, then the motor lights and it accelerates
- *  along its nose from MISSILE_V0 to MISSILE_SPEED (m/s). It turns at most MISSILE_TURN rad/s (more as it slows near
- *  the end), so it flies wide arcs and can overshoot a target that jinks. Guidance leads the target and lofts: it
- *  climbs to MISSILE_LOFT m above the line while far away, then dives in. Pods fire in a ripple, MISSILE_RIPPLE apart. */
-const MISSILE_EJECT = 0.16;
-const MISSILE_V0 = 9;
-const MISSILE_SPEED = 30;
-const MISSILE_ACCEL = 70;
-const MISSILE_TURN = 3.6;
-const MISSILE_TURN_LATE = 6;
-/** Terminal homing: inside this range (m) the seeker turns up to MISSILE_TERMINAL x harder, so close targets get hit
- *  instead of orbited (turn radius at full speed is ~speed / turn rate). */
-const MISSILE_TERMINAL_RANGE = 12;
-const MISSILE_TERMINAL = 2.6;
-const MISSILE_LOFT = 5;
-const MISSILE_RIPPLE = 0.07;
-/** Proximity fuse (m from the target's centre on top of its radius). */
-const MISSILE_PROX = 1.3;
-/** Smoke puffs per second along the trail while the motor burns. */
-const MISSILE_SMOKE = 8;
-/** Missile body: half-length (m) from the centre to the nozzle (the trail starts there). */
-const MISSILE_TAIL = 0.78;
-const MISSILE_BLAST = 3.2;
-const MISSILE_SPLASH = 0.6;
-const MISSILE_FUSE = 4.5;
-const MISSILE_RANGE = 45;
-/** A missile whose target dies looks for a new one within this many metres of itself. */
-const MISSILE_RETARGET = 25;
+/** GRAV LANCE timeline (s from the press): thin beams reach out until LANCE_SPLIT, pull ticks every LANCE_PULL_TICK
+ *  from LANCE_SPLIT (LANCE_PULL_TICKS of them), the beams converge until LANCE_MERGE, then the merge pulse ticks
+ *  every LANCE_MERGE_TICK (LANCE_MERGE_TICKS of them) until LANCE_SECONDS. A lone bot takes LANCE_SECONDS x laserDps
+ *  in all (the old beam's single-target damage); LANCE_PULL_SHARE of it comes from its thin beam. */
+const LANCE_SECONDS = 1.5;
+const LANCE_SPLIT = 0.3;
+const LANCE_PULL_TICK = 0.1;
+const LANCE_PULL_TICKS = 9;
+const LANCE_MERGE = 1.25;
+const LANCE_MERGE_TICK = 0.05;
+const LANCE_MERGE_TICKS = 5;
+const LANCE_PULL_SHARE = 0.25;
+/** Thin beams lock bots within LANCE_ARC rad of the nose; they tug them toward a point LANCE_POINT m ahead at up to
+ *  LANCE_PULL m/s (bosses LANCE_BOSS x). Merge pulse half-width base (m). Max thin beams (FX.lanceBeams cap). */
+const LANCE_ARC = 70 * (Math.PI / 180);
+const LANCE_POINT = 5;
+const LANCE_PULL = 8;
+const LANCE_BOSS = 0.25;
+const LANCE_WIDTH = 0.9;
+const LANCE_MAX = 8;
+/** Duel: no pull on a human; the thin-beam ticks only nudge them toward the point (knockback m/s). */
+const LANCE_DUEL_TUG = 2;
 
-type Missile = {
-  mesh: THREE.Group;
-  pos: THREE.Vector3;
-  vel: THREE.Vector3;
-  target: EnemyHandle | null;
-  t: number;
-  live: boolean;
-  /** Detour point round a deck between the missile and its target (null = fly straight at it). */
-  via: THREE.Vector3 | null;
-  losT: number;
-  /** Nose direction (unit) and airspeed once the motor is lit; `lit` flips at the end of the eject phase. */
-  fwd: THREE.Vector3;
-  speed: number;
-  lit: boolean;
-  /** Seconds until this missile leaves its pod (ripple fire); the missile is hidden until then. */
-  delay: number;
-  /** Target position last frame (lead estimate) and a per-missile wobble phase. */
-  last: THREE.Vector3;
-  wob: number;
-  smokeT: number;
-  /** Which pod tube it fires from (mountWorld index). */
-  pod: number;
-  /** The exhaust flame (scaled / flickered while lit) and the exhaust + smoke trail. */
-  flame: THREE.Object3D;
-  trail: MissileTrail;
-  /** A MISSILE STORM missile (ultimate): heavier hit, bigger blast, faster, longer fuse. */
-  ult: boolean;
-};
+/** POLARITY BURST: event horizon BURST_R m round a singularity point BURST_POINT m ahead (fixed where it was cast);
+ *  the ring opens over BURST_OPEN s, pulls (BURST_PULL m/s, bosses BURST_BOSS x) until BURST_DET, then detonates
+ *  over BURST_DET_R m: missileCount x missileDamage per bot, / (bots caught)^BURST_SPREAD, knockback BURST_KNOCK. */
+const BURST_R = 16;
+const BURST_POINT = 4;
+const BURST_OPEN = 0.3;
+const BURST_DET = 1.3;
+const BURST_END = 1.75;
+const BURST_PULL = 11;
+const BURST_BOSS = 0.3;
+const BURST_DET_R = 7;
+const BURST_KNOCK = 12;
+const BURST_SPREAD = 0.7;
 
-/** What launch() needs from the plow: where it is and its pod tubes. */
-type PodHost = { position: THREE.Vector3; heading: number; mountWorld(kind: 'pod', i: number, out: THREE.Vector3): THREE.Vector3 };
+/** SINGULARITY (ultimate): opens at the densest bot cluster within SING_SEEK m (bots within SING_CLUSTER m of each
+ *  other count together), else SING_AHEAD m ahead. Drags every bot within SING_R m toward it for SING_PULL_T s
+ *  (speed accelerating from SING_V0 to SING_V1 m/s, bosses SING_BOSS x), a small tick every SING_TICK s
+ *  (SING_TICK_DMG x missile damage); then collapses for SING_COLLAPSE s and explodes: SING_POOL x missile damage per
+ *  bot / (bots hit)^SING_SPREAD, full within SING_CORE m, falling to half at SING_R. Over at SING_END s. */
+const SING_SEEK = 40;
+const SING_CLUSTER = 8;
+const SING_AHEAD = 12;
+const SING_R = 40;
+const SING_PULL_T = 3;
+const SING_V0 = 4;
+const SING_V1 = 15;
+const SING_BOSS = 0.3;
+const SING_TICK = 0.25;
+const SING_TICK_DMG = 0.25;
+const SING_COLLAPSE = 0.2;
+const SING_POOL = 46;
+const SING_SPREAD = 0.85;
+const SING_CORE = 12;
+const SING_KNOCK = 18;
+const SING_END = 3.6;
+/** Visual radius handed to SingularityFx.open (m). */
+const SING_VIS_R = 2.6;
 
+const CYAN = 0x38e8ff;
 const _a = new THREE.Vector3();
 const _hit = { t: 0, x: 0, y: 0, z: 0, what: 'ground' as 'ground' | number };
-const _surf = makeSurface();
 
-/** ARSENAL: autocannon, laser, swarm missiles and the MISSILE STORM (plus the duel guest's view of them). */
+/** Unit cylinder along +Z (0..1): beams are scaled (width, width, length) and pointed with lookAt. */
+function beamGeometry(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
+  g.rotateX(Math.PI / 2);
+  g.translate(0, 0, 0.5);
+  return g;
+}
+const glowMat = (color: number, opacity: number) =>
+  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+/** Normal-blended tint: additive cyan washes out to white over sunlit snow, so the outer glows are painted on. */
+const tintMat = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false });
+
+/** Point a unit beam from `from` to `to` with half-width `w` (hidden when degenerate). */
+function aimBeam(m: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3, w: number): void {
+  const len = from.distanceTo(to);
+  if (!(len > 1e-3)) {
+    m.visible = false;
+    return;
+  }
+  m.visible = true;
+  m.position.copy(from);
+  m.lookAt(to);
+  m.scale.set(w, w, len);
+}
+
+/** ARSENAL: pulse laser, Grav Lance, Polarity Burst, the SINGULARITY and the Scrap Magnet (plus the duel guest's view). */
 export class ArsenalKit extends Kit implements UltScript, VehicleKit {
-  readonly primaryDesc: AbilityDesc = { icon: '🔫', label: 'PULSE', hint: 'hold for PULSE LASER' };
-  readonly secondaryDesc: AbilityDesc = { icon: '🔴', label: 'LASER', hint: 'LASER BEAM' };
+  readonly primaryDesc: AbilityDesc = { icon: '🔷', label: 'PULSE', hint: 'hold for PULSE LASER' };
+  readonly secondaryDesc: AbilityDesc = { icon: '🧲', label: 'LANCE', hint: 'GRAV LANCE' };
   /** SPACE state handed in by Combat (primary) for updateGuns this frame. */
   private trigHeld = false;
   private trigPressed = false;
-  /** Autocannon timer + burst window, alternating muzzle, tracer pool. */
+  /** Pulse-laser tick timer + burst window. */
   private gunT = 0;
   private gunBurstT = 0;
-  private gunSide = 0;
-  /** Rounds in flight: a short two-tone streak travelling from the muzzle to `dist` along `dir`. */
-  private tracers: { mesh: THREE.Group; t: number; from: THREE.Vector3; dir: THREE.Vector3; dist: number }[] = [];
-  /** Muzzle flash (flame cone + hot core) and the round counter for smoke wisps. */
-  private flash!: THREE.Group;
-  private flashT = 0;
-  private rounds = 0;
-  /** Laser beam time left and damage tick. */
+  /** Pulse beam: core / glow / impact glow, its brightness (0..1, fades in / out), the tick flash (0..1), where it
+   *  lands (the target's chest while it lives, else the last end point). */
+  private beamCore!: THREE.Mesh;
+  private beamGlow!: THREE.Mesh;
+  private beamHit!: THREE.Mesh;
+  private beamA = 0;
+  private beamPulse = 0;
+  private beamTgt: EnemyHandle | null = null;
+  private beamEnd = new THREE.Vector3();
+  private beamHasEnd = false;
+  /** Grav Lance time left (s; 0 = idle) and ticks done. */
   laserT = 0;
-  private laserTickT = 0;
-  private laserCore!: THREE.Mesh;
-  private laserGlow!: THREE.Mesh;
-  /** Swarm Missiles recharge 0..1. */
+  private pullTicks = 0;
+  private mergeTicks = 0;
+  /** Thin beams: locked bots (null = free beam, fanned out ahead), their meshes and free-beam fan angles. */
+  private lanceTgt: (EnemyHandle | null)[] = [];
+  private lanceBeams: THREE.Mesh[] = [];
+  private lanceN = 0;
+  private mergeCore!: THREE.Mesh;
+  private mergeGlow!: THREE.Mesh;
+  /** Polarity Burst recharge 0..1 (the F slot; the name is the old missile line's, net field NP.fReady). */
   missileCharge = 1;
-  /** Is the autocannon firing this frame (snapshot bit). Laser beam yaw off the nose. */
+  /** Polarity Burst: elapsed (-1 idle), singularity point, caught bots, meshes. */
+  private burstT = -1;
+  private burstAt = new THREE.Vector3();
+  private burstY = 0;
+  private horizon!: THREE.Mesh;
+  private horizonIn!: THREE.Mesh;
+  private burstCore!: THREE.Mesh;
+  private burstGlow!: THREE.Mesh;
+  private streakT = 0;
+  /** Singularity: centre and FX (built on first use, only with a camera: headless sims have none). */
+  private singAt = new THREE.Vector3();
+  private singY = 0;
+  private singFx: SingularityFx | null = null;
+  private singTickT = 0;
+  private singCollapsed = false;
+  private singBlown = false;
+  /** Is the pulse laser firing this frame (snapshot bit). The lance always fires straight ahead (net field NP.laser). */
   gunsOn = false;
   laserOff = 0;
-  /** Laser beam pitch (rad, + up) and the minigun barrels' elevation (rad, + up; the Plow tilts the barrels with it). */
-  laserPitch = 0;
+  /** The emitter's elevation (rad, + up; the Plow tilts it). */
   gunPitch = 0;
   /** Commanded turret yaw off the hull nose (rad, within ±GUN_ARC), slewed at TURRET_SLEW; the Plow eases to it. */
   private turretCmd = 0;
@@ -192,15 +214,12 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
    *  -1 = not a puppet. netTurret NaN = aim locally. */
   netFire = -1;
   netTurret = NaN;
-  /** Duel guest: the host's laser bend (NaN = aim locally). */
-  netLaserOff = NaN;
-  private missiles: Missile[] = [];
 
   constructor(h: CombatHost) {
     super(h);
     this.buildArsenalFx(h.ctx.scene);
     const geo = new THREE.TetrahedronGeometry(0.32);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 0.85, roughness: 0.35, emissive: 0x1a2a44 });
+    const mat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 0.85, roughness: 0.35, emissive: 0x0e3a4a });
     for (let i = 0; i < SCRAP_POOL; i++) {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.visible = false;
@@ -265,12 +284,12 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const pz = plow.position.z;
     const y0 = (plow.surfaceY || 0) + 1.2;
     const R = st.scrapRadius;
-    // Field cue: grey filings drifting in from the rim.
+    // Field cue: filings drifting in from the rim.
     if ((this.scrapFxT -= dt) <= 0) {
       this.scrapFxT = 0.18;
       const a = Math.random() * Math.PI * 2;
       _q.set(px + Math.sin(a) * R, y0 - 0.6, pz + Math.cos(a) * R);
-      ctx.fx.burst(_q, { color: 0x8f9aa6, count: 1, speed: 0.5, size: 0.12, gravity: -1, life: 0.6 });
+      ctx.fx.burst(_q, { color: 0x8fb4c6, count: 1, speed: 0.5, size: 0.12, gravity: -1, life: 0.6 });
     }
     if ((this.scrapT -= dt) <= 0) {
       this.scrapT = SCRAP_TICK;
@@ -308,7 +327,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const en = hits[i];
         if (!en.alive || ctx.time - (s.hitAt.get(en) ?? -1e9) < SCRAP_HIT_CD) continue;
         s.hitAt.set(en, ctx.time);
-        if (this.weaponHit(en, st.scrapHit, px, pz, 2) > 0) ctx.fx.burst(s.mesh.position, { color: 0xd8e0e8, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 });
+        if (this.weaponHit(en, st.scrapHit, px, pz, 2) > 0) ctx.fx.burst(s.mesh.position, { color: 0xd8f4ff, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 });
       }
     }
   }
@@ -324,121 +343,73 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   resetNet(): void {
     this.netFire = -1;
     this.netTurret = NaN;
-    this.netLaserOff = NaN;
   }
 
   /** SPACE (VehicleKit): the pulse laser; updateGuns (run right after by Combat) reads the trigger. */
   primary(_dt: number, held: boolean, pressed: boolean): void {
     this.trigHeld = held;
     this.trigPressed = pressed;
+    this.ultArmed = this.h.crit >= 1;
   }
+  /** The meter was full at the start of this frame (Combat calls primary() first every frame): an F press only becomes
+   *  the SINGULARITY when the HUD already showed it, not when this frame's own hits topped the meter up. */
+  private ultArmed = false;
 
-  /** E (VehicleKit): the laser beam; spends the E charge when it fires. */
+  /** E (VehicleKit): the Grav Lance; spends the E charge when it fires. */
   secondary(_dt: number, _held: boolean, pressed: boolean): boolean {
     return pressed && this.fireLaser();
   }
 
-  /** Puppet bits: bit 0 = pulse laser firing, bit 1 = laser beam burning. */
+  /** Puppet bits: bit 0 = pulse laser firing, bit 1 = Grav Lance running. */
   netBits(): number {
     return (this.gunsOn ? 1 : 0) | (this.laserT > 0 ? 2 : 0);
   }
 
-  /** MISSILE STORM: every pod empties, ULT_MISSILES heavy missiles spread over the top threats within ULT_RANGE. */
-  ultStart(x: number, z: number): number {
-    const pods = this.b.plow;
-    if (pods) this.launch(this.planSalvo(ULT_MISSILES, x, z, ULT_RANGE, ULT_MULT), pods, true);
-    this.b.audio.play('burst', { pitch: 1.1, volume: 1 });
-    this.b.audio.play('charge', { pitch: 1.5, volume: 0.7 });
-    this.shake(0.25);
-    // The meter can't refill while the storm is still flying anyway (Ultimates.feed), so only a short lock after.
-    return 1;
-  }
-
-  /** Over once every storm missile has landed (or ULT_MAX_T passed). */
-  ultTick(t: number): boolean {
-    if (t > ULT_MAX_T) return true;
-    for (const m of this.missiles) if (m.live && m.ult) return false;
-    return true;
-  }
-
   private buildArsenalFx(scene: THREE.Scene): void {
-    // Laser bolt: a white-hot core inside a wider red glow, rounded at both ends (unit length along +Z, head at z = 1).
-    // Normal blending with solid colours: additive red on sunlit snow washes out to white and the bolts vanish. Short
-    // and fast: a burst is a dotted line of bolts, not one beam.
-    const bolt = (r: number) => {
-      const g = new THREE.CapsuleGeometry(r, 1, 3, 8);
-      g.rotateX(Math.PI / 2); // axis -> Z
-      g.scale(1, 1, 1 / (1 + 2 * r)); // fit the whole capsule into a unit length
-      g.translate(0, 0, 0.5);
-      return g;
+    const beam = beamGeometry();
+    const mk = (mat: THREE.Material, order = 3) => {
+      const m = new THREE.Mesh(beam, mat);
+      m.visible = false;
+      m.renderOrder = order;
+      m.frustumCulled = false;
+      scene.add(m);
+      return m;
     };
-    const coreGeo = bolt(0.05);
-    const glowGeo = bolt(0.13);
-    const add = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false });
-    const coreMat = add(0xffe4ea, 1);
-    const glowMat = add(0xff1a36, 0.7);
-    for (let i = 0; i < TRACERS; i++) {
-      const mesh = new THREE.Group();
-      mesh.add(new THREE.Mesh(glowGeo, glowMat), new THREE.Mesh(coreGeo, coreMat));
-      mesh.visible = false;
-      mesh.renderOrder = 3;
-      scene.add(mesh);
-      this.tracers.push({ mesh, t: 0, from: new THREE.Vector3(), dir: new THREE.Vector3(), dist: 0 });
+    // Pulse laser: a white-cyan core inside a wider cyan glow, plus a soft glow ball where it lands.
+    this.beamCore = mk(glowMat(0xe8fdff, 0.95));
+    this.beamGlow = mk(tintMat(0x14c8f5, 0.45), 2);
+    this.beamHit = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), glowMat(CYAN, 0.7));
+    this.beamHit.visible = false;
+    this.beamHit.renderOrder = 3;
+    scene.add(this.beamHit);
+    // Grav Lance: LANCE_MAX thin beams and the thick merge pulse (core + glow).
+    const thin = tintMat(0x22d4ff, 0.7);
+    for (let i = 0; i < LANCE_MAX; i++) this.lanceBeams.push(mk(thin));
+    this.mergeCore = mk(glowMat(0xffffff, 1));
+    this.mergeGlow = mk(tintMat(0x14c8f5, 0.6), 2);
+    // Polarity Burst: the expanding event-horizon ring (+ a fainter inner ring) and the singularity point.
+    const ringMat = glowMat(CYAN, 0.8);
+    ringMat.side = THREE.DoubleSide;
+    this.horizon = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 72), ringMat);
+    this.horizonIn = new THREE.Mesh(new THREE.RingGeometry(0.6, 1, 72), glowMat(0x1a8cb0, 0.25));
+    (this.horizonIn.material as THREE.Material).side = THREE.DoubleSide;
+    for (const r of [this.horizon, this.horizonIn]) {
+      r.rotation.x = -Math.PI / 2;
+      r.visible = false;
+      r.renderOrder = 2;
+      scene.add(r);
     }
-    // Muzzle flare: a hot white core, a red halo and a thin ring at the emitter lens, flickered per bolt.
-    this.flash = new THREE.Group();
-    this.flash.add(new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), add(0xffffff, 1)));
-    this.flash.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), add(0xff3048, 0.55)));
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 6, 20), add(0xff6070, 0.9));
-    this.flash.add(ring);
-    this.flash.visible = false;
-    scene.add(this.flash);
-    const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
-    beamGeo.rotateX(Math.PI / 2);
-    beamGeo.translate(0, 0, 0.5);
-    this.laserCore = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xfff0f0, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
-    this.laserGlow = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }));
-    for (const m of [this.laserCore, this.laserGlow]) {
+    this.burstCore = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+    this.burstGlow = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), glowMat(CYAN, 0.5));
+    for (const m of [this.burstCore, this.burstGlow]) {
       m.visible = false;
       m.renderOrder = 3;
       scene.add(m);
     }
-    // A proper missile: ~1.6 m long, slim body, pointed nose, red band, four tail fins, nozzle flame.
-    const bodyGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.3, 10);
-    bodyGeo.rotateX(Math.PI / 2);
-    const noseGeo = new THREE.ConeGeometry(0.12, 0.42, 10);
-    noseGeo.rotateX(Math.PI / 2);
-    noseGeo.translate(0, 0, 0.86);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8ecef, roughness: 0.4, metalness: 0.3 });
-    const noseMat = new THREE.MeshStandardMaterial({ color: 0xd8262a, roughness: 0.4 });
-    const fireMat = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
-    const fireGeo = new THREE.ConeGeometry(0.13, 1.0, 10);
-    fireGeo.rotateX(-Math.PI / 2);
-    fireGeo.translate(0, 0, -1.15);
-    // Four tail fins (two crossed plates).
-    const finA = new THREE.BoxGeometry(0.62, 0.025, 0.34);
-    const finB = new THREE.BoxGeometry(0.025, 0.62, 0.34);
-    finA.translate(0, 0, -0.5);
-    finB.translate(0, 0, -0.5);
-    const finGeo = mergeGeometries([finA, finB]);
-    finA.dispose();
-    finB.dispose();
-    for (let i = 0; i < MISSILE_POOL; i++) {
-      const g = new THREE.Group();
-      const flame = new THREE.Mesh(fireGeo, fireMat);
-      g.add(new THREE.Mesh(bodyGeo, bodyMat), new THREE.Mesh(noseGeo, noseMat), new THREE.Mesh(finGeo, bodyMat), flame);
-      g.visible = false;
-      scene.add(g);
-      this.missiles.push({
-        mesh: g, pos: new THREE.Vector3(), vel: new THREE.Vector3(), target: null, t: 0, live: false, via: null, losT: 0,
-        fwd: new THREE.Vector3(0, 0, 1), speed: 0, lit: false, delay: 0, last: new THREE.Vector3(), wob: i * 1.7, smokeT: 0, pod: 0, flame,
-        trail: new MissileTrail(scene), ult: false,
-      });
-    }
   }
 
-  /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (rounds, laser ticks), see
-   *  DamageOpts.direct. Returns damage dealt. */
+  /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (pulse ticks, lance ticks), see
+   *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it. Returns damage dealt. */
   private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam'): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
@@ -448,8 +419,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.pveMult * this.hitMult(e), {
       source: 'other',
       knockback: new THREE.Vector3((dx / d) * knock, 0, (dz / d) * knock),
-      fromX,
-      fromZ,
+      fromX: knock < 0 ? e.position.x + (dx / d) * 2 : fromX,
+      fromZ: knock < 0 ? e.position.z + (dz / d) * 2 : fromZ,
       direct,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
@@ -457,24 +428,33 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return dealt;
   }
 
-  /** Pulse laser (SPACE, held): an auto-aiming laser cannon that tracks bots within a 240° arc round the nose, 12+ bolts a second. A duel puppet fires when the host's snapshot says so. */
+  /** PVE_MULT against bots, 1 in the Duel. */
+  private get pveMult(): number {
+    return this.b.pvp ? 1 : PVE_MULT;
+  }
+
+  /** Can this pilot's targets be dragged around (bots: yes; a human in the Duel: no)? */
+  private get canPull(): boolean {
+    return !!this.b.enemies.pull && !this.b.pvp;
+  }
+
+  /** Drag `e` toward (x, z) at up to `speed` m/s (slower when close, so it settles instead of overshooting). */
+  private pullBot(e: EnemyHandle, x: number, z: number, speed: number, dt: number): void {
+    const pull = this.b.enemies.pull;
+    if (!pull || this.b.pvp || !e.alive) return;
+    const dx = x - e.position.x;
+    const dz = z - e.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.05) return;
+    const v = speed * Math.min(1, d / 3);
+    pull.call(this.b.enemies, e, (dx / d) * v, (dz / d) * v, dt);
+  }
+
+  /* ------------------------------------------------------------------ SPACE: pulse laser */
+
+  /** Pulse laser (SPACE, held): an auto-aiming beam that tracks bots within a 240° arc round the nose and deals its
+   *  damage in gunRate ticks a second. A duel puppet fires when the host's snapshot says so. */
   updateGuns(dt: number): void {
-    // Rounds in flight: the streak's head runs ahead at ROUND_SPEED, its tail TRACER_LEN behind, until the head lands.
-    for (const tr of this.tracers) {
-      if (tr.t <= 0) continue;
-      tr.t += dt;
-      const head = tr.t * ROUND_SPEED;
-      if (head - TRACER_LEN >= tr.dist) {
-        tr.t = 0;
-        tr.mesh.visible = false;
-        continue;
-      }
-      const h = Math.min(head, tr.dist);
-      const tail = Math.max(0, head - TRACER_LEN);
-      tr.mesh.position.copy(tr.from).addScaledVector(tr.dir, tail);
-      tr.mesh.scale.z = Math.max(0.05, h - tail);
-    }
-    if (this.flashT > 0 && (this.flashT -= dt) <= 0) this.flash.visible = false;
     const held = this.trigHeld;
     const pressed = this.trigPressed;
     this.trigHeld = this.trigPressed = false;
@@ -482,9 +462,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const plow = this.b.plow;
     this.gunsOn = false;
     if (plow) plow.gunFiring = false;
-    if (st.gunDamage <= 0 || !plow) return;
+    if (st.gunDamage <= 0 || !plow) return this.drawBeam(dt);
     if (this.gunT > 0) this.gunT -= dt;
-    if (plow.dead) return;
+    if (plow.dead) return this.drawBeam(dt);
     // A press without held-key reporting fires a short burst; a puppet follows the host's held bit only.
     if (pressed && !this.puppet) this.gunBurstT = GUN_BURST;
     else if (this.gunBurstT > 0) this.gunBurstT -= dt;
@@ -506,82 +486,81 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       this.turretCmd += THREE.MathUtils.clamp(want - this.turretCmd, -ts, ts);
       plow.turretAim = this.turretCmd;
     }
-    // Barrels tilt toward the target's chest (limited band, limited speed).
+    // The emitter tilts toward the target's chest (limited band, limited speed).
     const wantPitch = target ? this.pitchTo(px, py, pz, target) || 0 : 0;
     const pstep = GUN_PITCH_SLEW * dt;
     this.gunPitch += THREE.MathUtils.clamp(wantPitch - this.gunPitch, -pstep, pstep);
     plow.gunPitch = this.gunPitch;
-    if (!firing || this.gunT > 0) return;
-    // Wait for the turret to come round (and the barrels to lift) before a round leaves the barrels.
-    if (target && Math.abs(wrapAngle(targetYaw - plow.turretHeading)) > GUN_ON_TARGET) return;
-    if (target && Math.abs(wantPitch - this.gunPitch) > GUN_ON_TARGET) return;
+    if (!firing || this.gunT > 0) return this.drawBeam(dt);
+    // Wait for the turret to come round (and the emitter to lift) before the beam locks on.
+    if (target && Math.abs(wrapAngle(targetYaw - plow.turretHeading)) > GUN_ON_TARGET) return this.drawBeam(dt);
+    if (target && Math.abs(wantPitch - this.gunPitch) > GUN_ON_TARGET) return this.drawBeam(dt);
     this.gunT += 1 / Math.max(0.5, st.gunRate);
     if (this.gunT < 0) this.gunT = 0;
-    const side = (this.gunSide = 1 - this.gunSide);
-    plow.mountWorld('muzzle', side, _p);
-    let ex: number;
-    let ez: number;
-    let ey = _p.y;
+    plow.mountWorld('muzzle', 0, _p);
     if (target) {
-      ex = target.position.x + (Math.random() - 0.5) * ROUND_SCATTER;
-      ez = target.position.z + (Math.random() - 0.5) * ROUND_SCATTER;
-      ey = target.position.y + Math.min(1.2, target.radius * 0.6) + (Math.random() - 0.5) * ROUND_SCATTER;
       this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK, 'round');
+      this.beamTgt = target.alive ? target : null;
+      this.chest(target, this.beamEnd);
+      _fwd.subVectors(_p, this.beamEnd).normalize();
+      this.ctx.fx.sparks(this.beamEnd, _fwd, { count: 3, color: CYAN, speed: 8, spread: 0.7, size: 0.05, life: 0.14, gravity: 6 });
     } else {
+      this.beamTgt = null;
       const h = plow.turretHeading;
       const cp = Math.cos(this.gunPitch);
       const hx = Math.sin(h);
       const hz = Math.cos(h);
       const t = this.b.authoritative ? (this.ctx.world?.blastPropRay(_p.x, _p.z, hx, hz, range) ?? -1) : -1;
       let reach = t >= 0 ? t : range;
-      // Rounds stop at the first ramp, deck or hill in the way.
+      // The beam stops at the first ramp, deck or hill in the way.
       const ter = this.ctx.terrain;
       if (ter?.active) {
         const hit = ter.raycast(_p.x, _p.y, _p.z, hx * cp, Math.sin(this.gunPitch), hz * cp, reach, _hit);
         if (hit) reach = hit.t;
       }
-      ex = _p.x + hx * cp * reach;
-      ez = _p.z + hz * cp * reach;
-      ey = _p.y + Math.sin(this.gunPitch) * reach;
+      this.beamEnd.set(_p.x + hx * cp * reach, _p.y + Math.sin(this.gunPitch) * reach, _p.z + hz * cp * reach);
     }
-    this.fireRound(_p, _q.set(ex, ey, ez), !!target);
-    this.b.audio.play('pulse', { volume: 0.2, pitch: 0.95 + Math.random() * 0.15 });
-    if (this.b.local) this.ctx.fx.shake(0.02);
+    this.beamHasEnd = true;
+    this.beamPulse = 1;
+    this.b.audio.play('pulse', { volume: 0.14, pitch: 0.8 + Math.random() * 0.1 });
+    if (this.b.local) this.ctx.fx.shake(0.015);
+    this.drawBeam(dt);
   }
 
-  /** One pulse-laser bolt's visuals: muzzle flare, a travelling bolt, the impact. */
-  private fireRound(from: THREE.Vector3, to: THREE.Vector3, hit: boolean): void {
-    const fx = this.ctx.fx;
-    const tr = this.tracers.find((t) => t.t <= 0) ?? this.tracers.reduce((a, b) => (a.t > b.t ? a : b));
-    tr.from.copy(from);
-    tr.dir.subVectors(to, from);
-    tr.dist = tr.dir.length();
-    if (tr.dist < 1e-3) tr.dir.set(0, 0, 1);
-    else tr.dir.multiplyScalar(1 / tr.dist);
-    tr.t = 1e-4;
-    tr.mesh.visible = true;
-    tr.mesh.position.copy(from);
-    tr.mesh.lookAt(_tip.copy(from).add(tr.dir));
-    tr.mesh.scale.z = 0.05;
-    // Muzzle flare, flickered so consecutive bolts never look identical.
-    const f = this.flash;
-    f.visible = true;
-    this.flashT = FLASH_SECONDS;
-    f.position.copy(from);
-    f.lookAt(_tip);
-    const k = 0.7 + Math.random() * 0.5;
-    f.scale.setScalar(k);
-    this.rounds++;
-    // Impact: red-hot sparks kicked back toward the gun on a hit, a small scorch flash where a miss lands.
-    _fwd.copy(tr.dir).negate();
-    if (hit) fx.sparks(to, _fwd, { count: 5, color: 0xff4a5a, speed: 9, spread: 0.7, size: 0.05, life: 0.16, gravity: 6 });
-    else fx.burst(to, { color: 0xff6a70, count: 3, speed: 2.5, size: 0.12, gravity: 2, life: 0.18 });
+  /** A bot's chest point (aim / beam end). */
+  private chest(e: EnemyHandle, out: THREE.Vector3): THREE.Vector3 {
+    return out.set(e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
+  }
+
+  /** The continuous pulse beam from the emitter to its target (or last end point), brightening on every tick. */
+  private drawBeam(dt: number): void {
+    const on = this.gunsOn && this.beamHasEnd;
+    this.beamA = on ? Math.min(1, this.beamA + dt * 25) : Math.max(0, this.beamA - dt / BEAM_FADE);
+    this.beamPulse = Math.max(0, this.beamPulse - dt * BEAM_PULSE_DECAY);
+    const plow = this.b.plow;
+    if (this.beamA <= 0 || !plow) {
+      this.beamCore.visible = this.beamGlow.visible = this.beamHit.visible = false;
+      if (!on) this.beamHasEnd = false;
+      return;
+    }
+    plow.mountWorld('muzzle', 0, _a);
+    if (this.beamTgt?.alive) this.chest(this.beamTgt, this.beamEnd);
+    const p = this.beamPulse;
+    const flick = 0.85 + Math.random() * 0.3;
+    const a = this.beamA;
+    aimBeam(this.beamCore, _a, this.beamEnd, (0.03 + 0.04 * p) * flick * a);
+    aimBeam(this.beamGlow, _a, this.beamEnd, (0.1 + 0.12 * p) * flick * a);
+    (this.beamGlow.material as THREE.MeshBasicMaterial).opacity = (0.3 + 0.45 * p) * a;
+    (this.beamCore.material as THREE.MeshBasicMaterial).opacity = (0.75 + 0.25 * p) * a;
+    const hit = this.beamHit;
+    hit.visible = !!this.beamTgt?.alive || p > 0.2;
+    hit.position.copy(this.beamEnd);
+    hit.scale.setScalar((0.2 + 0.35 * p) * flick * a);
   }
 
   /**
-   * Elevation (rad) from a muzzle at (x, y, z) to the best point on a bot's body within [min, max]: its chest when
-   * that is in the band, else the nearest reachable part of it (a bot hugging the plow sits below the muzzle but its
-   * top is still in reach). NaN when no part of the bot is inside the band.
+   * Elevation (rad) from an emitter at (x, y, z) to the best point on a bot's body within [min, max]: its chest when
+   * that is in the band, else the nearest reachable part of it. NaN when no part of the bot is inside the band.
    */
   private pitchTo(x: number, y: number, z: number, e: EnemyHandle, min = GUN_PITCH_MIN, max = GUN_PITCH_MAX): number {
     const d = Math.max(0.5, Math.hypot(e.position.x - x, e.position.z - z) - e.radius * 0.5);
@@ -599,8 +578,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return ter.lineOfSight(x, y, z, e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
   }
 
-  /** Pulse-laser target: any bot in range within the 240° arc round the nose, within the barrels' elevation band and in sight, favouring bots near the
-   *  nose and close by, then threats. */
+  /** Pulse-laser target: any bot in range within the 240° arc round the nose, within the emitter's elevation band and
+   *  in sight, favouring bots near the nose and close by, then threats. */
   private gunTarget(x: number, y: number, z: number, heading: number, range: number): EnemyHandle | null {
     const hits = this.collect(x, z, range);
     const fx = Math.sin(heading);
@@ -638,457 +617,462 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return best;
   }
 
-  /** ARSENAL laser (E; the Plow pays the whirl charge). False if the laser can't fire. */
+  /* ------------------------------------------------------------------ E: Grav Lance */
+
+  /** Grav Lance (E; the Plow pays the E charge). False if it can't fire. */
   fireLaser(): boolean {
     const st = this.b.stats;
-    if (st.laserDps <= 0 || this.laserT > 0) return false;
-    this.laserT = LASER_SECONDS;
-    this.laserTickT = 0;
+    const plow = this.b.plow;
+    if (st.laserDps <= 0 || this.laserT > 0 || !plow) return false;
+    this.laserT = LANCE_SECONDS;
+    this.pullTicks = this.mergeTicks = 0;
     this.laserOff = 0;
-    this.laserPitch = 0;
-    this.b.audio.play('zap', { pitch: 0.45, volume: 0.9 });
-    this.b.audio.play('charge', { pitch: 1.6, volume: 0.5 });
+    this.lanceN = Math.max(1, Math.min(LANCE_MAX, st.lanceBeams || 4));
+    plow.mountWorld('laser', 0, _p);
+    this.lockLance(_p.x, _p.y, _p.z, plow.heading, st.laserRange);
+    this.b.audio.play('zap', { pitch: 0.55, volume: 0.7 });
+    this.b.audio.play('charge', { pitch: 1.4, volume: 0.45 });
     return true;
   }
 
-  /** Where the laser wants to point: the top-priority visible bot within reach and within LASER_CONE of the nose in any
-   *  direction (3D: up onto decks, across at jumping bots, not below LASER_PITCH_MIN), as a yaw off the nose and a
-   *  pitch. Writes into this.aimYaw / this.aimPitch; straight ahead when nothing qualifies. */
-  private aimYaw = 0;
-  private aimPitch = 0;
-  private laserAim(x: number, y: number, z: number, heading: number, range: number): void {
+  /** Lock up to lanceN different bots within reach and LANCE_ARC of the nose, in sight, by threat score. */
+  private lockLance(x: number, y: number, z: number, heading: number, range: number): void {
     const hits = this.collect(x, z, range);
-    this.aimYaw = 0;
-    this.aimPitch = 0;
-    let bestScore = -Infinity;
-    const cosCone = Math.cos(LASER_CONE);
     const fx = Math.sin(heading);
     const fz = Math.cos(heading);
+    const cosArc = Math.cos(LANCE_ARC);
+    const ranked: { e: EnemyHandle; s: number }[] = [];
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive) continue;
       const dx = e.position.x - x;
       const dz = e.position.z - z;
       const d = Math.hypot(dx, dz);
-      if (d > range + e.radius || d < 0.5) continue;
-      const pitch = this.pitchTo(x, y, z, e, LASER_PITCH_MIN, LASER_CONE);
-      if (Number.isNaN(pitch)) continue;
-      // Inside the 80° cone: the 3D angle between the nose and the aim direction.
-      if (((dx * fx + dz * fz) / d) * Math.cos(pitch) < cosCone) continue;
-      const score = this.h.threat.score(e, x, z);
-      if (score <= bestScore || !this.canSee(x, y, z, e)) continue;
-      bestScore = score;
-      this.aimYaw = wrapAngle(Math.atan2(dx, dz) - heading);
-      this.aimPitch = pitch;
+      if (d > range + e.radius) continue;
+      if (d > e.radius && (dx * fx + dz * fz) / d < cosArc) continue;
+      ranked.push({ e, s: this.h.threat.score(e, x, z) });
     }
     this.clearTargets();
+    ranked.sort((a, b) => b.s - a.s);
+    this.lanceTgt.length = 0;
+    for (const r of ranked) {
+      if (this.lanceTgt.length >= this.lanceN) break;
+      if (this.canSee(x, y, z, r.e)) this.lanceTgt.push(r.e);
+    }
+  }
+
+  /** The lance's pull point: LANCE_POINT m ahead of the nose, on the ground. */
+  private lancePoint(out: THREE.Vector3): THREE.Vector3 {
+    const plow = this.b.plow;
+    return out.set(plow.position.x + Math.sin(plow.heading) * LANCE_POINT, plow.position.y + 1, plow.position.z + Math.cos(plow.heading) * LANCE_POINT);
   }
 
   updateLaser(dt: number): void {
     const plow = this.b.plow;
     if (this.laserT <= 0) return;
     this.laserT -= dt;
-    if (this.laserT <= 0 || !plow || plow.dead) {
-      this.laserT = 0;
-      this.laserCore.visible = this.laserGlow.visible = false;
-      return;
-    }
+    if (!plow || plow.dead) return this.endLance();
     const st = this.b.stats;
-    const R = st.laserRange;
+    const el = LANCE_SECONDS - this.laserT;
+    plow.gyroCharge = Math.min(1, el / 0.3);
     plow.mountWorld('laser', 0, _p);
-    // The beam bends toward its target, but only so far and so fast: steering still does most of the aiming.
-    // A duel guest hits nothing locally: it follows the host's bend instead of aiming.
-    let want = this.netLaserOff;
-    let wantPitch = 0;
-    if (Number.isNaN(want)) {
-      this.laserAim(_p.x, _p.y, _p.z, plow.heading, R);
-      want = this.aimYaw;
-      wantPitch = this.aimPitch;
+    const P = this.lancePoint(_q);
+    const total = st.laserDps * LANCE_SECONDS;
+    const merging = el >= LANCE_MERGE;
+    // Thin beams: out to their bots (a free beam fans out ahead), converging on the pull point before the merge.
+    const reach = Math.min(1, el / LANCE_SPLIT);
+    const conv = THREE.MathUtils.smoothstep(el, 1.15, LANCE_MERGE);
+    const n = Math.max(this.lanceN, 1);
+    for (let i = 0; i < LANCE_MAX; i++) {
+      const m = this.lanceBeams[i];
+      if (merging || i >= n) {
+        m.visible = false;
+        continue;
+      }
+      const e = this.lanceTgt[i];
+      if (i < this.lanceTgt.length && (!e || !e.alive)) {
+        m.visible = false;
+        continue;
+      }
+      if (e) this.chest(e, _tip);
+      else {
+        // Free beam (nothing locked, or a duel puppet): fanned across the front arc.
+        const a = plow.heading + ((i + 0.5) / n - 0.5) * LANCE_ARC * 1.4;
+        _tip.set(_p.x + Math.sin(a) * 12, _p.y + 0.3 * Math.sin(el * 9 + i), _p.z + Math.cos(a) * 12);
+      }
+      _tip.lerp(P, conv);
+      _a.copy(_p).lerp(_tip, reach);
+      aimBeam(m, _p, _a, (0.06 + 0.025 * Math.sin(el * 40 + i * 2)) * (1 + conv));
     }
-    const step = LASER_SLEW * tankSlewMult(st) * dt;
-    this.laserOff += THREE.MathUtils.clamp(want - this.laserOff, -step, step);
-    this.laserPitch += THREE.MathUtils.clamp(wantPitch - this.laserPitch, -step, step);
-    const h = plow.heading + this.laserOff;
-    const cp = Math.cos(this.laserPitch);
-    const sp = Math.sin(this.laserPitch);
-    const fx = Math.sin(h);
-    const fz = Math.cos(h);
-    // The beam stops at the first deck, ramp or hill it meets.
-    let L = R;
-    const ter = this.ctx.terrain;
-    if (ter?.active) {
-      const hit = ter.raycast(_p.x, _p.y, _p.z, fx * cp, sp, fz * cp, R, _hit);
-      if (hit) L = Math.max(0.5, hit.t);
+    (this.lanceBeams[0].material as THREE.MeshBasicMaterial).opacity = 0.6 + 0.3 * Math.random();
+    // PULL: drag each locked bot toward the point (bots only; bosses barely), small ticks.
+    if (el >= LANCE_SPLIT && el < LANCE_MERGE) {
+      for (const e of this.lanceTgt) if (e?.alive) this.pullBot(e, P.x, P.z, LANCE_PULL * (e.isBoss ? LANCE_BOSS : 1), dt);
+      if ((this.streakT -= dt) <= 0) {
+        this.streakT = 0.06;
+        for (const e of this.lanceTgt) {
+          if (!e?.alive) continue;
+          this.chest(e, _tip);
+          _fwd.subVectors(P, _tip).normalize();
+          this.ctx.fx.sparks(_tip, _fwd, { count: 1, color: CYAN, speed: 9, spread: 0.2, size: 0.05, life: 0.25, gravity: 0, length: 0.08 });
+        }
+      }
     }
-    _q.set(_p.x + fx * cp * L, _p.y + sp * L, _p.z + fz * cp * L);
-    const flick = 0.85 + Math.random() * 0.3;
-    const fade = Math.min(1, this.laserT / 0.2, (LASER_SECONDS - this.laserT) / 0.08 + 0.2);
-    const wk = (tankBeamWidth(st) / LASER_WIDTH) * flick * fade;
-    for (const [m, w] of [[this.laserCore, 0.09], [this.laserGlow, 0.32]] as const) {
-      m.visible = true;
-      m.position.copy(_p);
-      m.lookAt(_q);
-      m.scale.set(w * wk, w * wk, L);
+    while (this.pullTicks < LANCE_PULL_TICKS && el >= LANCE_SPLIT + this.pullTicks * LANCE_PULL_TICK) {
+      this.pullTicks++;
+      if (this.puppet) continue;
+      const tug = this.canPull ? 0 : -LANCE_DUEL_TUG;
+      for (const e of this.lanceTgt) if (e?.alive) this.weaponHit(e, (total * LANCE_PULL_SHARE) / LANCE_PULL_TICKS, P.x, P.z, tug, 'beam');
     }
-    // Sparks along the beam + where it lands; scorched snow only while it runs along the ground.
-    const k = Math.random();
-    _tip.set(_p.x + fx * cp * L * k, _p.y + sp * L * k, _p.z + fz * cp * L * k);
-    this.ctx.fx.burst(_tip, { color: Math.random() < 0.5 ? 0xff4030 : 0xffd0c0, count: 2, speed: 4, size: 0.16, gravity: -3, life: 0.3 });
-    if (L < R) this.ctx.fx.burst(_q, { color: 0xffd0c0, count: 2, speed: 6, size: 0.12, gravity: 4, life: 0.25 });
-    const grounded = Math.abs(this.laserPitch) < 0.2;
-    if (grounded) {
-      this.b.snow.melt(_p.x + fx * L * 0.5, _p.z + fz * L * 0.5, 1.2, 0.6 * dt);
-      this.b.snow.melt(_p.x + fx * L * k, _p.z + fz * L * k, 1.2, 1.2 * dt);
+    // MERGE: one thick, very bright pulse straight ahead through the clump.
+    if (merging) {
+      const fx = Math.sin(plow.heading);
+      const fz = Math.cos(plow.heading);
+      let L = st.laserRange;
+      const ter = this.ctx.terrain;
+      if (ter?.active) {
+        const hit = ter.raycast(_p.x, _p.y, _p.z, fx, 0, fz, L, _hit);
+        if (hit) L = Math.max(0.5, hit.t);
+      }
+      _a.set(_p.x + fx * L, _p.y, _p.z + fz * L);
+      const k = THREE.MathUtils.clamp((LANCE_SECONDS - el) / (LANCE_SECONDS - LANCE_MERGE), 0, 1);
+      const w = tankBeamWidth(st) / LANCE_WIDTH;
+      const flick = 0.9 + Math.random() * 0.2;
+      aimBeam(this.mergeCore, _p, _a, 0.22 * w * flick * (0.4 + 0.6 * k));
+      aimBeam(this.mergeGlow, _p, _a, 0.75 * w * flick * (0.5 + 0.5 * k));
+      (this.mergeGlow.material as THREE.MeshBasicMaterial).opacity = 0.65 * k + 0.1;
+      if (this.mergeTicks === 0) this.mergeFlash(_p, P, L);
+      while (this.mergeTicks < LANCE_MERGE_TICKS && el >= LANCE_MERGE + this.mergeTicks * LANCE_MERGE_TICK) {
+        this.mergeTicks++;
+        if (this.b.authoritative && this.mergeTicks === 1) this.ctx.world?.blastPropRay(_p.x, _p.z, fx, fz, L);
+        if (!this.puppet) this.mergeHit(_p, fx, fz, L, (total * (1 - LANCE_PULL_SHARE)) / LANCE_MERGE_TICKS);
+      }
     }
-    if (this.b.local) this.ctx.fx.shake(0.05);
-    this.laserTickT -= dt;
-    if (this.laserTickT > 0) return;
-    this.laserTickT = LASER_TICK;
-    if (this.b.authoritative && grounded) this.ctx.world?.blastPropRay(_p.x, _p.z, fx, fz, L);
-    // Hits: bots whose chest is within the beam's half-width (LASER_WIDTH, wider with Snow Compactor) of the 3D segment.
-    const beamW = tankBeamWidth(st);
-    const dirX = fx * cp;
-    const dirY = sp;
-    const dirZ = fz * cp;
-    const hits = this.collect(_p.x + dirX * L * 0.5, _p.z + dirZ * L * 0.5, L * 0.5 + 2);
+    if (this.laserT <= 0) this.endLance();
+  }
+
+  /** Merge pulse start: flash at the lens, a shockwave ring through the clump, a kick. */
+  private mergeFlash(from: THREE.Vector3, P: THREE.Vector3, L: number): void {
+    const fx = this.ctx.fx;
+    fx.burst(from, { color: 0xffffff, count: 10, speed: 7, size: 0.14, gravity: 0, life: 0.2 });
+    fx.ring(_tip.set(P.x, (this.b.plow.surfaceY || 0) + 0.15, P.z), 5, CYAN);
+    fx.sparks(P, null, { count: 18, color: CYAN, speed: 14, size: 0.06, life: 0.3, gravity: 2 });
+    this.b.snow.melt(P.x, P.z, 2, 0.5);
+    this.b.audio.play('zap', { pitch: 0.35, volume: 1 });
+    this.b.audio.play('shockwave', { pitch: 1.3, volume: 0.6 });
+    this.shake(0.22);
+    if (this.b.local) this.impactHit('slam', P, 0.6, { stop: false });
+    void L;
+  }
+
+  /** One merge-pulse tick on every bot whose chest is within the pulse's half-width of the beam line. */
+  private mergeHit(from: THREE.Vector3, fx: number, fz: number, L: number, dmg: number): void {
+    const w = tankBeamWidth(this.b.stats) + 0.3;
+    const hits = this.collect(from.x + fx * L * 0.5, from.z + fz * L * 0.5, L * 0.5 + 2);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
-      const dx = e.position.x - _p.x;
-      const dy = e.position.y + Math.min(1.2, e.radius * 0.6) - _p.y;
-      const dz = e.position.z - _p.z;
-      const along = dx * dirX + dy * dirY + dz * dirZ;
+      const dx = e.position.x - from.x;
+      const dy = e.position.y + Math.min(1.2, e.radius * 0.6) - from.y;
+      const dz = e.position.z - from.z;
+      const along = dx * fx + dz * fz;
       if (along < -e.radius || along > L + e.radius) continue;
-      const ox = dx - dirX * along;
-      const oy = dy - dirY * along;
-      const oz = dz - dirZ * along;
-      if (Math.hypot(ox, oy, oz) > beamW + e.radius) continue;
-      const dealt = this.weaponHit(e, st.laserDps * LASER_TICK, _p.x, _p.z, 2, 'beam');
-      if (dealt > 0 && Math.random() < 0.35) {
+      if (Math.hypot(dx - fx * along, dz - fz * along) > w + e.radius || Math.abs(dy) > 2.5 + e.radius) continue;
+      const dealt = this.weaponHit(e, dmg, from.x, from.z, 4, 'beam');
+      if (dealt > 0 && this.mergeTicks === 1) {
         _tip.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
-        this.ctx.fx.floatText(_tip, `${Math.round(dealt)}`, '#ff6a5a', 0.7);
+        this.ctx.fx.floatText(_tip, `${Math.round(dealt)}`, '#7ff0ff', 0.8);
       }
     }
     this.clearTargets();
   }
 
-  /** Damage one salvo missile does to `e` (direct hit), for working out how many it takes. */
-  private missileHitOn(e: EnemyHandle): number {
-    return Math.max(1, this.b.stats.missileDamage * this.b.stats.damageMult * this.pveMult * this.hitMult(e));
+  private endLance(): void {
+    this.laserT = 0;
+    for (const m of this.lanceBeams) m.visible = false;
+    this.mergeCore.visible = this.mergeGlow.visible = false;
+    this.lanceTgt.length = 0;
+    if (this.b.plow && this.h.ultIdle) this.b.plow.gyroCharge = 0;
   }
 
-  /** PVE_MULT against bots, 1 in the Duel. */
-  private get pveMult(): number {
-    return this.b.pvp ? 1 : PVE_MULT;
-  }
+  /* ------------------------------------------------------------------ F: Polarity Burst */
 
-  /** Live missiles already flying at `e`, in salvo-missile hits (a storm missile counts ULT_MULT). */
-  private inFlight(e: EnemyHandle): number {
-    let n = 0;
-    for (const m of this.missiles) if (m.live && m.target === e) n += m.ult ? ULT_MULT : 1;
-    return n;
-  }
-
-  /**
-   * Target list for a salvo of `n` missiles. Bots are ranked by Threat.score (damage they've dealt you first), and
-   * each gets as many missiles as its HP needs, minus the ones already flying at it; leftovers go round the ranked
-   * list again (overkill on the biggest threats). Several missiles can share a target. `range`: how far out bots are
-   * picked; `mult`: each missile's hit in salvo-missile hits (MISSILE STORM missiles hit harder, and spread first).
-   */
-  planSalvo(n: number, x: number, z: number, range = MISSILE_RANGE, mult = 1): (EnemyHandle | null)[] {
-    const hits = this.collect(x, z, range);
-    const ranked: { e: EnemyHandle; score: number; need: number }[] = [];
-    for (let i = 0; i < hits.length; i++) {
-      const e = hits[i];
-      if (!e.alive || Math.hypot(e.position.x - x, e.position.z - z) > range + e.radius) continue;
-      const per = this.missileHitOn(e);
-      const need = Math.max(0, Math.ceil((Math.max(0, e.hp) / per - this.inFlight(e)) / mult));
-      ranked.push({ e, score: this.h.threat.score(e, x, z), need });
-    }
-    this.clearTargets();
-    ranked.sort((a, b) => b.score - a.score);
-    const out: (EnemyHandle | null)[] = [];
-    // A storm (mult > 1) first spreads evenly (no target gets more than its share until every target has had one),
-    // so one tanky bot can't soak the whole ultimate; then what's left goes by need as usual.
-    const share = mult > 1 ? Math.max(1, Math.ceil(n / Math.max(1, ranked.length))) : Infinity;
-    for (const r of ranked) {
-      const k = Math.min(r.need, share, n - out.length);
-      for (let j = 0; j < k; j++) out.push(r.e);
-      r.need -= k;
-      if (out.length >= n) break;
-    }
-    for (const r of ranked) {
-      for (let k = 0; k < r.need && out.length < n; k++) out.push(r.e);
-      if (out.length >= n) break;
-    }
-    for (let i = 0; out.length < n && ranked.length; i++) out.push(ranked[i % ranked.length].e);
-    while (out.length < n) out.push(null);
-    return out;
-  }
-
-  /** Swarm Missiles (F on ARSENAL): a salvo from the pods, spread over targets by planSalvo. */
-  updateMissiles(dt: number): void {
+  /** Polarity Burst (F on ARSENAL), or the SINGULARITY when the meter is full. Runs the burst once it's out. */
+  updateBurst(dt: number): void {
     const st = this.b.stats;
     const plow = this.b.plow;
-    this.flyMissiles(dt);
+    this.tickBurst(dt);
+    this.tickSingFx(dt);
     if (st.missileDamage <= 0 || !plow || plow.dead) return;
     if (this.missileCharge < 1) this.missileCharge = Math.min(1, this.missileCharge + (st.missileCooldown > 0 ? dt / st.missileCooldown : 1));
     if (!this.b.input.wasPressed('KeyF')) return;
-    if (this.h.crit >= 1 && this.h.ultIdle) return this.h.startUlt('arsenal', plow);
+    if (this.ultArmed && this.h.crit >= 1 && this.h.ultIdle) return this.h.startUlt('arsenal', plow);
     if (this.missileCharge < 1) {
       this.b.audio.play('error');
       return;
     }
     this.missileCharge = 0;
     this.b.events.emit('ability', { nuke: false });
-    this.b.audio.play('burst', { pitch: 1.4, volume: 0.8 });
-    this.b.audio.play('dash', { pitch: 1.6, volume: 0.6 });
-    this.launch(this.planSalvo(Math.min(MISSILES_MAX, st.missileCount), plow.position.x, plow.position.z), plow, false);
+    this.startBurst();
   }
 
-  /** Load one missile per plan entry into the pods and ripple them out (storm missiles faster, bigger, heavier). */
-  private launch(plan: (EnemyHandle | null)[], plow: PodHost, ult: boolean): void {
-    const px = plow.position.x;
-    const pz = plow.position.z;
-    for (let i = 0; i < plan.length; i++) {
-      const m = this.missiles.find((x) => !x.live);
-      if (!m) break;
-      m.pod = i * 5 + (i >> 1);
-      plow.mountWorld('pod', m.pod, m.pos);
-      // Ejected up and out of the pod (no thrust yet), nose tipped up and outward; the motor lights after the eject.
-      const side = m.pos.x - px;
-      const sideZ = m.pos.z - pz;
-      const sl = Math.hypot(side, sideZ) || 1;
-      const fx = Math.sin(plow.heading);
-      const fz = Math.cos(plow.heading);
-      if (ult) {
-        // Storm missiles leave near-vertical (a cold launch straight up, splayed slightly outward), then tip over toward
-        // targets in any direction and rain down: from vertical no target is more than a quarter turn away.
-        m.vel.set((side / sl) * 1.5, 10 + Math.random() * 2, (sideZ / sl) * 1.5);
-        m.fwd.set((side / sl) * 0.18, 1, (sideZ / sl) * 0.18).normalize();
-      } else {
-        m.vel.set((side / sl) * 3 + fx * 4, 6 + Math.random() * 1.5, (sideZ / sl) * 3 + fz * 4);
-        m.fwd.set((side / sl) * 0.35 + fx * 0.55, 0.75, (sideZ / sl) * 0.35 + fz * 0.55).normalize();
+  private startBurst(): void {
+    const plow = this.b.plow;
+    this.burstT = 0;
+    this.burstAt.set(plow.position.x + Math.sin(plow.heading) * BURST_POINT, 0, plow.position.z + Math.cos(plow.heading) * BURST_POINT);
+    this.burstY = Number.isFinite(plow.surfaceY) ? plow.surfaceY : 0;
+    this.burstAt.y = this.burstY + 1.3;
+    this.b.audio.play('charge', { pitch: 0.6, volume: 0.8 });
+    this.b.audio.play('burst', { pitch: 0.7, volume: 0.6 });
+    this.shake(0.12);
+  }
+
+  private tickBurst(dt: number): void {
+    if (this.burstT < 0) return;
+    const plow = this.b.plow;
+    const t0 = this.burstT;
+    this.burstT += dt;
+    const t = this.burstT;
+    const S = this.burstAt;
+    if (plow) plow.gyroFlat = t < BURST_DET + 0.15 ? 1 : 0;
+    // Event horizon: snaps open, holds with a shimmer while pulling, shrinks into the point before the detonation.
+    const open = THREE.MathUtils.smoothstep(t, 0, BURST_OPEN);
+    const shut = THREE.MathUtils.smoothstep(t, BURST_DET - 0.25, BURST_DET);
+    const r = Math.max(0.3, BURST_R * open * (1 - 0.92 * shut));
+    const vis = t < BURST_DET;
+    for (const m of [this.horizon, this.horizonIn]) {
+      m.visible = vis;
+      m.position.set(S.x, this.burstY + 0.12, S.z);
+      m.scale.setScalar(r);
+    }
+    (this.horizon.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.35 * Math.sin(t * 30) * Math.sin(t * 7) + 0.2 * shut;
+    (this.horizonIn.material as THREE.MeshBasicMaterial).opacity = 0.18 + 0.2 * shut;
+    this.horizon.rotation.z = t * 2;
+    const coreK = vis ? 0.2 + 0.25 * open + 0.35 * shut + 0.05 * Math.sin(t * 40) : 0;
+    this.burstCore.visible = this.burstGlow.visible = vis;
+    this.burstCore.position.copy(S);
+    this.burstGlow.position.copy(S);
+    this.burstCore.scale.setScalar(coreK);
+    this.burstGlow.scale.setScalar(coreK * 4);
+    this.burstCore.rotation.set(t * 5, t * 7, 0);
+    (this.burstGlow.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.3 * shut;
+    // Pull every bot inside the horizon toward the point, with streaks.
+    if (t >= BURST_OPEN * 0.5 && t < BURST_DET) {
+      const hits = this.collect(S.x, S.z, r);
+      const streak = (this.streakT -= dt) <= 0;
+      if (streak) this.streakT = 0.05;
+      for (let i = 0; i < hits.length; i++) {
+        const e = hits[i];
+        if (!e.alive) continue;
+        this.pullBot(e, S.x, S.z, BURST_PULL * (e.isBoss ? BURST_BOSS : 1), dt);
+        if (streak) {
+          this.chest(e, _tip);
+          _fwd.subVectors(S, _tip).normalize();
+          this.ctx.fx.sparks(_tip, _fwd, { count: 2, color: CYAN, speed: 12, spread: 0.15, size: 0.06, life: 0.25, gravity: 0, length: 0.1 });
+        }
       }
-      m.speed = 0;
-      m.lit = false;
-      m.ult = ult;
-      m.delay = i * (ult ? ULT_RIPPLE : MISSILE_RIPPLE);
-      m.target = plan[i];
-      if (m.target) m.last.copy(m.target.position);
-      m.t = 0;
-      m.smokeT = 0;
-      m.live = true;
-      m.via = null;
-      m.losT = 0;
-      m.mesh.scale.setScalar(ult ? ULT_SCALE : 1);
-      m.mesh.visible = false; // shown when its turn in the ripple comes
-      m.flame.visible = false;
+      this.clearTargets();
+      if (streak) {
+        // Snow and filings spiralling in from the rim.
+        const a = Math.random() * Math.PI * 2;
+        _tip.set(S.x + Math.sin(a) * r, this.burstY + 0.3, S.z + Math.cos(a) * r);
+        _fwd.set(S.x - _tip.x + Math.cos(a) * r * 0.4, 0.3, S.z - _tip.z - Math.sin(a) * r * 0.4).normalize();
+        this.ctx.fx.sparks(_tip, _fwd, { count: 3, color: 0xbff8ff, speed: 14, spread: 0.2, size: 0.05, life: 0.4, gravity: 0, length: 0.08 });
+      }
+    }
+    if (t0 < BURST_DET && t >= BURST_DET) this.detonateBurst();
+    if (t >= BURST_END) {
+      this.burstT = -1;
+      if (plow) plow.gyroFlat = 0;
     }
   }
 
-  /** A missile lost its target: the best-scoring bot near it that still needs missiles, else the best near it. */
-  private retarget(m: Missile): EnemyHandle | null {
-    const hits = this.collect(m.pos.x, m.pos.z, MISSILE_RETARGET);
-    let best: EnemyHandle | null = null;
-    let bestScore = -Infinity;
+  /** The burst collapses: cyan shockwave, damage to everything in the clump (thinner the more it catches), knockback. */
+  private detonateBurst(): void {
+    const st = this.b.stats;
+    const S = this.burstAt;
+    const fx = this.ctx.fx;
+    fx.burst(S, { color: 0xffffff, count: 16, speed: 14, size: 0.2, gravity: 0, life: 0.25 });
+    fx.burst(S, { color: CYAN, count: 26, speed: 11, size: 0.35, gravity: -1, life: 0.6 });
+    fx.sparks(S, null, { count: 30, color: CYAN, speed: 22, size: 0.07, life: 0.35, gravity: 4 });
+    _tip.set(S.x, this.burstY + 0.15, S.z);
+    fx.ring(_tip, BURST_DET_R * 1.6, CYAN);
+    fx.ring(_tip, BURST_DET_R * 0.9, 0xbff8ff);
+    this.b.audio.play('explosion', { pitch: 0.75, volume: 0.65 });
+    this.b.audio.play('zap', { pitch: 0.4, volume: 0.8 });
+    this.shake(0.35);
+    if (this.b.local) this.impactHit('slam', S, 0.9);
+    this.b.snow.melt(S.x, S.z, BURST_DET_R * 0.6, 0.6);
+    this.smashProps(S.x, S.z, BURST_DET_R);
+    if (this.puppet) return;
+    const hits = this.collect(S.x, S.z, BURST_DET_R);
+    let n = 0;
+    for (let i = 0; i < hits.length; i++) if (hits[i].alive && Math.abs(hits[i].position.y - this.burstY) < BURST_DET_R) n++;
+    const per = (Math.max(1, st.missileCount) * st.missileDamage) / Math.max(1, n) ** BURST_SPREAD;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
-      if (!e.alive) continue;
-      const covered = this.inFlight(e) * this.missileHitOn(e) >= e.hp;
-      const score = this.h.threat.score(e, m.pos.x, m.pos.z) - (covered ? 1000 : 0);
-      if (score > bestScore) {
-        bestScore = score;
-        best = e;
+      if (!e.alive || Math.abs(e.position.y - this.burstY) >= BURST_DET_R) continue;
+      const dealt = this.weaponHit(e, per, S.x, S.z, BURST_KNOCK);
+      if (dealt > 0) {
+        _tip.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
+        fx.floatText(_tip, `🌀${Math.round(dealt)}`, '#7ff0ff', 1);
       }
     }
     this.clearTargets();
-    return best;
   }
 
-  private flyMissiles(dt: number): void {
-    const ter = this.ctx.terrain;
-    const fx = this.ctx.fx;
-    // Trails face the camera; headless sims (balance harness) have none, so trails are skipped there.
-    const cam = this.ctx.camera?.position;
-    for (const m of this.missiles) {
-      if (!m.live) {
-        if (cam) m.trail.update(dt, null, cam); // lingering smoke after the blast
-        continue;
+  /* ------------------------------------------------------------------ ULT: SINGULARITY */
+
+  /** Where the black hole opens: the centre of the densest bot cluster within SING_SEEK m, else SING_AHEAD m ahead. */
+  singularityCentre(x: number, z: number, heading: number, out: THREE.Vector3): THREE.Vector3 {
+    const hits = this.collect(x, z, SING_SEEK);
+    let best = -1;
+    let bestN = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const a = hits[i];
+      if (!a.alive || Math.hypot(a.position.x - x, a.position.z - z) > SING_SEEK) continue;
+      let n = 0;
+      for (let j = 0; j < hits.length; j++) {
+        const b = hits[j];
+        if (b.alive && Math.hypot(b.position.x - a.position.x, b.position.z - a.position.z) <= SING_CLUSTER) n += b.isBoss ? 2 : 1;
       }
-      // Ripple fire: wait in the pod for this missile's turn, riding along with the plow.
-      if (m.delay > 0) {
-        m.delay -= dt;
-        const plow = this.b.plow;
-        if (plow) plow.mountWorld('pod', m.pod, m.pos);
-        if (m.delay > 0) continue;
-        m.mesh.visible = true;
-        fx.burst(m.pos, { color: 0xd8dde2, count: 4, speed: 3, size: 0.4, gravity: -1, life: 0.6 });
+      if (n > bestN) {
+        bestN = n;
+        best = i;
       }
-      m.t += dt;
-      if (m.target && !m.target.alive) {
-        m.target = this.retarget(m);
-        m.via = null;
-        if (m.target) m.last.copy(m.target.position);
-      }
-      const tgt = m.target;
-      _a.copy(m.pos);
-      if (!m.lit) {
-        // Eject: tumbling up out of the pod under gravity, no thrust.
-        m.vel.y -= 14 * dt;
-        m.pos.addScaledVector(m.vel, dt);
-        if (m.t >= MISSILE_EJECT) {
-          // Ignition: flash + puff, the motor takes over along the nose.
-          m.lit = true;
-          m.speed = Math.max(MISSILE_V0, m.vel.length());
-          m.flame.visible = true;
-          m.trail.start(_tip.copy(m.pos).addScaledVector(m.fwd, -MISSILE_TAIL));
-          fx.burst(m.pos, { color: 0xffc060, count: 6, speed: 5, size: 0.25, gravity: 0, life: 0.18 });
-          fx.smoke(m.pos, { count: 2, color: 0xd6dade, size: 0.5, grow: 2.5, life: 0.9, speed: 1, up: 0.2, drag: 3, opacity: 0.55 });
-        }
-      } else {
-        // Guidance: aim point = detour round a deck, else the target's predicted position (lead) lofted while far.
-        // Storm missiles first finish their vertical boost (climbing, leaning a little toward the target).
-        if (m.ult && m.t < ULT_BOOST) {
-          const dx = tgt ? tgt.position.x - m.pos.x : m.fwd.x;
-          const dz = tgt ? tgt.position.z - m.pos.z : m.fwd.z;
-          const dl = Math.hypot(dx, dz) || 1;
-          _q.set(m.pos.x + (dx / dl) * 3, m.pos.y + 12, m.pos.z + (dz / dl) * 3);
-          if (tgt) m.last.copy(tgt.position);
-        } else if (tgt) {
-          if (ter?.active && ter.decks.length && (m.losT -= dt) <= 0) {
-            m.losT = MISSILE_LOS_EVERY;
-            m.via = this.missileDetour(m, tgt);
-          }
-          if (m.via && m.pos.distanceTo(m.via) < 2.5) m.via = null;
-          if (m.via) _q.copy(m.via);
-          else {
-            const ty = tgt.position.y + Math.min(1, tgt.radius * 0.5);
-            const dist = Math.hypot(tgt.position.x - m.pos.x, ty - m.pos.y, tgt.position.z - m.pos.z);
-            const tgo = dist / Math.max(1, m.speed);
-            // Target velocity from its motion since last frame (no velocity on EnemyHandle), capped.
-            const vx = THREE.MathUtils.clamp((tgt.position.x - m.last.x) / Math.max(dt, 1e-3), -20, 20);
-            const vz = THREE.MathUtils.clamp((tgt.position.z - m.last.z) / Math.max(dt, 1e-3), -20, 20);
-            const loft = MISSILE_LOFT * THREE.MathUtils.smoothstep(dist, 10, 30);
-            _q.set(tgt.position.x + vx * tgo * 0.8, ty + loft, tgt.position.z + vz * tgo * 0.8);
-          }
-          m.last.copy(tgt.position);
-        } else {
-          // Nothing to chase: fly on, nose slowly dropping.
-          _q.copy(m.pos).addScaledVector(m.fwd, 10);
-          _q.y -= 4;
-        }
-        // Turn the nose toward the aim point at a limited rate (wide arcs, can overshoot), plus a slight wobble.
-        _tip.subVectors(_q, m.pos).normalize();
-        const late = THREE.MathUtils.clamp((m.t - 1.2) / 1.5, 0, 1);
-        const toAim = m.pos.distanceTo(_q);
-        const terminal = 1 + (MISSILE_TERMINAL - 1) * (1 - THREE.MathUtils.smoothstep(toAim, 3, MISSILE_TERMINAL_RANGE));
-        const maxTurn = (MISSILE_TURN + (MISSILE_TURN_LATE - MISSILE_TURN) * late) * terminal * (m.ult ? ULT_TURN : 1) * dt;
-        const ang = m.fwd.angleTo(_tip);
-        if (ang > 1e-4) m.fwd.lerp(_tip, Math.min(1, maxTurn / ang)).normalize();
-        m.wob += dt * 9;
-        _fwd.set(Math.cos(m.wob), Math.sin(m.wob * 1.3), Math.sin(m.wob)).multiplyScalar(0.02);
-        m.fwd.add(_fwd).normalize();
-        // Thrust: speed builds along the nose; the missile flies where it points.
-        m.speed = Math.min(m.ult ? ULT_SPEED : MISSILE_SPEED, m.speed + MISSILE_ACCEL * dt);
-        m.vel.copy(m.fwd).multiplyScalar(m.speed);
-        m.pos.addScaledVector(m.vel, dt);
-        // Exhaust flicker and a lingering smoke trail.
-        const f = 0.8 + Math.random() * 0.6;
-        m.flame.scale.set(f, f, 0.8 + Math.random() * 0.9);
-        m.smokeT -= dt;
-        if (m.smokeT <= 0) {
-          m.smokeT += 1 / MISSILE_SMOKE;
-          fx.smoke(m.pos, { count: 1, color: 0xcfd3d8, size: 0.32, grow: 3, life: 1.1, speed: 0.25, up: 0.15, drag: 2.5, opacity: 0.42 });
-          if (Math.random() < 0.35) fx.burst(m.pos, { color: 0xffa040, count: 1, speed: 0.6, size: 0.22, gravity: 0, life: 0.12 });
-        }
-      }
-      _p.copy(m.pos).add(m.lit ? m.fwd : m.vel);
-      m.mesh.position.copy(m.pos);
-      m.mesh.lookAt(_p);
-      if (m.lit && cam) m.trail.update(dt, _tip.copy(m.pos).addScaledVector(m.fwd, -MISSILE_TAIL), cam);
-      // Proximity fuse on the target; otherwise ground / deck impact or fuse timeout.
-      const hitTarget =
-        !!tgt &&
-        m.lit &&
-        Math.hypot(tgt.position.x - m.pos.x, tgt.position.y + Math.min(1, tgt.radius * 0.5) - m.pos.y, tgt.position.z - m.pos.z) < tgt.radius + MISSILE_PROX;
-      let struck = false;
-      if (ter?.active) {
-        const step = _a.distanceTo(m.pos);
-        if (step > 1e-4) {
-          _fwd.subVectors(m.pos, _a).multiplyScalar(1 / step);
-          const hit = ter.raycast(_a.x, _a.y, _a.z, _fwd.x, _fwd.y, _fwd.z, step, _hit);
-          if (hit) {
-            m.pos.set(hit.x, hit.y, hit.z);
-            struck = true;
-          }
-        }
-      }
-      const floor = ter?.active ? ter.surfaceAt(m.pos.x, m.pos.z, m.pos.y, _surf).y : 0;
-      if (hitTarget || struck || m.pos.y <= floor + 0.15 || m.t > (m.ult ? ULT_FUSE : MISSILE_FUSE)) this.explodeMissile(m, tgt);
     }
-  }
-
-  /** A detour point round the deck between a missile and its target, or null when the way is clear. */
-  private missileDetour(m: Missile, tgt: EnemyHandle): THREE.Vector3 | null {
-    const ter = this.ctx.terrain;
-    const ty = tgt.position.y + Math.min(1, tgt.radius * 0.5);
-    const dx = tgt.position.x - m.pos.x;
-    const dy = ty - m.pos.y;
-    const dz = tgt.position.z - m.pos.z;
-    const len = Math.hypot(dx, dy, dz);
-    if (len < 1) return null;
-    const hit = ter.raycast(m.pos.x, m.pos.y, m.pos.z, dx / len, dy / len, dz / len, len - 0.5, _hit);
-    if (!hit || hit.what === 'ground') return null;
-    const deck = ter.decks.find((d) => d.id === hit.what);
-    if (!deck) return null;
-    // Nearest point on the deck's footprint edge to the target, pushed 3 m outward, at the target's height.
-    const c = Math.cos(deck.rot);
-    const s = Math.sin(deck.rot);
-    const rx = tgt.position.x - deck.x;
-    const rz = tgt.position.z - deck.z;
-    let lx = rx * c - rz * s;
-    let lz = rx * s + rz * c;
-    const px = deck.hw - Math.abs(lx);
-    const pz = deck.hd - Math.abs(lz);
-    if (px < pz) lx = Math.sign(lx || 1) * (deck.hw + 3);
-    else lz = Math.sign(lz || 1) * (deck.hd + 3);
-    const out = m.via ?? new THREE.Vector3();
-    out.set(deck.x + lx * c + lz * s, ty + 1, deck.z - lx * s + lz * c);
+    if (best < 0) out.set(x + Math.sin(heading) * SING_AHEAD, 0, z + Math.cos(heading) * SING_AHEAD);
+    else {
+      const a = hits[best];
+      let sx = 0;
+      let sz = 0;
+      let c = 0;
+      for (let j = 0; j < hits.length; j++) {
+        const b = hits[j];
+        if (!b.alive || Math.hypot(b.position.x - a.position.x, b.position.z - a.position.z) > SING_CLUSTER) continue;
+        sx += b.position.x;
+        sz += b.position.z;
+        c++;
+      }
+      out.set(sx / c, 0, sz / c);
+    }
+    this.clearTargets();
     return out;
   }
 
-  private explodeMissile(m: Missile, direct: EnemyHandle | null): void {
-    m.live = false;
-    m.mesh.visible = false;
-    m.trail.stop();
-    const st = this.b.stats;
-    const x = m.pos.x;
-    const z = m.pos.z;
+  /** SINGULARITY: a black hole opens over the fight. */
+  ultStart(x: number, z: number): number {
+    const plow = this.b.plow;
+    const heading = plow ? plow.heading : 0;
+    this.singularityCentre(x, z, heading, this.singAt);
     const ter = this.ctx.terrain;
-    const floorY = ter?.active ? ter.surfaceAt(x, z, m.pos.y + 0.5, _surf).y : 0;
-    const blast = m.ult ? ULT_BLAST : MISSILE_BLAST;
-    const mult = m.ult ? ULT_MULT : 1;
-    _q.set(x, Math.max(floorY + 0.5, m.pos.y), z);
-    this.ctx.fx.burst(_q, { color: 0xff8a20, count: m.ult ? 26 : 18, speed: m.ult ? 12 : 9, size: m.ult ? 0.45 : 0.35, gravity: -2, life: 0.5 });
-    this.ctx.fx.burst(_q, { color: 0x3a3634, count: m.ult ? 9 : 6, speed: 2, size: m.ult ? 1.1 : 0.8, gravity: -2, life: 1 });
-    this.ctx.fx.ring(_q.set(x, floorY + 0.15, z), blast, m.ult ? 0xff5a20 : 0xffb040);
-    this.b.audio.play('explosion', { volume: m.ult ? 0.6 : 0.45, pitch: (m.ult ? 0.95 : 1.2) + Math.random() * 0.2 });
-    this.shake(m.ult ? 0.26 : 0.18);
-    this.b.snow.melt(x, z, blast * 0.6, 0.6);
-    this.smashProps(x, z, blast);
-    const hits = this.collect(x, z, blast);
+    this.singY = ter?.active ? ter.heightAt(this.singAt.x, this.singAt.z, plow ? plow.position.y + 2 : 0) : 0;
+    this.singAt.y = this.singY + 4.5;
+    this.singTickT = SING_TICK;
+    this.singCollapsed = this.singBlown = false;
+    if (this.ctx.camera) {
+      this.singFx ??= new SingularityFx(this.ctx.scene, { reduceFlash: settings.reduceFlash });
+      this.singFx.open(this.singAt, SING_VIS_R);
+    }
+    if (plow) plow.gyroCharge = 1;
+    this.b.audio.play('charge', { pitch: 0.35, volume: 1 });
+    this.b.audio.play('thunder', { pitch: 0.45, volume: 0.7 });
+    this.shake(0.3);
+    // The meter can't refill while the black hole is open anyway (Ultimates.feed), so only a short lock after.
+    return 1;
+  }
+
+  /** Pull, tick, collapse, explode; over at SING_END. */
+  ultTick(t: number, dt: number): boolean {
+    const C = this.singAt;
+    if (t < SING_PULL_T) {
+      const k = t / SING_PULL_T;
+      const v = SING_V0 + (SING_V1 - SING_V0) * k * k;
+      const hits = this.collect(C.x, C.z, SING_R);
+      const tick = (this.singTickT -= dt) <= 0;
+      if (tick) this.singTickT += SING_TICK;
+      const streak = Math.random() < 0.5;
+      for (let i = 0; i < hits.length; i++) {
+        const e = hits[i];
+        if (!e.alive) continue;
+        if (Math.hypot(e.position.x - C.x, e.position.z - C.z) > SING_R + e.radius) continue;
+        this.pullBot(e, C.x, C.z, v * (e.isBoss ? SING_BOSS : 1), dt);
+        if (streak && Math.random() < 0.3) {
+          this.chest(e, _tip);
+          _fwd.subVectors(C, _tip).normalize();
+          this.ctx.fx.sparks(_tip, _fwd, { count: 1, color: 0x9a7bff, speed: 10 + 10 * k, spread: 0.1, size: 0.06, life: 0.3, gravity: 0, length: 0.12 });
+        }
+      }
+      if (tick && !this.puppet) {
+        const tug = this.canPull ? 0 : -2;
+        const dmg = this.b.stats.missileDamage * SING_TICK_DMG;
+        for (let i = 0; i < hits.length; i++) {
+          const e = hits[i];
+          if (e.alive && Math.hypot(e.position.x - C.x, e.position.z - C.z) <= SING_R + e.radius) this.weaponHit(e, dmg, C.x, C.z, tug);
+        }
+      }
+      this.clearTargets();
+      // Rumble that builds as it pulls.
+      if (this.b.local) this.ctx.fx.shake(0.04 + 0.08 * k);
+      if (tick && Math.random() < 0.5) this.b.audio.play('thunder', { pitch: 0.3 + 0.2 * k, volume: 0.25 + 0.2 * k });
+      return false;
+    }
+    if (!this.singCollapsed) {
+      this.singCollapsed = true;
+      this.singFx?.collapse();
+      this.b.audio.play('charge', { pitch: 0.25, volume: 0.8 });
+    }
+    if (t >= SING_PULL_T + SING_COLLAPSE && !this.singBlown) {
+      this.singBlown = true;
+      this.explodeSingularity();
+    }
+    if (t >= SING_END) {
+      const plow = this.b.plow;
+      if (plow) plow.gyroCharge = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /** The collapse: everything in reach takes the blast (full near the core, half at the rim), flung outward. */
+  private explodeSingularity(): void {
+    const C = this.singAt;
+    const fx = this.ctx.fx;
+    fx.burst(C, { color: 0xffffff, count: 30, speed: 20, size: 0.3, gravity: 0, life: 0.35 });
+    fx.burst(C, { color: CYAN, count: 40, speed: 16, size: 0.45, gravity: -1, life: 0.8 });
+    fx.sparks(C, null, { count: 60, color: CYAN, speed: 30, size: 0.09, life: 0.5, gravity: 6 });
+    _tip.set(C.x, this.singY + 0.2, C.z);
+    fx.ring(_tip, SING_CORE * 1.6, CYAN);
+    fx.ring(_tip, SING_CORE, 0xffffff);
+    this.b.audio.play('explosion', { pitch: 0.5, volume: 1 });
+    this.b.audio.play('thunder', { pitch: 0.6, volume: 0.9 });
+    this.shake(0.9);
+    if (this.b.local) this.impactHit('nuke', C, 1);
+    this.b.snow.melt(C.x, C.z, SING_CORE * 0.7, 0.8);
+    this.smashProps(C.x, C.z, SING_CORE);
+    if (this.puppet) return;
+    const hits = this.collect(C.x, C.z, SING_R);
+    let n = 0;
+    for (let i = 0; i < hits.length; i++) if (hits[i].alive && Math.hypot(hits[i].position.x - C.x, hits[i].position.z - C.z) <= SING_R + hits[i].radius) n++;
+    const per = (SING_POOL * this.b.stats.missileDamage) / Math.max(1, n) ** SING_SPREAD;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
-      // A blast on one level doesn't reach bots on a deck above or below it.
-      if (e !== direct && Math.abs(e.position.y - floorY) > blast) continue;
-      const full = e === direct;
-      const dealt = this.weaponHit(e, st.missileDamage * mult * (full ? 1 : MISSILE_SPLASH), x, z, (full ? 9 : 6) * (m.ult ? 1.4 : 1));
+      if (!e.alive) continue;
+      const d = Math.hypot(e.position.x - C.x, e.position.z - C.z);
+      if (d > SING_R + e.radius) continue;
+      const k = 1 - 0.5 * THREE.MathUtils.clamp((d - SING_CORE) / (SING_R - SING_CORE), 0, 1);
+      const dealt = this.weaponHit(e, per * k, C.x, C.z, SING_KNOCK);
       if (dealt > 0) {
-        _tip.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
-        this.ctx.fx.floatText(_tip, `🚀${Math.round(dealt)}`, m.ult ? '#ff7a50' : '#ffb060', m.ult ? 1.1 : 0.9);
+        _tip.set(e.position.x, e.position.y + e.radius + 1.3, e.position.z);
+        fx.floatText(_tip, `🌀${Math.round(dealt)}`, '#b9a4ff', 1.2);
       }
     }
     this.clearTargets();
+  }
+
+  /** The black hole's visuals run every frame (the flash outlives the ultimate's timeline). */
+  private tickSingFx(dt: number): void {
+    const cam = this.ctx.camera;
+    if (this.singFx && cam) this.singFx.update(dt, cam);
   }
 
   clear(): void {
@@ -1097,23 +1081,17 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.scrapT = 0;
     this.gunT = this.gunBurstT = 0;
     this.gunsOn = false;
-    this.laserT = 0;
+    this.beamA = this.beamPulse = 0;
+    this.beamTgt = null;
+    this.beamHasEnd = false;
+    this.beamCore.visible = this.beamGlow.visible = this.beamHit.visible = false;
+    this.endLance();
     this.laserOff = 0;
-    this.laserPitch = 0;
     this.gunPitch = 0;
     this.trigHeld = this.trigPressed = false;
-    this.laserCore.visible = this.laserGlow.visible = false;
-    for (const tr of this.tracers) {
-      tr.t = 0;
-      tr.mesh.visible = false;
-    }
-    this.flash.visible = false;
-    this.flashT = 0;
-    for (const m of this.missiles) {
-      m.live = false;
-      m.delay = 0;
-      m.mesh.visible = false;
-      m.trail.clear();
-    }
+    this.burstT = -1;
+    for (const m of [this.horizon, this.horizonIn, this.burstCore, this.burstGlow]) m.visible = false;
+    const plow = this.b.plow;
+    if (plow) plow.gyroFlat = plow.gyroCharge = 0;
   }
 }

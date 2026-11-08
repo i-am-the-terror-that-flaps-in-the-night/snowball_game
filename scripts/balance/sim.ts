@@ -1,7 +1,7 @@
 /* Headless balance sim: drives the real Combat kits (no browser) against dummy bots and duel opponents.
  * Plow-driven attacks (the Classic's slam / whirl, everyone's dash strike) are scheduled from a simple engagement
  * model (see MELEE below); everything Combat owns (F abilities, ultimates, auras, burns, the vehicles' SPACE / E
- * kits via held keys, missiles) runs for real. */
+ * kits via held keys, ARSENAL's grav weapons) runs for real. */
 import * as THREE from 'three';
 import { Combat } from '../../src/entities/Combat';
 import { computeStatsFor } from '../../src/core/Progression';

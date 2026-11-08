@@ -210,6 +210,17 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     launchVert(e.vert, vy);
   }
 
+  pull(enemy: EnemyHandle, vx: number, vz: number, dt: number): void {
+    const e = enemy as Bot;
+    if (!(e instanceof Bot) || !e.alive || !(dt > 0) || !Number.isFinite(vx) || !Number.isFinite(vz)) return;
+    // Steer the knockback velocity toward the pull (walls, decks, props and bot separation still apply in update) and
+    // bleed the bot's own drive so it can't simply walk out of the pull.
+    const k = 1 - Math.exp(-10 * dt);
+    e.kvx += (vx - e.kvx) * k;
+    e.kvz += (vz - e.kvz) * k;
+    e.speed *= Math.exp(-6 * dt);
+  }
+
   query(x: number, z: number, radius: number, out: EnemyHandle[] = []): EnemyHandle[] {
     out.length = 0;
     for (const e of this.list) {

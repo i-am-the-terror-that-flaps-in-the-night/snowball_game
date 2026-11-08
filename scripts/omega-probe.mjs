@@ -4,14 +4,14 @@
 // An autopilot plays a full campaign arena (all rounds + the boss) with a chosen plow at a chosen upgrade tier and logs
 // per round: clear time (s), HP lost, deaths (the plow is revived in place and the death counted), damage dealt by
 // source (basic = rams / slams / whirls / dash, air = stomps / air slams, F, ult, passive auras; ARSENAL: minigun /
-// laser / missiles / storm), the share of bot-time spent on another level than the player (|dy| > 2 m), time stuck
+// pulse laser / lance / burst / singularity), the share of bot-time spent on another level than the player (|dy| > 2 m), time stuck
 // (moving < 1 m/s while throttling for > 1 s; "free" = no bot within 6 m, i.e. not a shoving match) and the boss fight
 // length. Each round is capped at --cap s (then force-cleared and flagged).
 // Tiers mirror scripts/balance/sim.ts levelsFor: LINE / TIER_DEF / the core four are read out of sim.ts at start-up
 // and rebuilt in the page through the progression API (garage levels + owned / equipped gear).
 // The autopilot drives at the nearest living bot (through ctx.enemies.nav waypoints when it is on another level, as the
 // bots route), plows snow on the way, uses every ability on cooldown (legend-probe style), fires the ultimate when the
-// meter is full, and on ARSENAL holds the minigun, fires the laser and missile salvos on cooldown.
+// meter is full, and on ARSENAL holds the pulse laser, fires the Grav Lance and Polarity Burst on cooldown.
 // The sim runs with window.__game.tick(1/60) (no render loop). Vite runs with HMR off, so edits other agents make to
 // src/ while a run is going don't reload the page (each run loads the current source).
 // Output: DIR/runs.jsonl (one line per run, appended), DIR/summary.json and DIR/summary.md (aggregated tables).
@@ -222,11 +222,10 @@ async function pageSetup({ arena, plow, tier, tiers, cap }) {
   wrap(cb.isotope, 'updateAura', 'passive');
   wrap(cb.isotope, 'updateRads', 'passive');
   wrap(cb.arsenal, 'updateGuns', 'minigun');
-  wrap(cb.arsenal, 'updateLaser', 'laser');
-  wrap(cb.arsenal, 'updateMissiles', 'missiles');
-  wrap(cb.arsenal, 'explodeMissile', (m) => (m && m.ult ? 'storm' : 'missiles'));
-  wrap(cb.ult, 'update', isArs ? 'storm' : 'ult');
-  wrap(cb.ult, 'start', isArs ? 'storm' : 'ult');
+  wrap(cb.arsenal, 'updateLaser', 'lance');
+  wrap(cb.arsenal, 'updateBurst', 'burst');
+  wrap(cb.ult, 'update', isArs ? 'singularity' : 'ult');
+  wrap(cb.ult, 'start', isArs ? 'singularity' : 'ult');
   const emProto = Object.getPrototypeOf(c.enemies);
   if (!emProto.damage.__omega) {
     const orig = emProto.damage;
@@ -273,7 +272,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap }) {
     if (p.dead) { for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'Space']) set(k, false); return; }
     const px = p.position.x, py = p.position.y, pz = p.position.z;
     let best = null, bScore = 1e9, bd = 1e9, near = 0, inF = 0, anyIn = 0, gunIn = 0, laserIn = 0, bossNear = 0;
-    const fR = plow === 'volt' ? s.clapRadius * 0.8 : plow === 'brute' ? s.poundRadius * 0.7 : plow === 'isotope' ? s.meltRadius * 0.7 : s.flameRange * 0.9;
+    const fR = plow === 'volt' ? s.clapRadius * 0.8 : plow === 'brute' ? s.poundRadius * 0.7 : plow === 'isotope' ? s.meltRadius * 0.7 : plow === 'arsenal' ? 14 : s.flameRange * 0.9;
     for (const e of en.list) {
       if (!e.alive) continue;
       const dx = e.position.x - px, dz = e.position.z - pz;
@@ -322,7 +321,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap }) {
     const sameT = Math.abs(best.position.y - py) < LEVEL_DY;
     let tx = best.position.x, tz = best.position.z, routed = false;
     if (nav && nav.next(px, pz, p.deck, tx, tz, best.deck ?? best.vert?.deck ?? -1, AP.way)) { tx = AP.way.x; tz = AP.way.z; routed = true; }
-    // Steer round a deck side in the way (the same helper missiles use), when the terrain has decks.
+    // Steer round a deck side in the way, when the terrain has decks.
     const terr = c.terrain;
     if (detour && terr && terr.active && terr.decks?.length && !p.airborne && detour(terr, px, pz, p.vert.y, 2.4, p.radius, tx, tz, AP.det)) {
       tx = AP.det.x; tz = AP.det.z; routed = true;
@@ -380,14 +379,14 @@ async function pageSetup({ arena, plow, tier, tiers, cap }) {
     const fReady = cbx.flameReady;
     let usedF = false;
     if (crit >= 1) {
-      // Ultimate: when something is in reach (ARSENAL's storm reaches 75 m; the others want a cluster / the boss close).
-      const ok = isArs ? anyIn >= 1 : inF >= 1 || near >= 2 || bossNear >= 1 && sameT && bd < 12;
+      // Ultimate: when something is in reach (ARSENAL's singularity seeks 40 m; the others want a cluster / the boss close).
+      const ok = isArs ? anyIn >= 2 : inF >= 1 || near >= 2 || bossNear >= 1 && sameT && bd < 12;
       if (ok) { tap('KeyF'); usedF = true; }
     } else if (fReady >= 1) {
       let useF = false;
       if (plow === 'classic') useF = sameT && bd < fR && Math.abs(bdiff) < 0.5;
       else if (plow === 'volt') useF = inF >= 1 && cbx.overloadHeat < 0.6 && p.hp > p.maxHp * 0.25;
-      else if (plow === 'arsenal') useF = anyIn >= 1;
+      else if (plow === 'arsenal') useF = inF >= 1; // Polarity Burst: a 16 m horizon
       else useF = inF >= 1;
       if (useF) { tap('KeyF'); usedF = true; }
     }

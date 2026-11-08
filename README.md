@@ -19,9 +19,9 @@ npm test           # vitest unit tests (tests/*.test.ts)
 |---|---|---|
 | W / S (↑ / ↓) | Left stick / d-pad, RT / LT | Drive / reverse |
 | A / D (← / →) | Left stick / d-pad | Steer |
-| Space | A | **Slam** your snowball into whatever is in front (ARSENAL: hold to fire the minigun) |
+| Space | A | **Slam** your snowball into whatever is in front (ARSENAL: hold to fire the pulse laser) |
 | Shift | B / RB | **Dash**: a long burst; hitting a bot mid-dash is a Dash Strike |
-| E | X | **Whirlwind**: spin, pull bots in, blast them out, suck up snow (ARSENAL: laser beam) |
+| E | X | **Whirlwind**: spin, pull bots in, blast them out, suck up snow (ARSENAL: Grav Lance) |
 | F | Y | Your plow's **F ability**; when its meter is full, its **ultimate** |
 | Esc / P | Start | Pause |
 | M | | Mute |
@@ -35,7 +35,7 @@ bound). In menus the gamepad d-pad / stick moves, A selects and B goes back.
   rival plows, endless **Survival** with a seeded **Daily** run, an online 1v1 **Duel**, and a short Tutorial.
 - **Five plows**, each with its own F ability, upgrade line and ultimate: Classic (Inferno / FIRESTORM), VOLT-9
   (Thunderclap / SUPERCELL), BRUTUS (Ground Pound / EARTHQUAKE), ISOTOPE (Meltdown / NUKE) and ARSENAL, a bladeless
-  weapons platform (minigun, laser, homing missiles / ORBITAL STRIKE). An ultimate that wipes 3+ bots plays a
+  magnetic / laser vehicle (pulse laser, Grav Lance, Polarity Burst / SINGULARITY). An ultimate that wipes 3+ bots plays a
   slow-motion kill-cam.
 - **Garage and gear:** endless core upgrades, a per-plow line, and 16 Prodigy-style gear items in 5 slots that you
   buy, level to ★10, equip and see on your plow. Bosses, Hard clears, Survival boss waves and Brawl podiums drop gear.

@@ -6,10 +6,10 @@ import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type
  *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
  *  nothing refills it. */
 /** ARSENAL's meter needs this much more damage against bots (its hits there are PVE_MULT x; overkill on dying bots
- *  is not counted, so it's below PVE_MULT): tuned so MISSILE STORM fills in about 19 s fresh (the faster charge asked for). */
+ *  is not counted, so it's below PVE_MULT): tuned so the SINGULARITY fills in about 20 s fresh (the faster charge asked for). */
 const PVE_ULT = 1.75;
 const ULT_CHARGE = { volt: 2700, brute: 2100, arsenal: 1200 } as const;
-const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🚀 MISSILE STORM' } as const;
+const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🌀 SINGULARITY' } as const;
 /** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every
  *  upgrade, so the meter grows with the pilot's power and with Overclock (faster abilities, more damage): it takes
  *  about as long to fill at every stage of the game. */
@@ -24,7 +24,7 @@ export interface UltScript {
   ultTick(t: number, dt: number, x: number, z: number, from: CastOrigin): boolean;
 }
 
-/** The SUPERCELL / EARTHQUAKE / MISSILE STORM meter and timeline (the shared meter lives on the host). */
+/** The SUPERCELL / EARTHQUAKE / SINGULARITY meter and timeline (the shared meter lives on the host). */
 export class Ultimates {
   /** Elapsed time (-1 = none), centre, and how long the meter stays locked. */
   private t = -1;

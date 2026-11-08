@@ -82,45 +82,13 @@ describe('ARSENAL targeting', () => {
     expect(c.threatOf(a) + c.threatOf(b)).toBe(20);
   });
 
-  it('a salvo goes to the biggest threat first, with as many missiles as its HP needs', () => {
-    const { c, stats } = rig([]);
-    const per = stats.missileDamage * stats.damageMult;
-    const near = bot(0, 6, per * 0.5); // closest, never hurt us
-    const threat = bot(0, 30, per * 2.5); // far, but it has been hitting us: needs 3 missiles
-    const other = bot(10, 10, per * 10);
-    const { c: c2 } = rig([near, threat, other]);
-    noteThreat(c2, 0, 30, 25);
-    const plan = c2.planSalvo(4, 0, 0);
-    expect(plan.slice(0, 3)).toEqual([threat, threat, threat]);
-    expect(plan[3]).not.toBe(threat);
-    expect(plan.filter((e) => e === near).length).toBeLessThanOrEqual(1);
-    void c;
-  });
-
-  it('spreads over every bot that needs missiles, then piles the leftovers onto the top threats', () => {
-    const { stats } = rig([]);
-    const per = stats.missileDamage * stats.damageMult;
-    const bots = [bot(0, 5, per * 0.9), bot(3, 5, per * 0.9)];
-    const { c } = rig(bots);
-    noteThreat(c, 3, 5, 10);
-    const plan = c.planSalvo(6, 0, 0);
-    expect(new Set(plan.slice(0, 2))).toEqual(new Set(bots));
-    expect(plan[0]).toBe(bots[1]);
-    expect(plan.every((e) => e !== null)).toBe(true);
-    expect(plan.filter((e) => e === bots[1]).length).toBeGreaterThanOrEqual(plan.filter((e) => e === bots[0]).length);
-  });
-
-  it('with nothing in range every missile flies free', () => {
-    const { c } = rig([bot(200, 200, 50)]);
-    expect(c.planSalvo(4, 0, 0)).toEqual([null, null, null, null]);
-  });
 });
 
-/* ------------------------------------------------------------------ BATTLE TANK pulse-laser nerf */
+/* ------------------------------------------------------------------ pulse laser turret */
 
 type Guns = { gunTarget(x: number, y: number, z: number, h: number, r: number): EnemyHandle | null; updateGuns(dt: number): void };
 
-describe('BATTLE TANK turret', () => {
+describe('ARSENAL turret', () => {
   it('auto-aims only within a 240° arc round the hull nose: a bot squarely behind is safe', () => {
     const behind = bot(0, -6, 100);
     const flank = bot(-6, -3, 100); // ~117° off the nose: still inside
@@ -144,13 +112,135 @@ describe('BATTLE TANK turret', () => {
   });
 });
 
-describe('BATTLE TANK: the snowball shop lines still pay off', () => {
-  it('Mega Hopper adds reach, Whirlwind Turbine traverse, Snow Compactor beam width', async () => {
+describe('ARSENAL: the snowball shop lines still pay off', () => {
+  it('Mega Hopper adds reach, Whirlwind Turbine traverse, Snow Compactor merge-pulse width', async () => {
     const { tankGunRange, tankSlewMult, tankBeamWidth } = await import('../src/entities/combat/arsenal');
     const base = computeStatsFor({}, 'arsenal');
     const up = computeStatsFor({ hopper: 5, whirl: 3, compactor: 5 }, 'arsenal');
     expect(tankGunRange(up)).toBeGreaterThan(tankGunRange(base) + 1);
     expect(tankSlewMult(up)).toBeGreaterThan(tankSlewMult(base) * 1.3);
     expect(tankBeamWidth(up)).toBeGreaterThan(tankBeamWidth(base) + 0.1);
+  });
+});
+
+/* ------------------------------------------------------------------ grav weapons (E / F / ultimate) */
+
+const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
+
+/** Full Combat rig against bots that can be pulled (the manager moves them at the pull velocity) and logs damage. */
+function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
+  const stats = computeStatsFor(levels, 'arsenal');
+  const plow = {
+    position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, turretAim: 0, turretHeading: 0, hop: 0, surfaceY: 0,
+    gunFiring: false, gunPitch: 0, gyroFlat: 0, gyroCharge: 0, feedSawFury: () => {}, damage: () => {},
+    getForward: (o: THREE.Vector3) => o.set(0, 0, 1),
+    mountWorld: (_k: string, _i: number, o: THREE.Vector3) => o.set(0, 1, 1.5),
+  };
+  const log: { t: number; e: EnemyHandle; n: number }[] = [];
+  const ctx = { scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop } as unknown as GameContext;
+  const enemies = {
+    bosses: [],
+    query: (x: number, z: number, r: number, out: EnemyHandle[] = []) => {
+      out.length = 0;
+      for (const b of bots) if (b.alive && Math.hypot(b.position.x - x, b.position.z - z) <= r + b.radius) out.push(b);
+      return out;
+    },
+    damage: (e: EnemyHandle, n: number) => {
+      e.hp -= n;
+      log.push({ t: ctx.time, e, n });
+      return false;
+    },
+    pull: (e: EnemyHandle, vx: number, vz: number, dt: number) => {
+      e.position.x += vx * dt;
+      e.position.z += vz * dt;
+    },
+  };
+  let f = false;
+  const input = { throttle: 0, steer: 0, wasPressed: (k: string) => k === 'KeyF' && f, isDown: () => false };
+  const binding = { stats, plow, enemies, input, audio: noop, snow: noop, events: { emit: () => {} }, local: true, authoritative: true, pvp: false } as unknown as PilotBinding;
+  const c = new Combat(ctx, binding);
+  c.clear();
+  const run = (s: number) => {
+    for (let i = 0; i < Math.round(s * 60); i++) {
+      (ctx as { time: number }).time += 1 / 60;
+      c.update(1 / 60);
+    }
+  };
+  const pressF = () => {
+    f = true;
+    run(1 / 60);
+    f = false;
+  };
+  return { c, stats, log, run, pressF, ctx };
+}
+
+describe('GRAV LANCE (E)', () => {
+  it('thin beams lock several bots ahead and pull them toward the point 5 m in front; bots behind are ignored', () => {
+    const a = bot(-6, 12, 1e6);
+    const b = bot(7, 14, 1e6);
+    const behind = bot(0, -8, 1e6);
+    const { c, run } = gravRig([a, b, behind]);
+    const d0 = [a, b].map((e) => Math.hypot(e.position.x, e.position.z - 5));
+    expect(c.fireLaser()).toBe(true);
+    run(1.2);
+    const d1 = [a, b].map((e) => Math.hypot(e.position.x, e.position.z - 5));
+    expect(d1[0]).toBeLessThan(d0[0] - 3);
+    expect(d1[1]).toBeLessThan(d0[1] - 3);
+    expect(behind.position.z).toBe(-8);
+    expect(behind.hp).toBe(behind.maxHp);
+  });
+
+  it('the merge pulse at the end does most of the damage; a lone bot takes the old beam\'s 1.5 s of damage', () => {
+    const e = bot(0, 6, 1e6);
+    const { c, stats, log, run } = gravRig([e]);
+    c.fireLaser();
+    run(1.6);
+    const total = log.reduce((s, h) => s + h.n, 0);
+    const merge = log.filter((h) => h.t >= 1.24).reduce((s, h) => s + h.n, 0);
+    expect(merge / total).toBeGreaterThan(0.6);
+    expect(total).toBeCloseTo(stats.laserDps * 1.5 * stats.damageMult * 3, 0);
+  });
+});
+
+describe('POLARITY BURST (F)', () => {
+  it('pulls every bot inside the event horizon toward a point ahead, then detonates on the clump', () => {
+    const near = bot(8, 10, 1e6);
+    const far = bot(0, 40, 1e6);
+    const { c, stats, log, run, pressF } = gravRig([near, far]);
+    expect(c.flameReady).toBe(1);
+    const d0 = Math.hypot(near.position.x, near.position.z - 4);
+    pressF();
+    run(1.0);
+    expect(Math.hypot(near.position.x, near.position.z - 4)).toBeLessThan(d0 - 4);
+    expect(log.length).toBe(0); // no damage until the collapse
+    run(0.5);
+    expect(near.hp).toBeLessThan(near.maxHp - stats.missileDamage);
+    expect(far.position.z).toBe(40);
+    expect(far.hp).toBe(far.maxHp);
+    expect(c.flameReady).toBeLessThan(1);
+  });
+});
+
+describe('SINGULARITY (ultimate)', () => {
+  it('opens on the densest cluster, drags every bot within 40 m toward it (not beyond), then explodes', () => {
+    const cluster = [bot(10, 20, 1e6), bot(12, 21, 1e6), bot(9, 23, 1e6)];
+    const stray = bot(-20, 25, 1e6); // ~31 m from the cluster: inside the pull
+    const outside = bot(70, 25, 1e6); // ~59 m from the cluster: untouched
+    const { c, log, run, pressF } = gravRig([...cluster, stray, outside]);
+    (c as unknown as { onPlayerHit(d: number, k: boolean): void }).onPlayerHit(1e6, false);
+    expect(c.critMass).toBe(1);
+    pressF();
+    expect(c.critMass).toBe(0);
+    const sx = stray.position.x;
+    run(2.9);
+    expect(stray.position.x).toBeGreaterThan(sx + 8);
+    expect(outside.position.x).toBe(70);
+    const before = log.reduce((s, h) => s + h.n, 0);
+    run(0.6);
+    const blast = log.reduce((s, h) => s + h.n, 0) - before;
+    expect(blast).toBeGreaterThan(before); // the collapse does far more than the pull ticks
+    for (const e of [...cluster, stray]) expect(e.hp).toBeLessThan(e.maxHp);
+    expect(outside.hp).toBe(outside.maxHp);
+    expect(c.critMass).toBe(0); // its own damage never refills the meter
   });
 });

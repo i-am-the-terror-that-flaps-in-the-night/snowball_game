@@ -3,269 +3,287 @@ import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
 
-/** ARSENAL / BATTLE TANK animatable parts (names match Plow's fields and mountWorld). */
+/** What the Plow feeds the ARSENAL rig every frame (ArsenalVehicleParts.update). */
+export interface ArsenalRigState {
+  /** Ground speed along the nose (m/s, + forward). */
+  speed: number;
+  /** Pulse laser firing (spins the gyro rings and the emitter coils up). */
+  firing: boolean;
+  /** 0..1: the gyro rings fold flat into one spinning disc (Polarity Burst). */
+  flat: number;
+  /** 0..1 extra charge glow (Grav Lance, Singularity). */
+  charge: number;
+}
+
+/** ARSENAL animatable parts (names match Plow's fields and mountWorld). */
 export interface ArsenalVehicleParts {
   /** Yaws with Plow.turretHeading. */
   turret: THREE.Group;
-  /** Gun elevation pivot (follows gunPitch) and the spinning barrel rotor inside it. */
+  /** Emitter elevation pivot (follows gunPitch) and the coil rotor inside it (spins while firing). */
   gunMount: THREE.Group;
   minigun: THREE.Group;
-  /** mountWorld('muzzle' | 'laser' | 'pod', i) anchors. */
+  /** mountWorld('muzzle' | 'laser' | 'gyro', i) anchors: the pulse emitter tip, the Grav Lance nose lens, the gyro core. */
   muzzles: THREE.Object3D[];
   laser: THREE.Object3D;
-  pods: THREE.Object3D[];
+  gyro: THREE.Object3D;
   /** Weapon glow material (pulsed by the Plow). */
   glowMat: THREE.MeshStandardMaterial;
+  /** Wheels, gyro rings, hover bob and ground light rings: call once per frame. */
+  update(dt: number, s: ArsenalRigState): void;
 }
 
-/* Track geometry: one tread loop per side (a box run with drum ends), cleats every CLEAT_PITCH m. */
-const TRACK_X = 1.12;
-const TRACK_W = 0.62;
-const TRACK_H = 0.8;
-const TRACK_LEN = 3.0;
-const DRUM_R = TRACK_H / 2;
-const TRACK_Y = 0.05 + DRUM_R;
-const CLEAT_PITCH = 0.25;
+/** Front wheels: radius, width, axle position. */
+const WHEEL_R = 0.74;
+const WHEEL_W = 0.6;
+const WHEEL_X = 1.24;
+const WHEEL_Z = 1.2;
+/** Gyro core: centre (model space) and the three ring radii (outer to inner). */
+const GYRO_Y = 1.06;
+const GYRO_Z = -2.35;
+const RING_R = [0.92, 0.71, 0.5] as const;
+/** Gyro ring spin (rad/s) idle, extra per m/s of speed, extra while the pulse laser fires. */
+const RING_IDLE = 1.2;
+const RING_SPEED = 0.35;
+const RING_FIRE = 6;
 
-/** A dark tread texture: CLEAT_PITCH-wide rubber blocks with a groove between (u runs along the track). */
-function treadTexture(): THREE.DataTexture {
-  const w = 8;
-  const data = new Uint8Array(w * 4);
-  for (let i = 0; i < w; i++) {
-    const v = i < 2 ? 16 : i < 3 ? 78 : 40;
-    data.set([v, v, v + 3, 255], i * 4);
-  }
-  const t = new THREE.DataTexture(data, w, 1);
-  t.wrapS = THREE.RepeatWrapping;
-  t.wrapT = THREE.RepeatWrapping;
-  t.magFilter = THREE.NearestFilter;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.needsUpdate = true;
-  return t;
-}
+const CYAN = 0x38e8ff;
 
-/** The tread run: a box whose uv.x runs along z in metres / CLEAT_PITCH on every face, so scrolling the texture
- *  offset moves the cleats along the whole belt. */
-function treadGeometry(): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(TRACK_W, TRACK_H, TRACK_LEN);
-  const pos = g.attributes.position;
-  const nrm = g.attributes.normal;
-  const uv = g.attributes.uv;
-  for (let i = 0; i < pos.count; i++) {
-    const across = Math.abs(nrm.getX(i)) > 0.5 ? pos.getY(i) : pos.getX(i);
-    uv.setXY(i, pos.getZ(i) / CLEAT_PITCH, across);
-  }
-  uv.needsUpdate = true;
-  return g;
+/** Fold an angle toward `target` by `f` (0 = free angle, 1 = exactly target), along the short way round. */
+function fold(a: number, target: number, f: number): number {
+  const d = Math.atan2(Math.sin(a - target), Math.cos(a - target));
+  return target + d * (1 - f);
 }
 
 /**
- * BATTLE TANK: not a plow. A low, wide hull on two crawler tracks under armoured skirts, a sloped glacis with the
- * laser projector set into it, a six-sided turret carrying the long pulse-laser cannon (focusing coils that spin while
- * it fires, muzzle brake), a commander's cupola and a whip antenna that rocks back when the tank surges, and box
- * launchers (2 x 3 tubes) on the rear fenders. The treads scroll and the drive sprockets turn with the ground speed
- * (differential when pivoting), worked out from the body's own world matrix in onBeforeRender, so the Plow needs no
- * extra hooks. Rides on the shared chassis; the shared wheels are hidden for this kind.
+ * ARSENAL: a futuristic magnetic / laser vehicle (not a mech, not a tank). Two huge rugged off-road wheels at the
+ * front (armoured hubs, glowing cyan rims) carry the nose; there are no wheels at the back: the rear hovers on a GYRO
+ * CORE, three thin armoured rings nested like a gyroscope (each spinning on its own axis, cyan seams) round a small
+ * white-hot crystal, held in an armoured cradle between two short struts, projecting faint light rings onto the snow.
+ * A rugged sloped hull in dark gunmetal sits between; a low turret carries the sleek pulse-laser emitter and the nose
+ * holds the Grav Lance lens. Rides on the shared chassis slot (the shared wheels are hidden for this kind).
  */
-export function buildArsenalVehicle({ mats: m, chassis }: VehicleBuildIn): VehicleBuild<ArsenalVehicleParts> {
+export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<ArsenalVehicleParts> {
   const ap = new THREE.Group();
-  const glowMat = new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff1010, emissiveIntensity: 1.2, roughness: 0.2 });
-  const ironMat = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.6, metalness: 0.6 });
-  addMesh(chassis, m.dark, 0, 0.62, 0.05, ap);
+  const glowMat = new THREE.MeshStandardMaterial({ color: CYAN, emissive: CYAN, emissiveIntensity: 1.4, roughness: 0.25 });
+  const armorMat = new THREE.MeshStandardMaterial({ color: 0x4a525c, roughness: 0.45, metalness: 0.6, flatShading: true });
+  const archMat = new THREE.MeshStandardMaterial({ color: 0x4a525c, roughness: 0.45, metalness: 0.6, flatShading: true, side: THREE.DoubleSide });
+  const rubberMat = new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.95, flatShading: true });
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+  const add = (color: number, opacity: number) =>
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
 
-  // Lower hull between the tracks, fender deck over them, upper hull and a sloped glacis with a lip.
-  addMesh(new THREE.BoxGeometry(1.62, 0.5, 3.5), m.dark, 0, 0.78, 0, ap);
-  addMesh(new THREE.BoxGeometry(2.96, 0.1, 3.7), m.trim, 0, 1.06, -0.05, ap);
-  addMesh(new THREE.BoxGeometry(2.1, 0.32, 2.7), m.paint, 0, 1.25, -0.45, ap);
-  const glacis = addMesh(new THREE.BoxGeometry(2.1, 0.12, 1.25), m.paint, 0, 1.18, 1.38, ap);
-  glacis.rotation.x = 0.28;
-  addMesh(new THREE.BoxGeometry(2.2, 0.16, 0.18), m.trim, 0, 0.98, 1.98, ap);
-  // Headlights in armoured cages on the glacis corners.
+  /* ---- hull: belly, armoured upper hull, sloped glacis and side plates (rugged facets, flat shaded) ---- */
+  addMesh(new THREE.BoxGeometry(1.5, 0.42, 3.0), m.dark, 0, 0.72, 0.05, ap);
+  addMesh(new THREE.BoxGeometry(1.66, 0.42, 2.1), m.paint, 0, 1.12, -0.2, ap);
+  const glacis = addMesh(new THREE.BoxGeometry(1.62, 0.12, 1.25), m.paint, 0, 1.13, 1.32, ap);
+  glacis.rotation.x = 0.42;
+  const roof = addMesh(new THREE.BoxGeometry(1.4, 0.1, 1.7), m.trim, 0, 1.37, -0.25, ap);
+  roof.rotation.x = -0.04;
+  // Rear deck sloping down to the cradle.
+  const tail = addMesh(new THREE.BoxGeometry(1.3, 0.12, 0.5), m.paint, 0, 1.16, -1.22, ap);
+  tail.rotation.x = -0.32;
+  // Chamfered side armour (angled plates) and a skid plate under the nose.
   for (const sx of [-1, 1]) {
-    const hl = addMesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 10), m.head, sx * 0.82, 1.16, 1.92, ap, false);
-    hl.rotation.x = Math.PI / 2;
-    addMesh(new THREE.BoxGeometry(0.3, 0.04, 0.16), m.dark, sx * 0.82, 1.29, 1.9, ap);
+    const side = addMesh(new THREE.BoxGeometry(0.1, 0.46, 2.3), armorMat, sx * 0.86, 1.0, -0.45, ap);
+    side.rotation.z = sx * 0.22;
+    addMesh(new THREE.BoxGeometry(0.06, 0.05, 2.0), glowMat, sx * 0.93, 0.82, -0.5, ap, false); // cyan side seam
+    // Armoured wheel arch over the front wheel.
+    const arch = addMesh(new THREE.CylinderGeometry(WHEEL_R + 0.16, WHEEL_R + 0.16, WHEEL_W + 0.14, 14, 1, true, 0.25, 2.55), archMat, sx * WHEEL_X, WHEEL_R, WHEEL_Z, ap);
+    arch.rotation.z = Math.PI / 2;
+    // Axle housing from the hull to the hub.
+    const axle = addMesh(new THREE.CylinderGeometry(0.14, 0.17, 0.5, 8), armorMat, sx * 0.92, WHEEL_R, WHEEL_Z, ap);
+    axle.rotation.z = Math.PI / 2;
   }
-  // Laser projector set into the glacis: armoured housing, collar, glowing lens; the beam leaves from `laser`.
-  addMesh(new THREE.BoxGeometry(0.5, 0.34, 0.4), m.dark, 0, 1.05, 1.86, ap);
-  const lb = addMesh(new THREE.CylinderGeometry(0.15, 0.19, 0.36, 12), m.chrome, 0, 1.05, 2.12, ap);
-  lb.rotation.x = Math.PI / 2;
-  const lens = addMesh(new THREE.CylinderGeometry(0.12, 0.12, 0.04, 12), glowMat, 0, 1.05, 2.31, ap, false);
-  lens.rotation.x = Math.PI / 2;
+  const skid = addMesh(new THREE.BoxGeometry(1.3, 0.1, 0.7), armorMat, 0, 0.5, 1.75, ap);
+  skid.rotation.x = -0.5;
+  addMesh(new THREE.BoxGeometry(1.5, 0.22, 0.22), armorMat, 0, 0.72, 2.02, ap); // ram bar
+  // Cyan LED strip under the glacis lip and a pair of slit headlights.
+  addMesh(new THREE.BoxGeometry(1.1, 0.04, 0.04), glowMat, 0, 0.9, 2.02, ap, false);
+  for (const sx of [-1, 1]) addMesh(new THREE.BoxGeometry(0.26, 0.05, 0.05), m.head, sx * 0.5, 1.02, 1.86, ap, false);
+  // Grav Lance lens: an armoured housing under the glacis with a cyan crystal; the lance leaves from `laser`.
+  addMesh(new THREE.BoxGeometry(0.46, 0.26, 0.34), armorMat, 0, 0.98, 1.9, ap);
+  const lensRing = addMesh(new THREE.TorusGeometry(0.13, 0.035, 6, 14), m.chrome, 0, 0.98, 2.08, ap);
+  void lensRing;
+  const crystal = addMesh(new THREE.OctahedronGeometry(0.1, 0), glowMat, 0, 0.98, 2.1, ap, false);
+  crystal.scale.set(1, 1, 1.8);
   const laser = new THREE.Object3D();
-  laser.position.set(0, 1.05, 2.38);
+  laser.position.set(0, 0.98, 2.3);
   ap.add(laser);
-  // Engine deck at the back: grille slats, twin exhausts, a hazard-red tail strip.
-  for (let i = 0; i < 5; i++) addMesh(new THREE.BoxGeometry(1.5, 0.05, 0.1), m.dark, 0, 1.43, -0.95 - i * 0.2, ap, false);
+  // Rear cradle: two short armoured struts reaching back past the hull, bearing caps holding the gyro's outer ring.
   for (const sx of [-1, 1]) {
-    const ex = addMesh(new THREE.CylinderGeometry(0.09, 0.11, 0.3, 8), ironMat, sx * 0.55, 1.18, -1.86, ap);
-    ex.rotation.x = Math.PI / 2;
-  }
-  addMesh(new THREE.BoxGeometry(1.4, 0.07, 0.04), glowMat, 0, 1.3, -1.81, ap, false);
-
-  // Armoured side skirts over the upper half of each track, with bolt strips; tow hooks front and back.
-  for (const sx of [-1, 1]) {
-    addMesh(new THREE.BoxGeometry(0.08, 0.42, 3.5), m.paint, sx * 1.47, 0.83, 0, ap);
-    addMesh(new THREE.BoxGeometry(0.1, 0.06, 3.5), m.trim, sx * 1.48, 0.62, 0, ap);
-    for (const z of [1.86, -1.86]) addMesh(new THREE.BoxGeometry(0.12, 0.12, 0.18), ironMat, sx * 0.6, 0.72, z, ap);
+    const strut = addMesh(new THREE.BoxGeometry(0.16, 0.24, 1.45), armorMat, sx * 1.12, GYRO_Y + 0.05, -1.68, ap);
+    strut.rotation.y = -sx * 0.1;
+    addMesh(new THREE.BoxGeometry(0.06, 0.04, 1.3), glowMat, sx * 1.12, GYRO_Y + 0.19, -1.68, ap, false);
+    const cap = addMesh(new THREE.CylinderGeometry(0.2, 0.24, 0.2, 10), armorMat, sx * 1.12, GYRO_Y, GYRO_Z, ap);
+    cap.rotation.z = Math.PI / 2;
+    const pin = addMesh(new THREE.CylinderGeometry(0.07, 0.07, 0.14, 8), glowMat, sx * 0.99, GYRO_Y, GYRO_Z, ap, false);
+    pin.rotation.z = Math.PI / 2;
   }
 
-  // Missile launchers on the rear fenders: armoured boxes, 2 x 3 tubes facing forward each.
-  const pods: THREE.Object3D[] = [];
-  for (const sx of [-1, 1]) {
-    const x0 = sx * 1.25;
-    addMesh(new THREE.BoxGeometry(0.62, 0.46, 1.0), m.trim, x0, 1.36, -0.95, ap);
-    addMesh(new THREE.BoxGeometry(0.66, 0.06, 1.04), m.dark, x0, 1.61, -0.95, ap);
-    addMesh(new THREE.BoxGeometry(0.66, 0.5, 0.05), m.dark, x0, 1.36, -0.43, ap);
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 3; c++) {
-        const x = x0 + (c - 1) * 0.18;
-        const y = 1.27 + r * 0.2;
-        addMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 8), glowMat, x, y, -0.4, ap, false).rotation.x = Math.PI / 2;
-        const o = new THREE.Object3D();
-        o.position.set(x, y, -0.38);
-        ap.add(o);
-        pods.push(o);
-      }
-    }
-  }
-
-  // Turret: a six-sided armoured housing (flat face forward, stretched front-to-back), turret ring, rear bustle,
-  // red sensor visor, commander's cupola with a hatch and the whip antenna. Yaws as a whole.
+  /* ---- turret: a low armoured disc carrying the sleek pulse emitter ---- */
   const turret = new THREE.Group();
-  turret.position.set(0, 1.41, -0.15);
+  turret.position.set(0, 1.42, 0.05);
   ap.add(turret);
-  addMesh(new THREE.CylinderGeometry(0.82, 0.86, 0.12, 18), ironMat, 0, 0.04, 0, turret);
-  const hex = addMesh(new THREE.CylinderGeometry(0.72, 0.88, 0.46, 6), m.paint, 0, 0.32, 0, turret);
-  hex.rotation.y = Math.PI / 6;
-  hex.scale.set(1, 1, 1.22);
-  const roof = addMesh(new THREE.CylinderGeometry(0.62, 0.72, 0.06, 6), m.trim, 0, 0.58, 0, turret);
-  roof.rotation.y = Math.PI / 6;
-  roof.scale.set(1, 1, 1.22);
-  addMesh(new THREE.BoxGeometry(1.0, 0.34, 0.5), m.paint, 0, 0.3, -1.0, turret); // bustle
-  addMesh(new THREE.BoxGeometry(1.04, 0.05, 0.52), m.dark, 0, 0.49, -1.0, turret);
-  for (const sx of [-1, 1]) addMesh(new THREE.BoxGeometry(0.06, 0.3, 0.86), m.dark, sx * 0.8, 0.3, -0.05, turret); // side plates
-  addMesh(new THREE.BoxGeometry(0.7, 0.07, 0.04), glowMat, 0, 0.46, 0.84, turret, false);
-  addMesh(new THREE.CylinderGeometry(0.2, 0.22, 0.2, 12), m.dark, -0.32, 0.7, -0.3, turret);
-  addMesh(new THREE.CylinderGeometry(0.21, 0.21, 0.04, 12), m.trim, -0.32, 0.82, -0.3, turret);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + 0.4;
-    addMesh(new THREE.BoxGeometry(0.06, 0.06, 0.03), m.glass, -0.32 + Math.sin(a) * 0.2, 0.72, -0.3 + Math.cos(a) * 0.2, turret, false).rotation.y = a;
-  }
-  addMesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), m.dark, 0.38, 0.68, -0.6, turret); // antenna base
-  const antenna = new THREE.Group();
-  antenna.position.set(0.38, 0.76, -0.6);
-  turret.add(antenna);
-  addMesh(new THREE.CylinderGeometry(0.012, 0.022, 1.5, 5), m.chrome, 0, 0.75, 0, antenna, false);
-  addMesh(new THREE.SphereGeometry(0.04, 6, 4), glowMat, 0, 1.52, 0, antenna, false);
-
-  // Gun: the mantlet pivots at the turret front (Plow sets gun.rotation.x from the auto-aim); the rotor is the long
-  // pulse-laser cannon: heavy barrel, thermal sleeve, three glowing focusing coils and four cooling fins (they spin
-  // about z while it fires), a muzzle brake and a glowing tip.
-  const GY = 0.3;
-  const GZ = 0.92;
+  addMesh(new THREE.CylinderGeometry(0.5, 0.58, 0.14, 8), armorMat, 0, 0.04, 0, turret);
+  const dome = addMesh(new THREE.CylinderGeometry(0.34, 0.5, 0.22, 8), m.paint, 0, 0.21, -0.05, turret);
+  dome.rotation.y = Math.PI / 8;
+  addMesh(new THREE.TorusGeometry(0.52, 0.02, 4, 24), glowMat, 0, 0.11, 0, turret, false).rotation.x = Math.PI / 2;
+  const GY = 0.2;
+  const GZ = 0.3;
   const gun = new THREE.Group();
   gun.position.set(0, GY, GZ);
   turret.add(gun);
-  addMesh(new THREE.BoxGeometry(0.66, 0.42, 0.42), m.dark, 0, 0, 0.05, gun); // mantlet
-  const collar = addMesh(new THREE.CylinderGeometry(0.24, 0.28, 0.24, 14), m.chrome, 0, 0, 0.36, gun);
-  collar.rotation.x = Math.PI / 2;
+  // Emitter: a slim tapered spine with cooling vanes, three cyan focusing rings (they spin while firing) and a crystal tip.
+  addMesh(new THREE.BoxGeometry(0.3, 0.22, 0.36), armorMat, 0, 0, 0.05, gun);
+  const spine = addMesh(new THREE.CylinderGeometry(0.06, 0.12, 1.25, 8), m.dark, 0, 0, 0.8, gun);
+  spine.rotation.x = Math.PI / 2;
+  for (const sx of [-1, 1]) {
+    const vane = addMesh(new THREE.BoxGeometry(0.03, 0.14, 0.7), m.chrome, sx * 0.1, 0, 0.6, gun);
+    vane.rotation.z = sx * 0.5;
+  }
   const rotor = new THREE.Group();
-  rotor.position.set(0, 0, 0.45);
+  rotor.position.set(0, 0, 0.7);
   gun.add(rotor);
-  const BL = 2.15;
-  const barrel = addMesh(new THREE.CylinderGeometry(0.1, 0.13, BL, 14), m.dark, 0, 0, BL / 2, rotor);
-  barrel.rotation.x = Math.PI / 2;
-  const sleeve = addMesh(new THREE.CylinderGeometry(0.17, 0.17, 0.7, 14), m.chrome, 0, 0, 0.45, rotor);
-  sleeve.rotation.x = Math.PI / 2;
-  for (const z of [0.95, 1.25, 1.55]) {
-    const coil = addMesh(new THREE.TorusGeometry(0.16, 0.04, 8, 18), glowMat, 0, 0, z, rotor, false);
-    coil.rotation.z = z; // irregular start angles so the spin reads
+  for (let i = 0; i < 3; i++) {
+    const r = addMesh(new THREE.TorusGeometry(0.13 - i * 0.015, 0.022, 4, 12), glowMat, 0, 0, i * 0.22, rotor, false);
+    r.rotation.z = i * 0.7;
+    addMesh(new THREE.BoxGeometry(0.05, 0.05, 0.06), m.chrome, 0, 0.13 - i * 0.015, i * 0.22, rotor, false);
   }
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2;
-    const fin = addMesh(new THREE.BoxGeometry(0.04, 0.14, 0.6), m.chrome, Math.cos(a) * 0.22, Math.sin(a) * 0.22, 0.45, rotor);
-    fin.rotation.z = a;
-  }
-  addMesh(new THREE.BoxGeometry(0.36, 0.16, 0.26), ironMat, 0, 0, BL - 0.05, rotor); // muzzle brake
-  const tip = addMesh(new THREE.CylinderGeometry(0.08, 0.08, 0.03, 12), glowMat, 0, 0, BL + 0.1, rotor, false);
-  tip.rotation.x = Math.PI / 2;
+  const tip = addMesh(new THREE.OctahedronGeometry(0.07, 0), glowMat, 0, 0, 1.47, gun, false);
+  tip.scale.set(1, 1, 2);
   const mz = new THREE.Object3D();
-  mz.position.set(0, 0, 0.45 + BL + 0.15);
+  mz.position.set(0, 0, 1.6);
   gun.add(mz);
 
-  turret.removeFromParent();
-  mergeStatic(ap);
-  mergeStatic(turret, { keep: [gun, antenna] });
-  mergeStatic(gun, { keep: [rotor] });
-  mergeStatic(rotor);
-  mergeStatic(antenna);
-  ap.add(turret);
-
-  // Tracks (kept out of the merge: the treads scroll and the drive sprockets turn).
-  const treadGeo = treadGeometry();
-  const drumGeo = new THREE.CylinderGeometry(DRUM_R, DRUM_R, TRACK_W, 16);
-  drumGeo.rotateZ(Math.PI / 2);
-  const sprocketGeo = new THREE.CylinderGeometry(DRUM_R * 0.62, DRUM_R * 0.62, TRACK_W + 0.04, 7);
-  sprocketGeo.rotateZ(Math.PI / 2);
-  const wheelGeo = new THREE.CylinderGeometry(0.17, 0.17, TRACK_W + 0.02, 10);
-  wheelGeo.rotateZ(Math.PI / 2);
-  const tracks: { tex: THREE.Texture; side: number; sprockets: THREE.Mesh[] }[] = [];
-  let driver!: THREE.Mesh;
+  /* ---- front wheels: huge rugged tyres with chunky lugs, armoured hubs, glowing cyan rims ---- */
+  const tyreGeo = new THREE.CylinderGeometry(WHEEL_R - 0.04, WHEEL_R - 0.04, WHEEL_W, 22);
+  tyreGeo.rotateZ(Math.PI / 2);
+  const lugGeo = new THREE.BoxGeometry(WHEEL_W + 0.02, 0.1, 0.2);
+  const hubGeo = new THREE.CylinderGeometry(0.37, 0.4, WHEEL_W + 0.06, 8);
+  hubGeo.rotateZ(Math.PI / 2);
+  const capGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.1, 6);
+  capGeo.rotateZ(Math.PI / 2);
+  const rimGeo = new THREE.TorusGeometry(0.46, 0.028, 4, 28);
+  rimGeo.rotateY(Math.PI / 2);
+  const boltGeo = new THREE.BoxGeometry(0.06, 0.08, 0.08);
+  const wheels: THREE.Group[] = [];
   for (const sx of [-1, 1]) {
-    const tex = treadTexture();
-    const treadMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, flatShading: true });
-    driver = addMesh(treadGeo, treadMat, sx * TRACK_X, TRACK_Y, 0, ap);
-    const sprockets: THREE.Mesh[] = [];
-    for (const z of [TRACK_LEN / 2, -TRACK_LEN / 2]) {
-      addMesh(drumGeo, treadMat, sx * TRACK_X, TRACK_Y, z, ap);
-      sprockets.push(addMesh(sprocketGeo, m.hub, sx * TRACK_X, TRACK_Y, z, ap, false));
+    const w = new THREE.Group();
+    w.position.set(sx * WHEEL_X, WHEEL_R, WHEEL_Z);
+    ap.add(w);
+    addMesh(tyreGeo, rubberMat, 0, 0, 0, w);
+    for (let i = 0; i < 15; i++) {
+      const a = (i / 15) * Math.PI * 2;
+      const lug = addMesh(lugGeo, rubberMat, 0, Math.sin(a) * (WHEEL_R - 0.03), Math.cos(a) * (WHEEL_R - 0.03), w);
+      lug.rotation.x = -a + (i % 2 ? 0.12 : -0.12); // staggered tread
+      lug.scale.x = i % 2 ? 1 : 0.8;
     }
-    for (let i = 0; i < 4; i++) sprockets.push(addMesh(wheelGeo, ironMat, sx * TRACK_X, 0.2, -1.05 + i * 0.7, ap, false));
-    tracks.push({ tex, side: sx, sprockets });
+    addMesh(hubGeo, armorMat, 0, 0, 0, w);
+    addMesh(capGeo, m.trim, sx * (WHEEL_W / 2 + 0.06), 0, 0, w);
+    addMesh(rimGeo, glowMat, sx * (WHEEL_W / 2 + 0.03), 0, 0, w, false);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      addMesh(boltGeo, m.chrome, sx * (WHEEL_W / 2 + 0.04), Math.sin(a) * 0.28, Math.cos(a) * 0.28, w, false);
+    }
+    wheels.push(w);
   }
 
-  // Track + antenna animation from the body's world motion, once per frame (the first render pass of a frame moves
-  // things; shadow / extra passes see zero motion). Teleports (respawn, garage swap) are ignored.
-  let lastX = NaN;
-  let lastZ = 0;
-  let lastYaw = 0;
-  let lastT = 0;
-  let speedEase = 0;
-  let lean = 0;
-  driver.onBeforeRender = () => {
-    const e = ap.matrixWorld.elements;
-    const x = e[12];
-    const z = e[14];
-    const yaw = Math.atan2(e[8], e[10]);
-    const now = performance.now() / 1000;
-    const dt = now - lastT;
-    if (dt < 1e-3) return;
-    lastT = now;
-    const dx = x - lastX;
-    const dz = z - lastZ;
-    let dyaw = yaw - lastYaw;
-    dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
-    const valid = !Number.isNaN(lastX) && dt < 0.25 && dx * dx + dz * dz < 9;
-    lastX = x;
-    lastZ = z;
-    lastYaw = yaw;
-    if (!valid) return;
-    const len = Math.hypot(e[8], e[10]) || 1;
-    const fwd = (dx * e[8] + dz * e[10]) / len;
-    for (const t of tracks) {
-      const ds = fwd - dyaw * TRACK_X * t.side;
-      t.tex.offset.x -= ds / CLEAT_PITCH;
-      for (let i = 0; i < t.sprockets.length; i++) t.sprockets[i].rotation.x += ds / (i < 2 ? DRUM_R * 0.62 : 0.17);
+  /* ---- gyro core: three nested armoured rings (outer pivots on the cradle's x axis, middle on its y, inner on its
+   * z), each with two cyan seam lines and four armour blocks, round a white-hot crystal ---- */
+  const gyroRoot = new THREE.Group();
+  gyroRoot.position.set(0, GYRO_Y, GYRO_Z);
+  ap.add(gyroRoot);
+  const rings: THREE.Group[] = [];
+  let parent: THREE.Object3D = gyroRoot;
+  for (let i = 0; i < 3; i++) {
+    const R = RING_R[i];
+    const g = new THREE.Group();
+    parent.add(g);
+    addMesh(new THREE.TorusGeometry(R, 0.055, 5, 40), armorMat, 0, 0, 0, g, false);
+    for (const dz of [-0.05, 0.05]) addMesh(new THREE.TorusGeometry(R, 0.016, 3, 40), glowMat, 0, 0, dz, g, false);
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + i * 0.4;
+      const blk = addMesh(new THREE.BoxGeometry(0.12, 0.1, 0.13), m.trim, Math.cos(a) * R, Math.sin(a) * R, 0, g, false);
+      blk.rotation.z = a;
     }
-    // The whip antenna rocks back as the tank surges and springs forward when it brakes.
-    const v = fwd / dt;
-    const acc = (v - speedEase) / dt;
-    speedEase += (v - speedEase) * Math.min(1, dt * 8);
-    lean += (THREE.MathUtils.clamp(-acc * 0.012, -0.5, 0.5) - lean) * Math.min(1, dt * 6);
-    antenna.rotation.x = lean + Math.sin(now * 9) * Math.abs(lean) * 0.25;
+    mergeStatic(g, { keep: (o) => o instanceof THREE.Group && o !== g });
+    rings.push(g);
+    parent = g;
+  }
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), coreMat);
+  core.scale.set(1, 1.5, 1);
+  gyroRoot.add(core);
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 10), add(CYAN, 0.4));
+  halo.renderOrder = 3;
+  gyroRoot.add(halo);
+  // Polarity Burst disc: a flat cyan glow filling the folded rings.
+  const discMat = add(CYAN, 0);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(RING_R[0] + 0.06, 32), discMat);
+  disc.rotation.x = -Math.PI / 2;
+  disc.renderOrder = 3;
+  disc.visible = false;
+  gyroRoot.add(disc);
+  // Faint light rings projected on the snow under the gyro.
+  const groundMat = new THREE.MeshBasicMaterial({ color: 0x18b8e0, transparent: true, opacity: 0.4, depthWrite: false, toneMapped: false });
+  const ground: THREE.Mesh[] = [];
+  for (const [r0, r1] of [[0.7, 0.86], [1.15, 1.24]] as const) {
+    const gr = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 40), groundMat);
+    gr.rotation.x = -Math.PI / 2;
+    gr.position.set(0, 0.05, GYRO_Z);
+    gr.renderOrder = 2;
+    ap.add(gr);
+    ground.push(gr);
+  }
+  const gyro = new THREE.Object3D();
+  gyroRoot.add(gyro);
+
+  turret.removeFromParent();
+  gyroRoot.removeFromParent();
+  for (const w of wheels) w.removeFromParent();
+  mergeStatic(ap);
+  mergeStatic(turret, { keep: [gun] });
+  mergeStatic(gun, { keep: [rotor] });
+  mergeStatic(rotor);
+  for (const w of wheels) mergeStatic(w);
+  ap.add(turret, gyroRoot, ...wheels);
+  // Shadow: hull, turret and wheels (cylinders: their spin doesn't change the shadow); the gyro rings cast none.
+  ap.add(...makeShadowProxy(ap, ap, { keep: [gyroRoot, ...ground] }));
+
+  // Animation state.
+  const ang = [0.3, 1.1, 2.0];
+  const spin = [0, 0, 0];
+  let wheelA = 0;
+  let t = 0;
+  let ringW = RING_IDLE;
+  const update = (dt: number, s: ArsenalRigState) => {
+    t += dt;
+    wheelA += (s.speed * dt) / WHEEL_R;
+    for (const w of wheels) w.rotation.x = wheelA;
+    // Rings: faster with speed and while firing; folded flat (Polarity Burst) they all spin about the vertical.
+    const want = RING_IDLE + RING_SPEED * Math.abs(s.speed) + (s.firing ? RING_FIRE : 0) + s.charge * 5 + s.flat * 9;
+    ringW += (want - ringW) * Math.min(1, dt * 3);
+    const f = THREE.MathUtils.clamp(s.flat, 0, 1);
+    for (let i = 0; i < 3; i++) {
+      ang[i] += dt * ringW * (1 + i * 0.45) * (1 - f * 0.9);
+      spin[i] += dt * ringW * f * (i % 2 ? -1.6 : 1.9);
+    }
+    rings[0].rotation.set(fold(ang[0], Math.PI / 2, f), 0, spin[0]);
+    rings[1].rotation.set(0, fold(ang[1], 0, f), spin[1]);
+    rings[2].rotation.set(0, 0, ang[2] + spin[2]);
+    core.rotation.y += dt * (2 + ringW);
+    const hot = 1 + 0.12 * Math.sin(t * 13) + s.charge * 0.6 + f * 0.5;
+    core.scale.set(hot, 1.5 * hot, hot);
+    halo.scale.setScalar(1 + 0.15 * Math.sin(t * 7) + s.charge * 0.8 + f * 0.6);
+    disc.visible = f > 0.02;
+    discMat.opacity = 0.55 * f;
+    // Hover bob: the rear floats on the gyro, pitching gently about the front axle; the light rings breathe with it.
+    const bob = Math.sin(t * 2.3) * 0.5 + Math.sin(t * 3.7) * 0.2;
+    ap.rotation.x = 0.012 * bob;
+    gyroRoot.position.y = GYRO_Y + 0.04 * bob;
+    groundMat.opacity = 0.34 + 0.1 * Math.sin(t * 4) + s.charge * 0.25 + f * 0.3;
+    ground[0].scale.setScalar(1 + 0.06 * bob);
+    ground[1].scale.setScalar(1 + 0.1 * Math.sin(t * 1.7) + f * 0.6);
   };
 
-  ap.add(...makeShadowProxy(ap, ap));
-  return { group: ap, parts: { turret, gunMount: gun, minigun: rotor, muzzles: [mz, mz], laser, pods, glowMat } };
+  return { group: ap, parts: { turret, gunMount: gun, minigun: rotor, muzzles: [mz, mz], laser, gyro, glowMat, update } };
 }
