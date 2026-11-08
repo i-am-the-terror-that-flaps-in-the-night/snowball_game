@@ -2,115 +2,38 @@ import './fonts.css';
 import './ui.css';
 import './brawl.css';
 import './challenges.css';
-import type { BrawlDifficulty, BrawlEntry, BrawlResult, GameContext, HudBoss, HudState, RunSummary, SoundName, SurvivalShopOpts, UIAPI, UIHandlers } from '../core/types';
-import { MIN_BALL_RADIUS } from '../core/types';
-import { SHOP_UPGRADES, type UpgradeCategory, type UpgradeDef } from '../config/upgrades';
-import { GEAR, GEAR_MAX_LEVEL, GEAR_SLOTS, RARITY_COLOR, grantLabel, type GearDef, type GearSlot } from '../config/gear';
-import { PLOWS, isVehicle, type PlowKind } from '../config/plows';
-import { ZONES, type ZoneDef } from '../config/zones';
-import { ENEMIES, type EnemyDef, type EnemyType } from '../config/enemies';
-import {
-  BRAWL_BOTS, BRAWL_DIFFICULTIES, BRAWL_KILL_COINS, BRAWL_KILL_TARGET, BRAWL_PLACEMENT_BONUS, BRAWL_RESPAWN,
-  BRAWL_SHUTDOWN_PER_STREAK, BRAWL_TIME, STREAK_TIERS,
-} from '../config/brawl';
-import { BrawlHudView, fmtMult } from './BrawlHud';
+import type { BrawlResult, GameContext, HudState, RunSummary, SoundName, SurvivalShopOpts, UIAPI, UIHandlers } from '../core/types';
+import { SHOP_UPGRADES, type UpgradeCategory } from '../config/upgrades';
+import type { GearSlot } from '../config/gear';
+import { PLOWS, type PlowKind } from '../config/plows';
+import { ZONES } from '../config/zones';
 import { RadarHud } from './RadarHud';
 import { SettingsMenu } from './Settings';
-import { ACTIONS, keyLabel, type Action } from '../core/input';
 import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
 import { StyleShop } from './StyleShop';
 import { Trophies } from './Trophies';
 import { Story } from './Story';
-import { CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE } from '../config/lore';
 import { activeDaily, dailySubLabel } from '../meta/daily';
 import { ICONS, type IconName } from './icons';
-import { renderDailyResult, renderDailyShopTag } from './DailyResult';
+import { renderDailyShopTag } from './DailyResult';
 import { renderLoot } from './LootReveal';
-import {
-  HARD, earnedIds, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, lastChallengeReport, maxStars, starReward, zoneChallenges, zoneStars,
-} from '../meta/challenges';
+import { maxStars } from '../meta/challenges';
 import { achievementCount, totalStars } from '../meta/progress';
 import { ACHIEVEMENTS } from '../config/achievements';
 import { DuelUI } from './DuelUI';
 import type { DuelWallet, ShopWallet } from '../duel/DuelWallet';
+import { hubPick, type ArrowCode, type HubNavKind } from './hubNav';
+import { el, fmt, restart, type BtnFn } from './uiKit';
+import { fillControls } from './controls';
+import { GameHud } from './GameHud';
+import * as howTo from './screens/howTo';
+import * as zones from './screens/zones';
+import * as garage from './screens/garage';
+import * as results from './screens/results';
+import * as brawl from './screens/brawl';
 
-export type ArrowCode = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
-type NavRect = Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>;
-
-/**
- * 2D focus move for grid menus: index of the rect nearest to `rects[from]` in the arrow's direction, or -1 when
- * nothing lies that way. Candidates must sit past the current rect's centre along the axis and inside a cone around
- * it; distance weighs the cross axis double so a tile straight below beats a closer one off to the side.
- */
-export function spatialPick(rects: readonly NavRect[], from: number, code: ArrowCode): number {
-  const c = rects[from];
-  if (!c) return -1;
-  const cx = (c.left + c.right) / 2;
-  const cy = (c.top + c.bottom) / 2;
-  const horiz = code === 'ArrowLeft' || code === 'ArrowRight';
-  const sign = code === 'ArrowRight' || code === 'ArrowDown' ? 1 : -1;
-  let best = -1;
-  let bestD = Infinity;
-  rects.forEach((r, i) => {
-    if (i === from) return;
-    const rx = (r.left + r.right) / 2;
-    const ry = (r.top + r.bottom) / 2;
-    // Edge-based gap along the axis (0 when the rects overlap there), so big tiles aren't penalised.
-    const gap = horiz
-      ? sign > 0 ? r.left - c.right : c.left - r.right
-      : sign > 0 ? r.top - c.bottom : c.top - r.bottom;
-    const ahead = horiz ? (rx - cx) * sign : (ry - cy) * sign;
-    if (ahead <= 1) return;
-    // Cross-axis offset: 0 when the rects overlap on the cross axis.
-    const cross = horiz
-      ? Math.max(0, r.top - c.bottom, c.top - r.bottom)
-      : Math.max(0, r.left - c.right, c.left - r.right);
-    // Stay inside a ~60° cone: a button far off to the side isn't "to the right", even if its centre is.
-    if (cross > 2 * Math.max(0, gap) + 8) return;
-    const crossC = horiz ? Math.abs(ry - cy) : Math.abs(rx - cx);
-    const d = Math.max(0, gap) + 2 * cross + 0.01 * crossC;
-    if (d < bestD) {
-      bestD = d;
-      best = i;
-    }
-  });
-  return best;
-}
-
-export type HubNavKind = 'cat' | 'util' | 'pane';
-
-/**
- * Hub arrow move. Like spatialPick, except that the tab rail stays a rail: Left / Right from a tab only reach the
- * other tabs and the utility strip (coins / sound / settings), so Right off the last tab lands on the strip instead of
- * dropping diagonally into the pane. Up from a tab goes to the strip; when the cone finds nothing (the strip sits off to
- * the side at desktop width), the nearest strip button is taken. Returns -1 when nothing lies that way.
- */
-export function hubPick(rects: readonly NavRect[], kinds: readonly HubNavKind[], from: number, code: ArrowCode): number {
-  if (kinds[from] !== 'cat' || code === 'ArrowDown') return spatialPick(rects, from, code);
-  const idx = rects.map((_, i) => i).filter((i) => i === from || kinds[i] === 'cat' || kinds[i] === 'util');
-  const sub = idx.map((i) => rects[i]);
-  const j = spatialPick(sub, idx.indexOf(from), code);
-  if (j >= 0) return idx[j];
-  if (code === 'ArrowLeft') return -1;
-  // Right off the end of the rail, or Up: the nearest utility button that lies that way.
-  const c = rects[from];
-  const cx = (c.left + c.right) / 2;
-  const cy = (c.top + c.bottom) / 2;
-  let best = -1;
-  let bestD = Infinity;
-  rects.forEach((r, i) => {
-    if (kinds[i] !== 'util') return;
-    const rx = (r.left + r.right) / 2;
-    const ry = (r.top + r.bottom) / 2;
-    if (code === 'ArrowRight' && rx <= cx) return;
-    const d = Math.hypot(rx - cx, ry - cy);
-    if (d < bestD) {
-      bestD = d;
-      best = i;
-    }
-  });
-  return best;
-}
+// Keyboard / gamepad grid navigation lives in hubNav.ts; re-exported so importers of UI keep working.
+export { spatialPick, hubPick, type ArrowCode, type HubNavKind } from './hubNav';
 
 /** Main-menu hub categories. A new menu destination is one `tile()` call in buildMenu, inside its category. */
 const HUB_CATS = [
@@ -122,171 +45,6 @@ const HUB_CATS = [
 type HubCat = (typeof HUB_CATS)[number][0];
 
 type ScreenName = 'menu' | 'zones' | 'garage' | 'howto' | 'pause' | 'result' | 'lobby' | 'bresult';
-
-const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
-const fmt = (n: number) => Math.floor(n).toLocaleString('en-US');
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  if (parent) parent.appendChild(e);
-  return e;
-}
-
-/** Restart a one-shot CSS animation class. */
-function restart(e: HTMLElement, cls: string, ...others: string[]): void {
-  e.classList.remove(cls, ...others);
-  void e.offsetWidth;
-  e.classList.add(cls);
-}
-
-type ShopTabId = 'core' | 'gear' | 'line';
-
-/** Garage tabs, each listing one or more upgrade categories. 'line' only shows the driven plow's own line
- *  (category id === PlowKind), and takes that plow's name and icon. */
-const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; groups: { cat: UpgradeCategory; title?: string }[] }[] = [
-  { id: 'core', label: 'Core', icon: '⚙️', blurb: 'The four core upgrades: speed, slam power, ball size and HP. They never max out.', groups: [{ cat: 'plow' }, { cat: 'ball' }, { cat: 'defense' }] },
-  { id: 'gear', label: 'Gear', icon: '🎒', blurb: 'Buy items, level them up to 10 and equip as many as you like. Gear works on every plow.', groups: [] },
-  { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }, { cat: 'arsenal' }] },
-];
-
-/** Ultimate meter + F-button labels per F ability (meter icon, READY tag, F icon/name when full, normal F icon/name). */
-const ULT_HUD: Record<HudState['fAbility'], { bar: string; tag: string; icon: string; name: string; baseIcon: string; baseName: string }> = {
-  fire: { bar: '🔥', tag: 'FIRESTORM', icon: '🌋', name: 'STORM', baseIcon: '🔥', baseName: 'FIRE' },
-  zap: { bar: '⚡', tag: 'SUPERCELL', icon: '🌩️', name: 'CELL', baseIcon: '⚡', baseName: 'CLAP' },
-  pound: { bar: '🌍', tag: 'EARTHQUAKE', icon: '🌍', name: 'QUAKE', baseIcon: '💥', baseName: 'POUND' },
-  meltdown: { bar: '☢', tag: 'NUKE', icon: '☢️', name: 'NUKE', baseIcon: '☢️', baseName: 'MELT' },
-  missiles: { bar: '🌀', tag: 'SINGULARITY', icon: '🕳️', name: 'VOID', baseIcon: '🌀', baseName: 'BURST' },
-};
-
-const ENEMY_ICON: Record<EnemyType, string> = {
-  scrapper: '🤖', brute: '🚧', spinner: '🪚', thief: '🦝',
-  bulldoza: '🚜', frostbyte: '👾', grinder: '🔩', slush: '🔴', sleet: '🔵', omega: '💀', rival: '🚜', rallybot: '🧢', donald: '🍊',
-};
-
-const ENEMY_TIP: Partial<Record<EnemyType, string>> = {
-  scrapper: 'FAST', brute: 'FRONT ARMOR', spinner: 'OVERHEATS', thief: 'STEALS SNOW', rallybot: 'RALLY BUFF',
-};
-
-/** Controls cheat-sheet. Action rows show the player's current (rebindable) keys; other rows are literal labels. */
-const CONTROLS: [string[], string][] = [
-  [['forward'], 'Accelerate'],
-  [['back'], 'Brake / reverse'],
-  [['left', 'right'], 'Steer'],
-  [['slam'], 'SLAM snowball'],
-  [['dash'], 'DASH STRIKE (long burst)'],
-  [['whirl'], 'Whirlwind tornado'],
-  [['ability'], 'Inferno (Classic) / Thunderclap (VOLT-9) / Ground Pound (BRUTUS)'],
-  [['pause'], 'Pause'],
-  [['M'], 'Mute sound'],
-];
-const ACTION_IDS = new Set<string>(ACTIONS.map((a) => a.id));
-const PAD_LINE = '🎮 Gamepad: left stick drive · A slam · B/RB dash · X whirl · Y F-ability · START pause';
-
-function tierName(r: number): string {
-  if (r < 0.6) return 'Snowball';
-  if (r < 1.0) return 'Boulder';
-  if (r < 1.6) return 'Avalanche';
-  if (r < 2.4) return 'Glacier';
-  return 'SNOWPOCALYPSE';
-}
-function tierIndex(r: number): number {
-  return r < 0.6 ? 0 : r < 1.0 ? 1 : r < 1.6 ? 2 : r < 2.4 ? 3 : 4;
-}
-
-function ordinal(n: number): string {
-  const v = n % 100;
-  const suf = v >= 11 && v <= 13 ? 'TH' : ['TH', 'ST', 'ND', 'RD'][n % 10] ?? 'TH';
-  return `${n}${suf}`;
-}
-function fmtTime(sec: number): string {
-  const s = Math.round(sec);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-
-const DEF_BY_NAME = new Map<string, EnemyDef>(Object.values(ENEMIES).map((d) => [d.name, d] as [string, EnemyDef]));
-
-/** True for saturated, mid-lightness colors that read well as a health bar. */
-function vivid(n: number): boolean {
-  const r = ((n >> 16) & 255) / 255;
-  const g = ((n >> 8) & 255) / 255;
-  const b = (n & 255) / 255;
-  const mx = Math.max(r, g, b);
-  const mn = Math.min(r, g, b);
-  const d = mx - mn;
-  if (d === 0) return false;
-  const l = (mx + mn) / 2;
-  const s = d / (1 - Math.abs(2 * l - 1));
-  return s > 0.45 && l > 0.28 && l < 0.75;
-}
-function bossColor(def?: EnemyDef): string {
-  if (def) {
-    if (vivid(def.color)) return hex(def.color);
-    if (vivid(def.accent)) return hex(def.accent);
-  }
-  return '#ff2f4c';
-}
-function zoneBossDef(z: ZoneDef): EnemyDef | undefined {
-  for (const r of z.rounds) if (r.boss) for (const g of r.groups) if (ENEMIES[g.type].isBoss) return ENEMIES[g.type];
-  return undefined;
-}
-
-/** Challenge stars as HTML: `got` gold (the last `fresh` of them pop in), the rest of `total` empty. */
-function starsHtml(got: number, fresh = 0, total = 3): string {
-  let h = '';
-  for (let i = 0; i < total; i++) h += `<i class="ss-star ${i < got ? (i >= got - fresh ? 'on fresh' : 'on') : 'off'}">★</i>`;
-  return h;
-}
-
-interface CardRefs {
-  def: UpgradeDef;
-  tab: ShopTabId;
-  root: HTMLElement;
-  pips: HTMLElement[];
-  /** "LV n" badge for endless upgrades past their pips. */
-  lvl: HTMLElement;
-  cur: HTMLElement;
-  next: HTMLElement;
-  arrow: HTMLElement;
-  buy: HTMLButtonElement;
-}
-
-interface GearCardRefs {
-  def: GearDef;
-  root: HTMLElement;
-  lvl: HTMLElement;
-  grants: HTMLElement;
-  buy: HTMLButtonElement;
-  equip: HTMLButtonElement;
-}
-
-interface BossSlot {
-  /** '' = free. */
-  key: string;
-  root: HTMLElement;
-  inner: HTMLElement;
-  badge: HTMLElement;
-  name: HTMLElement;
-  title: HTMLElement;
-  phase: HTMLElement;
-  hp: HTMLElement;
-  fill: HTMLElement;
-  chip: HTMLElement;
-  frac: number;
-  hpVal: number;
-  /** performance.now() when destroyed (bar lingers), 0 otherwise. */
-  down: number;
-  mark: boolean;
-}
-
-const GAUGE_R = 46;
-const GAUGE_C = 2 * Math.PI * GAUGE_R;
-const INTRO_MS = 2600;
-/** Toasts: default top (px) and gap under the lowest top HUD box their column crosses. */
-const TOAST_TOP = 96;
-const TOAST_GAP = 12;
 
 export class UI implements UIAPI {
   private ctx: GameContext;
@@ -330,13 +88,13 @@ export class UI implements UIAPI {
   private shopBack!: HTMLButtonElement;
   private shopStart!: HTMLButtonElement;
   private shopHint!: HTMLElement;
-  private cards: CardRefs[] = [];
+  private cards: garage.CardRefs[] = [];
   /** Garage tabs: open tab, tab buttons, their panes and the plow-line sections (one per plow). */
-  private shopTab: ShopTabId = 'core';
-  private gearCards: GearCardRefs[] = [];
+  private shopTab: garage.ShopTabId = 'core';
+  private gearCards: garage.GearCardRefs[] = [];
   private gearSlotLabels = new Map<GearSlot, HTMLElement>();
-  private tabBtns = new Map<ShopTabId, { btn: HTMLButtonElement; icon: HTMLElement; label: HTMLElement; badge: HTMLElement }>();
-  private tabPanes = new Map<ShopTabId, HTMLElement>();
+  private tabBtns = new Map<garage.ShopTabId, garage.ShopTabRefs>();
+  private tabPanes = new Map<garage.ShopTabId, HTMLElement>();
   private lineSections = new Map<UpgradeCategory, HTMLElement>();
   private shopBody!: HTMLElement;
   private tabBlurb!: HTMLElement;
@@ -361,57 +119,21 @@ export class UI implements UIAPI {
   private lobbyPanel!: HTMLElement;
   private bresultScreen!: HTMLElement;
   private bresultPanel!: HTMLElement;
-  private bh!: BrawlHudView;
-  /** Campaign / Survival minimap + lost-bot arrows. */
+  /** Campaign / Survival minimap + lost-bot arrows (the HUD's; kept here too for scripts/hud-probe.mjs). */
   private radar!: RadarHud;
 
-  // hud
-  private hud!: HTMLElement;
-  private hudVisible = false;
-  /** Top HUD boxes the toasts start under (round box, boss bars, coin box, radar) and whether their sizes changed. */
-  private topBoxes: HTMLElement[] = [];
-  private topDirty = true;
-  private radarShown = false;
-  private bossSlots: BossSlot[] = [];
-  private h = {} as {
-    zone: HTMLElement; round: HTMLElement; best: HTMLElement; enemies: HTMLElement; pips: HTMLElement; arena: HTMLElement;
-    bosses: HTMLElement;
-    coins: HTMLElement; coinBox: HTMLElement;
-    combo: HTMLElement; comboN: HTMLElement;
-    hpBox: HTMLElement; hpNum: HTMLElement; hpFill: HTMLElement; hpChip: HTMLElement;
-    batt: HTMLElement; battFill: HTMLElement; crit: HTMLElement; critFill: HTMLElement;
-    gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
-    slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
-    dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement; primary: HTMLElement;
-    heat: HTMLElement; heatFill: HTMLElement; heatTxt: HTMLElement;
-    snowFill: HTMLElement; snowTxt: HTMLElement;
-    count: HTMLElement; hint: HTMLElement;
-  };
-  private last = {
-    zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
-    coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
-    ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
-  };
-  private hintTimer = 0;
-
-  // fx
-  private vignette!: HTMLElement;
+  // hud + fx
+  private gameHud!: GameHud;
   private toastBox!: HTMLElement;
   private bigBox!: HTMLElement;
-  private intro!: HTMLElement;
-  private introName!: HTMLElement;
-  private introTitle!: HTMLElement;
-  private introTimer = 0;
 
   constructor(ctx: GameContext, root: HTMLElement, handlers: UIHandlers) {
     this.ctx = ctx;
     this.handlers = handlers;
     this.rootEl = el('div', 'ss-root', undefined, root);
 
-    this.vignette = el('div', 'ss-vignette', undefined, this.rootEl);
-    this.buildHud();
-    this.buildIntro();
+    this.gameHud = new GameHud(ctx, this.rootEl, () => this.toastBox, () => this.refreshKeys());
+    this.radar = this.gameHud.radar;
     this.buildMenu();
     this.buildHowTo();
     this.buildZones();
@@ -434,8 +156,8 @@ export class UI implements UIAPI {
     this.bigBox = el('div', 'ss-bigtoasts', undefined, this.rootEl);
 
     ctx.progression.onChange(() => this.refreshProgress());
-    ctx.events.on('plowDamaged', ({ amount, blocked }) => this.pulse(amount, blocked));
-    ctx.events.on('bossPhase', ({ name, label }) => this.onBossPhase(name, label));
+    ctx.events.on('plowDamaged', ({ amount, blocked }) => this.gameHud.pulse(amount, blocked));
+    ctx.events.on('bossPhase', ({ name, label }) => this.gameHud.onBossPhase(name, label));
 
     window.addEventListener('keydown', (e) => this.onKey(e));
     this.refreshProgress();
@@ -446,6 +168,9 @@ export class UI implements UIAPI {
   private sfx(name: SoundName): void {
     this.ctx.audio?.play(name);
   }
+
+  /** `btn` for the screen builders in screens/. */
+  private readonly btnFn: BtnFn = (label, cls, onClick, parent, sound) => this.btn(label, cls, onClick, parent, sound);
 
   private btn(label: string, cls: string, onClick: () => void, parent?: HTMLElement, sound: SoundName | null = 'click'): HTMLButtonElement {
     const b = el('button', `ss-btn ${cls}`, undefined, parent);
@@ -476,7 +201,7 @@ export class UI implements UIAPI {
       // Stale in-game toasts / intro would sit on top of the end screens.
       this.bigBox?.replaceChildren();
       this.toastBox?.replaceChildren();
-      this.endIntro();
+      this.gameHud.endIntro();
     }
     const a = document.activeElement as HTMLElement | null;
     if (a && a.blur) a.blur();
@@ -511,51 +236,14 @@ export class UI implements UIAPI {
   private controlsList(parent: HTMLElement): HTMLElement {
     const list = el('div', 'ss-controls', undefined, parent);
     this.controlLists.push(list);
-    this.fillControls(list);
+    fillControls(this.ctx.input, list);
     return list;
-  }
-
-  /** Labels for a controls row: an action's bound keys (primary + fixed alternates), or the literal labels. */
-  private rowKeys(keys: string[]): string[] {
-    if (!keys.every((k) => ACTION_IDS.has(k))) return keys;
-    if (keys.length > 1) return keys.map((a) => keyLabel(this.ctx.input.keysFor(a as Action)[0] ?? '?'));
-    return this.ctx.input.keysFor(keys[0] as Action).map(keyLabel);
-  }
-
-  private fillControls(list: HTMLElement): void {
-    list.replaceChildren();
-    for (const [keys, label] of CONTROLS) {
-      const row = el('div', 'ss-ctrl-row', undefined, list);
-      const k = el('div', 'ss-keys', undefined, row);
-      this.rowKeys(keys).forEach((key, i) => {
-        if (i) el('span', 'ss-key-sep', '/', k);
-        // The display face draws arrows as hairlines; arrow keycaps use the body font instead.
-        el('kbd', /^[←↑→↓]$/.test(key) ? 'ss-kbd arrow' : 'ss-kbd', key, k);
-      });
-      el('span', 'ss-ctrl-label', label, row);
-    }
-    el('div', 'ss-ctrl-pad', PAD_LINE, list);
   }
 
   /** Re-read key bindings into every on-screen key prompt (controls lists, HUD ability keys, first-run hint). */
   refreshKeys(): void {
-    for (const list of this.controlLists) this.fillControls(list);
-    if (!this.h.hint) return;
-    const k = (a: Action) => keyLabel(this.ctx.input.keysFor(a)[0] ?? '?');
-    const setKey = (ab: HTMLElement, a: Action) => {
-      const kbd = ab.querySelector('.ss-ab-key');
-      if (kbd) kbd.textContent = k(a);
-    };
-    setKey(this.h.dash, 'dash');
-    setKey(this.h.whirl, 'whirl');
-    setKey(this.h.flame, 'ability');
-    setKey(this.h.primary, 'slam');
-    const ab = isVehicle(this.ctx.stats) ? this.ctx.combat?.abilityHud : null;
-    this.h.hint.textContent = ab
-      ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  ${k('slam')} ${ab.primary.hint ?? ab.primary.label}  ·  ` +
-        `${k('dash')} dash strike  ·  ${k('whirl')} ${ab.secondary.hint ?? ab.secondary.label}  ·  ${k('ability')} F-ability  ·  ESC pause`
-      : `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ${k('slam')} slam  ·  ` +
-        `${k('dash')} dash strike  ·  ${k('whirl')} whirlwind  ·  ${k('ability')} F-ability  ·  ESC pause`;
+    for (const list of this.controlLists) fillControls(this.ctx.input, list);
+    this.gameHud.refreshKeyLabels();
   }
 
   private coinPill(parent: HTMLElement, cls = ''): HTMLElement {
@@ -829,48 +517,7 @@ export class UI implements UIAPI {
   /* ================================================================== how to play */
 
   private buildHowTo(): void {
-    const s = this.screen('howto', 'ss-center ss-dim');
-    const panel = el('div', 'ss-panel ss-glass ss-howto ss-icicles', undefined, s);
-    el('h2', 'ss-h2', 'HOW TO PLAY', panel);
-    const cols = el('div', 'ss-howto-cols', undefined, panel);
-    const left = el('div', 'ss-howto-col', undefined, cols);
-    el('h3', 'ss-h3', 'Controls', left);
-    this.controlsList(left);
-    const right = el('div', 'ss-howto-col', undefined, cols);
-    el('h3', 'ss-h3', 'The Brawl', right);
-    const steps: [string, string, string][] = [
-      ['🚜', 'Plow it', 'Drive through deep snow. Your blade packs it into a snowball that grows on the front of your plow.'],
-      ['🛡️', 'Pack it', 'A held ball is your shield too. It blocks part of every hit that comes at your front, so face the danger.'],
-      ['💥', 'SLAM it', 'Get up close and press SPACE to smash the ball into bots. Bigger balls hit WAY harder. A Glacier flattens what a Snowball only tickles.'],
-      ['⚡', 'DASH STRIKE', 'SHIFT launches a long, blistering burst that smashes straight through bots like a truck. Use it to finish, to escape, or to dodge boss charges.'],
-      ['🌀', 'Whirlwind', 'E spins up a snow tornado (always available): it pulls nearby bots in, shreds them with repeated hits, blasts them out and sucks up snow into your ball.'],
-      ['🏎️', 'Ram', 'Ramming bots at speed hurts them too. Faster closing speed = bigger hit.'],
-      ['⚠️', 'Read the boss', 'Bosses telegraph big attacks with red stripes and rings. Dodge, then punish them while they are stunned or dizzy.'],
-      ['🪙', 'Upgrade', 'Scrapped bots drop coins. Spend them between rounds and in the Garage. You keep your coins even if you get wrecked.'],
-    ];
-    const list = el('div', 'ss-steps', undefined, right);
-    for (const [icon, t, d] of steps) {
-      const row = el('div', 'ss-step', undefined, list);
-      el('div', 'ss-step-icon', icon, row);
-      const tx = el('div', 'ss-step-text', undefined, row);
-      el('b', '', t, tx);
-      el('span', '', d, tx);
-    }
-    el('h3', 'ss-h3 ss-howto-brawl-h', '🔥 Snowdome Brawl', right);
-    const bl = el('div', 'ss-step ss-howto-brawl', undefined, right);
-    el('div', 'ss-step-icon', '🏟️', bl);
-    const bt = el('div', 'ss-step-text', undefined, bl);
-    el('b', '', 'Free-for-all in a huge arena', bt);
-    el(
-      'span',
-      '',
-      `You + ${BRAWL_BOTS} rival plows, everyone hunting everyone. ${fmtTime(BRAWL_TIME)} or first to ${BRAWL_KILL_TARGET} kills. ` +
-        `Wrecked plows respawn in ${BRAWL_RESPAWN}s. Kill streaks multiply your coins (up to ${fmtMult(STREAK_TIERS[STREAK_TIERS.length - 1].mult)}), ` +
-        'ending a rival\'s streak pays a shutdown bounty, and top placements earn a bonus.',
-      bt,
-    );
-    const foot = el('div', 'ss-panel-foot', undefined, panel);
-    this.btn('◀ BACK', 'ss-primary', () => this.showMainMenu(), foot).dataset.primary = '1';
+    howTo.buildHowTo({ controlsList: (p) => this.controlsList(p), btn: this.btnFn, showMainMenu: () => this.showMainMenu() }, this.screen('howto', 'ss-center ss-dim'));
   }
 
   /* ================================================================== arena select */
@@ -888,112 +535,9 @@ export class UI implements UIAPI {
   }
 
   private renderZones(): void {
-    const p = this.ctx.progression;
-    this.zoneGrid.textContent = '';
-    this.zoneStarTotal.innerHTML = `<span class="ss-star-ico">★</span> ${totalStars(p)}<small>/${maxStars()}</small>`;
-    let firstPlayable: HTMLButtonElement | null = null;
-    let lastUnlocked: HTMLButtonElement | null = null;
-    ZONES.forEach((z, i) => {
-      const unlocked = p.isZoneUnlocked(i);
-      const rec = p.zoneRecord(z.id);
-      const total = z.rounds.length;
-      // Slot = arena card + its Hard-mode strip (a separate button: buttons can't nest).
-      const slot = el('div', 'ss-zone-slot', undefined, this.zoneGrid);
-      const card = el('button', `ss-zone ${unlocked ? '' : 'locked'} ${rec.cleared ? 'cleared' : ''}`, undefined, slot);
-      card.type = 'button';
-      card.style.setProperty('--sky-top', hex(z.skyTop));
-      card.style.setProperty('--sky-bottom', hex(z.skyBottom));
-      const bdef = zoneBossDef(z);
-      card.style.setProperty('--bc', bossColor(bdef));
-      el('div', 'ss-zone-num', String(i + 1), card);
-      const top = el('div', 'ss-zone-top', undefined, card);
-      el('div', 'ss-zone-name', z.name, top);
-      el('div', 'ss-zone-tag', z.tagline, top);
-
-      const boss = el('div', 'ss-zone-boss', undefined, card);
-      el('div', 'ss-zone-boss-badge', '💀', boss);
-      const bt = el('div', 'ss-zone-boss-text', undefined, boss);
-      el('small', '', bossCount(z) > 1 ? 'BOSSES' : 'BOSS', bt);
-      el('b', '', z.bossName, bt);
-
-      const bottom = el('div', 'ss-zone-bottom', undefined, card);
-      if (rec.cleared) {
-        const badges = el('div', 'ss-zone-badges', undefined, bottom);
-        el('div', 'ss-zone-badge', '✓ CLEARED', badges);
-        if (hardCleared(p, i)) el('div', 'ss-zone-skull', '💀 HARD', badges).title = 'Hard mode beaten';
-      }
-      this.zoneChallengeList(i, bottom);
-      const best = Math.min(rec.bestRound, total);
-      el('div', 'ss-zone-stat', `⚔ ${total - 1} + boss  ·  🏁 ${best > 0 ? `best ${best}/${total}` : 'best —'}`, bottom);
-      el('div', 'ss-zone-stat ss-zone-reward', `🪙 ${fmt(rec.cleared ? Math.round(z.clearReward * 0.4) : z.clearReward)} clear reward`, bottom);
-      if (!unlocked) {
-        const lock = el('div', 'ss-zone-lock', undefined, card);
-        el('div', 'ss-lock-icon', '🔒', lock);
-        const prev = ZONES[i - 1];
-        el('div', 'ss-lock-text', prev ? `Defeat ${prev.bossName} in ${prev.name} to unlock` : 'Locked', lock);
-      }
-      card.addEventListener('click', () => {
-        if (!unlocked) {
-          this.sfx('error');
-          restart(card, 'shake');
-          return;
-        }
-        this.sfx('click');
-        this.handlers.onStartZone(i);
-      });
-      this.zoneHardStrip(i, slot);
-      if (unlocked && !rec.cleared && !firstPlayable) firstPlayable = card;
-      if (unlocked) lastUnlocked = card;
+    zones.renderZones({
+      ctx: this.ctx, handlers: this.handlers, zoneGrid: this.zoneGrid, zoneStarTotal: this.zoneStarTotal, sfx: (n) => this.sfx(n), btn: this.btnFn,
     });
-    // First unlocked arena not yet beaten; once every open arena is cleared, the newest open one.
-    const fp = (firstPlayable ?? lastUnlocked) as HTMLButtonElement | null;
-    this.zoneGrid.querySelectorAll('[data-primary]').forEach((n) => delete (n as HTMLElement).dataset.primary);
-    if (fp) fp.dataset.primary = '1';
-  }
-
-  /** Zone card: ★★☆ and the arena's three challenge goals, earned ones ticked (full name + goal on hover). */
-  private zoneChallengeList(zoneIndex: number, parent: HTMLElement): void {
-    const p = this.ctx.progression;
-    const got = earnedIds(p, zoneIndex);
-    const n = zoneStars(p, zoneIndex);
-    const box = el('div', `ss-zone-chals ${n >= 3 ? 'all' : ''}`, undefined, parent);
-    const head = el('div', 'ss-zone-chal-head', undefined, box);
-    el('span', 'ss-zone-stars', undefined, head).innerHTML = starsHtml(n);
-    el('small', '', `+${fmt(starReward(zoneIndex))} 🪙 / star`, head);
-    for (const c of zoneChallenges(zoneIndex)) {
-      const done = got.has(c.id);
-      const row = el('div', `ss-zone-chal ${done ? 'done' : ''}`, undefined, box);
-      el('span', 'ss-zone-chal-mark', done ? '✓' : c.icon, row);
-      el('span', 'ss-zone-chal-goal', c.goal, row);
-      row.title = `${c.name}: ${c.goal}${done ? ' ✓' : ''}${c.tip ? `\n${c.tip}` : ''}`;
-    }
-  }
-
-  /** Under each card: the HARD button once the arena is cleared (💀 ✓ once beaten), a locked hint before that. */
-  private zoneHardStrip(zoneIndex: number, slot: HTMLElement): void {
-    const p = this.ctx.progression;
-    const k = hardScale(hardPower((id) => p.statLevel(id), p.data.plow));
-    const f = (n: number) => String(Math.round(n * 100) / 100);
-    const tip =
-      `Hard mode: bots ×${f(HARD.hpMult * k.hp)} HP, ×${f(HARD.dmgMult * k.dmg)} damage, +${Math.round((HARD.minionMult - 1) * 100)}% minions. ` +
-      `×${HARD.coinMult} coins. Stars count here too.` +
-      (k.hp > 1 ? ' Scaled up for your upgrades.' : ' Bots get tougher as your plow gets stronger.');
-    // A locked arena gets no HARD button even when an old save has it cleared (startRun would refuse it anyway).
-    const arenaOpen = p.isZoneUnlocked(zoneIndex);
-    if (!arenaOpen || !hardUnlocked(p, zoneIndex)) {
-      const s = el('div', 'ss-zone-hard locked', undefined, slot);
-      s.innerHTML = `🔒 <b>HARD</b> <small>${arenaOpen ? 'clear to unlock' : 'arena locked'}</small>`;
-      s.title = tip;
-      return;
-    }
-    const beaten = hardCleared(p, zoneIndex);
-    const b = this.btn(
-      `💀 <b>HARD</b> <small>${beaten ? '✓ · ' : ''}🪙 ${fmt(hardReward(p, zoneIndex))}</small>`,
-      `ss-zone-hard ${beaten ? 'beaten' : ''}`,
-      () => this.handlers.onStartZone(zoneIndex, true),
-      slot,
-    );
-    b.title = tip;
   }
 
   /* ================================================================== garage / shop */
@@ -1031,7 +575,7 @@ export class UI implements UIAPI {
     const tabs = el('div', 'ss-tabs', undefined, panel);
     tabs.setAttribute('role', 'tablist');
     el('span', 'ss-tab-key', 'Q', tabs).title = 'Previous tab (Q / LB)';
-    for (const t of SHOP_TABS) {
+    for (const t of garage.SHOP_TABS) {
       const btn = el('button', `ss-tab ss-tab-${t.id}`, undefined, tabs);
       btn.type = 'button';
       btn.setAttribute('role', 'tab');
@@ -1052,7 +596,7 @@ export class UI implements UIAPI {
     this.tabTraits = el('ul', 'ss-tab-traits', undefined, info);
 
     this.shopBody = el('div', 'ss-shop-body', undefined, panel);
-    for (const t of SHOP_TABS) {
+    for (const t of garage.SHOP_TABS) {
       const pane = el('div', `ss-tab-pane ss-pane-${t.id}`, undefined, this.shopBody);
       pane.setAttribute('role', 'tabpanel');
       this.tabPanes.set(t.id, pane);
@@ -1060,10 +604,10 @@ export class UI implements UIAPI {
         const sec = el('section', `ss-cat ss-cat-${g.cat}`, undefined, pane);
         if (g.title) el('h3', 'ss-cat-title', g.title, sec);
         const grid = el('div', 'ss-card-grid', undefined, sec);
-        for (const def of SHOP_UPGRADES.filter((u) => u.category === g.cat)) this.cards.push(this.buildCard(def, t.id, grid));
+        for (const def of SHOP_UPGRADES.filter((u) => u.category === g.cat)) this.cards.push(garage.buildCard(this.garageDeps(), def, t.id, grid));
         if (t.id === 'line') this.lineSections.set(g.cat, sec);
       }
-      if (t.id === 'gear') this.buildGear(pane);
+      if (t.id === 'gear') garage.buildGear(this.garageDeps(), pane);
     }
     this.setShopTab(this.shopTab);
 
@@ -1081,7 +625,7 @@ export class UI implements UIAPI {
   }
 
   /** Open a Garage tab (also refreshes the tab bar, badges and the plow-line view). */
-  private setShopTab(id: ShopTabId): void {
+  private setShopTab(id: garage.ShopTabId): void {
     const changed = id !== this.shopTab;
     this.shopTab = id;
     for (const [tid, t] of this.tabBtns) {
@@ -1090,7 +634,7 @@ export class UI implements UIAPI {
     }
     for (const [tid, pane] of this.tabPanes) pane.classList.toggle('hidden', tid !== id);
     if (changed) this.shopBody.scrollTop = 0;
-    this.refreshTabs();
+    garage.refreshTabs(this.garageDeps());
   }
 
   /** Who the Garage buys through: the save, or the duel garage's wallet. */
@@ -1098,42 +642,20 @@ export class UI implements UIAPI {
     return this.duelWallet ?? this.ctx.progression;
   }
 
-  /** Tab labels, affordable-upgrade badges and the info line under the tabs. */
-  private refreshTabs(): void {
-    const p = this.shop;
-    const plow = PLOWS[p.plow];
-    const line = this.tabBtns.get('line');
-    if (line) {
-      line.icon.textContent = plow.icon;
-      line.label.textContent = plow.name;
-      line.btn.title = `${plow.name} upgrades`;
-      line.btn.dataset.plow = plow.id;
-    }
-    for (const [cat, sec] of this.lineSections) sec.classList.toggle('hidden', cat !== plow.id);
-    const affordable = new Map<ShopTabId, number>();
-    for (const c of this.cards) {
-      if (c.tab === 'line' && c.def.category !== plow.id) continue;
-      if (!p.isMaxed(c.def.id) && p.canBuy(c.def.id)) affordable.set(c.tab, (affordable.get(c.tab) ?? 0) + 1);
-    }
-    for (const g of this.gearCards) if (p.itemCost(g.def.id) < Infinity && p.canBuyItem(g.def.id)) affordable.set('gear', (affordable.get('gear') ?? 0) + 1);
-    for (const [tid, t] of this.tabBtns) {
-      const n = affordable.get(tid) ?? 0;
-      t.badge.textContent = n ? String(n) : '';
-    }
-    const tab = SHOP_TABS.find((t) => t.id === this.shopTab)!;
-    this.tabTraits.textContent = '';
-    if (tab.id === 'line') {
-      this.tabBlurb.textContent = `${plow.name} only: these upgrades work while you drive it.`;
-      for (const t of plow.traits) el('li', '', t, this.tabTraits);
-    } else {
-      this.tabBlurb.textContent = tab.blurb;
-    }
+  /** What the Garage helpers (screens/garage.ts) read: this UI's garage refs, with `shop` read at call time. */
+  private garageDeps(): garage.GarageDeps {
+    return {
+      ctx: this.ctx, shop: () => this.shop, duelWallet: this.duelWallet, sfx: (n) => this.sfx(n),
+      cards: this.cards, gearCards: this.gearCards, gearSlotLabels: this.gearSlotLabels, tabBtns: this.tabBtns,
+      lineSections: this.lineSections, shopTab: this.shopTab, tabBlurb: this.tabBlurb, tabTraits: this.tabTraits,
+      plowPick: this.plowPick, shopPreview: this.shopPreview,
+    };
   }
 
   /** Q / E (gamepad LB / RB): previous / next Garage tab. */
   private cycleShopTab(dir: number): void {
-    const i = SHOP_TABS.findIndex((t) => t.id === this.shopTab);
-    this.setShopTab(SHOP_TABS[(i + dir + SHOP_TABS.length) % SHOP_TABS.length].id);
+    const i = garage.SHOP_TABS.findIndex((t) => t.id === this.shopTab);
+    this.setShopTab(garage.SHOP_TABS[(i + dir + garage.SHOP_TABS.length) % garage.SHOP_TABS.length].id);
     this.sfx('click');
     // Like the hub: if a tab had focus, focus follows the newly selected tab.
     const a = document.activeElement;
@@ -1142,127 +664,12 @@ export class UI implements UIAPI {
     }
   }
 
-  private buildCard(def: UpgradeDef, tab: ShopTabId, parent: HTMLElement): CardRefs {
-    const root = el('div', 'ss-card', undefined, parent);
-    root.dataset.id = def.id;
-    if (def.details) root.title = def.details;
-    el('div', 'ss-card-icon', def.icon, root);
-    const info = el('div', 'ss-card-info', undefined, root);
-    el('div', 'ss-card-name', def.name, info);
-    el('div', 'ss-card-desc', def.description, info);
-    const pipsEl = el('div', 'ss-pips', undefined, info);
-    const pips: HTMLElement[] = [];
-    for (let i = 0; i < def.pips; i++) pips.push(el('span', 'ss-pip', undefined, pipsEl));
-    // Endless upgrades: a "LV n" badge past the pips.
-    const lvl = el('span', 'ss-lvl', '', pipsEl);
-    const val = el('div', 'ss-card-val', undefined, info);
-    const cur = el('span', 'ss-val-cur', '', val);
-    const arrow = el('span', 'ss-val-arrow', '→', val);
-    const next = el('span', 'ss-val-next', '', val);
-    const buy = el('button', 'ss-btn ss-buy', '', root);
-    buy.type = 'button';
-    buy.addEventListener('click', () => this.onBuy(def, root));
-    return { def, tab, root, pips, lvl, cur, next, arrow, buy };
-  }
-
-  /** Gear tab: one section per slot (a browsing category: any number of items can be equipped), each with its items. */
-  private buildGear(pane: HTMLElement): void {
-    for (const slot of GEAR_SLOTS) {
-      const sec = el('section', `ss-cat ss-gear-slot ss-gear-${slot.id}`, undefined, pane);
-      const h = el('h3', 'ss-cat-title', `${slot.icon} ${slot.name}`, sec);
-      this.gearSlotLabels.set(slot.id, el('span', 'ss-gear-eq', '', h));
-      const grid = el('div', 'ss-card-grid', undefined, sec);
-      for (const def of GEAR.filter((d) => d.slot === slot.id)) this.gearCards.push(this.buildGearCard(def, grid));
-    }
-  }
-
-  private buildGearCard(def: GearDef, parent: HTMLElement): GearCardRefs {
-    const root = el('div', `ss-card ss-gear-card ss-rarity-${def.rarity}`, undefined, parent);
-    root.style.setProperty('--acc', RARITY_COLOR[def.rarity]);
-    root.dataset.id = def.id;
-    el('div', 'ss-card-icon', def.icon, root);
-    const info = el('div', 'ss-card-info', undefined, root);
-    const name = el('div', 'ss-card-name', def.name, info);
-    el('span', 'ss-gear-rarity', def.rarity.toUpperCase(), name);
-    el('div', 'ss-card-desc', def.description, info);
-    const lvl = el('div', 'ss-gear-lvl', '', info);
-    const grants = el('div', 'ss-card-val', '', info);
-    const btns = el('div', 'ss-gear-btns', undefined, root);
-    const buy = el('button', 'ss-btn ss-buy', '', btns) as HTMLButtonElement;
-    buy.type = 'button';
-    buy.addEventListener('click', () => {
-      const p = this.shop;
-      if (!p.buyItem(def.id)) {
-        this.sfx('error');
-        restart(root, 'shake');
-        return;
-      }
-      this.sfx('buy');
-      restart(root, 'bought');
-    });
-    const equip = el('button', 'ss-btn ss-ice ss-gear-equip', '', btns) as HTMLButtonElement;
-    equip.type = 'button';
-    equip.addEventListener('click', () => {
-      if (this.shop.toggleEquip(def.id)) this.sfx('click');
-    });
-    return { def, root, lvl, grants, buy, equip };
-  }
-
-  private refreshGear(): void {
-    const p = this.shop;
-    const dw = this.duelWallet;
-    for (const slot of GEAR_SLOTS) {
-      const on = GEAR.filter((d) => d.slot === slot.id && p.isEquipped(d.id));
-      this.gearSlotLabels.get(slot.id)!.textContent = !on.length
-        ? ' · none equipped'
-        : on.length === 1
-          ? ` · equipped: ${on[0].icon} ${on[0].name}`
-          : ` · ${on.length} equipped: ${on.map((d) => d.icon).join(' ')}`;
-    }
-    for (const c of this.gearCards) {
-      const lvl = p.itemLevel(c.def.id);
-      const cost = p.itemCost(c.def.id);
-      const maxed = cost === Infinity;
-      const afford = !maxed && p.canBuyItem(c.def.id);
-      const on = p.isEquipped(c.def.id);
-      c.lvl.innerHTML = lvl ? `${'★'.repeat(lvl)}<span class="ss-gear-off">${'★'.repeat(GEAR_MAX_LEVEL - lvl)}</span> LV ${lvl}` : 'Not owned';
-      const now = grantLabel(c.def, lvl || 1);
-      const next = lvl && !maxed ? grantLabel(c.def, lvl + 1) : '';
-      c.grants.textContent = next && next !== now ? `${now}  →  ${next}` : now;
-      c.root.classList.toggle('owned', lvl > 0);
-      c.root.classList.toggle('equipped', on);
-      c.root.classList.toggle('maxed', maxed);
-      c.root.classList.toggle('poor', !maxed && !afford);
-      c.root.classList.toggle('afford', afford);
-      const bonus = !!dw && !maxed && dw.paysItemWithBonus(c.def.id);
-      c.buy.classList.toggle('ss-bonus-buy', bonus);
-      c.buy.innerHTML = maxed ? '★ MAXED' : `${lvl ? '⬆ ' : ''}${bonus ? '🎁' : '<span class="ss-coin sm"></span>'}${fmt(cost)}`;
-      c.buy.title = bonus ? 'Paid with catch-up coins: yours to keep once the duel starts.' : lvl ? 'Level up' : 'Buy';
-      c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
-      c.equip.classList.toggle('hidden', !lvl);
-      c.equip.textContent = on ? '✓ EQUIPPED' : 'EQUIP';
-    }
-  }
-
-  private onBuy(def: UpgradeDef, card: HTMLElement): void {
-    const p = this.shop;
-    if (p.isMaxed(def.id) || !p.canBuy(def.id)) {
-      this.sfx('error');
-      restart(card, 'shake');
-      return;
-    }
-    if (p.buy(def.id)) {
-      this.sfx('buy');
-      restart(card, 'bought');
-    }
-  }
-
   private refreshCards(): void {
     const p = this.shop;
     const dw = this.duelWallet;
     if (dw) this.shopCoins.textContent = fmt(dw.coins);
     this.refreshRepair();
-    this.refreshGear();
+    garage.refreshGear(this.garageDeps());
     const plow = p.plow;
     for (const [id, card] of this.plowCards) card.classList.toggle('on', id === plow);
     for (const c of this.cards) {
@@ -1288,7 +695,7 @@ export class UI implements UIAPI {
       c.buy.title = bonus ? 'Paid with catch-up coins: yours to keep once the duel starts.' : '';
       c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
     }
-    this.refreshTabs();
+    garage.refreshTabs(this.garageDeps());
   }
 
   private refreshRepair(): void {
@@ -1347,58 +754,7 @@ export class UI implements UIAPI {
     this.show('garage');
     // Phone width: the plow picker is one swipeable row; bring the plow being driven into it (after show() has reset
     // the scroll). Only the row scrolls sideways, so the panel itself stays at its top.
-    setTimeout(() => this.scrollPlowIntoView(), 40);
-  }
-
-  private scrollPlowIntoView(): void {
-    const row = this.plowPick;
-    const on = row.querySelector<HTMLElement>('.ss-plow-card.on');
-    if (!on || row.scrollWidth <= row.clientWidth) return;
-    const r = row.getBoundingClientRect();
-    const c = on.getBoundingClientRect();
-    if (c.left < r.left) row.scrollLeft -= r.left - c.left + 4;
-    else if (c.right > r.right) row.scrollLeft += c.right - r.right + 4;
-  }
-
-  private renderRoundPreview(nextRound: number, totalRounds: number): void {
-    const w = this.shopPreview;
-    const zone = this.ctx.zone;
-    const round = zone?.rounds[nextRound - 1];
-    const isBoss = !!round?.boss;
-    w.textContent = '';
-    w.classList.remove('hidden');
-    w.classList.toggle('boss', isBoss);
-    const t = el('div', 'ss-rp-title', undefined, w);
-    t.innerHTML = `Round <b>${nextRound}</b> of ${totalRounds} next`;
-
-    const counts = new Map<EnemyType, number>();
-    if (round) for (const g of round.groups) counts.set(g.type, (counts.get(g.type) ?? 0) + g.count);
-
-    if (isBoss) {
-      let first: EnemyDef | undefined;
-      for (const type of counts.keys()) if (ENEMIES[type].isBoss) { first = ENEMIES[type]; break; }
-      const bp = el('div', 'ss-boss-preview', undefined, w);
-      bp.style.setProperty('--bc', bossColor(first));
-      el('div', 'ss-bp-badge', '💀', bp);
-      const tx = el('div', 'ss-bp-text', undefined, bp);
-      el('small', '', 'BOSS', tx);
-      el('b', '', zone.bossName, tx);
-      if (first?.title) el('span', 'ss-bp-title', first.title, tx);
-    }
-
-    const chips = el('div', 'ss-chips', undefined, w);
-    for (const [type, n] of counts) {
-      const def = ENEMIES[type];
-      if (isBoss && def.isBoss && bossCount(zone) <= 1) continue;
-      const chip = el('div', `ss-chip ${def.isBoss ? 'boss' : ''}`, undefined, chips);
-      chip.style.setProperty('--chip', hex(def.isBoss ? def.accent : def.color));
-      el('span', 'ss-chip-icon', ENEMY_ICON[type] ?? '🤖', chip);
-      el('span', 'ss-chip-name', def.name, chip);
-      el('span', 'ss-chip-count', `×${n}`, chip);
-      if (def.isBoss) el('span', 'ss-chip-tag', 'BOSS', chip);
-      else if (ENEMY_TIP[type]) el('span', 'ss-chip-tag tip', ENEMY_TIP[type]!, chip);
-    }
-    if (!chips.childElementCount) chips.remove();
+    setTimeout(() => garage.scrollPlowIntoView(this.garageDeps()), 40);
   }
 
   /* ================================================================== pause */
@@ -1429,114 +785,10 @@ export class UI implements UIAPI {
   }
 
   private renderResult(sum: RunSummary, win: boolean): void {
-    const p = this.resultPanel;
-    p.textContent = '';
-    p.classList.toggle('win', win);
-    p.classList.toggle('lose', !win);
-    el('div', 'ss-result-emoji', win ? '🏆' : sum.survival?.endedEarly ? '🏁' : '💥', p);
-    el('h2', 'ss-h2 ss-result-title', win ? `${sum.bossName} DESTROYED!` : sum.survival?.endedEarly ? 'RUN BANKED!' : 'WRECKED!', p);
-    el(
-      'div',
-      'ss-sub',
-      win
-        ? `${sum.zoneName} cleared! The arena is yours.`
-        : sum.survival && sum.daily
-          ? `${sum.survival.endedEarly ? 'Banked' : 'Scrapped on'} wave ${sum.survival.wave}. Same lineup all day, so retry and push your best!`
-          : sum.survival
-          ? `${sum.survival.endedEarly ? 'Banked' : 'Scrapped on'} wave ${sum.survival.wave}. ${sum.survival.newBest ? '🌟 NEW BEST!' : `Best: wave ${sum.survival.best}.`} Coins are kept, so upgrade and go again!`
-          : `Your plow got scrapped in ${sum.zoneName}. Coins are kept, so upgrade and get back in there!`,
-      p,
-    );
-
-    const grid = el('div', 'ss-stats', undefined, p);
-    const stat = (icon: string, label: string, value: string, delay: number) => {
-      const s = el('div', 'ss-stat', undefined, grid);
-      s.style.animationDelay = `${delay}ms`;
-      el('div', 'ss-stat-icon', icon, s);
-      el('div', 'ss-stat-val', value, s);
-      el('div', 'ss-stat-label', label, s);
-    };
-    if (sum.survival) stat('🌊', 'Waves cleared', `${sum.roundsCleared}`, 100);
-    else stat('🏁', win ? 'Rounds cleared' : 'Rounds survived', `${sum.roundsCleared}/${sum.totalRounds}`, 100);
-    stat('🤖', 'Bots scrapped', fmt(sum.kills), 180);
-    stat('🔥', 'Best combo', sum.bestCombo >= 2 ? `x${sum.bestCombo}` : '—', 260);
-    stat('⚪', 'Biggest ball', `${sum.biggestBall.toFixed(2)} m`, 340);
-    stat('🪙', 'Coins earned', `+${fmt(sum.coinsEarned)}`, 420);
-    if (!sum.survival) this.renderCampaignChallenges(p, sum);
-
-    // ---- Daily Survival: date, modifier, wave vs today's best, last 7 days (ui/DailyResult.ts).
-    const daily = sum.survival && sum.daily ? activeDaily() : null;
-    if (daily && sum.survival) renderDailyResult(p, this.ctx.progression, daily, sum.survival.wave, sum.survival.newBest);
-    // ---- end Daily
-
-    if (win && sum.clearReward > 0) {
-      const r = el('div', 'ss-reward', undefined, p);
-      el('span', 'ss-coin', undefined, r);
-      el('span', '', `+${fmt(sum.clearReward)} ${sum.firstClear ? 'first-clear reward!' : 'clear reward'}`, r);
-    }
-    if (sum.loot?.length) renderLoot(p, sum.loot);
-    // ---- Story: the chapter's ending after a campaign clear (the final arena adds the epilogue). A Hard clear after
-    // MEGAPLOW Ω is beaten shows that arena's PROTOCOL B ending instead (all six adds the Hard epilogue).
-    const zoneId = this.ctx.zone?.id;
-    const prog = this.ctx.progression;
-    const lastId = ZONES[ZONES.length - 1].id;
-    const hardStory = !!sum.hard && prog.zoneRecord(lastId).cleared;
-    const chapter = win && !sum.survival && zoneId ? (hardStory ? HARD_CHAPTERS : CHAPTERS)[zoneId] : undefined;
-    if (chapter) {
-      const box = el('div', 'ss-result-story', undefined, p);
-      el('div', 'ss-result-story-h', hardStory ? '☠️ STORY · PROTOCOL B' : '📜 STORY', box);
-      el('p', '', chapter.outro, box);
-      const end = hardStory ? (ZONES.every((z) => prog.data.hardCleared?.[z.id] === true) ? HARD_EPILOGUE : '') : zoneId === lastId ? EPILOGUE : '';
-      if (end) el('p', '', end, box).style.marginTop = '8px';
-    }
-    if (win && sum.unlockedZoneName) {
-      const u = el('div', 'ss-unlock', undefined, p);
-      el('span', '', '🔓 New arena unlocked: ', u);
-      el('b', '', sum.unlockedZoneName, u);
-    }
-
-    const btns = el('div', 'ss-result-btns', undefined, p);
-    if (win) {
-      const nextIdx = (this.ctx.zone?.index ?? 0) + 1;
-      if (nextIdx < ZONES.length && this.ctx.progression.isZoneUnlocked(nextIdx)) {
-        // A Hard win carries on in Hard if the next arena has Hard open (it needs a normal clear first).
-        const hard = !!sum.hard && hardUnlocked(this.ctx.progression, nextIdx);
-        this.btn(hard ? 'NEXT ARENA · 💀 HARD ▶' : 'NEXT ARENA ▶', 'ss-primary ss-big', () => this.handlers.onStartZone(nextIdx, hard), btns).dataset.primary = '1';
-      } else if (nextIdx >= ZONES.length) {
-        btns.before(el('div', 'ss-unlock', '🌟 Every arena conquered. You are the Snowplow Champion!'));
-      }
-    } else {
-      this.btn('↻ RETRY', 'ss-primary ss-big', () => this.handlers.onRetry(), btns).dataset.primary = '1';
-    }
-    if (chapter && zoneId) this.btn('📜 STORY', 'ss-ice', () => this.story.open(hardStory ? 'hard' : 'story', zoneId), btns);
-    const g = this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('quit'), btns);
-    const m = this.btn('🏠 MAIN MENU', 'ss-ice', () => this.handlers.onQuitToMenu(), btns);
-    if (!btns.querySelector('[data-primary]')) (win ? m : g).dataset.primary = '1';
-  }
-
-  /** Campaign results: HARD badge under the emoji, then the arena's three challenges (✓ met this run,
-   *  NEW for first-time stars, ★ already owned) and the star coin bonus. */
-  private renderCampaignChallenges(p: HTMLElement, sum: RunSummary): void {
-    if (sum.hard) p.querySelector('.ss-result-emoji')?.after(el('div', 'ss-hard-badge', '💀 HARD MODE'));
-    const rep = lastChallengeReport();
-    if (!rep) return;
-    const box = el('div', `ss-chal-result ${rep.newStars ? 'has-new' : ''}`, undefined, p);
-    const head = el('div', 'ss-chal-result-head', undefined, box);
-    el('span', 'ss-chal-result-stars', undefined, head).innerHTML = starsHtml(rep.stars, rep.results.filter((r) => r.isNew).length);
-    el('span', 'ss-chal-result-title', 'CHALLENGES', head);
-    if (rep.bonus > 0) el('span', 'ss-chal-result-bonus', `+${fmt(rep.bonus)} 🪙 star bonus`, head);
-    else if (!rep.won) el('span', 'ss-chal-result-hint', 'Clear the arena to earn stars', head);
-    rep.results.forEach((r, i) => {
-      const row = el('div', `ss-chal-row ${r.met ? 'met' : ''} ${r.isNew ? 'new' : ''} ${r.owned ? 'owned' : ''}`, undefined, box);
-      row.style.animationDelay = `${520 + i * 110}ms`;
-      el('span', 'ss-chal-row-mark', r.met ? '✓' : r.owned ? '★' : r.def.icon, row);
-      const tx = el('span', 'ss-chal-row-text', undefined, row);
-      el('b', '', r.def.name, tx);
-      el('small', '', r.def.goal, tx);
-      if (!r.met && !r.owned && r.def.tip) el('small', 'ss-chal-row-tip', `💡 ${r.def.tip}`, tx);
-      if (r.isNew) el('span', 'ss-chal-row-new', 'NEW ★', row);
-      else if (r.owned) el('span', 'ss-chal-row-owned', '★', row);
-    });
+    results.renderResult({
+      ctx: this.ctx, handlers: this.handlers, resultPanel: this.resultPanel, btn: this.btnFn, story: this.story,
+      openGarage: (back) => this.openGarage(back),
+    }, sum, win);
   }
 
   /* ================================================================== brawl lobby */
@@ -1547,97 +799,10 @@ export class UI implements UIAPI {
   }
 
   private renderLobby(): void {
-    const p = this.lobbyPanel;
-    const d = this.ctx.progression.data;
-    p.textContent = '';
-    const head = el('div', 'ss-lobby-head', undefined, p);
-    el('div', 'ss-lobby-kicker', '🔥 NEW MODE 🔥', head);
-    el('h2', 'ss-h2 ss-lobby-title', 'SNOWDOME BRAWL', head);
-    el('div', 'ss-sub ss-lobby-sub', `Free-for-all · ${BRAWL_BOTS + 1} plows · everyone hunts everyone`, head);
-
-    const body = el('div', 'ss-lobby-body', undefined, p);
-    const left = el('div', 'ss-lobby-col', undefined, body);
-
-    // rules
-    const rules = el('div', 'ss-lobby-box', undefined, left);
-    el('h3', 'ss-h3', '📜 Rules', rules);
-    const ul = el('ul', 'ss-rules', undefined, rules);
-    const li = (icon: string, html: string) => {
-      const r = el('li', '', undefined, ul);
-      el('span', 'ss-rule-i', icon, r);
-      el('span', 'ss-rule-t', undefined, r).innerHTML = html;
-    };
-    li('⏱', `<b>${fmtTime(BRAWL_TIME)}</b> match, or first to <b>${BRAWL_KILL_TARGET} kills</b> wins`);
-    li('♻️', `Wrecked? Respawn in <b>${BRAWL_RESPAWN}s</b> — no lives, just keep brawling`);
-    li('🪙', `Every kill pays <b>${BRAWL_KILL_COINS} coins</b> × streak × lobby bonus`);
-    li('🎯', `<b>Shutdown bounty:</b> end a 3+ streak for <b>${BRAWL_SHUTDOWN_PER_STREAK}</b> coins per kill in it (gold ring on the minimap)`);
-
-    // streak tiers
-    const tiers = el('div', 'ss-lobby-box ss-tiers-box', undefined, left);
-    el('h3', 'ss-h3', '🔥 Kill streaks', tiers);
-    const tbl = el('div', 'ss-tiers', undefined, tiers);
-    STREAK_TIERS.forEach((t, i) => {
-      const row = el('div', `ss-tier t${i + 1}`, undefined, tbl);
-      el('span', 'ss-tier-fl', '🔥'.repeat(i + 1), row);
-      el('span', 'ss-tier-l', t.label, row);
-      el('span', 'ss-tier-at', `${t.at} kills`, row);
-      el('span', 'ss-tier-m', `${fmtMult(t.mult)} coins`, row);
+    brawl.renderLobby({
+      ctx: this.ctx, handlers: this.handlers, lobbyPanel: this.lobbyPanel, sfx: (n) => this.sfx(n), btn: this.btnFn,
+      showMainMenu: () => this.showMainMenu(),
     });
-    el('div', 'ss-tier-note', 'Streaks reset when you get wrecked.', tiers);
-
-    // placement
-    const pl = el('div', 'ss-lobby-box', undefined, left);
-    el('h3', 'ss-h3', '🏅 Placement bonus', pl);
-    const pr = el('div', 'ss-place-row', undefined, pl);
-    const medals = ['🥇', '🥈', '🥉', '🎖️'];
-    BRAWL_PLACEMENT_BONUS.forEach((v, i) => {
-      const c = el('div', `ss-place p${i + 1}`, undefined, pr);
-      el('span', 'ss-place-m', medals[i] ?? '🎖️', c);
-      el('b', '', ordinal(i + 1), c);
-      el('span', 'ss-place-v', `+${fmt(v)}`, c);
-    });
-
-    // right: difficulty + records
-    const right = el('div', 'ss-lobby-col', undefined, body);
-    el('h3', 'ss-h3', '🎮 Choose your lobby', right);
-    const cards = el('div', 'ss-diffs', undefined, right);
-    const prefer: BrawlDifficulty = (d.brawlMatches ?? 0) === 0 ? 'rookie' : 'pro';
-    for (const def of BRAWL_DIFFICULTIES) {
-      const c = el('button', `ss-diff ss-diff-${def.id}`, undefined, cards);
-      c.type = 'button';
-      const top = el('div', 'ss-diff-top', undefined, c);
-      el('span', 'ss-diff-name', def.name, top);
-      el('span', 'ss-diff-mult', `${fmtMult(def.coinMult)} COINS`, top);
-      el('div', 'ss-diff-blurb', def.blurb, c);
-      const st = el('div', 'ss-diff-stats', undefined, c);
-      el('span', '', `❤ ${Math.round(def.hpMult * 100)}% hp`, st);
-      el('span', '', `💥 ${Math.round(def.dmgMult * 100)}% dmg`, st);
-      el('span', '', `🎯 ${Math.round(def.skill * 100)}% skill`, st);
-      el('div', 'ss-diff-go', 'BRAWL ▶', c);
-      if (def.id === prefer) c.dataset.primary = '1';
-      c.addEventListener('click', () => {
-        this.sfx('click');
-        this.handlers.onStartBrawl(def.id);
-      });
-    }
-
-    const rec = el('div', 'ss-lobby-box ss-records', undefined, right);
-    el('h3', 'ss-h3', '📈 Your records', rec);
-    const grid = el('div', 'ss-rec-grid', undefined, rec);
-    const r = (icon: string, label: string, v: string) => {
-      const c = el('div', 'ss-rec', undefined, grid);
-      el('div', 'ss-rec-i', icon, c);
-      el('div', 'ss-rec-v', v, c);
-      el('div', 'ss-rec-l', label, c);
-    };
-    r('🥇', 'Wins', fmt(d.brawlWins ?? 0));
-    r('🏟️', 'Matches', fmt(d.brawlMatches ?? 0));
-    r('🔥', 'Best streak', fmt(d.brawlBestStreak ?? 0));
-    r('💀', 'Most kills', fmt(d.brawlBestKills ?? 0));
-
-    const foot = el('div', 'ss-panel-foot', undefined, p);
-    this.btn('◀ BACK', 'ss-ice', () => this.showMainMenu(), foot);
-    el('div', 'ss-foot-hint', 'Tip: upgrades from the Garage carry into the Brawl', foot);
   }
 
   /* ================================================================== brawl results */
@@ -1648,439 +813,10 @@ export class UI implements UIAPI {
   }
 
   private renderBrawlResult(r: BrawlResult): void {
-    const scr = this.bresultScreen;
-    scr.querySelector('.ss-confetti')?.remove();
-    const p = this.bresultPanel;
-    p.textContent = '';
-    const place = Math.max(1, r.placement);
-    const tier = place <= 3 ? place : 0;
-    p.dataset.place = String(tier);
-    if (place === 1) {
-      const conf = el('div', 'ss-confetti', undefined);
-      scr.insertBefore(conf, p);
-      const cols = ['#ffc531', '#ff8a1f', '#fff3b0', '#ff5d14', '#7fe0ff', '#ffffff'];
-      for (let i = 0; i < 70; i++) {
-        const c = el('i', '', undefined, conf);
-        c.style.left = `${Math.random() * 100}%`;
-        c.style.background = cols[i % cols.length];
-        c.style.animationDelay = `${(Math.random() * 1.6).toFixed(2)}s`;
-        c.style.animationDuration = `${(2.4 + Math.random() * 1.8).toFixed(2)}s`;
-        c.style.setProperty('--rx', `${Math.round(Math.random() * 720 - 360)}deg`);
-        c.style.setProperty('--dx', `${Math.round(Math.random() * 160 - 80)}px`);
-      }
-    }
-    const diff = BRAWL_DIFFICULTIES.find((x) => x.id === r.difficulty);
-    el('div', 'ss-bres-kicker', `SNOWDOME BRAWL · ${diff?.name ?? r.difficulty}`, p);
-    const big = el('div', 'ss-bres-place', undefined, p);
-    if (place === 1) big.textContent = '1ST!';
-    else {
-      big.append(ordinal(place));
-      el('small', '', ` of ${r.total}`, big);
-    }
-    el(
-      'div',
-      'ss-sub',
-      place === 1 ? 'Champion of the Snowdome. Nobody plows like you.' : place <= 3 ? 'On the podium! So close to the crown.' : 'Shake off the snow and run it back.',
-      p,
-    );
-
-    const grid = el('div', 'ss-stats ss-bres-stats', undefined, p);
-    const stat = (icon: string, label: string, value: string, delay: number) => {
-      const s = el('div', 'ss-stat', undefined, grid);
-      s.style.animationDelay = `${delay}ms`;
-      el('div', 'ss-stat-icon', icon, s);
-      el('div', 'ss-stat-val', value, s);
-      el('div', 'ss-stat-label', label, s);
-    };
-    stat('💀', 'Kills', fmt(r.kills), 120);
-    stat('🪦', 'Deaths', fmt(r.deaths), 200);
-    stat('🔥', 'Best streak', r.bestStreak > 0 ? String(r.bestStreak) : '—', 280);
-    stat('🪙', 'Coins earned', `+${fmt(r.coinsEarned)}`, 360);
-
-    const coins = el('div', 'ss-bres-coins', undefined, p);
-    const line = (label: string, v: number, cls = '') => {
-      const row = el('div', `ss-bres-line ${cls}`, undefined, coins);
-      el('span', '', label, row);
-      const b = el('b', '', undefined, row);
-      el('span', 'ss-coin sm', undefined, b);
-      b.append(`+${fmt(v)}`);
-    };
-    line('Match earnings (kills · streaks · shutdowns)', Math.max(0, r.coinsEarned - r.placementBonus));
-    if (r.placementBonus > 0) line(`${ordinal(place)} place bonus`, r.placementBonus, 'bonus');
-    line('Total', r.coinsEarned, 'total');
-
-    // final leaderboard
-    if (r.loot) renderLoot(p, [r.loot]);
-    const tbl = el('div', 'ss-bres-board', undefined, p);
-    const head = el('div', 'ss-bres-row head', undefined, tbl);
-    for (const t of ['#', '', 'PLOWER', 'KILLS', 'DEATHS', 'BEST 🔥']) el('span', '', t, head);
-    r.leaderboard.forEach((e: BrawlEntry, i) => {
-      const row = el('div', `ss-bres-row${e.isPlayer ? ' me' : ''}${i === 0 ? ' first' : ''}`, undefined, tbl);
-      row.style.animationDelay = `${300 + i * 50}ms`;
-      el('span', 'ss-bres-r', i === 0 ? '👑' : String(i + 1), row);
-      el('span', 'ss-bh-dot', undefined, row).style.background = e.color;
-      const n = el('span', 'ss-bres-n', e.name, row);
-      // Rival paint darkened toward ink so yellow/pink names stay readable on the light results panel.
-      if (!e.isPlayer) n.style.color = `color-mix(in srgb, ${e.color} 62%, #fff)`;
-      el('span', 'ss-bres-k', String(e.kills), row);
-      el('span', '', String(e.deaths), row);
-      el('span', '', e.bestStreak > 0 ? String(e.bestStreak) : '—', row);
-    });
-
-    const btns = el('div', 'ss-result-btns', undefined, p);
-    this.btn('↻ REMATCH', 'ss-primary ss-big', () => this.handlers.onStartBrawl(r.difficulty), btns).dataset.primary = '1';
-    this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('quit'), btns);
-    this.btn('🏠 MENU', 'ss-ice', () => this.handlers.onQuitToMenu(), btns);
-  }
-
-  /* ================================================================== boss intro */
-
-  private buildIntro(): void {
-    const w = (this.intro = el('div', 'ss-bossintro', undefined, this.rootEl));
-    w.setAttribute('aria-live', 'polite');
-    el('div', 'ss-bi-flash', undefined, w);
-    el('div', 'ss-bi-slash a', undefined, w);
-    el('div', 'ss-bi-slash b', undefined, w);
-    const band = el('div', 'ss-bi-band', undefined, w);
-    el('div', 'ss-bi-stripes top', undefined, band);
-    el('div', 'ss-bi-kicker', '⚠  BOSS ROUND  ⚠', band);
-    this.introName = el('div', 'ss-bi-name', '', band);
-    this.introTitle = el('div', 'ss-bi-title', '', band);
-    el('div', 'ss-bi-stripes bottom', undefined, band);
-  }
-
-  private endIntro(): void {
-    clearTimeout(this.introTimer);
-    this.intro?.classList.remove('go');
-    this.hud?.classList.remove('intro');
-  }
-
-  private onBossPhase(name: string, label: string): void {
-    for (const s of this.bossSlots) {
-      if (!s.key || (s.key !== name && !s.key.startsWith(`${name}#`))) continue;
-      s.phase.textContent = label;
-      s.phase.classList.remove('hidden');
-      restart(s.inner, 'bighit', 'hit');
-    }
-  }
-
-  /* ================================================================== HUD */
-
-  private buildHud(): void {
-    const hud = (this.hud = el('div', 'ss-hud', undefined, this.rootEl));
-    const H = this.h;
-    el('div', 'ss-lowvig', undefined, hud);
-
-    // top-left: arena + round
-    const tl = el('div', 'ss-hud-tl ss-glass-dark', undefined, hud);
-    H.zone = el('div', 'ss-hud-zone', '', tl);
-    const rr = el('div', 'ss-hud-roundrow', undefined, tl);
-    H.round = el('div', 'ss-hud-round', '', rr);
-    // Survival: the best wave as its own small item, so the row can wrap instead of widening the box
-    H.best = el('div', 'ss-hud-best hidden', '', rr);
-    H.enemies = el('div', 'ss-hud-enemies', '', rr);
-    H.pips = el('div', 'ss-round-pips', undefined, tl);
-    // Survival / Daily: the biome rotates every 5 waves; a tag counts down to the next arena.
-    H.arena = el('div', 'ss-hud-arena hidden', '', tl);
-
-    // top-center: boss bars (1–2)
-    H.bosses = el('div', 'ss-bosses', undefined, hud);
-    for (let i = 0; i < 2; i++) this.bossSlots.push(this.buildBossSlot(H.bosses));
-
-    // top-right: coins
-    H.coinBox = el('div', 'ss-hud-tr ss-glass-dark', undefined, hud);
-    el('span', 'ss-coin', undefined, H.coinBox);
-    H.coins = el('span', 'ss-hud-coins', '0', H.coinBox);
-
-    // right: combo
-    H.combo = el('div', 'ss-combo', undefined, hud);
-    H.comboN = el('div', 'ss-combo-n', '', H.combo);
-    el('div', 'ss-combo-l', 'COMBO', H.combo);
-
-    // bottom-left: plow hp
-    const bl = (H.hpBox = el('div', 'ss-hud-bl ss-glass-dark', undefined, hud));
-    const hh = el('div', 'ss-hp-head', undefined, bl);
-    el('div', 'ss-hp-label', '🚜 PLOW', hh);
-    H.hpNum = el('div', 'ss-hp-num', '', hh);
-    const hb = el('div', 'ss-hp-bar', undefined, bl);
-    H.hpChip = el('div', 'ss-hp-chip', undefined, hb);
-    H.hpFill = el('div', 'ss-hp-fill', undefined, hb);
-    el('div', 'ss-segs', undefined, hb);
-    H.batt = el('div', 'ss-batt hidden', undefined, bl);
-    el('span', 'ss-batt-label', '🔋', H.batt);
-    const bb = el('div', 'ss-batt-bar', undefined, H.batt);
-    H.battFill = el('div', 'ss-batt-fill', undefined, bb);
-    H.crit = el('div', 'ss-batt ss-crit hidden', undefined, bl);
-    el('span', 'ss-batt-label', '☢', H.crit);
-    const cb = el('div', 'ss-batt-bar', undefined, H.crit);
-    H.critFill = el('div', 'ss-batt-fill', undefined, cb);
-    el('span', 'ss-crit-tag', 'NUKE READY · F', H.crit);
-
-    // bottom-center: abilities + snowball gauge
-    const bc = el('div', 'ss-hud-bc', undefined, hud);
-    H.blocked = el('div', 'ss-blocked', 'BLOCKED!', bc);
-    H.shield = el('div', 'ss-shield', '🛡 SHIELD UP', bc);
-    const row = el('div', 'ss-bc-row', undefined, bc);
-    H.dash = this.buildAbility(row, '💨', 'DASH', 'SHIFT', 'dash');
-    H.gauge = el('div', 'ss-gauge', undefined, row);
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 110 110');
-    svg.classList.add('ss-gauge-svg');
-    const track = document.createElementNS(NS, 'circle');
-    track.setAttribute('cx', '55');
-    track.setAttribute('cy', '55');
-    track.setAttribute('r', String(GAUGE_R));
-    track.setAttribute('class', 'ss-gauge-track');
-    const ring = document.createElementNS(NS, 'circle');
-    ring.setAttribute('cx', '55');
-    ring.setAttribute('cy', '55');
-    ring.setAttribute('r', String(GAUGE_R));
-    ring.setAttribute('class', 'ss-gauge-ring');
-    ring.setAttribute('stroke-dasharray', `${GAUGE_C} ${GAUGE_C}`);
-    ring.setAttribute('stroke-dashoffset', String(GAUGE_C));
-    ring.setAttribute('transform', 'rotate(-90 55 55)');
-    svg.appendChild(track);
-    svg.appendChild(ring);
-    H.gauge.appendChild(svg);
-    H.ring = ring;
-    const inner = el('div', 'ss-gauge-inner', undefined, H.gauge);
-    H.radius = el('div', 'ss-gauge-r', '0.00m', inner);
-    H.tier = el('div', 'ss-gauge-tier', 'Snowball', inner);
-    // Non-Classic vehicles: their SPACE ability takes the snowball gauge's place (icon / name from the kit).
-    H.primary = this.buildAbility(row, '⚡', 'FIRE', 'SPACE', 'primary');
-    H.primary.style.display = 'none';
-    H.whirl = this.buildAbility(row, '🌀', 'WHIRL', 'E', 'whirl');
-    H.flame = this.buildAbility(row, '🔥', 'FIRE', 'F', 'flame');
-    H.flame.style.display = 'none';
-    // Thunderclap Overload meter (VOLT-9 only): heat bar + the next clap's self-damage, perched on the F icon.
-    H.heat = el('div', 'ss-heat hidden', undefined, H.flame);
-    const heatBar = el('div', 'ss-heat-bar', undefined, H.heat);
-    H.heatFill = el('div', 'ss-heat-fill', undefined, heatBar);
-    H.heatTxt = el('div', 'ss-heat-txt', '', H.heat);
-    H.slam =el('div', 'ss-slam-hint', undefined, bc);
-    H.slam.innerHTML = '<kbd class="ss-kbd">SPACE</kbd> SLAM!';
-
-    // bottom-right: snow remaining
-    const br = el('div', 'ss-hud-br ss-glass-dark', undefined, hud);
-    el('span', 'ss-snow-label', '❄ SNOW', br);
-    const sb = el('div', 'ss-snow-bar', undefined, br);
-    H.snowFill = el('div', 'ss-snow-fill', undefined, sb);
-    H.snowTxt = el('span', 'ss-snow-txt', '', br);
-
-    H.count = el('div', 'ss-count hidden', '', hud);
-    H.hint = el('div', 'ss-hint hidden', 'W/S drive  ·  A/D steer  ·  plow snow to grow a ball  ·  SPACE slam  ·  SHIFT dash strike  ·  E whirlwind  ·  F fire / thunderclap  ·  ESC pause', hud);
-    this.bh = new BrawlHudView(this.ctx, hud, bc);
-    this.radar = new RadarHud(this.ctx, hud);
-    this.topBoxes = [tl, H.bosses, H.coinBox, hud.querySelector<HTMLElement>('.ss-radar')!];
-    window.addEventListener('resize', () => (this.topDirty = true));
-  }
-
-  private buildBossSlot(parent: HTMLElement): BossSlot {
-    const root = el('div', 'ss-bossbar hidden', undefined, parent);
-    const inner = el('div', 'ss-bb-inner', undefined, root);
-    const head = el('div', 'ss-bb-head', undefined, inner);
-    const badge = el('div', 'ss-bb-badge', '💀', head);
-    const name = el('div', 'ss-bb-name', '', head);
-    const title = el('div', 'ss-bb-title', '', head);
-    const phase = el('div', 'ss-bb-phase hidden', '', head);
-    const hp = el('div', 'ss-bb-hp', '', head);
-    const track = el('div', 'ss-bb-track', undefined, inner);
-    const chip = el('div', 'ss-bb-chip', undefined, track);
-    const fill = el('div', 'ss-bb-fill', undefined, track);
-    el('div', 'ss-bb-segs', undefined, track);
-    return { key: '', root, inner, badge, name, title, phase, hp, fill, chip, frac: -1, hpVal: -1, down: 0, mark: false };
-  }
-
-  private buildAbility(parent: HTMLElement, icon: string, name: string, key: string, cls: string): HTMLElement {
-    const a = el('div', `ss-ab ss-ab-${cls}`, undefined, parent);
-    el('div', 'ss-ab-ring', undefined, a);
-    const core = el('div', 'ss-ab-core', undefined, a);
-    el('div', 'ss-ab-icon', icon, core);
-    el('div', 'ss-ab-name', name, core);
-    el('kbd', 'ss-kbd ss-ab-key', key, a);
-    return a;
-  }
-
-  private setAbility(a: HTMLElement, v: number, prev: number): void {
-    a.style.setProperty('--p', String(v));
-    const ready = v >= 0.999;
-    const was = prev >= 0.999;
-    if (ready !== was || prev < 0) {
-      a.classList.toggle('ready', ready);
-      a.classList.toggle('cooling', !ready);
-      if (ready && prev >= 0) restart(a, 'pop');
-    }
-  }
-
-  private renderPips(round: number, total: number): void {
-    const box = this.h.pips;
-    if (box.childElementCount !== total) {
-      box.textContent = '';
-      for (let i = 0; i < total; i++) {
-        const boss = !!this.ctx.zone?.rounds[i]?.boss;
-        el('span', `ss-rpip${boss ? ' boss' : ''}`, boss ? '☠' : '', box);
-      }
-    }
-    const kids = box.children;
-    for (let i = 0; i < kids.length; i++) {
-      kids[i].classList.toggle('done', i < round - 1);
-      kids[i].classList.toggle('cur', i === round - 1);
-    }
-  }
-
-  private assignSlot(slot: BossSlot, key: string, b: HudBoss): void {
-    slot.key = key;
-    slot.down = 0;
-    slot.frac = -1;
-    slot.hpVal = -1;
-    const def = DEF_BY_NAME.get(b.name);
-    slot.root.style.setProperty('--bc', bossColor(def));
-    slot.badge.textContent = def ? ENEMY_ICON[def.type] ?? '💀' : '💀';
-    slot.name.textContent = b.name;
-    slot.title.textContent = b.title;
-    slot.phase.classList.add('hidden');
-    slot.root.classList.remove('hidden', 'down', 'low');
-  }
-
-  private updateBosses(list: HudBoss[]): void {
-    const slots = this.bossSlots;
-    for (const s of slots) s.mark = false;
-    for (let i = 0; i < list.length; i++) {
-      const b = list[i];
-      let dup = 0;
-      for (let j = 0; j < i; j++) if (list[j].name === b.name) dup++;
-      const key = dup ? `${b.name}#${dup}` : b.name;
-      let slot: BossSlot | null = null;
-      for (const s of slots) if (s.key === key) slot = s;
-      if (!slot) for (const s of slots) if (!slot && !s.key) slot = s;
-      if (!slot) for (const s of slots) if (!slot && s.down) slot = s;
-      if (!slot) continue;
-      if (slot.key !== key || slot.down) this.assignSlot(slot, key, b);
-      slot.mark = true;
-      this.setSlotHp(slot, b.hp, b.maxHp);
-    }
-    let visible = 0;
-    const now = performance.now();
-    for (const s of slots) {
-      if (!s.key) continue;
-      if (!s.mark) {
-        if (!s.down) {
-          s.down = now;
-          s.frac = 0;
-          s.fill.style.transform = 'scaleX(0)';
-          s.chip.style.transform = 'scaleX(0)';
-          s.hp.textContent = 'DESTROYED';
-          s.phase.classList.add('hidden');
-          s.root.classList.add('down');
-          restart(s.inner, 'bighit', 'hit');
-        } else if (now - s.down > 1600) {
-          this.freeSlot(s);
-          continue;
-        }
-      }
-      visible++;
-    }
-    if (visible !== this.last.bossCount) {
-      this.last.bossCount = visible;
-      this.h.bosses.classList.toggle('twin', visible >= 2);
-      this.rootEl.classList.toggle('has-boss', visible === 1);
-      this.rootEl.classList.toggle('has-twin', visible >= 2);
-      this.topDirty = true;
-    }
-  }
-
-  /**
-   * Place what depends on the top HUD's real size (only when it changed: text, boss count, radar, resize; never per
-   * frame). --hud-tl-b = bottom of the round box (narrow screens stack the boss bars under it, ui.css); --hud-toast-y =
-   * toast top, under every top box the centred toast column crosses, so a toast never lands on the boss bars, the round
-   * box or the radar however they are laid out.
-   */
-  private layoutTop(): void {
-    this.topDirty = false;
-    const root = this.rootEl;
-    const tl = this.topBoxes[0];
-    root.style.setProperty('--hud-tl-b', `${tl.offsetTop + tl.offsetHeight}px`);
-    const o = root.getBoundingClientRect();
-    const col = this.toastBox.getBoundingClientRect(); // the toasts' column (ui.css sizes it; longer toasts wrap)
-    const cl = col.left;
-    const cr = col.right;
-    let y = TOAST_TOP - TOAST_GAP;
-    for (const e of this.topBoxes) {
-      if (e.offsetParent === null) continue;
-      const b = e.getBoundingClientRect();
-      if (b.height >= 1 && b.left < cr && b.right > cl) y = Math.max(y, b.bottom - o.top);
-    }
-    root.style.setProperty('--hud-toast-y', `${Math.round(y + TOAST_GAP)}px`);
-    this.radar.relayout(); // the lost-bot arrows keep clear of the same boxes
-  }
-
-  private freeSlot(s: BossSlot): void {
-    s.key = '';
-    s.down = 0;
-    s.frac = -1;
-    s.hpVal = -1;
-    s.root.classList.add('hidden');
-    s.root.classList.remove('down', 'low');
-  }
-
-  private setSlotHp(slot: BossSlot, hp: number, maxHp: number): void {
-    const q = Math.round(clamp01(hp / Math.max(1, maxHp)) * 500) / 500;
-    if (q !== slot.frac) {
-      const prev = slot.frac;
-      slot.frac = q;
-      const tf = `scaleX(${q})`;
-      slot.fill.style.transform = tf;
-      slot.chip.style.transform = tf;
-      if (prev >= 0) {
-        const drop = prev - q;
-        if (drop >= 0.06) restart(slot.inner, 'bighit', 'hit');
-        else if (drop >= 0.02) restart(slot.inner, 'hit', 'bighit');
-      }
-      slot.root.classList.toggle('low', q < 0.25);
-    }
-    const v = Math.ceil(Math.max(0, hp));
-    if (v !== slot.hpVal) {
-      slot.hpVal = v;
-      slot.hp.textContent = fmt(v);
-    }
-  }
-
-  private pulse(amount: number, blocked: number): void {
-    if (!this.hudVisible) return;
-    const max = this.last.plowMax > 0 ? this.last.plowMax : 120;
-    const isBlock = blocked > 0;
-    const frac = (isBlock ? blocked : amount) / max;
-    const v = this.vignette;
-    v.style.setProperty('--vi', Math.min(1, 0.35 + frac * 4).toFixed(2));
-    v.classList.remove('heavy', 'blocked', 'go');
-    void v.offsetWidth;
-    v.classList.add('go');
-    if (isBlock) {
-      v.classList.add('blocked');
-      restart(this.h.blocked, 'go');
-    } else if (frac >= 0.1) {
-      v.classList.add('heavy');
-      restart(this.h.hpBox, 'hit');
-    }
-  }
-
-  private resetHudFx(): void {
-    this.vignette.classList.remove('go', 'heavy', 'blocked');
-    this.h.count.classList.add('hidden');
-    this.last.count = -1;
-    this.h.combo.classList.remove('on');
-    this.last.combo = 0;
-    for (const s of this.bossSlots) this.freeSlot(s);
-    this.last.bossCount = -1;
-    this.rootEl.classList.remove('has-boss', 'has-twin');
-    this.h.bosses.classList.remove('twin');
-    this.endIntro();
-    this.bh.setActive(false);
-    this.bh.reset();
-    this.last.brawl = -1;
-    this.hud.classList.remove('brawl');
-    this.rootEl.classList.remove('in-brawl');
+    brawl.renderBrawlResult({
+      handlers: this.handlers, bresultScreen: this.bresultScreen, bresultPanel: this.bresultPanel, btn: this.btnFn,
+      openGarage: (back) => this.openGarage(back),
+    }, r);
   }
 
   /* ================================================================== UIAPI */
@@ -2116,7 +852,7 @@ export class UI implements UIAPI {
     this.shopTitle.textContent = 'UPGRADE SHOP';
     const cleared = Math.max(1, nextRound - 1);
     this.shopSub.textContent = `${this.ctx.zone?.name ?? ''}: round ${cleared} cleared! Gear up before the next fight.`;
-    this.renderRoundPreview(nextRound, totalRounds);
+    garage.renderRoundPreview(this.garageDeps(), nextRound, totalRounds);
     this.plowPick.classList.add('hidden');
     this.shopBack.classList.add('hidden');
     this.shopStart.classList.remove('hidden');
@@ -2205,7 +941,7 @@ export class UI implements UIAPI {
 
   /** Duel HUD mode: the campaign arena / coin / snow panels make way for DuelUI's top bar. */
   setDuelHud(on: boolean): void {
-    this.hud.classList.toggle('duel', on);
+    this.gameHud.setDuelHud(on);
   }
 
   showGameOver(summary: RunSummary): void {
@@ -2230,325 +966,15 @@ export class UI implements UIAPI {
   }
 
   setHudVisible(visible: boolean): void {
-    if (visible === this.hudVisible) return;
-    this.hudVisible = visible;
-    this.hud.classList.toggle('show', visible);
-    this.topDirty = true;
-    if (!visible) {
-      this.resetHudFx();
-      clearTimeout(this.hintTimer);
-      this.h.hint.classList.add('hidden');
-    } else {
-      this.refreshKeys();
-      const d = this.ctx.progression.data;
-      const firstRun = d.totalKills < 15 && !Object.values(d.zones).some((z) => z.bestRound > 0);
-      this.h.hint.classList.toggle('hidden', !firstRun);
-      clearTimeout(this.hintTimer);
-      if (firstRun) this.hintTimer = window.setTimeout(() => this.h.hint.classList.add('hidden'), 45000);
-    }
+    this.gameHud.setHudVisible(visible);
   }
 
   bossIntro(name: string, title: string): void {
-    const w = this.intro;
-    this.introName.textContent = name;
-    this.introTitle.textContent = title;
-    this.introTitle.classList.toggle('hidden', !title);
-    w.classList.remove('go');
-    void w.offsetWidth;
-    w.classList.add('go');
-    this.hud.classList.add('intro');
-    clearTimeout(this.introTimer);
-    this.introTimer = window.setTimeout(() => this.endIntro(), INTRO_MS + 60);
+    this.gameHud.bossIntro(name, title);
   }
 
   updateHud(s: HudState): void {
-    if (!this.hudVisible) return;
-    const H = this.h;
-    const L = this.last;
-
-    const brawl = s.brawl ? 1 : 0;
-    if (brawl !== L.brawl) {
-      L.brawl = brawl;
-      this.hud.classList.toggle('brawl', !!brawl);
-      this.rootEl.classList.toggle('in-brawl', !!brawl);
-      this.bh.setActive(!!brawl);
-    }
-    if (s.brawl) this.bh.update(s.brawl);
-    if (!!s.radar !== this.radarShown) {
-      this.radarShown = !!s.radar;
-      this.topDirty = true;
-    }
-
-    if (s.zoneName !== L.zone) {
-      L.zone = s.zoneName;
-      H.zone.textContent = s.zoneName;
-      this.topDirty = true;
-    }
-    const hideRound = !!s.hideRound;
-    if (hideRound !== L.hideRound) {
-      L.hideRound = hideRound;
-      this.topDirty = true;
-      H.round.classList.toggle('hidden', hideRound);
-      H.pips.classList.toggle('hidden', hideRound);
-    }
-    const sv = s.survival;
-    if (sv) {
-      // Survival: "Wave N · Best M" instead of round pips (encoded into L.round / L.total).
-      if (sv.wave !== L.round || -sv.best !== L.total || s.bossRound !== L.bossRound) {
-        L.round = sv.wave;
-        L.total = -sv.best;
-        L.bossRound = s.bossRound;
-        H.round.textContent = `${s.bossRound ? '☠ BOSS ' : ''}Wave ${sv.wave}`;
-        H.round.classList.toggle('boss', s.bossRound);
-        H.best.textContent = `Best ${sv.best}`;
-        H.best.classList.remove('hidden');
-        this.renderPips(0, 0);
-        this.topDirty = true;
-      }
-    } else if (s.round !== L.round || s.totalRounds !== L.total || s.bossRound !== L.bossRound) {
-      L.round = s.round;
-      L.total = s.totalRounds;
-      L.bossRound = s.bossRound;
-      H.round.textContent = s.bossRound ? '☠ BOSS ROUND' : `Round ${s.round}/${s.totalRounds}`;
-      H.round.classList.toggle('boss', s.bossRound);
-      H.best.classList.add('hidden');
-      this.renderPips(s.round, s.totalRounds);
-      this.topDirty = true;
-    }
-    // Survival / Daily biome rotation: count down to the next arena over the last two waves of a block.
-    const arena = sv && sv.arenaIn !== undefined && sv.arenaIn <= 2 && sv.nextArena
-      ? sv.arenaIn === 1 ? `Last wave here · next: ${sv.nextArena}` : `New arena in ${sv.arenaIn} waves: ${sv.nextArena}`
-      : '';
-    if (arena !== L.arena) {
-      L.arena = arena;
-      H.arena.textContent = arena;
-      H.arena.classList.toggle('hidden', !arena);
-      H.arena.classList.toggle('last', sv?.arenaIn === 1);
-      this.topDirty = true;
-    }
-    const en = Math.max(0, Math.round(s.enemiesRemaining));
-    if (en !== L.enemies) {
-      L.enemies = en;
-      H.enemies.textContent = en > 0 ? `${en} bot${en === 1 ? '' : 's'} left` : 'Get ready…';
-      this.topDirty = true; // "9 bots" -> "10 bots" can wrap the round row
-    }
-
-    // bosses
-    if (!brawl && (s.bosses.length || L.bossCount > 0)) this.updateBosses(s.bosses);
-    if (this.topDirty) this.layoutTop();
-    // After the layout: off-screen arrows are placed with this frame's boss bars / round box, not last frame's.
-    this.radar.update(s.radar);
-
-    // coins
-    const coins = Math.floor(s.coins);
-    if (coins !== L.coins) {
-      if (L.coins >= 0 && coins > L.coins) restart(H.coinBox, 'bump');
-      L.coins = coins;
-      H.coins.textContent = fmt(coins);
-    }
-
-    // plow hp
-    const php = Math.ceil(Math.max(0, s.plowHp));
-    if (php !== L.plowHp || s.plowMaxHp !== L.plowMax) {
-      L.plowHp = php;
-      L.plowMax = s.plowMaxHp;
-      const f = Math.round(clamp01(s.plowHp / Math.max(1, s.plowMaxHp)) * 400) / 400;
-      if (f !== L.plowF) {
-        L.plowF = f;
-        const tf = `scaleX(${f})`;
-        H.hpFill.style.transform = tf;
-        H.hpChip.style.transform = tf;
-      }
-      H.hpNum.innerHTML = `${php}<small> / ${Math.round(s.plowMaxHp)}</small>`;
-      const low = f < 0.3;
-      const mid = !low && f < 0.6;
-      if (low !== L.low) {
-        L.low = low;
-        H.hpBox.classList.toggle('low', low);
-        this.hud.classList.toggle('lowhp', low);
-      }
-      if (mid !== L.mid) {
-        L.mid = mid;
-        H.hpBox.classList.toggle('mid', mid);
-      }
-    }
-
-    // snowball gauge
-    const r = Math.round(s.ballRadius * 100) / 100;
-    if (r !== L.ballR) {
-      L.ballR = r;
-      H.radius.textContent = `${r.toFixed(2)}m`;
-      const t = tierIndex(r);
-      if (t !== L.tier) {
-        if (L.tier >= 0 && t > L.tier) restart(H.gauge, 'tierup');
-        L.tier = t;
-        H.tier.textContent = tierName(r);
-        H.gauge.dataset.tier = String(t);
-      }
-      const ready = s.ballRadius >= MIN_BALL_RADIUS;
-      if (ready !== L.ready) {
-        L.ready = ready;
-        H.gauge.classList.toggle('ready', ready);
-        H.slam.classList.toggle('show', ready);
-      }
-      const held = s.ballRadius > 0.02;
-      if (held !== L.held) {
-        L.held = held;
-        H.shield.classList.toggle('on', held);
-      }
-    }
-    const frac = Math.round(clamp01(s.ballRadius / Math.max(0.01, s.ballMaxRadius)) * 200) / 200;
-    if (frac !== L.ballFrac) {
-      L.ballFrac = frac;
-      H.ring.setAttribute('stroke-dashoffset', String(GAUGE_C * (1 - frac)));
-      const full = frac >= 0.99;
-      if (full !== L.full) {
-        L.full = full;
-        H.gauge.classList.toggle('full', full);
-      }
-    }
-
-    // abilities
-    const d = Math.round(clamp01(s.dashReady) * 50) / 50;
-    if (d !== L.dash) {
-      this.setAbility(H.dash, d, L.dash);
-      L.dash = d;
-    }
-    // Whirlwind is always available now; a negative value (legacy "not owned") reads as ready.
-    const w = s.whirlReady < 0 ? 1 : Math.round(clamp01(s.whirlReady) * 50) / 50;
-    if (w !== L.whirl) {
-      this.setAbility(H.whirl, w, L.whirl);
-      L.whirl = w;
-    }
-    // SPACE / E slots: the vehicle kit's descriptors (no ball to slam), or the Classic's gauge + WHIRL.
-    const ab = s.abilities ?? null;
-    const abKey = ab ? `${ab.primary.icon}${ab.primary.label}|${ab.secondary.icon}${ab.secondary.label}` : '';
-    if (abKey !== L.abKey) {
-      L.abKey = abKey;
-      L.primary = -2;
-      H.whirl.querySelector('.ss-ab-icon')!.textContent = ab ? ab.secondary.icon : '🌀';
-      H.whirl.querySelector('.ss-ab-name')!.textContent = ab ? ab.secondary.label : 'WHIRL';
-      if (ab) {
-        H.primary.querySelector('.ss-ab-icon')!.textContent = ab.primary.icon;
-        H.primary.querySelector('.ss-ab-name')!.textContent = ab.primary.label;
-      }
-      H.primary.style.display = ab ? '' : 'none';
-      H.gauge.classList.toggle('hidden', !!ab);
-      if (ab) H.slam.classList.remove('show');
-      this.refreshKeys();
-    }
-    if (ab) {
-      const p = Math.round(clamp01(ab.primaryReady) * 50) / 50;
-      if (p !== L.primary) {
-        this.setAbility(H.primary, p, L.primary);
-        L.primary = p;
-      }
-    }
-    // F icon follows the plow: Inferno fire (Classic), Thunderclap (VOLT-9) or Ground Pound (BRUTUS).
-    if (s.fAbility !== L.fKind) {
-      L.fKind = s.fAbility;
-      L.crit = -2; // re-apply the NUKE label below
-      const zap = s.fAbility === 'zap';
-      const pound = s.fAbility === 'pound';
-      const melt = s.fAbility === 'meltdown';
-      const rockets = s.fAbility === 'missiles';
-      H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : rockets ? '🌀' : '🔥';
-      H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : rockets ? 'BURST' : 'FIRE';
-      // The ultimate meter under the HP bar, one per plow.
-      const ult = ULT_HUD[s.fAbility];
-      H.crit.dataset.ult = s.fAbility;
-      H.crit.querySelector('.ss-batt-label')!.textContent = ult.bar;
-      H.crit.querySelector('.ss-crit-tag')!.textContent = `${ult.tag} READY · F`;
-      this.refreshKeys();
-      H.flame.classList.toggle('ss-ab-melt', melt);
-      H.flame.classList.toggle('ss-ab-zap', zap);
-      H.flame.classList.toggle('ss-ab-pound', pound);
-    }
-    // ISOTOPE Critical Mass: full = the next F is a NUKE (the F icon says so too).
-    const cm = s.critMass === undefined || s.critMass < 0 ? -1 : Math.round(clamp01(s.critMass) * 100) / 100;
-    if (cm !== L.crit) {
-      H.crit.classList.toggle('hidden', cm < 0);
-      if (cm >= 0) H.critFill.style.transform = `scaleX(${cm})`;
-      const full = cm >= 1;
-      H.crit.classList.toggle('full', full);
-      if (s.fAbility === 'meltdown') {
-        H.flame.querySelector('.ss-ab-icon')!.textContent = '☢️';
-        H.flame.querySelector('.ss-ab-name')!.textContent = full ? 'NUKE' : 'MELT';
-        H.flame.classList.toggle('ss-ab-nuke', full);
-      } else {
-        const ult = ULT_HUD[s.fAbility];
-        H.flame.querySelector('.ss-ab-icon')!.textContent = full ? ult.icon : ult.baseIcon;
-        H.flame.querySelector('.ss-ab-name')!.textContent = full ? ult.name : ult.baseName;
-        H.flame.classList.toggle('ss-ab-nuke', full);
-      }
-      L.crit = cm;
-    }
-    // Battery Shield (VOLT-9).
-    const bt = s.shield < 0 ? -1 : Math.round(clamp01(s.shield) * 100) / 100;
-    if (bt !== L.batt) {
-      H.batt.classList.toggle('hidden', bt < 0);
-      if (bt >= 0) H.battFill.style.transform = `scaleX(${bt})`;
-      H.batt.classList.toggle('empty', bt === 0);
-      L.batt = bt;
-    }
-    // F ability: hidden while it does nothing (e.g. Thunderclap before it is bought); Inferno and Pound are free.
-    const f = s.flameReady < 0 ? -1 : Math.round(clamp01(s.flameReady) * 50) / 50;
-    if (f !== L.flame) {
-      H.flame.style.display = f < 0 ? 'none' : '';
-      if (f >= 0) this.setAbility(H.flame, f, L.flame);
-      L.flame = f;
-    }
-    // Thunderclap Overload: heat meter (full at 3 heat ~ a clap per second) + predicted self-damage.
-    const ht = s.overload === undefined || s.overload < 0 ? -1 : Math.round(Math.min(1, s.overload / 3) * 50) / 50;
-    const hc = ht < 0 ? -1 : Math.round(s.overloadCost ?? 0);
-    if (ht !== L.heat || hc !== L.heatCost) {
-      H.heat.classList.toggle('hidden', ht < 0);
-      if (ht >= 0) {
-        H.heatFill.style.transform = `scaleX(${ht})`;
-        H.heatTxt.textContent = `-${hc} HP`;
-        H.heat.dataset.t = ht >= 0.6 ? '2' : ht >= 0.25 ? '1' : '0';
-      }
-      L.heat = ht;
-      L.heatCost = hc;
-    }
-
-    // combo
-    const c = s.combo >= 2 ? Math.floor(s.combo) : 0;
-    if (c !== L.combo) {
-      if (c >= 2) {
-        H.comboN.textContent = `x${c}`;
-        const tier = c >= 20 ? 3 : c >= 10 ? 2 : c >= 5 ? 1 : 0;
-        if (tier !== L.comboTier) {
-          L.comboTier = tier;
-          H.combo.dataset.t = String(tier);
-        }
-        H.combo.classList.add('on');
-        if (c > L.combo) restart(H.comboN, 'pop');
-      } else {
-        H.combo.classList.remove('on');
-      }
-      L.combo = c;
-    }
-
-    // snow remaining
-    const sf = Math.round(clamp01(s.snowFraction) * 100);
-    if (sf !== L.snow) {
-      L.snow = sf;
-      H.snowFill.style.transform = `scaleX(${sf / 100})`;
-      H.snowTxt.textContent = `${sf}%`;
-      H.snowFill.classList.toggle('low', sf < 25);
-    }
-
-    // countdown
-    const cn = s.countdown > 0 ? Math.ceil(s.countdown) : 0;
-    if (cn !== L.count) {
-      if ((cn > 0) !== (L.count > 0)) H.count.classList.toggle('hidden', cn <= 0);
-      L.count = cn;
-      if (cn > 0) {
-        H.count.textContent = String(cn);
-        restart(H.count, 'pop');
-      }
-    }
+    this.gameHud.updateHud(s);
   }
 
   toast(text: string, kind: 'info' | 'good' | 'bad' | 'big' = 'info'): void {
@@ -2575,10 +1001,4 @@ export class UI implements UIAPI {
     t.classList.add('out');
     setTimeout(() => t.remove(), 260);
   }
-}
-
-function bossCount(z: ZoneDef): number {
-  let n = 0;
-  for (const r of z.rounds) if (r.boss) for (const g of r.groups) if (ENEMIES[g.type].isBoss) n += g.count;
-  return n;
 }
