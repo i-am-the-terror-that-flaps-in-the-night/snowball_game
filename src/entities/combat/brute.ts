@@ -208,6 +208,8 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
         knockback: new THREE.Vector3(_fwd.x * knock * share, 0, _fwd.z * knock * share),
         stunSeconds: fin ? FIST_FINISH_STUN : e === best ? FIST_STAGGER : undefined,
         pierce: true,
+        // Rapid jabs crack armour: half the flat armour, like ARSENAL's rounds (a full-armour jab did ~1-2 to a dozer).
+        crackArmor: true,
         fromX: plow.position.x,
         fromZ: plow.position.z,
       });

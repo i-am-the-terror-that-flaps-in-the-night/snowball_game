@@ -271,7 +271,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
 
     // Rapid small hits (ARSENAL rounds, laser ticks) pierce part of the flat armour, which would otherwise gut them.
-    dmg = Math.max(1, dmg - (opts?.direct ? e.def.armor * DIRECT_ARMOR : e.def.armor));
+    dmg = Math.max(1, dmg - (opts?.direct || opts?.crackArmor ? e.def.armor * DIRECT_ARMOR : e.def.armor));
     let vm = 1;
     if (e.stun > 0) vm = Math.max(vm, e.stunMult);
     if (e.vulnT > 0 && e.vuln !== Vuln.None) vm = Math.max(vm, e.vulnMult);
@@ -309,7 +309,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         e.blockFxT = 0.25;
         this.sfx('block', 0.7, 1, 0.06);
         _v.y += 1.2;
-        fx.floatText(_v, e.type === 'spinner' ? 'SPINNING!' : 'DEFLECT', '#9fd8ff', 0.7);
+        fx.floatText(_v, e.type === 'spinner' ? 'SPINNING!' : opts?.pierce ? 'PIERCE' : 'DEFLECT', opts?.pierce ? '#ffc46a' : '#9fd8ff', 0.7);
       }
     } else if (vm > 1 && fx) {
       _v.set(e.position.x, e.groundY + e.rig.height * 0.7, e.position.z);

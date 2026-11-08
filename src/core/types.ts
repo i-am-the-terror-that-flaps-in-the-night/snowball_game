@@ -401,6 +401,8 @@ export interface DamageOpts {
    *  'round' (ARSENAL Mag Shotgun blasts) also skips the Duel's area-ability diminishing returns; 'beam' (rapid beam
    *  ticks) keeps them. Against bots both face only part of the armour (Enemies). */
   direct?: 'round' | 'beam';
+  /** Bots only: face half the flat armour, like `direct`, with none of its plow / Duel effects (BRUTUS's jabs). */
+  crackArmor?: boolean;
   /** Magnetic hits (ARSENAL's Mag Shotgun / Repulsor) mostly pierce frontal plates: the Brute Dozer's plate and
    *  Frostbyte's ball block only cut them to PLATE_PIERCE instead of 30% / 50%. */
   pierce?: boolean;

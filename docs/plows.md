@@ -122,7 +122,7 @@ close and aims by steering: neither main weapon auto-aims.
 
 - **Space (hold): Mag Shotgun.** The emitter is fixed straight ahead along the hull (it only tilts up to 20° to
   follow a bot on a slope). While held it fires a blast about every 0.55 s (faster with levels): 8 cyan pellets fanned
-  across a 36° cone (Whirlwind Turbine adds more), and every bot inside the cone takes the WHOLE blast (no pellet luck). Short reach (~11 m, a
+  across a 36° cone (Whirlwind Turbine adds more), and every bot inside the cone takes the WHOLE blast (no pellet luck). Short reach (~8 m, a
   little more with levels and Mega Hopper); pellets hit full out to 6 m and fall to 70% at full reach, so it is
   deadliest point-blank. **MAGNETIC REEL** (its signature): every bot a blast leaves alive is magnetized and dragged
   for 0.9 s toward a sweet spot 3.6 m in front of the emitter (cyan sparks stream off it), so a far bot gets reeled

@@ -243,6 +243,14 @@ the others, and at mid / high it finished most arenas 10-25% faster while barely
 `ultimates.ts`) went from 2.4 to 1.75 so it still fills in about 16 s fresh. ARSENAL keeps an edge on single targets
 (no ball shield, no slam / whirl, less HP); its cluster damage is now in line with the others.
 
+Damage alone barely moved its real clear times (wave pacing sets most of a run): the sweep showed its edge was
+safety, killing from 11 m and reeling bots into point-blank, so it was rarely hit. The Mag Shotgun's base reach went
+11 m -> 8 m (full damage still to 6 m). One ARSENAL-only sweep after both changes, against the other four plows:
+fresh it now clears arenas 1-4 at the fast end of the pack (Rust Basin 66 s vs 77-100 s; it was 47 s), mid it is
+level on the Plaza / Omega Works (54 / 49 s vs 55-80 / 50-81 s) and ~15% quicker on Rust Basin / Thermal Divide, high
+it is level everywhere. It still clears the last two arenas fresh in ~90 s against the others' 3-4 minutes, but
+nobody plays those without upgrades.
+
 The distinct-primaries pass (Rad Dose, Arc Lance chains + paralysis, Wrecking Fist stagger, Magnetic Reel, strip
 scrap) left the sim's numbers unchanged: its dummies have 10M HP and stand still, so lingering doses, reels and shed
 shards barely register.
