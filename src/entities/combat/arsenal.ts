@@ -529,9 +529,23 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       return;
     }
     plow.mountWorld('muzzle', 0, _a);
-    if (this.beamTgt?.alive) this.chest(this.beamTgt, this.beamEnd);
-    const p = this.beamPulse;
-    const flick = 0.85 + Math.random() * 0.3;
+    // The beam only follows a bot the emitter is actually pointing at: once the turret swings off it (a new target,
+    // or the bot left the arc), the old lock is dropped and the beam runs straight out of the emitter instead.
+    const tgt = this.beamTgt;
+    if (tgt?.alive) {
+      const yaw = Math.atan2(tgt.position.x - plow.position.x, tgt.position.z - plow.position.z);
+      if (Math.abs(wrapAngle(yaw - plow.turretHeading)) > GUN_ON_TARGET * 1.5) this.beamTgt = null;
+      else this.chest(tgt, this.beamEnd);
+    } else this.beamTgt = null;
+    if (!this.beamTgt && this.beamHasEnd) {
+      const reach = Math.max(1, Math.hypot(this.beamEnd.x - _a.x, this.beamEnd.z - _a.z));
+      const h = plow.turretHeading;
+      const cp = Math.cos(this.gunPitch);
+      this.beamEnd.set(_a.x + Math.sin(h) * cp * reach, _a.y + Math.sin(this.gunPitch) * reach, _a.z + Math.cos(h) * cp * reach);
+    }
+    // Steady beam (no random flicker); each damage tick only swells it slightly.
+    const p = this.beamPulse * 0.35;
+    const flick = 1;
     const a = this.beamA;
     aimBeam(this.beamCore, _a, this.beamEnd, (0.04 + 0.05 * p) * flick * a);
     aimBeam(this.beamGlow, _a, this.beamEnd, (0.15 + 0.15 * p) * flick * a);
