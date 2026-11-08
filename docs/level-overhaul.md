@@ -120,22 +120,25 @@ for a removed id stop counting; their coins were already paid):
 
 | Arena | New challenge | Replaced |
 |---|---|---|
-| Inferno Quarry | **Hot Tub**: 3 lava kills | x30 combo (the Plaza keeps a combo star) |
-| Rust Basin | **Moonshot**: 1.2 s of airtime | 2 STRIKE!s (the Plaza keeps a STRIKE! star) |
-| The Thermal Divide | **Meteor Strike**: an air-slam kill (Classic slam or BRUTUS Ground Pound while airborne) | 4 whirlwind kills |
+| Inferno Quarry | **Hot Tub**: 3 kills in lava (any finishing blow on a bot standing in lava, or the lava's own burn) | x30 combo (the Plaza keeps a combo star) |
+| Rust Basin | **Meteor Strike**: an air-slam or stomp kill (Classic slam / BRUTUS Ground Pound while airborne; landing on a bot, any plow) | 10 ram kills (The Omega Works keeps a ram star) |
+| Rust Basin | **Moonshot**: 1.0 s of airtime | 2 STRIKE!s (the Plaza keeps a STRIKE! star) |
 
-The plan's "2 s of airtime" is out of reach: driving every ramp and straight lines across each arena through the real
-vertical motion (`stepVertical`) gives at most ~1.5 s (Rust Basin's ramp, low gravity), ~0.8-0.9 s elsewhere and
-~1.1 s on The Omega Works' ramps, so the goal is 1.2 s in Rust Basin.
+Doability, measured through the real vertical motion (`stepVertical`, driving straight off every ramp): Rust Basin's ramp
+gives ~1.4 s of flight, 4.5 m up and >1.3 s above the 0.5 m an air slam needs, at a fresh plow's 10 m/s top speed
+(8 m/s: ~0.75 s). Every other ramp gives 0.3-0.55 s of flight and only 0.2-0.45 s above 0.5 m, too short a window for an
+air-slam goal (a first draft put Meteor Strike on The Thermal Divide, whose ramps lift you past 0.5 m for ~0.2 s; it went
+back to its 4 whirlwind kills). The plan's "2 s of airtime" is out of reach anywhere. Bots steer out of lava within
+moments, so a lava-burn-only goal was near impossible: Hot Tub counts every kill on a bot standing in lava.
 
 Time-based retune, from `node scripts/omega-probe.mjs --arenas 0,1,3 --tiers fresh,mid --runs 1` (every plow):
 Coldboot Glacier clears in 0:24-0:48 (fresh), so Quick Plow's 1:00 stays. Inferno Quarry's BULLDOZA fight runs 3-16 s
 fresh (2-3 s mid), so Eviction Notice is now 15 s (was 30 s). The Thermal Divide clears in 0:53-1:42 fresh (0:38-0:47
 mid), so Divide & Conquer is now 1:30 (was 1:45).
 
-Trophies (combat): **Frequent Flyer** (1 s in one jump), **Hot Potato** (25 lava kills), **Death From Above** (10
-air-slam kills). Lifetime counters `LIFE.killsLava`, `killsAirSlam`, `killsStomp` and `airtimeBestCs`; the kill
-breakdown still shows the new sources under "other".
+Trophies (combat): **Frequent Flyer** (1 s in one jump), **Hot Potato** (25 kills in lava), **Death From Above** (10
+air-slam kills). Lifetime counters `LIFE.killsLava` (kills in lava, on top of the finishing blow's own counter),
+`killsAirSlam`, `killsStomp` and `airtimeBestCs`; the kill breakdown still shows air-slam / stomp kills under "other".
 
 ### Tests and probes
 

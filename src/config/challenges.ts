@@ -58,16 +58,19 @@ const strikes = (n: number, name = 'Strike Force'): ChallengeDef => ({
   id: 'strike', icon: '🎳', name, goal: `Land ${n} STRIKE!s`, test: (r) => r.strikes >= n,
 });
 /* Biome challenges (docs/level-overhaul.md "Challenges and trophies"). */
+/** Kills on bots standing in lava: knock them in and finish them any way you like, or let the lava burn them out. */
 const lavaKills = (n: number, name = 'Hot Tub'): ChallengeDef => ({
-  id: 'lava', icon: '🌋', name, goal: `${n} lava kills`, test: (r) => (r.killsBy.lava ?? 0) >= n,
+  id: 'lava', icon: '🌋', name, goal: `${n} kills in lava`, test: (r) => Math.max(r.lavaKills ?? 0, r.killsBy.lava ?? 0) >= n,
 });
 /** Longest single flight. The best ramp in the campaign (Rust Basin, low gravity) gives ~1.5 s at full speed. */
 const airtime = (sec: number, name = 'Moonshot'): ChallengeDef => ({
   id: 'air', icon: '🛸', name, goal: `${sec.toFixed(1)} s of airtime`, test: (r) => (r.airtime ?? 0) >= sec,
 });
-/** Air-slam kills: the Classic's slam while airborne, or BRUTUS's airborne Ground Pound. */
-const airSlamKills = (n: number, name = 'Meteor Strike'): ChallengeDef => ({
-  id: 'airSlam', icon: '☄️', name, goal: n === 1 ? 'An air-slam kill' : `${n} air-slam kills`, test: (r) => (r.killsBy.airSlam ?? 0) >= n,
+/** Kills from the air: an air slam (the Classic's slam while airborne, BRUTUS's airborne Ground Pound) or a stomp
+ *  (landing on a bot; any plow). */
+const airKills = (n: number, name = 'Meteor Strike'): ChallengeDef => ({
+  id: 'airSlam', icon: '☄️', name, goal: n === 1 ? 'Air-slam or stomp kill' : `${n} air-slam/stomp kills`,
+  test: (r) => (r.killsBy.airSlam ?? 0) + (r.killsBy.stomp ?? 0) >= n,
 });
 const bossBlitz = (sec: number, name = 'Boss Blitz'): ChallengeDef => ({
   id: 'blitz', icon: '💨', name, goal: `Beat the boss in ${sec}s`, test: (r) => r.bossTime > 0 && r.bossTime < sec,
@@ -91,21 +94,23 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // the terrain build (scripts/omega-probe.mjs, fresh garage): every plow clears in 0:24-0:48, so 1:00 holds.
   yard: [slamKills(3), ball(1.2, 'Big Ball Energy'), speed(60, 'Quick Plow')],
   // Inferno Quarry (arena 2, BULLDOZA): thieves and lava. Knock bots into the lava, dodge, scrap the Yard Boss fast.
-  // 'lava' replaced the x30 combo (Golden Tower Plaza keeps a combo star). 'blitz' retuned 30 s -> 15 s: the probe's
+  // 'lava' replaced the x30 combo (Golden Tower Plaza keeps a combo star); any kill on a bot standing in lava counts
+  // (bots steer out of lava fast, so the burn alone rarely finishes one). 'blitz' retuned 30 s -> 15 s: the probe's
   // fresh-garage boss fights run 3-16 s (mid garage 2-3 s), so 30 s was a free star.
   junkyard: [lavaKills(3, 'Hot Tub'), untouchable(90, 'Thief-Proof'), bossBlitz(15, 'Eviction Notice')],
-  // Rust Basin (arena 3, THE GRINDER): brutes everywhere and low gravity. Hit hard, catch big air off the ramp, survive
-  // it on the fragile electric plow. 'air' replaced 2 STRIKE!s (the Plaza keeps a STRIKE! star): its ramp gives ~1.5 s of
-  // flight at full speed (straight off the lip), so 1.2 s needs a clean, fast run-up.
+  // Rust Basin (arena 3, THE GRINDER): low gravity. Catch big air off the ramp, dive on the pack, survive it on the
+  // fragile electric plow. Its ramp gives ~1.4 s of flight (4.5 m up, >1.3 s high enough to air-slam) at a fresh plow's
+  // 10 m/s top speed, straight off the lip (8 m/s: ~0.75 s), so 'air' asks 1.0 s. 'airSlam' (air slam or stomp kill)
+  // and 'air' replaced 10 ram kills and 2 STRIKE!s (The Omega Works / the Plaza keep ram and STRIKE! stars).
   foundry: [
-    ramKills(10),
-    airtime(1.2, 'Moonshot'),
+    airKills(1, 'Meteor Strike'),
+    airtime(1.0, 'Moonshot'),
     withPlow('volt', 'Live Wire', { goal: 'lose < 100 HP', test: (r) => r.damageTaken < 100 }),
   ],
-  // The Thermal Divide (arena 4, SLUSH & SLEET): a hot twin and a cold twin. Big balls, a jump and a dive, and do it
-  // fast. 'airSlam' replaced 4 whirlwind kills (Classic slam or BRUTUS's Ground Pound while airborne, off one of the
-  // small ramps). 'speed' retuned 1:45 -> 1:30: fresh-garage clears run 0:53-1:42, mid 0:38-0:47.
-  bowl: [ball(1.8, 'Cold Front'), airSlamKills(1, 'Meteor Strike'), speed(90, 'Divide & Conquer')],
+  // The Thermal Divide (arena 4, SLUSH & SLEET): a hot twin and a cold twin. Big balls, spin, and do it fast. 'speed'
+  // retuned 1:45 -> 1:30: fresh-garage clears run 0:53-1:42, mid 0:38-0:47. (Its two small ramps only lift you 0.5 m+
+  // for ~0.2-0.4 s, too short for an air-slam goal, so the air challenges live in Rust Basin.)
+  bowl: [ball(1.8, 'Cold Front'), whirlKills(4), speed(90, 'Divide & Conquer')],
   // Golden Tower Plaza (arena 5, THE DONALD): break up the rally crowds, dodge the walls and the beam, keep the combo
   // going bigly.
   plaza: [strikes(3, 'Crowd Control'), bossClean(80, 'Fake Damage'), combo(40, 'Tremendous Combo')],

@@ -105,10 +105,12 @@ export class Achievements {
     const { events } = ctx;
     const p = () => ctx.progression;
 
-    events.on('enemyKilled', ({ source }) => {
+    events.on('enemyKilled', ({ source, inLava }) => {
       if (this.tutorial()) return;
       bumpLifetime(p(), LIFE.kills);
       bumpLifetime(p(), SOURCE_KEY[source ?? 'other'] ?? LIFE.killsOther);
+      // Kills in lava are counted on top of the finishing blow's own counter (knock it in, finish it however).
+      if (inLava || source === 'lava') bumpLifetime(p(), LIFE.killsLava);
       this.check();
     });
     events.on('slam', ({ hits }) => {
@@ -197,7 +199,6 @@ const SOURCE_KEY: Record<string, string> = {
   slam: LIFE.killsSlam,
   ram: LIFE.killsRam,
   whirl: LIFE.killsWhirl,
-  lava: LIFE.killsLava,
   airSlam: LIFE.killsAirSlam,
   stomp: LIFE.killsStomp,
   other: LIFE.killsOther,

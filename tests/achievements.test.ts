@@ -166,16 +166,19 @@ describe('Achievements (event wiring)', () => {
     expect(store.get('snowplow-showdown-save-v2')).toContain('slam_5');
   });
 
-  it('biome trophies: lava and air-slam kills get their own counters, airtime comes from the run', () => {
+  it('biome trophies: kills in lava (any blow), air-slam and stomp kills get their own counters, airtime from the run', () => {
     const { ctx, p } = fakeCtx();
-    for (let i = 0; i < 25; i++) ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'lava' });
+    for (let i = 0; i < 20; i++) ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'lava', inLava: true });
+    // Knocked into lava and finished by a slam: a slam kill AND a kill in lava.
+    for (let i = 0; i < 5; i++) ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'slam', inLava: true });
     for (let i = 0; i < 10; i++) ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'airSlam' });
     ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'stomp' });
     expect(life(p, LIFE.killsLava)).toBe(25);
+    expect(life(p, LIFE.killsSlam)).toBe(5);
     expect(life(p, LIFE.killsAirSlam)).toBe(10);
     expect(life(p, LIFE.killsStomp)).toBe(1);
-    expect(life(p, LIFE.killsOther)).toBe(0);
-    expect(killsBySource(p).other).toBe(36); // still shown in the 'other' bucket of the kill breakdown
+    expect(life(p, LIFE.killsOther)).toBe(20); // the lava's own burn kills
+    expect(killsBySource(p)).toMatchObject({ slam: 5, other: 31, total: 36 });
     expect(isUnlocked(p, 'lava_kills_25')).toBe(true);
     expect(isUnlocked(p, 'air_slam_kills_10')).toBe(true);
     ctx.events.emit('runFinished', run({ airtime: 0.8 }));

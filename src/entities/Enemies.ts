@@ -1069,7 +1069,9 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
 
     const coins = Math.round(def.coins * ctx.zone.coinMult);
-    ctx.events.emit('enemyKilled', { enemy: e, coins, source });
+    // Standing in lava when it died (lava burn, or a hit that finished it in the lava): a "kill in lava".
+    const inLava = e.mat === 'lava' && !e.vert.airborne;
+    ctx.events.emit('enemyKilled', { enemy: e, coins, source, inLava: inLava || source === 'lava' || undefined });
     if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: def.name });
     ctx.pickups?.spawnCoins(p.clone(), coins);
   }

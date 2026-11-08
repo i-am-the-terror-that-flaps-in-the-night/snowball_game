@@ -70,6 +70,8 @@ interface RunTally {
   damage: number;
   /** Longest single flight this run (s). */
   airtime: number;
+  /** Kills on bots standing in lava (any finishing blow). */
+  lavaKills: number;
   /** ctx.time when the run started (ctx.time only advances while the sim runs). */
   start: number;
   /** Gear loot dropped this run. */
@@ -349,7 +351,7 @@ export class Game {
     this.ultToastT = 0;
     return {
       kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false,
-      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 0 }, damage: 0, airtime: 0, start: this.ctx?.time ?? 0, loot: [],
+      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 0 }, damage: 0, airtime: 0, lavaKills: 0, start: this.ctx?.time ?? 0, loot: [],
     };
   }
 
@@ -707,6 +709,7 @@ export class Game {
       bestCombo: run.bestCombo,
       biggestBall: run.biggestBall,
       airtime: run.airtime,
+      lavaKills: run.lavaKills,
       duration: Math.max(0, ctx.time - run.start),
       damageTaken: run.damage,
       ...extra,
@@ -780,12 +783,13 @@ export class Game {
     events.on('ability', ({ nuke }) => {
       if (nuke && this.ultCamAllowed()) this.ultCam.onUlt();
     });
-    events.on('enemyKilled', ({ enemy, source }) => {
+    events.on('enemyKilled', ({ enemy, source, inLava }) => {
       // Paint Shop kill effect (player kills only: Brawl emits this just for the player's kills).
       const kill = equippedLook(this.ctx.progression).kill;
       if (kill.style) emitKillFx(this.ctx, kill, enemy.position);
       this.run.kills++;
       this.run.killsBy[source ?? 'other']++;
+      if (inLava) this.run.lavaKills++;
       // Final-kill slow-mo: a boss, or the kill that clears a campaign round / Survival wave.
       if (this.mode !== 'brawl' && this.state === 'playing' && (enemy.isBoss || this.ctx.waves.done)) this.ctx.impact.slowMo();
       const shot = this.ultCam.onKill(enemy.position.x, enemy.position.z, enemy.position.y);

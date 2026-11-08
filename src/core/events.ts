@@ -9,7 +9,8 @@ export type KillSource = 'slam' | 'ram' | 'whirl' | 'other' | 'stomp' | 'airSlam
 /** Cross-cutting game events. Modules call ctx.audio / ctx.fx directly for their own feedback;
  *  events exist so Game/UI can track stats and show toasts without modules knowing about each other. */
 export interface GameEvents {
-  enemyKilled: { enemy: EnemyHandle; coins: number; source?: KillSource };
+  /** inLava: the bot was standing in lava when it died, whatever finished it (lava kills, see LIFE.killsLava). */
+  enemyKilled: { enemy: EnemyHandle; coins: number; source?: KillSource; inLava?: boolean };
   enemyHit: { enemy: EnemyHandle; damage: number };
   /** The player slammed their snowball. */
   slam: { hits: number; radius: number; position: THREE.Vector3 };
@@ -46,6 +47,8 @@ export interface GameEvents {
     biggestBall: number;
     /** Longest single flight this run (s). */
     airtime?: number;
+    /** Kills on bots standing in lava, by any finishing blow (killsBy.lava only counts the lava's own burn). */
+    lavaKills?: number;
     /** Seconds from the first countdown to the end, excluding pauses and shops. */
     duration: number;
     /** HP lost this run (after armor / shields). */
