@@ -261,7 +261,9 @@ await session('match', async (host, guest) => {
   check(h.phase === 'results' && g.phase === 'results', 'the match ends on both sides', [h.phase, g.phase]);
   check(Math.max(...h.score) >= 2 && h.score.join() === g.score.join(), 'best of 3: a side reached 2, scores agree', [h.score, g.score]);
   check(c.hits[0] > 0 && c.hits[1] > 0, 'both plows dealt damage to each other', c.hits);
-  check(c.slams[0] + c.slams[1] > 0, 'slams were thrown', c.slams);
+  // SPACE attacks: a slam for snowball plows. The default pair has none: VOLT-9's Arc Lance counts as 'other' hits
+  // (beyond its F claps) and BRUTUS's Wrecking Fist as 'ram' hits.
+  check(c.slams[0] + c.slams[1] > 0 || (c.bySource[0][3] > c.abilities[0] && c.bySource[1][1] > 0), 'SPACE attacks landed (slams or primaries)', { slams: c.slams, other: c.bySource.map((b) => b[3]), abilities: c.abilities });
   check(c.abilities[0] > 0 && c.abilities[1] > 0, 'both used their F ability (Thunderclap / Ground Pound)', c.abilities);
   check(c.maxHitFrac <= 0.72, 'no single hit takes more than the Brawl cap of max HP', c.maxHitFrac);
   check(gc.eventsRecv > 0 && gc.snapsRecv > 50 && gc.snowMsgs > 10, 'guest received events, snapshots and snow patches', gc);

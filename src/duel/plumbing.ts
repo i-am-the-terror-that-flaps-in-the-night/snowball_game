@@ -100,11 +100,14 @@ export class PuppetInput implements InputSource {
   }
 }
 
-/** A dumb but aggressive autopilot (probes, idle testing): drive at the opponent, slam / dash / whirl / F. */
+/** A dumb but aggressive autopilot (probes, idle testing): drive at the opponent, slam / dash / whirl / F, and hold
+ *  SPACE when close and facing (the vehicles' held primaries: Arc Lance, Wrecking Fist, Rad Sprayer, Mag Shotgun;
+ *  snowball plows ignore the hold). */
 export class AutoPilot implements InputSource {
   throttle = 0;
   steer = 0;
   private pressed = new Set<string>();
+  private holdSpace = false;
   private t = 0;
   private fT = 1.5;
   constructor(private me: () => Plow, private opp: () => Plow) {}
@@ -117,6 +120,7 @@ export class AutoPilot implements InputSource {
     const op = this.opp();
     if (me.dead) {
       this.throttle = this.steer = 0;
+      this.holdSpace = false;
       return;
     }
     const dx = op.position.x - me.position.x;
@@ -135,6 +139,7 @@ export class AutoPilot implements InputSource {
     this.throttle = Math.abs(err) > 2.2 ? -0.4 : 1;
     const facing = Math.abs(err) < 0.35;
     if (facing && d < 6.5 && me.heldBallRadius > 0.5) this.pressed.add('Space');
+    this.holdSpace = Math.abs(err) < 0.6 && d < 9;
     if (facing && d > 6 && d < 15 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
     if (d < 5.5 && me.whirlReady >= 1) this.pressed.add('KeyE');
     this.fT -= dt;
@@ -145,6 +150,9 @@ export class AutoPilot implements InputSource {
   }
   wasPressed(code: string): boolean {
     return this.pressed.has(code);
+  }
+  isDown(code: string): boolean {
+    return code === 'Space' && this.holdSpace;
   }
 }
 
