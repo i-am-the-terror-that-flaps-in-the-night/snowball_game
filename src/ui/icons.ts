@@ -11,6 +11,7 @@ export const ICONS = {
   tutorial: svg('<path d="M5 21V3h12l-2 4 2 4H5"/>'),
   garage: svg('<path d="M14 6a4 4 0 0 0 5 5l2-2a6 6 0 0 1-8 8l-6 6-4-4 6-6a6 6 0 0 1 8-8z"/>'),
   paint: svg('<path d="M4 4h14v6H4zM18 7h2v6h-8v3"/><path d="M10 16h4v6h-4z"/>'),
+  story: svg('<path d="M4 4h6a2 2 0 0 1 2 2v15a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v15a2 2 0 0 1 2-2h6z"/>'),
   trophy: svg('<path d="M7 3h10v6a5 5 0 0 1-10 0zM7 5H3v2a4 4 0 0 0 4 4M17 5h4v2a4 4 0 0 1-4 4M12 14v4M7 21h10M9 18h6"/>'),
   settings: svg('<path d="M3 6h18M3 12h18M3 18h18"/><path d="M7 4v4M15 10v4M10 16v4" stroke-width="3.4"/>'),
   help: svg('<path d="M8 8a4 4 0 1 1 6 3.5c-1.5.8-2 1.5-2 3"/><path d="M12 18v3"/>'),

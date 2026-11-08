@@ -40,6 +40,17 @@ try {
   await page.keyboard.press('Escape');
   await ui(() => { const u = window.__game.ctx.ui; u.showMainMenu(); u.styleShop.open(); }); await shot('08-paint');
   await page.keyboard.press('Escape');
+  // Story overlay mid-campaign: arenas 1-3 cleared (chapters with endings), 4 open, 5-6 locked.
+  await ui(() => {
+    const p = window.__game.ctx.progression;
+    for (const id of ['yard', 'junkyard', 'foundry']) p.data.zones[id] = { cleared: true, bestRound: 4 };
+    p.data.unlockedZones = 4;
+    const u = window.__game.ctx.ui; u.showMainMenu(); u.story.open('story');
+  });
+  await shot('08b-story');
+  await page.keyboard.press('KeyE'); await shot('08c-story-bosses');
+  await page.keyboard.press('KeyE'); await shot('08d-story-plows');
+  await page.keyboard.press('Escape');
   await ui(() => { window.__game.ctx.ui.showMainMenu(); window.__game.startRun(0); for (let k = 0; k < 240; k++) window.__game.tick(1 / 60); });
   await shot('09-hud');
   await ui(() => window.__game.ctx.ui.showPause()); await shot('10-pause');

@@ -1,0 +1,50 @@
+/* ------------------------------------------------------------ story overlay (campaign chapters, bosses, plows) */
+.ss-story-sub { margin: 2px 4px 4px; }
+.ss-story-body { display: block; }
+.ss-story-pane-story { display: flex; flex-direction: column; gap: 12px; max-width: 820px; margin: 0 auto; }
+.ss-story-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.ss-story-card {
+  padding: 14px 16px 12px;
+  border-radius: 0;
+  clip-path: var(--chamfer-sm);
+  background: var(--slab-2);
+  box-shadow: inset 0 0 0 2px var(--line);
+  outline: none;
+  scroll-margin-top: 8px;
+}
+.ss-story-card:focus-visible { box-shadow: inset 0 0 0 3px var(--hazard); }
+.ss-story-card.done { box-shadow: inset 0 0 0 2px var(--line-hi), inset 6px 0 0 var(--hazard); }
+.ss-story-card.done:focus-visible { box-shadow: inset 0 0 0 3px var(--hazard), inset 6px 0 0 var(--hazard); }
+.ss-story-card.locked { opacity: 0.6; }
+.ss-story-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.ss-story-icon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 22px;
+  color: var(--ink-inv);
+  background: var(--hazard);
+  box-shadow: inset 0 0 0 2px var(--ink-inv);
+}
+.ss-story-card.locked .ss-story-icon { background: var(--slab-3); color: var(--ink-soft); box-shadow: inset 0 0 0 2px var(--line-hi); }
+.ss-story-titles { min-width: 0; }
+.ss-story-kicker { font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); }
+.ss-story-title { font-family: var(--display); font-weight: 900; font-size: 20px; line-height: 1.05; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); }
+.ss-story-text { margin: 6px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--ink); }
+.ss-story-text.dim { color: var(--ink-soft); font-style: italic; }
+.ss-story-rule { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; font-size: 11.5px; font-weight: 800; letter-spacing: 0.14em; color: var(--hazard); }
+.ss-story-rule::after { content: ""; flex: 1; height: 2px; background: var(--line); }
+
+/* results screen: the chapter's ending after a campaign clear */
+.ss-result-story { max-width: 640px; margin: 10px auto 2px; padding: 10px 14px; text-align: left; background: var(--slab-2); box-shadow: inset 0 0 0 2px var(--line), inset 6px 0 0 var(--hazard); clip-path: var(--chamfer-sm); }
+.ss-result-story-h { font-size: 11.5px; font-weight: 800; letter-spacing: 0.14em; color: var(--hazard); margin-bottom: 4px; }
+.ss-result-story p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
+
+@media (max-width: 560px) {
+  .ss-story-grid { grid-template-columns: 1fr; }
+  .ss-story-text { font-size: 14px; }
+}
