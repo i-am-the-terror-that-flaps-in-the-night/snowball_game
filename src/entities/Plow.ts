@@ -309,7 +309,7 @@ export class Plow implements PlowAPI {
   private wheelsOff = false;
   private paintMat: THREE.MeshStandardMaterial;
   private bedMat: THREE.MeshStandardMaterial;
-  private paintBase = new THREE.Color(0xffb81a);
+  private paintBase = new THREE.Color(0xffc814);
   private bedBase = new THREE.Color(0x23272e);
   private charColor = new THREE.Color(0x2a211c);
   private beaconMat: THREE.MeshStandardMaterial;

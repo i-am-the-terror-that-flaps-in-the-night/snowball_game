@@ -601,9 +601,9 @@ export function buildBuzzsaw(): Buzzsaw {
 /** Factory paint per starter plow: body panels + secondary panels (trim: the Classic's black belt line, fenders,
  *  hopper rails and blade ribs). The 'stock' paint keeps these. */
 export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: number }>> = {
-  classic: { body: 0xffb81a, trim: 0x23272e },
+  classic: { body: 0xffc814, trim: 0x23272e }, // safety yellow (0xffb81a read as mustard under the scene's tone mapping)
   volt: { body: 0xe9edf1, trim: 0x2c323b }, // TESLA ROVER: pale composite panels over a graphite tub
-  brute: { body: 0x7d8794, trim: 0x4a525d },
+  brute: { body: 0x8e3b24, trim: 0x3e444c }, // junkyard oxide red over gunmetal (the old grey read as primer)
   isotope: { body: 0xe8cf1f, trim: 0x3a4038 },
   arsenal: { body: 0x55606c, trim: 0x2c333b },
 };

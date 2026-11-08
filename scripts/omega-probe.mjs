@@ -34,6 +34,8 @@ const TIERS = opt('tiers', 'fresh,mid,high').split(',');
 const RUNS = Number(opt('runs', '2'));
 const PAR = Number(opt('par', '2'));
 const CAP = Number(opt('cap', '240'));
+/** --hard: play each arena's Hard mode (the arena's normal clear is granted first, Hard needs it). */
+const HARD = flag('hard');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = opt('out', resolve(root, 'omega-probe-out'));
 mkdirSync(OUT, { recursive: true });
@@ -155,7 +157,7 @@ if (flag('report-only')) {
 
 /* ------------------------------------------------------------------ page-side code */
 // Runs in the page: set the garage for (plow, tier), start the arena, wire the counters and the autopilot.
-async function pageSetup({ arena, plow, tier, tiers, cap }) {
+async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   const g = window.__game, c = g.ctx, pr = c.progression;
   g.setLoop(false);
   g.impact.enabled = false;
@@ -185,7 +187,12 @@ async function pageSetup({ arena, plow, tier, tiers, cap }) {
   } catch (e) {
     levelsMatch = `sim.ts import failed: ${e.message}`;
   }
-  g.startRun(arena);
+  if (hard) {
+    const id = c.progression.data && (await import('/src/config/zones.ts')).ZONES[arena].id;
+    c.progression.data.zones[id] = { cleared: true, bestRound: 99 };
+  }
+  g.startRun(arena, !!hard);
+  if (hard && !g.hard) throw new Error(`startRun(${arena}, hard) did not start Hard mode`);
   if (g.zoneIndex !== arena) throw new Error(`startRun(${arena}) did not start (zone ${g.zoneIndex})`);
   c.ui.hideOverlays?.();
 
@@ -547,7 +554,7 @@ async function runOne(job) {
   try {
     await page.goto(`http://localhost:${port}/`, { waitUntil: 'load', timeout: 120000 });
     await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
-    const setup = await page.evaluate(pageSetup, { arena: job.arena, plow: job.plow, tier: job.tier, tiers: TIER_SRC, cap: CAP });
+    const setup = await page.evaluate(pageSetup, { arena: job.arena, plow: job.plow, tier: job.tier, tiers: TIER_SRC, cap: CAP, hard: HARD });
     if (setup.levelsMatch !== true) console.log(`  WARN levels ${job.plow}/${job.tier}: ${setup.levelsMatch}`);
     let st;
     const maxChunks = Math.ceil((CAP * 6 * 60 + 2000) / 1200);
@@ -558,7 +565,7 @@ async function runOne(job) {
     const res = await page.evaluate(() => window.__result());
     const rec = { arena: job.arena, tier: job.tier, plow: job.plow, run: job.run, zone: setup.zone, stats: setup.stats, levelsMatch: setup.levelsMatch, finished: !!st?.done, wall: Math.round((Date.now() - t0) / 1000), ...res, errors: [...res.errors, ...errors.slice(0, 10)] };
     appendFileSync(RUNS_FILE, JSON.stringify(rec) + '\n');
-    console.log(`RUN a${job.arena + 1} ${job.tier} ${job.plow} #${job.run + 1}: total ${rec.total}s [${rec.rounds.map((r) => r.t + (r.timeout ? '!' : '')).join(' / ')}] boss ${rec.bossFight}s hp-${rec.hpLost} deaths ${rec.deaths} other ${pct(rec.otherLevel)} stuck ${rec.stuck}/${rec.stuckFree}s wall ${rec.wall}s${rec.errors.length ? ' ERR ' + rec.errors[0].slice(0, 120) : ''}`);
+    console.log(`RUN a${job.arena + 1}${HARD ? 'H' : ''} ${job.tier} ${job.plow} #${job.run + 1}: total ${rec.total}s [${rec.rounds.map((r) => r.t + (r.timeout ? '!' : '')).join(' / ')}] boss ${rec.bossFight}s hp-${rec.hpLost} deaths ${rec.deaths} other ${pct(rec.otherLevel)} stuck ${rec.stuck}/${rec.stuckFree}s wall ${rec.wall}s${rec.errors.length ? ' ERR ' + rec.errors[0].slice(0, 120) : ''}`);
     return true;
   } finally {
     await ctx.close().catch(() => {});

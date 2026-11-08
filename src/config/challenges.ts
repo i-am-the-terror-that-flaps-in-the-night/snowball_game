@@ -25,6 +25,8 @@ export interface ChallengeDef {
   name: string;
   /** Short goal, fits a zone card line (e.g. "Clear in under 1:30"). */
   goal: string;
+  /** How to pull it off, for goals that aren't obvious (zone card hover, results screen when missed). */
+  tip?: string;
   test(r: ChallengeRun): boolean;
 }
 
@@ -60,20 +62,27 @@ const strikes = (n: number, name = 'Strike Force'): ChallengeDef => ({
 /* Biome challenges (docs/level-overhaul.md "Challenges and trophies"). */
 /** Kills on bots standing in lava: knock them in and finish them any way you like, or let the lava burn them out. */
 const lavaKills = (n: number, name = 'Hot Tub'): ChallengeDef => ({
-  id: 'lava', icon: '🌋', name, goal: `${n} kills in lava`, test: (r) => Math.max(r.lavaKills ?? 0, r.killsBy.lava ?? 0) >= n,
+  id: 'lava', icon: '🌋', name, goal: `${n} kills in lava`,
+  tip: 'Shove or blast bots into the lava, then finish them off (or let it burn them). Any kill counts while they stand in it.',
+  test: (r) => Math.max(r.lavaKills ?? 0, r.killsBy.lava ?? 0) >= n,
 });
 /** Longest single flight. The best ramp in the campaign (Rust Basin, low gravity) gives ~1.5 s at full speed. */
 const airtime = (sec: number, name = 'Moonshot'): ChallengeDef => ({
-  id: 'air', icon: '🛸', name, goal: `${sec.toFixed(1)} s of airtime`, test: (r) => (r.airtime ?? 0) >= sec,
+  id: 'air', icon: '🛸', name, goal: `${sec.toFixed(1)} s of airtime`,
+  tip: 'Your longest single jump. Hit the big ramps at full speed (dash onto them) and fly off the top.',
+  test: (r) => (r.airtime ?? 0) >= sec,
 });
 /** Kills from the air: an air slam (the Classic's slam while airborne, BRUTUS's airborne Ground Pound) or a stomp
  *  (landing on a bot; any plow). */
 const airKills = (n: number, name = 'Meteor Strike'): ChallengeDef => ({
   id: 'airSlam', icon: '☄️', name, goal: n === 1 ? 'Air-slam or stomp kill' : `${n} air-slam/stomp kills`,
+  tip: 'Launch off a ramp, then slam (Classic) or Ground Pound (BRUTUS) before you land, or land right on top of a bot with any plow. Softened-up bots die easier.',
   test: (r) => (r.killsBy.airSlam ?? 0) + (r.killsBy.stomp ?? 0) >= n,
 });
 const bossBlitz = (sec: number, name = 'Boss Blitz'): ChallengeDef => ({
-  id: 'blitz', icon: '💨', name, goal: `Beat the boss in ${sec}s`, test: (r) => r.bossTime > 0 && r.bossTime < sec,
+  id: 'blitz', icon: '💨', name, goal: `Beat the boss in ${sec}s`,
+  tip: 'The timer starts when the boss arrives. Save your F ability and its meter for it.',
+  test: (r) => r.bossTime > 0 && r.bossTime < sec,
 });
 const bossClean = (hp: number, name = 'Not a Scratch'): ChallengeDef => ({
   id: 'bossHp', icon: '🎯', name, goal: `Take < ${hp} HP from boss`, test: (r) => r.bossDamage < hp,

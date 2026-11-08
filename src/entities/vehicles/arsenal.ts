@@ -409,8 +409,9 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   for (const sx of [-1, 1]) {
     for (let j = 0; j < 3; j++) onRoof(0.036, 0.036, 0.036, m.chrome, sx * 0.68, -2.02 - j * 0.18, 0.035, 0, false);
     // Engine vent: a dark recessed grille with five louvre slats, a trim frame bar fore and aft.
-    slopePlate(0.52, 0.025, sx * 0.4, roofAt(-3.05).y, -3.05, roofAt(-2.45).y, -2.45, m.dark, 0.06);
-    for (let j = 0; j < 5; j++) onRoof(0.48, 0.02, 0.06, armorMat, sx * 0.4, -2.56 - j * 0.11, 0.012, -0.3, false);
+    // The grille is a thin dark backing; the slats sit inside the trim frame (tops flush with the 0.035 m frame bars).
+    slopePlate(0.52, 0.01, sx * 0.4, roofAt(-3.05).y, -3.05, roofAt(-2.45).y, -2.45, m.dark, 0.06);
+    for (let j = 0; j < 5; j++) onRoof(0.48, 0.02, 0.06, armorMat, sx * 0.4, -2.56 - j * 0.11, 0.006, -0.3, false);
     for (const z of [-2.5, -3.0]) onRoof(0.56, 0.035, 0.035, trimMat, sx * 0.4, z, 0.0);
     // Chamfer plates (crest and rear facet) and the flank line.
     const [ka, kb] = sx > 0 ? [2, 3] : [5, 4];

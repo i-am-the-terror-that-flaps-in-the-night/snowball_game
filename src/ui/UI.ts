@@ -965,7 +965,7 @@ export class UI implements UIAPI {
       const row = el('div', `ss-zone-chal ${done ? 'done' : ''}`, undefined, box);
       el('span', 'ss-zone-chal-mark', done ? '✓' : c.icon, row);
       el('span', 'ss-zone-chal-goal', c.goal, row);
-      row.title = `${c.name}: ${c.goal}${done ? ' ✓' : ''}`;
+      row.title = `${c.name}: ${c.goal}${done ? ' ✓' : ''}${c.tip ? `\n${c.tip}` : ''}`;
     }
   }
 
@@ -1530,6 +1530,7 @@ export class UI implements UIAPI {
       const tx = el('span', 'ss-chal-row-text', undefined, row);
       el('b', '', r.def.name, tx);
       el('small', '', r.def.goal, tx);
+      if (!r.met && !r.owned && r.def.tip) el('small', 'ss-chal-row-tip', `💡 ${r.def.tip}`, tx);
       if (r.isNew) el('span', 'ss-chal-row-new', 'NEW ★', row);
       else if (r.owned) el('span', 'ss-chal-row-owned', '★', row);
     });
