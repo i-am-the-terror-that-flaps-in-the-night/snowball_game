@@ -25,9 +25,12 @@ Every arena has **3 challenge stars** and, once cleared, a **Hard mode**:
 - **Challenge stars**: 3 per arena (18 total): slam kills, ball size, clear times, combos, damage limits, boss-fight
   speed and a few plow-specific goals. They're judged on any winning run (normal or Hard), shown on the arena cards
   and the results screen, and each new star pays a one-time bonus (+75 to +800 by arena).
-- **Hard mode**: ×1.8 bot HP, ×1.5 bot damage, about 35% more minions, the same boss, ×1.75 coins. The first Hard
-  clear pays 2.5× the arena's clear reward (repeats 0.6×) and earns a 💀 badge on its card. Hard clears never change
-  unlocks.
+- **Hard mode**: ×1.8 bot HP, ×1.5 bot damage, about 35% more minions, the same boss, ×1.75 coins. It scales with
+  your plow past mid-game: your power is the average effective level (Garage + gear) of the core four upgrades and
+  your plow's own line. Up to 4 nothing changes; each level above that adds +15% bot HP and +8% bot damage, capped at
+  10 levels (×2.5 HP, ×1.8 damage on top). A late-game garage (about level 9) faces about ×1.75 HP and ×1.4 damage.
+  The Hard button's tooltip shows your current numbers. The first Hard clear pays 2.5× the arena's clear reward
+  (repeats 0.6×) and earns a 💀 badge on its card. Hard clears never change unlocks.
 
 Boss clears drop gear: the first clear always does, repeat clears sometimes, and Hard clears with better odds (always on the first Hard clear)
 (see [progression.md](progression.md#loot)).

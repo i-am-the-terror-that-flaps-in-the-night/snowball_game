@@ -27,7 +27,7 @@ import { ICONS, type IconName } from './icons';
 import { renderDailyResult, renderDailyShopTag } from './DailyResult';
 import { renderLoot } from './LootReveal';
 import {
-  HARD, earnedIds, hardCleared, hardReward, hardUnlocked, lastChallengeReport, maxStars, starReward, zoneChallenges, zoneStars,
+  HARD, earnedIds, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, lastChallengeReport, maxStars, starReward, zoneChallenges, zoneStars,
 } from '../meta/challenges';
 import { achievementCount, totalStars } from '../meta/progress';
 import { ACHIEVEMENTS } from '../config/achievements';
@@ -972,9 +972,12 @@ export class UI implements UIAPI {
   /** Under each card: the HARD button once the arena is cleared (💀 ✓ once beaten), a locked hint before that. */
   private zoneHardStrip(zoneIndex: number, slot: HTMLElement): void {
     const p = this.ctx.progression;
+    const k = hardScale(hardPower((id) => p.statLevel(id), p.data.plow));
+    const f = (n: number) => String(Math.round(n * 100) / 100);
     const tip =
-      `Hard mode: bots ×${HARD.hpMult} HP, ×${HARD.dmgMult} damage, +${Math.round((HARD.minionMult - 1) * 100)}% minions. ` +
-      `×${HARD.coinMult} coins. Stars count here too.`;
+      `Hard mode: bots ×${f(HARD.hpMult * k.hp)} HP, ×${f(HARD.dmgMult * k.dmg)} damage, +${Math.round((HARD.minionMult - 1) * 100)}% minions. ` +
+      `×${HARD.coinMult} coins. Stars count here too.` +
+      (k.hp > 1 ? ' Scaled up for your upgrades.' : ' Bots get tougher as your plow gets stronger.');
     // A locked arena gets no HARD button even when an old save has it cleared (startRun would refuse it anyway).
     const arenaOpen = p.isZoneUnlocked(zoneIndex);
     if (!arenaOpen || !hardUnlocked(p, zoneIndex)) {

@@ -29,8 +29,10 @@ snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% dama
   9 m (Mega Hopper adds reach), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
   nearest unhit bot within 8 m, the first hop at half damage and each one after keeping 90% of the one before. Every
   arc hit (any hop) has a 7% chance to **PARALYSE** the bot for 1.2 s (a stun; bosses half); a paralysed bot can't be
-  paralysed again for 2.5 s after. It stays locked onto its target while that bot stays in reach. Overclock speeds
-  the arc up.
+  paralysed again for 2.5 s after. **GROUNDED ARC:** when the locked bot is a boss, or has nothing within 8 m to chain to
+  (a straggler), the arc grounds into it for 1.75x damage and faces only half its armour; on a boss the chain still
+  runs on to its adds. Bots only (the Duel is unchanged). It stays locked onto its target
+  while that bot stays in reach. Overclock speeds the arc up.
 - **E: Static Field.** An electrified field rides with the rover for 2.5 s (6.5 m, wider with Tesla Field). It pulses
   every 0.5 s, the first pulse a bigger burst: each pulse damages and stuns every bot inside for 0.7 s, so bots caught in
   it stay locked down while you drive through a pack. It recharges on the E timer (Whirlwind Turbine and Overclock
@@ -124,10 +126,8 @@ close and aims by steering: neither main weapon auto-aims.
   follow a bot on a slope). While held it fires a blast about every 0.55 s (faster with levels): 8 cyan pellets fanned
   across a 36° cone (Whirlwind Turbine adds more), and every bot inside the cone takes the WHOLE blast (no pellet luck). Short reach (~8 m, a
   little more with levels and Mega Hopper); pellets hit full out to 6 m and fall to 70% at full reach, so it is
-  deadliest point-blank. **MAGNETIC REEL** (its signature): every bot a blast leaves alive is magnetized and dragged
-  for 0.9 s toward a sweet spot 3.6 m in front of the emitter (cyan sparks stream off it), so a far bot gets reeled
-  into full-damage range and a pack gets clumped up for the next blast; nothing is shoved away. In the Duel (a pilot
-  can't be dragged) a point-blank blast shoves instead. All of one blast's pellets on a bot land as one hit
+  deadliest point-blank. A point-blank blast shoves the bot back; further out it only nudges. (The Magnetic Reel that
+  dragged survivors into point-blank was removed: it kept ARSENAL out of reach of everything.) All of one blast's pellets on a bot land as one hit
   (one armour check; in the Duel it is soft-capped as one hit, so even a point-blank blast can't one-shot).
 - **E: Mag Repulsor.** A magnetic wave bursts out of the nose across a 60° wedge (Snow Compactor widens it, 90° at
   most) and sweeps out to ~11 m in 0.3 s: a cyan arc wall racing over the snow, field-line streaks and a gyro flare.

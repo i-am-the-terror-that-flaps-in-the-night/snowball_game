@@ -52,7 +52,9 @@ describe('sustained damage', () => {
     // BRUTUS's Wrecking Fist was buffed by request (no recovery, faster punches): at least ARSENAL, at most +45%.
     expect(dps.get('brute')! / arsenal).toBeGreaterThan(0.95);
     expect(dps.get('brute')! / arsenal).toBeLessThan(1.45);
-    for (const k of live) if (k !== 'classic' && k !== 'arsenal' && k !== 'brute') expect(Math.abs(dps.get(k)! / arsenal - 1)).toBeLessThan(0.18); // 18%: overkill on dying dummies trims ARSENAL's 3x a little
+    // 18%: overkill on dying dummies trims ARSENAL's PvE bonus a little. VOLT-9 gets 25%: the sim's dummy stands alone,
+    // so its GROUNDED ARC (1.75x on a target with nothing to chain to, the boss-fight buff) is always on here.
+    for (const k of live) if (k !== 'classic' && k !== 'arsenal' && k !== 'brute') expect(Math.abs(dps.get(k)! / arsenal - 1)).toBeLessThan(k === 'volt' ? 0.25 : 0.18);
   });
 
   it.each(['fresh', 'high'] as const)('%s: VOLT-9 / BRUTUS / ISOTOPE out-damage ARSENAL on a cluster (before its PvE bonus)', (tier) => {

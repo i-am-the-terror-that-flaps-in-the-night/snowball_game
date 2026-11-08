@@ -211,6 +211,9 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
     proto[m] = f;
   };
   const isArs = plow === 'arsenal';
+  // Held SPACE primaries of the vehicle kits (no snowball to slam): Arc Lance, Wrecking Fist, Rad Sprayer reach (m,
+  // centre to centre, before the target's radius).
+  const KIT_REACH = { volt: 9, brute: 5.6, isotope: 8.5 }[plow] ?? 0;
   wrap(cb.air, 'update', 'air');
   wrap(cb.classic, 'updateFlame', 'F');
   wrap(cb.classic, 'updateBurns', 'F');
@@ -275,7 +278,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   const ap = () => {
     const p = c.plow, s = c.stats, en = c.enemies, nav = en.nav;
     for (const k of ['ShiftLeft', 'KeyE', 'KeyF']) if (keys[k]) set(k, false);
-    if (!isArs && keys.Space) set('Space', false);
+    if (!isArs && !KIT_REACH && keys.Space) set('Space', false);
     if (p.dead) { for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'Space']) set(k, false); return; }
     const px = p.position.x, py = p.position.y, pz = p.position.z;
     let best = null, bScore = 1e9, bd = 1e9, near = 0, inF = 0, anyIn = 0, gunIn = 0, laserIn = 0, bossNear = 0;
@@ -403,6 +406,8 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
       else if (!usedF && p.dashReady >= 1 && !routed && bd > 8 && bd < 16 && Math.abs(diffA) < 0.15) tap('ShiftLeft');
       return;
     }
+    // Vehicle kits: hold the primary while the target is in reach and roughly ahead.
+    if (KIT_REACH) set('Space', sameT && bd < KIT_REACH + (best.radius || 1) * 0.5 && Math.abs(bdiff) < 0.7);
     if (usedF) return;
     if (p.heldBallRadius >= 0.5 && sameT && bd < 5.5 && Math.abs(bdiff) < 0.45) tap('Space');
     else if (p.dashReady >= 1 && !routed && sameT && bd > 6 && bd < 14 && Math.abs(diffA) < 0.15) tap('ShiftLeft');

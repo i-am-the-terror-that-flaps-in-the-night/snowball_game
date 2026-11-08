@@ -9,7 +9,7 @@ import type { UltScript } from './ultimates';
 /* ARSENAL: a magnetic vehicle (two huge front wheels, a hovering gyro core at the back). Like every plow, it fights
  * up close and aims by steering: both main weapons fire straight off the nose.
  *   SPACE  MAG SHOTGUN   held: a fixed forward emitter fires a blast every 1/gunRate s: SHOT_PELLETS pellets in a
- *                        SHOT_HALF x 2 cone, short reach, damage falling off with distance; survivors are reeled in (MAGNETIC REEL).
+ *                        SHOT_HALF x 2 cone, short reach, damage falling off with distance, a shove point-blank.
  *   E      MAG REPULSOR  a magnetic wave sweeps out across a forward wedge (REP_HALF x 2, laserRange m): one big hit
  *                        on every bot it reaches, flinging it away (bosses barely).
  *   F      POLARITY BURST the gyro folds into a disc, an event horizon expands to BURST_R m, every bot inside is pulled
@@ -56,13 +56,6 @@ const SHOT_FAR = 0.7;
 const SHOT_PB = 3.5;
 const SHOT_PB_KNOCK = 7;
 const SHOT_KNOCK = 1.2;
-/** MAGNETIC REEL — the shotgun's signature (bots only; a Duel pilot can't be dragged): every bot a blast leaves alive
- *  is MAGNETIZED for REEL_T s and dragged at up to REEL_SPEED m/s toward the sweet spot REEL_SPOT m ahead of the
- *  emitter (inside full-damage range), so the next blast hits the whole pack point-blank. A bot already closer than
- *  the sweet spot isn't shoved away any more — it stays pinned in front of the emitter. */
-const REEL_T = 0.9;
-const REEL_SPEED = 10;
-const REEL_SPOT = 3.6;
 /** The emitter never yaws; it only tilts (at GUN_PITCH_SLEW rad/s, within ±SHOT_PITCH) toward the nearest bot in the
  *  cone; each pellet connects with any bot whose body is inside that band (slopes, ramps, small bots point-blank under a
  *  high emitter), so only bots on another deck are out of reach. */
@@ -171,9 +164,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   /** Per-blast scratch: bot -> summed damage / nearest pellet distance (reused, never reallocated). */
   private blastDmg = new Map<EnemyHandle, number>();
   private blastNear = new Map<EnemyHandle, number>();
-  /** MAGNETIC REEL: magnetized bot -> seconds of reel left; spark timer. */
-  private reel = new Map<EnemyHandle, number>();
-  private reelFxT = 0;
   /** Mag Repulsor time left (s; 0 = idle), where it was cast from, its heading / reach / half-angle, bots already hit. */
   laserT = 0;
   private repAt = new THREE.Vector3();
@@ -476,7 +466,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       plow.turretAim = 0;
     }
     if (st.gunDamage <= 0 || !plow) return this.drawPellets(dt);
-    this.updateReel(dt);
     if (this.gunT > 0) this.gunT -= dt;
     if (plow.dead) return this.drawPellets(dt);
     // A press without held-key reporting fires one blast; a puppet follows the host's held bit only.
@@ -500,40 +489,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     if (this.gunT < 0) this.gunT = 0;
     this.blast(range);
     this.drawPellets(dt);
-  }
-
-  /** MAGNETIC REEL: drag every magnetized bot toward the sweet spot in front of the emitter; cyan sparks streaming
-   *  off it toward ARSENAL show the pull. */
-  private updateReel(dt: number): void {
-    if (!this.reel.size) return;
-    const plow = this.b.plow;
-    if (!plow || plow.dead || !this.canPull) {
-      this.reel.clear();
-      return;
-    }
-    const fx = Math.sin(plow.heading);
-    const fz = Math.cos(plow.heading);
-    plow.mountWorld('muzzle', 0, _a);
-    const sx = _a.x + fx * REEL_SPOT;
-    const sz = _a.z + fz * REEL_SPOT;
-    this.reelFxT -= dt;
-    const spark = this.reelFxT <= 0;
-    if (spark) this.reelFxT = 0.08;
-    for (const [e, t] of this.reel) {
-      const left = t - dt;
-      if (left <= 0 || !e.alive) {
-        this.reel.delete(e);
-        continue;
-      }
-      this.reel.set(e, left);
-      // Fade the drag out over the last third so a reeled bot settles instead of snapping to a stop.
-      this.pullBot(e, sx, sz, REEL_SPEED * Math.min(1, left / (REEL_T * 0.33)), dt);
-      if (spark) {
-        this.chest(e, _tip);
-        _fwd.set(_a.x - _tip.x, 0.15, _a.z - _tip.z).normalize();
-        this.ctx.fx.sparks(_tip, _fwd, { count: 2, color: CYAN, speed: 6, spread: 0.35, size: 0.05, length: 0.07, life: 0.22, gravity: 0 });
-      }
-    }
   }
 
   /** Nearest live bot whose body is inside the shotgun cone and reach (for the emitter's tilt), or null. */
@@ -653,12 +608,10 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       nearMap.set(e, t);
     }
     this.clearTargets();
-    const reel = this.canPull;
     for (const [e, dmg] of dmgMap) {
       const d = nearMap.get(e) ?? range;
-      // Bots: no shove — survivors get MAGNETIZED and reeled in (see updateReel). Duel: point-blank shove, far nudge.
-      this.weaponHit(e, dmg, ox, oz, reel ? 0.3 : d <= SHOT_PB ? SHOT_PB_KNOCK : SHOT_KNOCK, 'round');
-      if (reel && e.alive) this.reel.set(e, REEL_T);
+      // Point-blank: a real shove; further out a nudge.
+      this.weaponHit(e, dmg, ox, oz, d <= SHOT_PB ? SHOT_PB_KNOCK : SHOT_KNOCK, 'round');
     }
     dmgMap.clear();
     nearMap.clear();
@@ -1137,7 +1090,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.shedDmg.clear();
     this.scrapT = 0;
     this.gunT = this.gunBurstT = 0;
-    this.reel.clear();
     this.gunsOn = false;
     for (const s of this.pellets) {
       s.t = STREAK_LIFE;

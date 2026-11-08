@@ -3,7 +3,7 @@ import { Progression } from '../src/core/Progression';
 import { ZONES } from '../src/config/zones';
 import { CHALLENGES, HARD, type ChallengeRun } from '../src/config/challenges';
 import {
-  awardRun, evaluateRun, hardCleared, hardReward, hardUnlocked, hardZone, maxStars, recordHardClear, starReward, starString,
+  awardRun, evaluateRun, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, hardZone, maxStars, recordHardClear, starReward, starString,
   zoneChallenges, zoneStars,
 } from '../src/meta/challenges';
 import { totalStars } from '../src/meta/progress';
@@ -139,6 +139,22 @@ describe('star awards', () => {
 });
 
 describe('hard mode', () => {
+  it('Hard scales with the pilot past mid-game: no change up to power 4, tougher late, capped', () => {
+    expect(hardScale(0)).toEqual({ hp: 1, dmg: 1 });
+    expect(hardScale(3.5)).toEqual({ hp: 1, dmg: 1 }); // a mid-game garage plays Hard as tuned
+    const late = hardScale(9); // a late-game garage
+    expect(late.hp).toBeCloseTo(1.75);
+    expect(late.dmg).toBeCloseTo(1.4);
+    expect(hardScale(100)).toEqual(hardScale(HARD.scaleFrom + HARD.scaleLevels)); // endless levels stop at the cap
+    const z = ZONES[0];
+    expect(hardZone(z, 9).enemyHpMult).toBeCloseTo(z.enemyHpMult * HARD.hpMult * late.hp);
+    expect(hardZone(z, 9).enemyDmgMult).toBeCloseTo(HARD.dmgMult * late.dmg);
+    // Power is a mean over the core four + the plow's own line, so a longer line doesn't count for more.
+    expect(hardPower(() => 6, 'brute')).toBeCloseTo(6);
+    expect(hardPower(() => 6, 'classic')).toBeCloseTo(6);
+    expect(hardPower((id) => (id === 'engine' ? 8 : 0), 'classic')).toBeCloseTo(1);
+  });
+
   it('hardZone: tougher, richer, more minions, same boss', () => {
     for (const z of ZONES) {
       const h = hardZone(z);

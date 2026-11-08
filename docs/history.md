@@ -74,7 +74,7 @@ Built in parallel branches and merged the same day:
 
 - **ARSENAL redesigned** as a magnetic gyro-hover vehicle with the Mag Shotgun, Mag Repulsor and SINGULARITY.
 - **Distinct primaries:** ISOTOPE's lingering RAD DOSE, VOLT-9's long Arc Lance chains with paralysis, BRUTUS's solid
-  Wrecking Fist, ARSENAL's Magnetic Reel and strip scrap.
+  Wrecking Fist, and ARSENAL's strip scrap (its Magnetic Reel came and went: it made ARSENAL too safe).
 - **Biome challenges and trophies:** Hot Tub, Moonshot and Meteor Strike.
 - **The Frostvale story** (`src/config/lore.ts`): it went from cozy to dark and then settled on comedy with teeth.
   MEGAPLOW Ω is a smug corporate factory AI running Project WHITEOUT off a slide deck: genuinely villainous (it hoards

@@ -15,6 +15,10 @@ const ARC_CHAIN_FRAC = 0.5;
 /** Each hop past the first keeps this share of the hop before it (a long chain thins out but still bites). */
 const ARC_HOP_DECAY = 0.9;
 const ARC_CHAIN_R = 8;
+/** GROUNDED ARC: when the locked bot is a boss, or has nothing within ARC_CHAIN_R to chain to (a straggler), the arc
+ *  grounds into it: ARC_SOLO x damage, facing only half its flat armour (the chain weapon was weakest on lone,
+ *  armoured targets; bosses always have adds around them, so they ground regardless and the chain still runs on). */
+export const ARC_SOLO = 1.75;
 /** PARALYSIS: every arc hit (any hop) has PARA_CHANCE to lock the bot up for PARA_SECONDS (a stun); a paralysed bot
  *  can't be paralysed again for PARA_IMMUNE s after it wears off. */
 const PARA_CHANCE = 0.07;
@@ -144,11 +148,16 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     let hit: EnemyHandle | null = tgt;
     const hops = ARC_HOPS + st.chainCount;
     const frac = ARC_CHAIN_FRAC + st.chainFrac * 0.5;
+    // GROUNDED ARC: a boss, or nothing near the target to chain to (bots only: a Duel opponent is always alone).
+    let solo = !this.b.pvp;
+    const grounded = solo && tgt.isBoss;
+    const around = this.b.enemies.query(tgt.position.x, tgt.position.z, ARC_CHAIN_R, this.arcBuf);
+    for (let i = 0; i < around.length && solo && !grounded; i++) if (around[i].alive && around[i] !== tgt) solo = false;
     for (let hop = 0; hop <= hops && hit; hop++) {
       this.arcHit.add(hit.id);
       _q.set(hit.position.x, hit.position.y + hit.radius * 0.9, hit.position.z);
       if (hop === 0) {
-        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: 0.42, jag: 1.0, color: 0xbff0ff });
+        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: solo ? 0.6 : 0.42, jag: 1.0, color: 0xbff0ff });
         this.lightning.bolt(_p, _q, { life: tick * 0.7, width: 0.18, jag: 1.6, color: 0x3fa8ff });
       } else {
         _r.set(src.position.x, src.position.y + src.radius * 0.9, src.position.z);
@@ -163,8 +172,14 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         this.paraReady.set(hit.id, ctx.time + PARA_SECONDS + PARA_IMMUNE);
         if (this.paraReady.size > 64) for (const [id, t] of this.paraReady) if (t < ctx.time) this.paraReady.delete(id);
       }
-      const share = hop === 0 ? 1 : frac * ARC_HOP_DECAY ** (hop - 1);
-      const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), { source: 'other', fromX: px, fromZ: pz, stunSeconds: para || undefined });
+      const share = hop === 0 ? (solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
+      const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), {
+        source: 'other',
+        fromX: px,
+        fromZ: pz,
+        stunSeconds: para || undefined,
+        crackArmor: solo || undefined,
+      });
       if (para && !killed) {
         ctx.fx.floatText(_q, 'PARALYZED', '#bff0ff', 0.85);
         ctx.fx.sparks(_q, null, { color: 0xdff6ff, count: 14, speed: 7, size: 0.07, length: 0.06, gravity: 4, life: 0.4 });

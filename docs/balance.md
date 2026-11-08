@@ -284,6 +284,23 @@ shards barely register.
 
 The four snowball plows sit within about ±20% of each other and every Duel kill takes at least 4.7 s (floor 4 s).
 
+## Follow-up: Hard mode sweep, reel removed, grounded arc, Hard scaling
+
+A Hard sweep (mid / high garages, every arena) after the ARSENAL nerfs showed three things:
+
+- **ARSENAL was still the safest plow on Hard** (fastest on every arena at mid, usually 0 HP lost) thanks to the
+  Magnetic Reel pinning bots in front of its nose. The reel is gone: a point-blank blast shoves again, a far one
+  nudges. On the rerun it takes real damage (434 HP on Hard Plaza at mid, was 0).
+- **VOLT-9 crawled through big bosses** (51-56 s on the Plaza / Omega Works Hard bosses at mid, others 22-40 s): its
+  2.1-damage arc ticks were eaten by boss armour 6-8. GROUNDED ARC: on a boss, or on a bot with nothing to chain to,
+  the arc does 1.75x and faces half armour (bots only; Duel unchanged). The sim's lone dummy always counts as
+  grounded, so VOLT's single-target row reads +19% / +26% / +39% by tier (its `balance.test.ts` match-ARSENAL band
+  is 25% instead of 18% for that reason).
+- **Hard barely bit a late-game garage** (18-56 s clears, bosses in 1-16 s, about the same as normal). Hard now
+  scales with the pilot past mid-game (see [modes.md](modes.md)): a late-game garage faces about x1.75 bot HP and
+  x1.4 bot damage on top of Hard's own. On the rerun the late-game Plaza / Omega Works Hard clears went from about 50 s
+  to 60-79 s, bosses took about twice as long, and HP lost roughly doubled.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

@@ -3,6 +3,8 @@ import type { Progression } from '../core/Progression';
 import type { GameEvents } from '../core/events';
 import { ZONES, type ZoneDef } from '../config/zones';
 import { CHALLENGES, HARD, STAR_REWARD_FRAC, type ChallengeDef, type ChallengeRun } from '../config/challenges';
+import { UPGRADES, type UpgradeId } from '../config/upgrades';
+import type { PlowKind } from '../config/plows';
 
 /* Campaign meta: three star challenges per arena (config/challenges.ts) and a Hard mode for every arena.
  *  - Stars live in save.challenges[zoneId] = [challenge ids]; each pays a one-time coin bonus.
@@ -15,13 +17,30 @@ export { HARD } from '../config/challenges';
 
 /* ------------------------------------------------------------------ hard mode */
 
-/** Hard-mode version of a campaign arena: tougher, more numerous bots (same boss), better pay. */
-export function hardZone(zone: ZoneDef): ZoneDef {
+const CORE_UPGRADES: UpgradeId[] = ['engine', 'armor', 'packedIce', 'hopper'];
+
+/** Pilot power for Hard scaling: the mean effective level (Garage + gear) of the core four upgrades and the plow's
+ *  own line. A mean, so plows with longer lines aren't punished. Fresh 0, mid-game ~3.5, late-game ~9. */
+export function hardPower(level: (id: UpgradeId) => number, kind: PlowKind): number {
+  const ids = [...CORE_UPGRADES, ...UPGRADES.filter((u) => u.plowOnly === kind).map((u) => u.id)];
+  return ids.reduce((s, id) => s + level(id), 0) / ids.length;
+}
+
+/** Extra Hard multipliers for a pilot of `power` (1 / 1 up to HARD.scaleFrom). */
+export function hardScale(power: number): { hp: number; dmg: number } {
+  const over = Math.min(HARD.scaleLevels, Math.max(0, power - HARD.scaleFrom));
+  return { hp: 1 + HARD.hpPerLevel * over, dmg: 1 + HARD.dmgPerLevel * over };
+}
+
+/** Hard-mode version of a campaign arena: tougher, more numerous bots (same boss), better pay. `power` (hardPower)
+ *  scales the bots further for heavily upgraded pilots, so Hard stays hard late. */
+export function hardZone(zone: ZoneDef, power = 0): ZoneDef {
+  const k = hardScale(power);
   return {
     ...zone,
     name: `${zone.name} · HARD`,
-    enemyHpMult: zone.enemyHpMult * HARD.hpMult,
-    enemyDmgMult: (zone.enemyDmgMult ?? 1) * HARD.dmgMult,
+    enemyHpMult: zone.enemyHpMult * HARD.hpMult * k.hp,
+    enemyDmgMult: (zone.enemyDmgMult ?? 1) * HARD.dmgMult * k.dmg,
     coinMult: zone.coinMult * HARD.coinMult,
     rounds: zone.rounds.map((r) => ({
       ...r,

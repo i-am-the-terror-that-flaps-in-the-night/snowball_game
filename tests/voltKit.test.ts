@@ -4,7 +4,7 @@ import { Combat } from '../src/entities/Combat';
 import { computeStatsFor } from '../src/core/Progression';
 import type { EnemyHandle, GameContext } from '../src/core/types';
 import type { PilotBinding } from '../src/entities/pilot';
-import { arcRange, staticRadius } from '../src/entities/combat/volt';
+import { ARC_SOLO, arcRange, staticRadius } from '../src/entities/combat/volt';
 
 /* VOLT-9 TESLA ROVER: ARC LANCE (SPACE, hold) and STATIC FIELD (E) through Combat's vehicle routing. */
 
@@ -104,6 +104,35 @@ describe('VOLT-9 Tesla Rover', () => {
     const stuns = r.stuns.filter((s) => s > 0);
     expect(stuns.length).toBe(1); // immunity: only the first roll lands within the window
     expect(stuns[0]).toBeGreaterThanOrEqual(1);
+  });
+
+  it('GROUNDED ARC: a lone bot (nothing to chain to) takes ARC_SOLO x the arc damage', () => {
+    const lone = bot(0, 5);
+    const r1 = rig([lone]);
+    r1.held.add('Space');
+    r1.run(1);
+    const paired = bot(0, 5);
+    const buddy = bot(3, 6); // within chain reach, so the arc chains instead of grounding
+    const r2 = rig([paired, buddy]);
+    r2.held.add('Space');
+    r2.run(1);
+    expect(buddy.dealt).toBeGreaterThan(0);
+    expect(lone.dealt / paired.dealt).toBeCloseTo(ARC_SOLO, 1);
+  });
+
+  it('GROUNDED ARC: a boss always grounds (adds around it or not), and the chain still runs on to the adds', () => {
+    const boss = Object.assign(bot(0, 5), { isBoss: true });
+    const add = bot(3, 6);
+    const r1 = rig([boss, add]);
+    r1.held.add('Space');
+    r1.run(1);
+    const plain = bot(0, 5);
+    const add2 = bot(3, 6);
+    const r2 = rig([plain, add2]);
+    r2.held.add('Space');
+    r2.run(1);
+    expect(boss.dealt / plain.dealt).toBeCloseTo(ARC_SOLO, 1);
+    expect(add.dealt).toBeGreaterThan(0);
   });
 
   it('ARC LANCE reach grows with Mega Hopper', () => {

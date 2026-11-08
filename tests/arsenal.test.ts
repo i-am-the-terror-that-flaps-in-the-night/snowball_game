@@ -186,23 +186,20 @@ describe('MAG SHOTGUN (SPACE)', () => {
     expect(stats.gunRate).toBeLessThan(2.8);
   });
 
-  it('damage falls off with distance; survivors are MAGNETIZED and reeled in to point-blank, not shoved away', () => {
+  it('damage falls off with distance; point-blank blasts shove, far ones only nudge', () => {
     const near = bot(0, 4, 1e6);
     const { stats, log } = shoot([near], 0.05);
     const nearDmg = sum(log, near);
-    // Point-blank: all 8 pellets at full damage (x the PvE bonus), no shove.
+    // Point-blank: all 8 pellets at full damage (x the PvE bonus), and a real shove.
     expect(nearDmg).toBeCloseTo(8 * stats.gunDamage * stats.damageMult * PVE_MULT, 3);
-    expect(log[0].kb).toBeLessThan(1);
+    expect(log[0].kb).toBeGreaterThan(1);
     const farBot = bot(0, 10, 1e6);
     const r2 = shoot([farBot], 0.05);
     const farDmg = sum(r2.log, farBot);
     expect(farDmg).toBeGreaterThan(0);
     expect(farDmg).toBeLessThan(nearDmg * 0.95); // the whole blast lands, but falls off with distance
-    // The reel drags the far bot in toward the sweet spot ahead of the emitter (inside full-damage range).
-    r2.held.clear();
-    r2.run(1);
-    expect(farBot.position.z).toBeLessThan(7);
-    expect(farBot.position.z).toBeGreaterThan(3);
+    // Nothing drags it in any more (the Magnetic Reel is gone): a far blast only nudges it.
+    expect(r2.log[0].kb).toBeLessThan(log[0].kb);
   });
 
   it('every small bot inside the cone takes the whole blast (no pellet luck): one blast kills a pack of 55-HP bots up close', () => {

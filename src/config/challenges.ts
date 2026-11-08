@@ -141,6 +141,14 @@ export const HARD = {
   minionMult: 1.35,
   firstClearMult: 2.5,
   repeatClearMult: 0.6,
+  /** Hard scales with the pilot's upgrades past mid-game (meta/challenges.ts hardPower / hardScale): above power
+   *  `scaleFrom` (the mean effective level of the core four + the plow's own line; mid-game is ~3.5, late-game ~9),
+   *  each level adds `hpPerLevel` bot HP and `dmgPerLevel` bot damage on top of hpMult / dmgMult, up to `scaleLevels`
+   *  levels (x2.5 HP, x1.8 damage at the cap). */
+  scaleFrom: 4,
+  scaleLevels: 10,
+  hpPerLevel: 0.15,
+  dmgPerLevel: 0.08,
 };
 
 /** Coins per newly earned star, as a fraction of the arena's first-clear reward. */

@@ -26,7 +26,7 @@ import { Impact } from '../fx/impact';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
-import { ChallengeTracker, hardCleared, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
+import { ChallengeTracker, hardCleared, hardPower, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
 import { renderFrame } from '../render/post';
@@ -369,7 +369,7 @@ export class Game {
     this.roundIndex = 0;
     this.run = this.newRun();
     this.combo = 0;
-    ctx.zone = hard ? hardZone(ZONES[zoneIndex]) : ZONES[zoneIndex];
+    ctx.zone = hard ? hardZone(ZONES[zoneIndex], hardPower((id) => ctx.progression.statLevel(id), ctx.progression.data.plow)) : ZONES[zoneIndex];
     this.refreshStats();
     this.clearArena();
     // Arena size before the world / snow are built (The Omega Works is 160 m across).
