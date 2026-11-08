@@ -6,7 +6,8 @@ import type { Combat } from '../entities/Combat';
 
 /** A human plow seen through the bot interface, so every player attack in Combat (slam, ram, dash strike, whirl,
  *  Inferno, Thunderclap, Ground Pound, Meltdown, NUKE, auras, chains) can target it unchanged. */
-/** See damage(): the pulse laser fires ROUND_CAP_GROUP bolts for every round the minigun used to. */
+/** See damage(): 'round' hits (one Mag Shotgun blast, all its pellets on this plow summed) are soft-capped as if
+ *  ROUND_CAP_GROUP times as big, so even a point-blank blast takes well under a third of the victim's max HP. */
 const ROUND_CAP_GROUP = 2;
 
 export class PlowHandle implements EnemyHandle {
@@ -124,8 +125,8 @@ export class OpponentTarget implements EnemyManagerAPI {
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';
     if (other) scaled /= 1 + this.burst / (ABILITY_BURST_FRAC * victim.maxHp);
-    // Pulse-laser bolts are capped in pairs (each as half of one old minigun round's worth): the per-hit soft cap is
-    // concave, so twice the hits at half the damage would otherwise slip past it and kill faster in late-game duels.
+    // Shotgun blasts (one summed hit per blast) are capped in pairs: a point-blank blast can never take more than
+    // half of BRAWL_HIT_CAP of the victim, however upgraded the attacker.
     const pair = opts?.direct === 'round' ? ROUND_CAP_GROUP : 1;
     const raw = brawlHit(scaled * pair, victim.maxHp, BRAWL_HIT_CAP) / pair;
     // Direction: along the knockback if there is one, else away from the attacker.

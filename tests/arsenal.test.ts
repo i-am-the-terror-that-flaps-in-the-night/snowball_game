@@ -84,42 +84,16 @@ describe('ARSENAL targeting', () => {
 
 });
 
-/* ------------------------------------------------------------------ pulse laser turret */
-
-type Guns = { gunTarget(x: number, y: number, z: number, h: number, r: number): EnemyHandle | null; updateGuns(dt: number): void };
-
-describe('ARSENAL turret', () => {
-  it('auto-aims only within a 240° arc round the hull nose: a bot squarely behind is safe', () => {
-    const behind = bot(0, -6, 100);
-    const flank = bot(-6, -3, 100); // ~117° off the nose: still inside
-    const { c } = rig([behind]);
-    const guns = c.vehicle as unknown as Guns;
-    expect(guns.gunTarget(0, 1.4, 0, 0, 26)).toBeNull();
-    const { c: c2 } = rig([behind, flank]);
-    expect((c2.vehicle as unknown as Guns).gunTarget(0, 1.4, 0, 0, 26)).toBe(flank);
-  });
-
-  it('the turret swings at a limited rate and never past the arc edge', () => {
-    const { c } = rig([bot(-6, -3.2, 100)]);
-    const plow = (c as unknown as { b: { plow: { turretAim: number; turretHeading: number; gunFiring: boolean; gunPitch: number } } }).b.plow;
-    Object.assign(plow, { turretHeading: 0, gunFiring: false, gunPitch: 0 });
-    const guns = c.vehicle as unknown as Guns;
-    guns.updateGuns(0.1);
-    expect(Math.abs(plow.turretAim)).toBeGreaterThan(0.2);
-    expect(Math.abs(plow.turretAim)).toBeLessThan(0.4);
-    for (let i = 0; i < 30; i++) guns.updateGuns(0.1);
-    expect(Math.abs(plow.turretAim)).toBeLessThanOrEqual((120 * Math.PI) / 180 + 1e-9);
-  });
-});
-
 describe('ARSENAL: the snowball shop lines still pay off', () => {
-  it('Mega Hopper adds reach, Whirlwind Turbine traverse, Snow Compactor merge-pulse width', async () => {
-    const { tankGunRange, tankSlewMult, tankBeamWidth } = await import('../src/entities/combat/arsenal');
+  it('Mega Hopper adds shotgun reach, Whirlwind Turbine pellets, Snow Compactor repulsor width', async () => {
+    const { tankGunRange, tankPellets, tankRepulseHalf } = await import('../src/entities/combat/arsenal');
     const base = computeStatsFor({}, 'arsenal');
     const up = computeStatsFor({ hopper: 5, whirl: 3, compactor: 5 }, 'arsenal');
     expect(tankGunRange(up)).toBeGreaterThan(tankGunRange(base) + 1);
-    expect(tankSlewMult(up)).toBeGreaterThan(tankSlewMult(base) * 1.3);
-    expect(tankBeamWidth(up)).toBeGreaterThan(tankBeamWidth(base) + 0.1);
+    expect(tankGunRange(base)).toBeLessThan(11); // short range, like every plow
+    expect(tankPellets(base)).toBe(8);
+    expect(tankPellets(up)).toBeGreaterThan(tankPellets(base));
+    expect(tankRepulseHalf(up)).toBeGreaterThan(tankRepulseHalf(base) + 0.05);
   });
 });
 
@@ -136,7 +110,7 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
     getForward: (o: THREE.Vector3) => o.set(0, 0, 1),
     mountWorld: (_k: string, _i: number, o: THREE.Vector3) => o.set(0, 1, 1.5),
   };
-  const log: { t: number; e: EnemyHandle; n: number }[] = [];
+  const log: { t: number; e: EnemyHandle; n: number; kb: number; kx: number; kz: number }[] = [];
   const ctx = { scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop } as unknown as GameContext;
   const enemies = {
     bosses: [],
@@ -145,9 +119,10 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
       for (const b of bots) if (b.alive && Math.hypot(b.position.x - x, b.position.z - z) <= r + b.radius) out.push(b);
       return out;
     },
-    damage: (e: EnemyHandle, n: number) => {
+    damage: (e: EnemyHandle, n: number, o?: { knockback?: THREE.Vector3 }) => {
       e.hp -= n;
-      log.push({ t: ctx.time, e, n });
+      const k = o?.knockback;
+      log.push({ t: ctx.time, e, n, kb: k ? Math.hypot(k.x, k.z) : 0, kx: k?.x ?? 0, kz: k?.z ?? 0 });
       return false;
     },
     pull: (e: EnemyHandle, vx: number, vz: number, dt: number) => {
@@ -156,7 +131,8 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
     },
   };
   let f = false;
-  const input = { throttle: 0, steer: 0, wasPressed: (k: string) => k === 'KeyF' && f, isDown: () => false };
+  const held = new Set<string>();
+  const input = { throttle: 0, steer: 0, wasPressed: (k: string) => k === 'KeyF' && f, isDown: (k: string) => held.has(k) };
   const binding = { stats, plow, enemies, input, audio: noop, snow: noop, events: { emit: () => {} }, local: true, authoritative: true, pvp: false } as unknown as PilotBinding;
   const c = new Combat(ctx, binding);
   c.clear();
@@ -171,34 +147,91 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
     run(1 / 60);
     f = false;
   };
-  return { c, stats, log, run, pressF, ctx };
+  return { c, stats, log, run, pressF, ctx, held };
 }
 
-describe('GRAV LANCE (E)', () => {
-  it('thin beams lock several bots ahead and pull them toward the point 5 m in front; bots behind are ignored', () => {
-    const a = bot(-6, 12, 1e6);
-    const b = bot(7, 14, 1e6);
-    const behind = bot(0, -8, 1e6);
-    const { c, run } = gravRig([a, b, behind]);
-    const d0 = [a, b].map((e) => Math.hypot(e.position.x, e.position.z - 5));
-    expect(c.fireLaser()).toBe(true);
-    run(1.2);
-    const d1 = [a, b].map((e) => Math.hypot(e.position.x, e.position.z - 5));
-    expect(d1[0]).toBeLessThan(d0[0] - 3);
-    expect(d1[1]).toBeLessThan(d0[1] - 3);
-    expect(behind.position.z).toBe(-8);
+const sum = (log: { e: EnemyHandle; n: number }[], e: EnemyHandle) => log.filter((h) => h.e === e).reduce((t, h) => t + h.n, 0);
+
+describe('MAG SHOTGUN (SPACE)', () => {
+  /** Hold SPACE for `s` seconds against `bots` (the emitter sits at (0, 1, 1.5), the hull faces +z). */
+  const shoot = (bots: EnemyHandle[], s: number, levels: Record<string, number> = {}) => {
+    const r = gravRig(bots, levels);
+    r.held.add('Space');
+    r.run(s);
+    return r;
+  };
+
+  it('fires straight off the nose: hits a bot 6 m ahead, never one 35° off the nose, behind or beyond reach', () => {
+    const ahead = bot(0, 7.5, 1e6);
+    const off = bot(Math.sin(0.61) * 6, 1.5 + Math.cos(0.61) * 6, 1e6);
+    const behind = bot(0, -5, 1e6);
+    const far = bot(3, 14, 1e6);
+    shoot([ahead, off, behind, far], 0.05);
+    expect(ahead.hp).toBeLessThan(ahead.maxHp);
+    expect(off.hp).toBe(off.maxHp);
     expect(behind.hp).toBe(behind.maxHp);
+    const { c } = shoot([far], 0.05);
+    expect(far.hp).toBe(far.maxHp);
+    expect((c as unknown as { b: { plow: { turretAim: number } } }).b.plow.turretAim).toBe(0); // the turret stays locked forward
   });
 
-  it('the merge pulse at the end does most of the damage; a lone bot takes the old beam\'s 1.5 s of damage', () => {
-    const e = bot(0, 6, 1e6);
-    const { c, stats, log, run } = gravRig([e]);
+  it('a blast every 1/gunRate s while held; all of one blast lands on a bot as one hit', () => {
+    const e = bot(0, 5, 1e6);
+    const { stats, log } = shoot([e], 3);
+    const n = log.filter((h) => h.e === e).length;
+    expect(n).toBeGreaterThanOrEqual(Math.floor(3 * stats.gunRate));
+    expect(n).toBeLessThanOrEqual(Math.ceil(3 * stats.gunRate) + 1);
+    expect(stats.gunRate).toBeGreaterThan(1.5);
+    expect(stats.gunRate).toBeLessThan(2.2);
+  });
+
+  it('damage falls off with distance; point-blank blasts shove hard', () => {
+    const near = bot(0, 4, 1e6);
+    const { stats, log } = shoot([near], 0.05);
+    const nearDmg = sum(log, near);
+    // Point-blank: all 8 pellets at full damage (x the PvE bonus), and a real shove.
+    expect(nearDmg).toBeCloseTo(8 * stats.gunDamage * stats.damageMult * 3, 3);
+    expect(log[0].kb).toBeGreaterThan(5);
+    expect(log[0].kz).toBeGreaterThan(0);
+    const farBot = bot(0, 10, 1e6);
+    const r2 = shoot([farBot], 0.05);
+    const farDmg = sum(r2.log, farBot);
+    expect(farDmg).toBeGreaterThan(0);
+    expect(farDmg).toBeLessThan(nearDmg * 0.4); // fewer pellets connect and each does ~60%
+    expect(r2.log[0].kb).toBeLessThan(2);
+  });
+});
+
+describe('MAG REPULSOR (E)', () => {
+  it('a forward wedge: hits a bot ahead hard, not one behind, beyond reach or well off the nose, and flings it away', () => {
+    const ahead = bot(1.5, 6, 1e6);
+    const behind = bot(0, -6, 1e6);
+    const beyond = bot(0, 20, 1e6);
+    const wide = bot(6, 3, 1e6); // ~60° off the nose
+    const { c, stats, log, run } = gravRig([ahead, behind, beyond, wide]);
+    expect(c.fireLaser()).toBe(true);
+    expect(c.fireLaser()).toBe(false); // one wave at a time
+    run(0.4);
+    const hits = log.filter((h) => h.e === ahead);
+    expect(hits.length).toBe(1);
+    expect(hits[0].n).toBeCloseTo(stats.laserDps * 1.5 * stats.damageMult * 3, 3);
+    expect(hits[0].kb).toBeGreaterThan(12);
+    expect(hits[0].kz).toBeGreaterThan(0); // away from the vehicle
+    for (const e of [behind, beyond, wide]) expect(e.hp).toBe(e.maxHp);
+  });
+
+  it('bosses are shoved much less; the far edge of the wedge hits a bit softer', () => {
+    const boss = Object.assign(bot(0, 6, 1e6), { isBoss: true });
+    const edge = bot(0, 12, 1e6);
+    const { c, log, run } = gravRig([boss]);
     c.fireLaser();
-    run(1.6);
-    const total = log.reduce((s, h) => s + h.n, 0);
-    const merge = log.filter((h) => h.t >= 1.24).reduce((s, h) => s + h.n, 0);
-    expect(merge / total).toBeGreaterThan(0.6);
-    expect(total).toBeCloseTo(stats.laserDps * 1.5 * stats.damageMult * 3, 0);
+    run(0.4);
+    expect(log[0].kb).toBeLessThan(5);
+    const r2 = gravRig([edge]);
+    r2.c.fireLaser();
+    r2.run(0.4);
+    expect(r2.log.length).toBe(1);
+    expect(r2.log[0].n).toBeLessThan(log[0].n);
   });
 });
 

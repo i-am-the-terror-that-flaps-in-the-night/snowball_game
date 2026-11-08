@@ -14,7 +14,7 @@ it do run in `npm test`: `tests/balance.test.ts`.
 The sim builds the real `Combat` (every plow kit, the ultimates and the Duel damage path) on fake plows, with no
 browser, and drives it at 60 Hz:
 
-- **Rotation.** Every F ability goes off when it is ready, ARSENAL holds the minigun and fires the laser on cooldown.
+- **Rotation.** Every F ability goes off when it is ready, ARSENAL holds its SPACE weapon (now the Mag Shotgun) and fires its E (now the Mag Repulsor) on cooldown.
   The Plow drives slam, whirl and dash, and the sim has no snow field or driving, so these three are scheduled from an
   engagement model (`MELEE` in sim.ts). The blade gathers 5 m³/s of snow while fighting (about half the open-field
   rate) times Snow Compactor. You slam once the ball reaches 80% of max radius, whirl on every recharge holding a

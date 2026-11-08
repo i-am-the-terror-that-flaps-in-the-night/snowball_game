@@ -10,7 +10,7 @@ export interface InputSource {
   readonly throttle: number;
   readonly steer: number;
   wasPressed(code: string): boolean;
-  /** Held right now (optional: network inputs only know presses; ARSENAL's pulse laser then fires in bursts). */
+  /** Held right now (optional: network inputs only know presses; ARSENAL's Mag Shotgun then fires one blast per press). */
   isDown?(code: string): boolean;
 }
 

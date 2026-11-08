@@ -73,6 +73,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
   primary(dt: number, held: boolean, _pressed: boolean): void {
     this.arcT -= dt;
     this.arcOn = held;
+    if (this.b.plow) this.b.plow.voltArc = held && !this.b.plow.dead; // tower FX (vehicles/volt.ts)
     if (!held) {
       this.arcLock = null;
       return;
@@ -202,6 +203,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         this.lightning.bolt(_p, _q, { life: 0.12, width: 0.14, jag: 1.0, color: 0x6fc8ff });
       }
     }
+    if (plow) plow.voltField = this.staticT > 0 ? 1 : 0; // emitter rods out (vehicles/volt.ts)
     return fired;
   }
 

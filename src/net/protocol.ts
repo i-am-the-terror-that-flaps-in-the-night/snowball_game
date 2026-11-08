@@ -5,7 +5,7 @@
  *   INPUT    guest -> host   10 bytes [1][seq u16][throttle i8][steer i8][slam u8][dash u8][whirl u8][ability u8][held u8]
  *            The four press fields are wrapping (mod 256) CUMULATIVE press counters: a lost or reordered packet never
  *            loses a press, because the next one still carries the total. The host turns counter deltas into presses.
- *            `held` is a bitmask of the actions held down right now (PRESS_ACTIONS order; ARSENAL's pulse laser).
+ *            `held` is a bitmask of the actions held down right now (PRESS_ACTIONS order; ARSENAL's Mag Shotgun).
  *   SNAP     host -> guest   [2][phase u8][seq u16][time f32][timer f32][round u8][scoreA u8][scoreB u8][flags u8]
  *            [inputAck u16][pad u16] then 2 x NET_PLOW_LEN f32 (host plow, then guest plow).
  *   SNOW     host -> guest   [3][flags u8][count u16] then per patch [x0 u16][z0 u16][w u16][h u16][w*h depth bytes]
@@ -51,10 +51,10 @@ export const NP = {
   flameT: 26,
   poundT: 27,
   stormT: 28,
-  /** ARSENAL: weapons in use (bit 1 pulse laser firing, bit 2 Grav Lance running) and the turret yaw relative to the hull. */
+  /** ARSENAL: weapons in use (bit 1 Mag Shotgun trigger down, bit 2 Mag Repulsor running) and the turret yaw relative to the hull (always 0 now: the emitter is fixed forward). */
   fire: 29,
   turret: 30,
-  /** ARSENAL Grav Lance yaw off the nose (always 0 now: it fires straight ahead; slot kept for the layout). */
+  /** ARSENAL E yaw off the nose (always 0: the Mag Repulsor fires straight ahead; slot kept for the layout). */
   laser: 31,
   // Terrain (Plow.writeNet): feet height, vertical speed (m/s, + up), airborne flag (0 / 1).
   y: 32,

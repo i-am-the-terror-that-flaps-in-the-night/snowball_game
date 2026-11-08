@@ -177,7 +177,7 @@ export class Combat implements CombatAPI {
   private updateVehicle(dt: number): void {
     const v = this.vehicle;
     if (!v) {
-      // Snowball kit on ARSENAL: the pulse laser's trigger must not stay latched from before the switch.
+      // Snowball kit on ARSENAL: the shotgun's trigger must not stay latched from before the switch.
       if (this.b.stats.plowKind === 'arsenal') this.arsenal.primary(dt, false, false);
       return;
     }
@@ -244,10 +244,10 @@ export class Combat implements CombatAPI {
     out[o + NP.stormT] = this.volt.stormT;
     out[o + NP.fire] = this.vehicleBits();
     out[o + NP.turret] = this.b.plow ? this.b.plow.turretAim : 0;
-    out[o + NP.laser] = ar.laserOff; // the Grav Lance fires straight ahead: always 0 (layout kept)
+    out[o + NP.laser] = ar.laserOff; // the Mag Repulsor fires straight ahead: always 0 (layout kept)
   }
 
-  /** Duel guest, the opponent's puppet: follow the host's pulse laser / Grav Lance / turret (visuals only). */
+  /** Duel guest, the opponent's puppet: follow the host's Mag Shotgun / Mag Repulsor (visuals only). */
   readPuppet(s: Float32Array, o: number): void {
     const ar = this.arsenal;
     const bits = Math.round(s[o + NP.fire]);
@@ -502,7 +502,7 @@ export class Combat implements CombatAPI {
     return this.melee.whirlTick(x, z, radius, ballR, tick, final, hitIds);
   }
 
-  /** ARSENAL Grav Lance directly (tests / tools; in play E reaches it through updateVehicle). False if it can't fire. */
+  /** ARSENAL Mag Repulsor directly (tests / tools; in play E reaches it through updateVehicle). False if it can't fire. */
   fireLaser(): boolean {
     return this.arsenal.fireLaser();
   }

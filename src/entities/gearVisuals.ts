@@ -80,8 +80,8 @@ interface Anchors {
 }
 
 const ANCHORS: Record<PlowKind, Anchors> = {
-  classic: { side: [1.07, 1.0, -0.95, 1.9], rear: [1.15, -2.12], deck: [0, 1.95, -0.95], charm: [0.82, 2.28, 1.3], nose: null },
-  volt: { side: [1.0, 0.98, -0.45, 2.6], rear: [1.05, -2.0], deck: [0, 1.3, -1.25], charm: [0.6, 1.5, 0.7], nose: null },
+  classic: { side: [1.07, 1.0, -0.95, 1.9], rear: [1.15, -2.12], deck: [0, 2.06, -1.27], charm: [0.78, 2.3, 0.45], nose: null },
+  volt: { side: [0.95, 1.11, -0.05, 2.7], rear: [1.05, -2.0], deck: [0, 1.28, -1.15], charm: [-0.42, 1.55, 1.12], nose: null },
   brute: { side: [1.12, 1.25, -0.4, 2.2], rear: [1.6, -2.0], deck: [-0.45, 2.15, -0.6], charm: [0.75, 2.75, 0.45], nose: null },
   isotope: { side: [1.11, 1.16, -0.45, 2.4], rear: [1.1, -1.9], deck: [0, 2.45, -0.9], charm: [-0.7, 2.38, 1.0], nose: null },
   arsenal: { side: [1.0, 1.6, -0.6, 1.5], rear: [1.95, -1.15], deck: [-0.45, 2.14, -0.95], charm: [0.6, 2.12, -1.1], nose: [1.43, 2.14, 1.5] },

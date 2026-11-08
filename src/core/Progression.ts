@@ -525,7 +525,6 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     gunRange: FX.gunRange(L('armCannon')),
     laserDps: arsenal ? FX.laserDps(L('armLaser')) : 0,
     laserRange: FX.laserRange(L('armLaser')),
-    lanceBeams: FX.lanceBeams(L('armLaser')),
     missileCount: FX.missileCount(L('armMissiles')),
     missileDamage: arsenal ? FX.missileDamage(L('armMissiles')) : 0,
     missileCooldown: cooldown(FX.missileCooldown(L('armMissiles')), cd),

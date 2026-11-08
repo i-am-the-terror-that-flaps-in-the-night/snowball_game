@@ -104,28 +104,30 @@ weapon hits bots 3x as hard** (Campaign, Survival, Brawl); in the Duel it fights
 off-road wheels carry the nose (armoured hubs, glowing cyan rims, they spin with the ground speed); there are no
 wheels at the back: the rear hovers on a **gyro core**, three thin armoured rings nested like a gyroscope, each
 spinning on its own axis round a small white-hot crystal, held in an armoured cradle between two short struts and
-throwing faint light rings onto the snow. The rings spin up with speed and while the pulse laser fires, and the rear
-bobs gently. A sloped dark gunmetal hull sits between, with a low turret carrying the pulse emitter and the Grav Lance
-lens in the nose. Snow slows it like any other vehicle; DASH is shared.
+throwing faint light rings onto the snow. The rings spin up with speed and while the shotgun fires, and the rear
+bobs gently. A sloped dark gunmetal hull sits between, with a low turret carrying the emitter (locked facing forward)
+and the repulsor lens in the nose. Snow slows it like any other vehicle; DASH is shared. Like every plow it fights up
+close and aims by steering: neither main weapon auto-aims.
 
-- **Space (hold): pulse laser.** A continuous cyan beam from the turret emitter to its target that flares on every
-  damage pulse (12+ a second) and auto-aims at the best target inside a **240° arc centred on the hull's nose** (bots
-  squarely behind you are out of reach), tilting from -35° to +45° and preferring bots near the nose. The turret
-  swings at a steady 3.2 rad/s and only locks on once it is on target, so switching between far-apart bots costs a
-  moment.
-- **E: Grav Lance.** 1.5 s in three stages. SPLIT: the lens fans out into thin cyan beams (4 + level, 8 at most), each
-  locking a different bot within reach in front of you (the most dangerous first). PULL: the beams drag their bots
-  toward a point 5 m ahead of the nose (bosses barely move) with small damage ticks. MERGE: the beams converge into
-  one thick, blinding pulse straight ahead (0.25 s) that does most of the damage to everything in its path, with a
-  flash and a shockwave ring. A lone bot takes the same damage the old laser beam did. In the Duel the beams only
-  nudge the other pilot toward the point.
+- **Space (hold): Mag Shotgun.** The emitter is fixed straight ahead along the hull (it only tilts up to 20° to
+  follow a bot on a slope). While held it fires a blast about every 0.55 s (faster with levels): 8 cyan pellets fanned
+  across a 30° cone (Whirlwind Turbine adds more), each stopping in the first bot it meets. Short reach (~9.5 m, a
+  little more with levels and Mega Hopper); pellets hit full out to 2.5 m and fall to 40% at full reach, so it is
+  deadliest point-blank, where a blast also shoves the bot back. All of one blast's pellets on a bot land as one hit
+  (one armour check; in the Duel it is soft-capped as one hit, so even a point-blank blast can't one-shot).
+- **E: Mag Repulsor.** A magnetic wave bursts out of the nose across a 60° wedge (Snow Compactor widens it, 90° at
+  most) and sweeps out to ~11 m in 0.3 s: a cyan arc wall racing over the snow, field-line streaks and a gyro flare.
+  Every bot in the wedge takes one big hit as the front passes (full damage out to half its reach, 70% at the edge;
+  the old Grav Lance's lone-bot damage) and is flung away from you (bosses barely move). No aiming help, no lock: point
+  the nose at the pack. In the Duel it shoves the other pilot a moderate amount and hits for 60% (one big hit gets no
+  tick-by-tick diminishing returns).
 - **F: Polarity Burst.** The gyro rings snap flat into one spinning disc and a cyan event horizon opens 16 m round a
   singularity point 4 m ahead. For about a second every bot inside is dragged toward it (bosses less), streaking in;
   then it collapses and detonates: a cyan shockwave hits everything in the clump and flings it outward. A lone bot
   takes missile count x missile damage (the old salvo's worth); with more caught each share is thinner but the total
   bigger.
 
-Line: Pulse Laser, Grav Lance, Polarity Burst, Energy Barrier (a recharging shield, since there's no ball to hide
+Line: Mag Shotgun, Mag Repulsor, Polarity Burst, Energy Barrier (a recharging shield, since there's no ball to hide
 behind), Scrap Magnet (passive: a magnetic field, 7 m and wider with levels, does a
 trickle of damage to bots inside, about a quarter of Rad Aura before the PvE bonus; every bot you wreck within 12 m sheds
 a scrap shard that flies in and orbits the vehicle 3.5 m out for 15 s, up to 4 + level shards (12 at most); each shard
@@ -133,9 +135,9 @@ that passes through a bot hits it, each bot at most every 0.4 s per shard; all o
 bots, and in the Duel only the field and shards from wrecks count). The line ids are the old ones (armCannon,
 armLaser, armMissiles, ...), so saved levels carry over.
 
-The snowball lines still pay off: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds pulse-laser
-reach (+5 m per extra metre of max ball radius), Whirlwind Turbine speeds the turret traverse (+35% per extra metre
-of spin radius) and Snow Compactor widens the Grav Lance's merge pulse.
+The snowball lines still pay off: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds shotgun
+reach (+1.5 m per extra metre of max ball radius), Whirlwind Turbine adds shotgun pellets (+1 per 2 m of extra spin
+radius, 12 at most) and Snow Compactor widens the Mag Repulsor's wedge.
 
 **Ultimate: SINGULARITY.** Any damage fills the meter. A black hole opens over the densest crowd within 40 m (or
 12 m ahead when nothing is near): a true black core with a bright photon ring, gravitational lensing that bends the

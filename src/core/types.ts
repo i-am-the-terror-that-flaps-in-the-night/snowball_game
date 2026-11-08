@@ -132,15 +132,14 @@ export interface PlayerStats {
   /** A vehicle set to the snowball kit (⚙ Settings): it plows, rolls a ball, slams and whirls like the Classic
    *  instead of its own SPACE / E (its F and ultimate stay). Never set in the Duel. */
   snowKit?: boolean;
-  /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = auto-aim pulse laser (dmg per tick, ticks/s,
-   *  reach m), E = Grav Lance (damage scale in dps of the old beam, reach m, thin beams; recharge is whirlCooldown),
+  /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = Mag Shotgun, fixed forward (dmg per pellet, blasts/s,
+   *  reach m), E = Mag Repulsor (damage scale: 1.5 s of it per bot, wedge reach m; recharge is whirlCooldown),
    *  F = Polarity Burst (missileCount x missileDamage per bot caught, recharge missileCooldown). */
   gunDamage: number;
   gunRate: number;
   gunRange: number;
   laserDps: number;
   laserRange: number;
-  lanceBeams: number;
   missileCount: number;
   missileDamage: number;
   missileCooldown: number;
@@ -398,9 +397,9 @@ export interface DamageOpts {
   fromZ?: number;
   /** Radius of the player's slammed ball (for Frostbyte's ball CLASH). */
   ballRadius?: number;
-  /** Rapid weapon fire (ARSENAL): against a plow both kinds skip the hit i-frames (they land faster than the window).
-   *  'round' (pulse-laser ticks) also skips the Duel's area-ability diminishing returns; 'beam' (Grav Lance ticks) keeps them, so
-   *  one Grav Lance can't melt a human opponent. Against bots both face only part of the armour (Enemies). */
+  /** Rapid weapon fire: against a plow both kinds skip the hit i-frames (they land faster than the window).
+   *  'round' (ARSENAL Mag Shotgun blasts) also skips the Duel's area-ability diminishing returns; 'beam' (rapid beam
+   *  ticks) keeps them. Against bots both face only part of the armour (Enemies). */
   direct?: 'round' | 'beam';
 }
 
@@ -595,7 +594,7 @@ export type SoundName =
   | 'streak' | 'shutdown' | 'respawn' | 'heal' | 'dashStrike' | 'whirlTick'
   // VOLT-9
   | 'zap' | 'thunder'
-  // ARSENAL pulse laser
+  // ARSENAL Mag Shotgun
   | 'pulse'
   // BRUTUS
   | 'thud'

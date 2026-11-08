@@ -598,10 +598,11 @@ export function buildBuzzsaw(): Buzzsaw {
 
 /* ------------------------------------------------------------------ Paint Shop cosmetics (player plow only) */
 
-/** Factory paint per starter plow: body panels + the Classic's dump bed (trim). The 'stock' paint keeps these. */
+/** Factory paint per starter plow: body panels + secondary panels (trim: the Classic's black belt line, fenders,
+ *  hopper rails and blade ribs). The 'stock' paint keeps these. */
 export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: number }>> = {
-  classic: { body: 0xff7a1a, trim: 0xffb21f },
-  volt: { body: 0x1f5fe0, trim: 0x18213a },
+  classic: { body: 0xffb81a, trim: 0x23272e },
+  volt: { body: 0xe9edf1, trim: 0x3c4656 }, // TESLA ROVER: white ceramic panels over a slate tub
   brute: { body: 0x7d8794, trim: 0x4a525d },
   isotope: { body: 0xe8cf1f, trim: 0x3a4038 },
   arsenal: { body: 0x55606c, trim: 0x2c333b },
@@ -832,22 +833,21 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
     { face: 'side', at: [0.96, 1.56, -0.45], size: [1.9, 0.3], tags: ['band', 'stripe', 'flame'] }, // upper side armour plate (bolted)
   ],
   classic: [
-    { face: 'top', at: [0, 1.53, 1.78], size: [0.85, 1.85], tags: ['stripe', 'flame'] }, // hood
-    { face: 'top', at: [0, 2.28, 0.72], size: [1.45, 2.08], tags: ['stripe', 'emblem'], emblem: 1.2 }, // cab roof
-    { face: 'top', at: [0, 1.88, -0.95], size: [2.2, 2.2], tags: ['stripe', 'emblem', 'band'], emblem: 1.75 }, // bed lid
-    { face: 'side', at: [1.05, 1.47, -0.95], size: [2.0, 0.58], tags: ['flame', 'emblem', 'stripe'], emblem: 0.56 }, // bed flank
-    { face: 'side', at: [1.05, 1.64, -0.95], size: [2.06, 0.2], tags: ['band'] },
-    { face: 'side', at: [0.925, 1.31, 1.78], size: [0.83, 0.4], tags: ['flame', 'band', 'stripe'] }, // hood flank
-    { face: 'rear', at: [0, 1.45, -2.0], size: [2.1, 0.62], tags: ['emblem'], emblem: 0.56 },
-    { face: 'rear', at: [0, 1.66, -2.0], size: [2.1, 0.2], tags: ['band'] },
+    { face: 'top', at: [0, 1.5, 1.52], size: [0.5, 1.15], tags: ['stripe', 'flame'] }, // hood (behind the scoop)
+    { face: 'top', at: [0, 2.3, 0.5], size: [0.9, 1.6], tags: ['stripe', 'emblem'], emblem: 0.85 }, // cab roof
+    { face: 'side', at: [0.97, 1.64, -1.27], size: [1.3, 0.56], tags: ['flame', 'emblem', 'stripe'], emblem: 0.52 }, // hopper flank
+    { face: 'side', at: [0.97, 1.9, -1.27], size: [1.3, 0.12], tags: ['band'] },
+    { face: 'side', at: [0.98, 1.2, 0.5], size: [1.1, 0.5], tags: ['flame', 'band', 'stripe'] }, // cab door
+    { face: 'side', at: [0.78, 1.12, 1.62], size: [0.66, 0.36], tags: ['flame'] }, // hood flank
+    { face: 'rear', at: [0, 1.62, -2.05], size: [0.6, 0.6], tags: ['emblem'], emblem: 0.5 }, // hopper rear
+    { face: 'rear', at: [0, 1.93, -2.05], size: [1.8, 0.1], tags: ['band'] },
   ],
   volt: [
-    { face: 'top', at: [0, 1.157, 1.532], size: [1.5, 1.9], tags: ['stripe', 'flame', 'band'], tilt: 0.2 }, // sloped nose
-    { face: 'top', at: [0, 1.087, 1.875], size: [0.72, 1.9], tags: ['emblem'], emblem: 0.66, tilt: 0.2 },
-    { face: 'top', at: [0, 1.27, -1.5], size: [0.9, 1.95], tags: ['stripe', 'flame', 'emblem'], emblem: 0.85 }, // rear deck
-    { face: 'top', at: [0, 1.78, -1.8], size: [0.45, 2.1], tags: ['stripe', 'emblem'], emblem: 0.42 }, // wing
-    { face: 'side', at: [0.975, 1.165, -0.45], size: [2.9, 0.2], tags: ['flame', 'band', 'stripe'] },
-    { face: 'rear', at: [0, 0.93, -1.95], size: [1.95, 0.26], tags: ['band'] },
+    { face: 'top', at: [0, 1.222, 1.5], size: [0.4, 1.3], tags: ['stripe', 'flame', 'band'] }, // front deck, ahead of the head
+    { face: 'top', at: [0, 1.5, 1.08], size: [0.3, 0.6], tags: ['emblem', 'stripe'], emblem: 0.28 }, // instrument head roof
+    { face: 'top', at: [0, 1.222, -1.15], size: [0.5, 0.6], tags: ['stripe', 'emblem', 'band'], emblem: 0.42 }, // rear deck, between the hatches
+    { face: 'side', at: [0.95, 1.11, -0.15], size: [2.6, 0.15], tags: ['flame', 'band', 'stripe'] }, // deck flank
+    { face: 'rear', at: [0, 1.37, -1.83], size: [0.95, 0.22], tags: ['band', 'emblem'], emblem: 0.2 }, // transformer box
   ],
   brute: [
     { face: 'top', at: [0, 2.26, 0.65], size: [1.1, 1.5], tags: ['stripe', 'emblem'], emblem: 1.05 }, // cab roof

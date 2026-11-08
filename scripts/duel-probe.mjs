@@ -8,9 +8,9 @@
 //   rematch  results -> REMATCH (both must accept) -> fresh garage -> Classic vs ISOTOPE: a NUKE pressed on the
 //            guest keyboard lands on the host, Inferno from the host keyboard; pause keeps the match running;
 //            LEAVE ends it for both; single-player still works afterwards.
-//   arsenal  ARSENAL vs ARSENAL: the guest HOLDING Space keeps its autocannon firing on the host (held keys travel in
-//            the input packet), well off the nose; its turret follows the host's aim; the host's pulse laser and Grav
-//            Lance show on the guest's puppet; the guest's Grav Lance and Polarity Burst land on the host.
+//   arsenal  ARSENAL vs ARSENAL: the guest HOLDING Space keeps its Mag Shotgun blasting the host 6 m ahead (held keys
+//            travel in the input packet); its turret stays locked forward; the host's shotgun and Mag Repulsor show on
+//            the guest's puppet; the guest's Mag Repulsor and Polarity Burst land on the host.
 // Each session runs in a fresh Chrome (the sandbox kills long-lived headless Chrome). The duel clock is sim time, so
 // both pages are fast-forwarded in lockstep (render loops paused except for screenshots).
 import { createServer } from 'vite';
@@ -371,11 +371,11 @@ await session('arsenal', async (host, guest) => {
   await toFight(host, guest);
   const [h] = await until(host, guest, (h, g) => h.phase === 'fight' && g.phase === 'fight', 8, 0.25);
   check(h.stats[0].plowKind === 'arsenal' && h.stats[1].plowKind === 'arsenal', 'both drive ARSENAL', h.stats.map((s) => s.plowKind));
-  // Guest at (8, -4) facing +z; host at (0, 4): 45° off the guest's nose (outside the old ±25° lock).
+  // Guest at (0, -2) facing +z; host at (0, 4): 6 m dead ahead (the shotgun is fixed forward, ~10 m reach).
   const park = () => host.evaluate(() => {
     const me = window.__game.ctx.plow, op = window.__game.duel.opponent;
     me.position.set(0, 0, 4); me.heading = Math.PI; me.hp = me.maxHp;
-    op.position.set(8, 0, -4); op.heading = 0; op.hp = op.maxHp;
+    op.position.set(0, 0, -2); op.heading = 0; op.hp = op.maxHp;
   });
   const hostHits = () => host.evaluate(() => ({ other: window.__game.duel.counters.bySource[1][3], hp: window.__game.ctx.plow.hp }));
   await park();
@@ -388,34 +388,34 @@ await session('arsenal', async (host, guest) => {
   await guest.keyboard.up('Space');
   await run(host, guest, 0.3);
   let b1 = await hostHits();
-  log('guest autocannon (held 2s)', { rounds: b1.other - b0.other, hostHp: [Math.round(b0.hp), Math.round(b1.hp)], guestTurret: +aim.toFixed(2) });
-  check(b1.other - b0.other >= 10, 'guest holding SPACE keeps the autocannon firing on the host (not a 0.5 s burst)', { b0, b1 });
-  check(Math.abs(aim + Math.PI / 4) < 0.35, "the guest's own turret follows the host's aim, 45° off the nose", aim);
-  // A single tap is still a short burst.
+  log('guest shotgun (held 2s)', { blasts: b1.other - b0.other, hostHp: [Math.round(b0.hp), Math.round(b1.hp)], guestTurret: +aim.toFixed(2) });
+  check(b1.other - b0.other >= 3, 'guest holding SPACE keeps the shotgun blasting the host (not a single blast)', { b0, b1 });
+  check(Math.abs(aim) < 1e-6, "the guest's turret stays locked forward", aim);
+  // A single tap is one blast.
   await park();
   await run(host, guest, 0.3);
   b0 = await hostHits();
   await guest.keyboard.press('Space');
   await run(host, guest, 1.5);
   b1 = await hostHits();
-  check(b1.other - b0.other >= 1 && b1.other - b0.other <= 6, 'a tap fires a short burst', { b0, b1 });
+  check(b1.other - b0.other >= 1 && b1.other - b0.other <= 2, 'a tap fires one blast', { b0, b1 });
   // Host fires: the guest's puppet shows the guns, then the laser.
   await park();
   await host.keyboard.down('Space');
   await run(host, guest, 0.6);
   const seen = await guest.evaluate(() => ({ fire: window.__game.duel.opponentCombat.arsenal.netFire, turret: window.__game.duel.opponentCombat.arsenal.netTurret }));
   await host.keyboard.up('Space');
-  check((seen.fire & 1) === 1, "the guest sees the host's autocannon firing", seen);
-  // Host Grav Lance with the guest ~20° off the host's nose: the guest's puppet plays it too.
+  check((seen.fire & 1) === 1, "the guest sees the host's shotgun firing", seen);
+  // Host Mag Repulsor (a 0.3 s wave): the guest's puppet plays it too.
   await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(-3, 0, -4); });
   await run(host, guest, 0.2);
   await host.keyboard.press('KeyE');
-  await run(host, guest, 0.6);
+  await run(host, guest, 0.1);
   const laser = await guest.evaluate(() => ({ t: window.__game.duel.opponentCombat.arsenal.laserT }));
-  check(laser.t > 0, "the guest sees the host's Grav Lance", laser);
+  check(laser.t > 0, "the guest sees the host's Mag Repulsor", laser);
   await shot(guest, '17-guest-sees-arsenal');
   await run(host, guest, 1.5);
-  // Guest Grav Lance + Polarity Burst land on the host. Face the host straight on (the burst's clump is 4 m ahead).
+  // Guest Mag Repulsor + Polarity Burst land on the host. Face the host straight on (the burst's clump is 4 m ahead).
   await park();
   await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -6); op.heading = 0; });
   await run(host, guest, 0.5);
@@ -423,7 +423,7 @@ await session('arsenal', async (host, guest) => {
   await guest.keyboard.press('KeyE');
   await run(host, guest, 1.2);
   b1 = await hostHits();
-  check(b1.other > b0.other && b1.hp < b0.hp, 'guest Grav Lance (E) hits the host', { b0, b1 });
+  check(b1.other > b0.other && b1.hp < b0.hp, 'guest Mag Repulsor (E) hits the host', { b0, b1 });
   await park();
   await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -5); op.heading = 0; });
   await run(host, guest, 0.3);

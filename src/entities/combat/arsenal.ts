@@ -2,15 +2,16 @@ import * as THREE from 'three';
 import type { EnemyHandle } from '../../core/types';
 import { settings } from '../../core/settings';
 import { SingularityFx } from '../../fx/singularity';
-import { Horizon, Shockwaves, addMat, aimBeam, beamGeometry, paintMat } from './arsenalFx';
+import { ArcWaves, Horizon, Shockwaves, addMat, aimBeam, beamGeometry, paintMat } from './arsenalFx';
 import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
 import type { UltScript } from './ultimates';
 
-/* ARSENAL: a magnetic / laser vehicle (two huge front wheels, a hovering gyro core at the back).
- *   SPACE  PULSE LASER   held: an auto-aiming continuous cyan beam (240° arc round the nose, turret traverse), damage
- *                        in ticks (gunRate per second), each tick a visible pulse.
- *   E      GRAV LANCE    1.5 s: SPLIT (thin beams lock onto up to lanceBeams bots ahead), PULL (they tug their bots
- *                        to a point ahead, small ticks), MERGE (one thick pulse straight ahead: most of the damage).
+/* ARSENAL: a magnetic vehicle (two huge front wheels, a hovering gyro core at the back). Like every plow, it fights
+ * up close and aims by steering: both main weapons fire straight off the nose.
+ *   SPACE  MAG SHOTGUN   held: a fixed forward emitter fires a blast every 1/gunRate s: SHOT_PELLETS pellets in a
+ *                        SHOT_HALF x 2 cone, short reach, damage falling off with distance, a shove point-blank.
+ *   E      MAG REPULSOR  a magnetic wave sweeps out across a forward wedge (REP_HALF x 2, laserRange m): one big hit
+ *                        on every bot it reaches, flinging it away (bosses barely).
  *   F      POLARITY BURST the gyro folds into a disc, an event horizon expands to BURST_R m, every bot inside is pulled
  *                        to a singularity point ahead for ~1 s, then it detonates (damage, outward knockback).
  *   ULT    SINGULARITY   a black hole opens at the densest cluster within SING_SEEK m, drags every bot within SING_R
@@ -33,61 +34,64 @@ const SCRAP_HIT_CD = 0.4;
 const SCRAP_POOL = 12;
 interface Shard { mesh: THREE.Mesh; state: 0 | 1 | 2; t: number; from: THREE.Vector3; slot: number; hitAt: Map<EnemyHandle, number> }
 
-/** PULSE LASER: the turret only auto-aims within GUN_ARC rad either side of the hull's nose (a 240° arc: bots squarely
- *  behind are safe) and swings at most TURRET_SLEW rad/s. It holds fire until the emitter is within GUN_ON_TARGET rad
- *  of the target. GUN_BURST: what a single press fires when the input source can't report held keys. */
-const GUN_ARC = 120 * (Math.PI / 180);
-const GUN_ARC_COS = Math.cos(GUN_ARC);
-const TURRET_SLEW = 3.2;
-const GUN_ON_TARGET = 0.35;
-/* The snowball / spin shop lines, re-purposed on ARSENAL so every bought level still does something:
- * Mega Hopper stretches the pulse laser's reach (HOPPER_RANGE m per m of max ball radius over the base 1.2 m),
- * Whirlwind Turbine speeds the turret traverse (WHIRL_SLEW per m of spin radius over 4 m),
- * Snow Compactor widens the Grav Lance's merge pulse (COMPACT_WIDTH m per unit of pack rate over the base 0.12). */
-const HOPPER_RANGE = 5;
-const WHIRL_SLEW = 0.35;
-const COMPACT_WIDTH = 3;
-/** Pulse-laser reach (m) with Mega Hopper. */
-export const tankGunRange = (st: { gunRange: number; maxBallRadius: number }): number => st.gunRange + HOPPER_RANGE * Math.max(0, st.maxBallRadius - 1.2);
-/** Turret slew multiplier with Whirlwind Turbine. */
-export const tankSlewMult = (st: { whirlRadius: number }): number => 1 + WHIRL_SLEW * Math.max(0, st.whirlRadius - 4);
-/** Grav Lance merge-pulse half-width (m) with Snow Compactor. */
-export const tankBeamWidth = (st: { collectRate: number }): number => LANCE_WIDTH + COMPACT_WIDTH * Math.max(0, st.collectRate - 0.12);
-const GUN_BURST = 0.5;
-const GUN_KNOCK = 1.5;
-/** Pulse beam: seconds it takes to fade after the trigger is released; how fast a tick's brightening decays (1/s). */
-const BEAM_FADE = 0.12;
-const BEAM_PULSE_DECAY = 12;
-/** Emitter elevation limits (rad) and how fast it tilts. Targets outside the band are skipped. Line of sight through
- *  terrain / decks is required when terrain exists. */
-const GUN_PITCH_MIN = -35 * (Math.PI / 180);
-const GUN_PITCH_MAX = 45 * (Math.PI / 180);
+const DEG = Math.PI / 180;
+/** MAG SHOTGUN: SHOT_PELLETS pellets (more with Whirlwind Turbine, PELLET_MAX at most) fanned evenly across
+ *  ±SHOT_HALF round the hull's nose. A pellet stops in the first bot whose body comes within SHOT_PELLET_R m of its
+ *  line; it deals full damage out to SHOT_FULL m, falling to SHOT_FAR of it at full reach. A bot within SHOT_PB m
+ *  takes a point-blank shove (SHOT_PB_KNOCK), anything further a nudge (SHOT_KNOCK). All of one blast's pellets on
+ *  one bot land as ONE hit (the Duel caps a blast as one hit, armour is paid once per blast). */
+const SHOT_PELLETS = 8;
+const PELLET_MAX = 12;
+const SHOT_HALF = 15 * DEG;
+const SHOT_PELLET_R = 0.25;
+const SHOT_FULL = 2.5;
+const SHOT_FAR = 0.4;
+const SHOT_PB = 3.5;
+const SHOT_PB_KNOCK = 7;
+const SHOT_KNOCK = 1.2;
+/** The emitter never yaws; it only tilts (at GUN_PITCH_SLEW rad/s, within ±SHOT_PITCH) toward the nearest bot in the
+ *  cone; each pellet connects with any bot whose body is inside that band (slopes, ramps, small bots point-blank under a
+ *  high emitter), so only bots on another deck are out of reach. */
+const SHOT_PITCH = 30 * DEG;
 const GUN_PITCH_SLEW = 2.5;
-/** Emitter height above the plow's feet used for aim maths. */
-const GUN_HEIGHT = 1.4;
+/* The snowball / spin shop lines, re-purposed on ARSENAL so every bought level still does something:
+ * Mega Hopper stretches the shotgun's reach (HOPPER_RANGE m per m of max ball radius over the base 1.2 m),
+ * Whirlwind Turbine adds pellets (WHIRL_PELLETS per m of spin radius over 4),
+ * Snow Compactor widens the Mag Repulsor's wedge (COMPACT_ARC rad per unit of pack rate over the base 0.12). */
+const HOPPER_RANGE = 1.5;
+const WHIRL_PELLETS = 0.5;
+const COMPACT_ARC = 0.6;
+/** Shotgun reach (m) with Mega Hopper. */
+export const tankGunRange = (st: { gunRange: number; maxBallRadius: number }): number => st.gunRange + HOPPER_RANGE * Math.max(0, st.maxBallRadius - 1.2);
+/** Pellets per blast with Whirlwind Turbine. */
+export const tankPellets = (st: { whirlRadius: number }): number => Math.min(PELLET_MAX, SHOT_PELLETS + Math.floor(WHIRL_PELLETS * Math.max(0, st.whirlRadius - 4) + 1e-6));
+/** Mag Repulsor wedge half-angle (rad) with Snow Compactor. */
+export const tankRepulseHalf = (st: { collectRate: number }): number => Math.min(REP_HALF_MAX, REP_HALF + COMPACT_ARC * Math.max(0, st.collectRate - 0.12));
+/** Shotgun damage multiplier for a pellet that travelled `d` m of a `range` m reach. */
+export const pelletFalloff = (d: number, range: number): number =>
+  1 - (1 - SHOT_FAR) * THREE.MathUtils.clamp((d - SHOT_FULL) / Math.max(0.1, range - SHOT_FULL), 0, 1);
+/** A press without held-key reporting keeps the trigger down this long (one blast). */
+const GUN_BURST = 0.3;
+/** Pellet streak lifetime (s) and muzzle flash decay (1/s). */
+const STREAK_LIFE = 0.12;
+const FLASH_DECAY = 14;
 
-/** GRAV LANCE timeline (s from the press): thin beams reach out until LANCE_SPLIT, pull ticks every LANCE_PULL_TICK
- *  from LANCE_SPLIT (LANCE_PULL_TICKS of them), the beams converge until LANCE_MERGE, then the merge pulse ticks
- *  every LANCE_MERGE_TICK (LANCE_MERGE_TICKS of them) until LANCE_SECONDS. A lone bot takes LANCE_SECONDS x laserDps
- *  in all (the old beam's single-target damage); LANCE_PULL_SHARE of it comes from its thin beam. */
-const LANCE_SECONDS = 1.5;
-const LANCE_SPLIT = 0.3;
-const LANCE_PULL_TICK = 0.1;
-const LANCE_PULL_TICKS = 9;
-const LANCE_MERGE = 1.25;
-const LANCE_MERGE_TICK = 0.05;
-const LANCE_MERGE_TICKS = 5;
-const LANCE_PULL_SHARE = 0.25;
-/** Thin beams lock bots within LANCE_ARC rad of the nose; they tug them toward a point LANCE_POINT m ahead at up to
- *  LANCE_PULL m/s (bosses LANCE_BOSS x). Merge pulse half-width base (m). Max thin beams (FX.lanceBeams cap). */
-const LANCE_ARC = 70 * (Math.PI / 180);
-const LANCE_POINT = 5;
-const LANCE_PULL = 8;
-const LANCE_BOSS = 0.25;
-const LANCE_WIDTH = 0.9;
-const LANCE_MAX = 8;
-/** Duel: no pull on a human; the thin-beam ticks only nudge them toward the point (knockback m/s). */
-const LANCE_DUEL_TUG = 2;
+/** MAG REPULSOR: a wave sweeps from the nose across ±REP_HALF (REP_HALF_MAX with Snow Compactor) out to laserRange m
+ *  over REP_SECONDS; each bot is hit once as the front reaches it: laserDps x REP_DMG_SECONDS (x your damage mult),
+ *  falling to REP_FAR of that at full reach (from half reach on), and flung away at REP_KNOCK m/s (bosses REP_BOSS x;
+ *  a human in the Duel REP_DUEL_KNOCK, for REP_PVP of the damage). Only bots within REP_DY m of the emitter's height. */
+const REP_HALF = 30 * DEG;
+const REP_HALF_MAX = 45 * DEG;
+const REP_SECONDS = 0.3;
+const REP_DMG_SECONDS = 1.5;
+const REP_FAR = 0.7;
+const REP_KNOCK = 16;
+const REP_BOSS = 0.25;
+const REP_DUEL_KNOCK = 9;
+/** Duel: the wave lands as one big hit (no tick-by-tick diminishing returns like the old lance's), so it hits a
+ *  human for this share of its listed damage. */
+const REP_PVP = 0.6;
+const REP_DY = 3;
 
 /** POLARITY BURST: event horizon BURST_R m round a singularity point BURST_POINT m ahead (fixed where it was cast);
  *  the ring opens over BURST_OPEN s, pulls (BURST_PULL m/s, bosses BURST_BOSS x) until BURST_DET, then detonates
@@ -135,46 +139,35 @@ const glowMat = addMat;
 /** Normal-blended tint: additive cyan washes out to white over sunlit snow, so the outer glows are painted on. */
 const tintMat = paintMat;
 
-/** ARSENAL: pulse laser, Grav Lance, Polarity Burst, the SINGULARITY and the Scrap Magnet (plus the duel guest's view). */
+/** ARSENAL: Mag Shotgun, Mag Repulsor, Polarity Burst, the SINGULARITY and the Scrap Magnet (plus the duel guest's view). */
 export class ArsenalKit extends Kit implements UltScript, VehicleKit {
-  readonly primaryDesc: AbilityDesc = { icon: '🔷', label: 'PULSE', hint: 'hold for PULSE LASER' };
-  readonly secondaryDesc: AbilityDesc = { icon: '🧲', label: 'LANCE', hint: 'GRAV LANCE' };
+  readonly primaryDesc: AbilityDesc = { icon: '🔷', label: 'SHOTGUN', hint: 'hold for MAG SHOTGUN' };
+  readonly secondaryDesc: AbilityDesc = { icon: '🧲', label: 'REPULSE', hint: 'MAG REPULSOR' };
   /** SPACE state handed in by Combat (primary) for updateGuns this frame. */
   private trigHeld = false;
   private trigPressed = false;
-  /** Pulse-laser tick timer + burst window. */
+  /** Shotgun cycle timer + burst window. */
   private gunT = 0;
   private gunBurstT = 0;
-  /** Pulse beam: core / glow / impact glow, its brightness (0..1, fades in / out), the tick flash (0..1), where it
-   *  lands (the target's chest while it lives, else the last end point). */
-  private beamCore!: THREE.Mesh;
-  private beamGlow!: THREE.Mesh;
-  private beamHit!: THREE.Mesh;
-  private beamHitTint!: THREE.Mesh;
-  private beamMuzzle!: THREE.Mesh;
-  private beamA = 0;
-  private beamPulse = 0;
-  private beamTgt: EnemyHandle | null = null;
-  private beamEnd = new THREE.Vector3();
-  private beamHasEnd = false;
-  /** Grav Lance time left (s; 0 = idle) and ticks done. */
+  /** Pellet streaks (pooled: white core + painted cyan sheath each), their start / end / age; the muzzle flash. */
+  private pellets: { core: THREE.Mesh; glow: THREE.Mesh; a: THREE.Vector3; b: THREE.Vector3; t: number }[] = [];
+  private flashCore!: THREE.Mesh;
+  private flashTint!: THREE.Mesh;
+  private flashK = 0;
+  /** Per-blast scratch: bot -> summed damage / nearest pellet distance (reused, never reallocated). */
+  private blastDmg = new Map<EnemyHandle, number>();
+  private blastNear = new Map<EnemyHandle, number>();
+  /** Mag Repulsor time left (s; 0 = idle), where it was cast from, its heading / reach / half-angle, bots already hit. */
   laserT = 0;
-  private pullTicks = 0;
-  private mergeTicks = 0;
-  /** Thin beams: locked bots (null = free beam, fanned out ahead), their meshes and free-beam fan angles. */
-  private lanceTgt: (EnemyHandle | null)[] = [];
-  private lanceBeams: THREE.Mesh[] = [];
-  private lanceCores: THREE.Mesh[] = [];
-  private lanceEnds: THREE.Mesh[] = [];
-  private lanceN = 0;
-  private mergeCore!: THREE.Mesh;
-  private mergeGlow!: THREE.Mesh;
-  private mergeHot!: THREE.Mesh;
-  /** Lens flare during the lance, and the pull-point node ahead. */
-  private lanceLens!: THREE.Mesh;
-  private lanceNode!: THREE.Mesh;
-  private lanceNodeTint!: THREE.Mesh;
-  /** Expanding shockwaves (lance merge, burst detonation). */
+  private repAt = new THREE.Vector3();
+  private repHeading = 0;
+  private repR = 0;
+  private repHalf = REP_HALF;
+  private repHit = new Set<EnemyHandle>();
+  private arcs!: ArcWaves;
+  /** Gyro flare at the emitter while the wave runs. */
+  private lens!: THREE.Mesh;
+  /** Expanding shockwaves (repulsor flash, burst detonation). */
   private shock!: Shockwaves;
   /** Polarity Burst recharge 0..1 (the F slot; the name is the old missile line's, net field NP.fReady). */
   missileCharge = 1;
@@ -192,15 +185,13 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private singTickT = 0;
   private singCollapsed = false;
   private singBlown = false;
-  /** Is the pulse laser firing this frame (snapshot bit). The lance always fires straight ahead (net field NP.laser). */
+  /** Is the shotgun trigger down this frame (snapshot bit). The repulsor always fires straight ahead (net field NP.laser). */
   gunsOn = false;
   laserOff = 0;
   /** The emitter's elevation (rad, + up; the Plow tilts it). */
   gunPitch = 0;
-  /** Commanded turret yaw off the hull nose (rad, within ±GUN_ARC), slewed at TURRET_SLEW; the Plow eases to it. */
-  private turretCmd = 0;
   /** Duel guest: last host snapshot fire bits (diagnostics only; Combat routes them through primary / secondary),
-   *  -1 = not a puppet. netTurret NaN = aim locally. */
+   *  -1 = not a puppet. netTurret: the host's turret yaw (always 0 now: the emitter is fixed; slot kept). */
   netFire = -1;
   netTurret = NaN;
 
@@ -349,7 +340,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return pressed && this.fireLaser();
   }
 
-  /** Puppet bits: bit 0 = pulse laser firing, bit 1 = Grav Lance running. */
+  /** Puppet bits: bit 0 = shotgun trigger down, bit 1 = Mag Repulsor running. */
   netBits(): number {
     return (this.gunsOn ? 1 : 0) | (this.laserT > 0 ? 2 : 0);
   }
@@ -365,29 +356,18 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       return m;
     };
     const ball = new THREE.SphereGeometry(1, 14, 10);
-    // Pulse laser: a white-hot core inside a painted cyan sheath, a flare at the emitter and a glow where it lands.
-    this.beamCore = mk(glowMat(0xf0feff, 1), 4);
-    this.beamGlow = mk(tintMat(0x10c0f2, 0.55), 3);
-    this.beamHit = mk(glowMat(0xc8fbff, 0.9), 4, ball);
-    this.beamHitTint = mk(tintMat(0x22ccff, 0.45), 3, ball);
-    this.beamMuzzle = mk(glowMat(0xc8fbff, 0.9), 4, ball);
-    // Grav Lance: LANCE_MAX thin beams (painted cyan sheath + white core, a glow on each bot), the lens flare, the
-    // pull-point node and the thick merge pulse (white core, hot sheath, painted glow).
-    const sheath = tintMat(0x0fb6ec, 0.85);
-    const thinCore = glowMat(0xe0fdff, 1);
-    const endGlow = tintMat(0x22ccff, 0.6);
-    for (let i = 0; i < LANCE_MAX; i++) {
-      this.lanceBeams.push(mk(sheath, 3));
-      this.lanceCores.push(mk(thinCore, 4));
-      this.lanceEnds.push(mk(endGlow, 3, ball));
+    // Shotgun: PELLET_MAX streaks (white-hot core in a painted cyan sheath) and a muzzle flash.
+    const core = glowMat(0xf0feff, 1);
+    const sheath = tintMat(0x10c0f2, 0.7);
+    for (let i = 0; i < PELLET_MAX; i++) {
+      this.pellets.push({ core: mk(core, 4), glow: mk(sheath, 3), a: new THREE.Vector3(), b: new THREE.Vector3(), t: 1 });
     }
-    this.lanceLens = mk(glowMat(0xd8ffff, 0.9), 4, ball);
-    this.lanceNode = mk(glowMat(0xe8ffff, 1), 4, ball);
-    this.lanceNodeTint = mk(tintMat(0x16c6f2, 0.5), 3, ball);
-    this.mergeCore = mk(glowMat(0xffffff, 1), 5);
-    this.mergeHot = mk(glowMat(0x9ff4ff, 0.8), 4);
-    this.mergeGlow = mk(tintMat(0x10bff2, 0.6), 3);
-    // Polarity Burst: event horizon, pull point, tethers, streaks; shared shockwaves.
+    this.flashCore = mk(glowMat(0xe8ffff, 1), 4, ball);
+    this.flashTint = mk(tintMat(0x22ccff, 0.55), 3, ball);
+    // Mag Repulsor: the forward wave, a gyro flare at the emitter; shared shockwaves (flash rings).
+    this.arcs = new ArcWaves(scene, REP_HALF);
+    this.lens = mk(glowMat(0xd8ffff, 0.9), 4, ball);
+    // Polarity Burst: event horizon, pull point, tethers, streaks.
     this.horizon = new Horizon(scene, beam);
     this.shock = new Shockwaves(scene);
     this.shock.reduceFlash = settings.reduceFlash;
@@ -435,10 +415,10 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     pull.call(this.b.enemies, e, (dx / d) * v, (dz / d) * v, dt);
   }
 
-  /* ------------------------------------------------------------------ SPACE: pulse laser */
+  /* ------------------------------------------------------------------ SPACE: Mag Shotgun */
 
-  /** Pulse laser (SPACE, held): an auto-aiming beam that tracks bots within a 240° arc round the nose and deals its
-   *  damage in gunRate ticks a second. A duel puppet fires when the host's snapshot says so. */
+  /** Mag Shotgun (SPACE, held): the emitter is fixed straight ahead (aim by steering); a blast every 1/gunRate s.
+   *  A duel puppet fires when the host's snapshot says the trigger is down (its targets are empty: visuals only). */
   updateGuns(dt: number): void {
     const held = this.trigHeld;
     const pressed = this.trigPressed;
@@ -446,11 +426,14 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const st = this.b.stats;
     const plow = this.b.plow;
     this.gunsOn = false;
-    if (plow) plow.gunFiring = false;
-    if (st.gunDamage <= 0 || !plow) return this.drawBeam(dt);
+    if (plow) {
+      plow.gunFiring = false;
+      plow.turretAim = 0;
+    }
+    if (st.gunDamage <= 0 || !plow) return this.drawPellets(dt);
     if (this.gunT > 0) this.gunT -= dt;
-    if (plow.dead) return this.drawBeam(dt);
-    // A press without held-key reporting fires a short burst; a puppet follows the host's held bit only.
+    if (plow.dead) return this.drawPellets(dt);
+    // A press without held-key reporting fires one blast; a puppet follows the host's held bit only.
     if (pressed && !this.puppet) this.gunBurstT = GUN_BURST;
     else if (this.gunBurstT > 0) this.gunBurstT -= dt;
     const firing = held || this.gunBurstT > 0;
@@ -458,58 +441,131 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     plow.gunFiring = firing;
     const px = plow.position.x;
     const pz = plow.position.z;
-    const py = plow.position.y + GUN_HEIGHT;
+    const py = plow.mountWorld('muzzle', 0, _p).y;
     const range = tankGunRange(st);
-    const target = this.gunTarget(px, py, pz, plow.heading, range);
-    // Turret swings (at TURRET_SLEW, never past the arc's edge) toward the target or settles forward; a duel guest
-    // copies the host's aim.
-    const targetYaw = target ? Math.atan2(target.position.x - px, target.position.z - pz) : 0;
-    if (!Number.isNaN(this.netTurret)) plow.turretAim = this.turretCmd = this.netTurret;
-    else {
-      const want = target ? THREE.MathUtils.clamp(wrapAngle(targetYaw - plow.heading), -GUN_ARC, GUN_ARC) : 0;
-      const ts = TURRET_SLEW * tankSlewMult(st) * dt;
-      this.turretCmd += THREE.MathUtils.clamp(want - this.turretCmd, -ts, ts);
-      plow.turretAim = this.turretCmd;
-    }
-    // The emitter tilts toward the target's chest (limited band, limited speed).
-    const wantPitch = target ? this.pitchTo(px, py, pz, target) || 0 : 0;
+    // The emitter only tilts: toward the nearest bot inside the cone (slopes / ramps), else level.
+    const near = this.coneNearest(px, py, pz, plow.heading, range);
+    const wantPitch = near ? this.pitchTo(px, py, pz, near, -SHOT_PITCH, SHOT_PITCH) || 0 : 0;
     const pstep = GUN_PITCH_SLEW * dt;
     this.gunPitch += THREE.MathUtils.clamp(wantPitch - this.gunPitch, -pstep, pstep);
     plow.gunPitch = this.gunPitch;
-    if (!firing || this.gunT > 0) return this.drawBeam(dt);
-    // Wait for the turret to come round (and the emitter to lift) before the beam locks on.
-    if (target && Math.abs(wrapAngle(targetYaw - plow.turretHeading)) > GUN_ON_TARGET) return this.drawBeam(dt);
-    if (target && Math.abs(wantPitch - this.gunPitch) > GUN_ON_TARGET) return this.drawBeam(dt);
-    this.gunT += 1 / Math.max(0.5, st.gunRate);
+    if (!firing || this.gunT > 0) return this.drawPellets(dt);
+    this.gunT += 1 / Math.max(0.3, st.gunRate);
     if (this.gunT < 0) this.gunT = 0;
-    plow.mountWorld('muzzle', 0, _p);
-    if (target) {
-      this.weaponHit(target, st.gunDamage, px, pz, GUN_KNOCK, 'round');
-      this.beamTgt = target.alive ? target : null;
-      this.chest(target, this.beamEnd);
-      _fwd.subVectors(_p, this.beamEnd).normalize();
-      this.ctx.fx.sparks(this.beamEnd, _fwd, { count: 3, color: CYAN, speed: 8, spread: 0.7, size: 0.05, life: 0.14, gravity: 6 });
-    } else {
-      this.beamTgt = null;
-      const h = plow.turretHeading;
-      const cp = Math.cos(this.gunPitch);
-      const hx = Math.sin(h);
-      const hz = Math.cos(h);
-      const t = this.b.authoritative ? (this.ctx.world?.blastPropRay(_p.x, _p.z, hx, hz, range) ?? -1) : -1;
-      let reach = t >= 0 ? t : range;
-      // The beam stops at the first ramp, deck or hill in the way.
-      const ter = this.ctx.terrain;
-      if (ter?.active) {
-        const hit = ter.raycast(_p.x, _p.y, _p.z, hx * cp, Math.sin(this.gunPitch), hz * cp, reach, _hit);
-        if (hit) reach = hit.t;
-      }
-      this.beamEnd.set(_p.x + hx * cp * reach, _p.y + Math.sin(this.gunPitch) * reach, _p.z + hz * cp * reach);
+    this.blast(range);
+    this.drawPellets(dt);
+  }
+
+  /** Nearest live bot whose body is inside the shotgun cone and reach (for the emitter's tilt), or null. */
+  private coneNearest(x: number, y: number, z: number, heading: number, range: number): EnemyHandle | null {
+    const hits = this.collect(x, z, range);
+    let best: EnemyHandle | null = null;
+    let bestD = Infinity;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const d = Math.hypot(e.position.x - x, e.position.z - z);
+      if (d > range + e.radius || d >= bestD) continue;
+      const off = d > e.radius ? Math.abs(wrapAngle(Math.atan2(e.position.x - x, e.position.z - z) - heading)) - Math.asin(Math.min(1, e.radius / d)) : 0;
+      if (off > SHOT_HALF) continue;
+      if (Number.isNaN(this.pitchTo(x, y, z, e, -SHOT_PITCH, SHOT_PITCH))) continue;
+      best = e;
+      bestD = d;
     }
-    this.beamHasEnd = true;
-    this.beamPulse = 1;
-    this.b.audio.play('pulse', { volume: 0.14, pitch: 0.8 + Math.random() * 0.1 });
-    if (this.b.local) this.ctx.fx.shake(0.015);
-    this.drawBeam(dt);
+    this.clearTargets();
+    return best;
+  }
+
+  /** One blast: every pellet runs straight out of the emitter and stops in the first bot (or prop / terrain) on its
+   *  line; each bot then takes all of its pellets as one hit. */
+  private blast(range: number): void {
+    const st = this.b.stats;
+    const plow = this.b.plow;
+    const ctx = this.ctx;
+    plow.mountWorld('muzzle', 0, _p);
+    const ox = _p.x;
+    const oy = _p.y;
+    const oz = _p.z;
+    const n = tankPellets(st);
+    const cp = Math.cos(this.gunPitch);
+    const sp = Math.sin(this.gunPitch);
+    const hits = this.collect(ox, oz, range + 1);
+    const dmgMap = this.blastDmg;
+    const nearMap = this.blastNear;
+    dmgMap.clear();
+    nearMap.clear();
+    const ter = ctx.terrain;
+    const props = this.b.authoritative ? ctx.world : null;
+    for (let i = 0; i < n; i++) {
+      const yaw = plow.heading + (n > 1 ? (i / (n - 1) - 0.5) * 2 * SHOT_HALF : 0);
+      const hx = Math.sin(yaw);
+      const hz = Math.cos(yaw);
+      // First bot on the line (closest along it).
+      let best: EnemyHandle | null = null;
+      let bestT = range;
+      for (let j = 0; j < hits.length; j++) {
+        const e = hits[j];
+        if (!e.alive) continue;
+        const dx = e.position.x - ox;
+        const dz = e.position.z - oz;
+        const along = dx * hx + dz * hz;
+        if (along < -e.radius) continue;
+        const perp = Math.abs(dx * hz - dz * hx);
+        const r = e.radius + SHOT_PELLET_R;
+        if (perp > r) continue;
+        const t = Math.max(0, along - Math.sqrt(r * r - perp * perp));
+        if (t >= bestT) continue;
+        // Height: some part of the bot's body within the emitter's tilt band (slopes, ramps; not another deck).
+        if (Number.isNaN(this.pitchTo(ox, oy, oz, e))) continue;
+        best = e;
+        bestT = t;
+      }
+      let reach = bestT;
+      if (best && !this.canSee(ox, oy, oz, best)) {
+        best = null;
+        reach = range;
+      }
+      if (!best) {
+        // A miss stops at the first prop (it takes the blast), ramp, deck or hill in the way.
+        const tp = props ? props.blastPropRay(ox, oz, hx, hz, range) : -1;
+        if (tp >= 0) reach = Math.min(reach, tp);
+        if (ter?.active) {
+          const hit = ter.raycast(ox, oy, oz, hx * cp, sp, hz * cp, reach, _hit);
+          if (hit) reach = hit.t;
+        }
+      } else {
+        dmgMap.set(best, (dmgMap.get(best) ?? 0) + st.gunDamage * pelletFalloff(bestT, range));
+        nearMap.set(best, Math.min(nearMap.get(best) ?? Infinity, bestT));
+      }
+      // Streak: its end jitters a touch in height so the fan reads as a spray, not a comb.
+      const s = this.pellets[i];
+      s.a.set(ox, oy, oz);
+      if (best) {
+        // Into the bot's body, spread a little round its chest.
+        this.chest(best, s.b);
+        s.b.x = ox + hx * (reach + best.radius * 0.5);
+        s.b.z = oz + hz * (reach + best.radius * 0.5);
+        s.b.y += (Math.random() - 0.5) * best.radius * 0.6;
+      } else s.b.set(ox + hx * cp * reach, oy + sp * reach + (Math.random() - 0.5) * 0.25, oz + hz * cp * reach);
+      s.t = 0;
+      if (best || reach < range - 0.05) {
+        _fwd.set(-hx, 0.4, -hz).normalize();
+        ctx.fx.sparks(s.b, _fwd, { count: best ? 3 : 2, color: CYAN, speed: 7, spread: 0.8, size: 0.05, life: 0.16, gravity: 6 });
+      }
+    }
+    this.clearTargets();
+    for (const [e, dmg] of dmgMap) {
+      const d = nearMap.get(e) ?? range;
+      // Point-blank: a real shove; further out a nudge.
+      this.weaponHit(e, dmg, ox, oz, d <= SHOT_PB ? SHOT_PB_KNOCK : SHOT_KNOCK, 'round');
+    }
+    dmgMap.clear();
+    nearMap.clear();
+    this.flashK = 1;
+    ctx.fx.burst(_p.set(ox + Math.sin(plow.heading) * 0.4, oy, oz + Math.cos(plow.heading) * 0.4), { color: 0xbff6ff, count: 4, speed: 5, size: 0.12, gravity: 0, life: 0.14 });
+    this.b.audio.play('pulse', { volume: 0.32, pitch: 0.55 + Math.random() * 0.08 });
+    this.b.audio.play('zap', { volume: 0.2, pitch: 1.6 + Math.random() * 0.2 });
+    if (this.b.local) ctx.fx.shake(0.05);
   }
 
   /** A bot's chest point (aim / beam end). */
@@ -517,58 +573,43 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return out.set(e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
   }
 
-  /** The continuous pulse beam from the emitter to its target (or last end point), flaring on every damage tick. */
-  private drawBeam(dt: number): void {
-    const on = this.gunsOn && this.beamHasEnd;
-    this.beamA = on ? Math.min(1, this.beamA + dt * 25) : Math.max(0, this.beamA - dt / BEAM_FADE);
-    this.beamPulse = Math.max(0, this.beamPulse - dt * BEAM_PULSE_DECAY);
+  /** Pellet streaks (a short bright dash racing out along each pellet's line) and the muzzle flash. */
+  private drawPellets(dt: number): void {
+    for (const s of this.pellets) {
+      if (s.t >= STREAK_LIFE) {
+        s.core.visible = s.glow.visible = false;
+        continue;
+      }
+      s.t += dt;
+      const k = Math.min(1, s.t / STREAK_LIFE);
+      // Head runs out fast, the tail follows: a streak about 40% of the line long at its peak, thinning out.
+      _tip.lerpVectors(s.a, s.b, Math.min(1, k * 1.8));
+      _a.lerpVectors(s.a, s.b, Math.max(0, k * 1.8 - 0.8));
+      const w = 1 - k * 0.6;
+      aimBeam(s.core, _a, _tip, 0.045 * w);
+      aimBeam(s.glow, _a, _tip, 0.12 * w);
+    }
+    this.flashK = Math.max(0, this.flashK - dt * FLASH_DECAY);
     const plow = this.b.plow;
-    if (this.beamA <= 0 || !plow) {
-      this.beamCore.visible = this.beamGlow.visible = this.beamHit.visible = this.beamHitTint.visible = this.beamMuzzle.visible = false;
-      if (!on) this.beamHasEnd = false;
-      return;
-    }
+    const on = this.flashK > 0.02 && !!plow;
+    this.flashCore.visible = this.flashTint.visible = on;
+    if (!on) return;
     plow.mountWorld('muzzle', 0, _a);
-    // The beam only follows a bot the emitter is actually pointing at: once the turret swings off it (a new target,
-    // or the bot left the arc), the old lock is dropped and the beam runs straight out of the emitter instead.
-    const tgt = this.beamTgt;
-    if (tgt?.alive) {
-      const yaw = Math.atan2(tgt.position.x - plow.position.x, tgt.position.z - plow.position.z);
-      if (Math.abs(wrapAngle(yaw - plow.turretHeading)) > GUN_ON_TARGET * 1.5) this.beamTgt = null;
-      else this.chest(tgt, this.beamEnd);
-    } else this.beamTgt = null;
-    if (!this.beamTgt && this.beamHasEnd) {
-      const reach = Math.max(1, Math.hypot(this.beamEnd.x - _a.x, this.beamEnd.z - _a.z));
-      const h = plow.turretHeading;
-      const cp = Math.cos(this.gunPitch);
-      this.beamEnd.set(_a.x + Math.sin(h) * cp * reach, _a.y + Math.sin(this.gunPitch) * reach, _a.z + Math.cos(h) * cp * reach);
-    }
-    // Steady beam (no random flicker); each damage tick only swells it slightly.
-    const p = this.beamPulse * 0.35;
-    const flick = 1;
-    const a = this.beamA;
-    aimBeam(this.beamCore, _a, this.beamEnd, (0.04 + 0.05 * p) * flick * a);
-    aimBeam(this.beamGlow, _a, this.beamEnd, (0.15 + 0.15 * p) * flick * a);
-    (this.beamGlow.material as THREE.MeshBasicMaterial).opacity = (0.45 + 0.4 * p) * a;
-    (this.beamCore.material as THREE.MeshBasicMaterial).opacity = (0.85 + 0.15 * p) * a;
-    const m = this.beamMuzzle;
-    m.visible = true;
-    m.position.copy(_a);
-    m.scale.setScalar((0.14 + 0.16 * p) * flick * a);
-    const hitOn = !!this.beamTgt?.alive || p > 0.2;
-    this.beamHit.visible = this.beamHitTint.visible = hitOn;
-    this.beamHit.position.copy(this.beamEnd);
-    this.beamHitTint.position.copy(this.beamEnd);
-    this.beamHit.scale.setScalar((0.28 + 0.32 * p) * flick * a);
-    this.beamHitTint.scale.setScalar((0.6 + 0.5 * p) * flick * a);
-    (this.beamHitTint.material as THREE.MeshBasicMaterial).opacity = (0.3 + 0.35 * p) * a;
+    _a.x += Math.sin(plow.heading) * 0.35;
+    _a.z += Math.cos(plow.heading) * 0.35;
+    const k = this.flashK;
+    this.flashCore.position.copy(_a);
+    this.flashTint.position.copy(_a);
+    this.flashCore.scale.setScalar(0.3 * k + 0.05);
+    this.flashTint.scale.setScalar(0.65 * k + 0.1);
+    (this.flashTint.material as THREE.MeshBasicMaterial).opacity = 0.55 * k;
   }
 
   /**
    * Elevation (rad) from an emitter at (x, y, z) to the best point on a bot's body within [min, max]: its chest when
    * that is in the band, else the nearest reachable part of it. NaN when no part of the bot is inside the band.
    */
-  private pitchTo(x: number, y: number, z: number, e: EnemyHandle, min = GUN_PITCH_MIN, max = GUN_PITCH_MAX): number {
+  private pitchTo(x: number, y: number, z: number, e: EnemyHandle, min = -SHOT_PITCH, max = SHOT_PITCH): number {
     const d = Math.max(0.5, Math.hypot(e.position.x - x, e.position.z - z) - e.radius * 0.5);
     const lo = Math.atan2(e.position.y - y, d);
     const hi = Math.atan2(e.position.y + Math.min(2.4, e.radius * 1.2) - y, d);
@@ -584,241 +625,106 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return ter.lineOfSight(x, y, z, e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
   }
 
-  /** Pulse-laser target: any bot in range within the 240° arc round the nose, within the emitter's elevation band and
-   *  in sight, favouring bots near the nose and close by, then threats. */
-  private gunTarget(x: number, y: number, z: number, heading: number, range: number): EnemyHandle | null {
-    const hits = this.collect(x, z, range);
-    const fx = Math.sin(heading);
-    const fz = Math.cos(heading);
-    let best: EnemyHandle | null = null;
-    let bestCost = Infinity;
-    for (let pass = 0; pass < 3; pass++) {
-      best = null;
-      bestCost = Infinity;
-      for (let i = 0; i < hits.length; i++) {
-        const e = hits[i];
-        if (!e.alive) continue;
-        const dx = e.position.x - x;
-        const dz = e.position.z - z;
-        const d = Math.hypot(dx, dz);
-        if (d > range + e.radius) continue;
-        if (Number.isNaN(this.pitchTo(x, y, z, e))) continue;
-        const cos = d > e.radius ? (dx * fx + dz * fz) / d : 1;
-        // Outside the 240° arc (squarely behind the hull): the turret can't reach it.
-        if (cos < GUN_ARC_COS) continue;
-        // Off-nose bots cost up to 2x their distance; a bot that has been hurting you gets pulled forward.
-        const cost = d * (1.5 - 0.5 * cos) - 0.1 * this.h.threat.of(e);
-        if (cost < bestCost) {
-          bestCost = cost;
-          best = e;
-        }
-      }
-      // Line of sight only for the winner (one raycast); a hidden winner drops out and the next best gets a look.
-      if (!best || this.canSee(x, y, z, best)) break;
-      const k = hits.indexOf(best);
-      hits.splice(k, 1);
-      best = null;
-    }
-    this.clearTargets();
-    return best;
-  }
+  /* ------------------------------------------------------------------ E: Mag Repulsor */
 
-  /* ------------------------------------------------------------------ E: Grav Lance */
-
-  /** Grav Lance (E; the Plow pays the E charge). False if it can't fire. */
+  /** Mag Repulsor (E; the Plow pays the E charge). False if it can't fire. */
   fireLaser(): boolean {
     const st = this.b.stats;
     const plow = this.b.plow;
-    if (st.laserDps <= 0 || this.laserT > 0 || !plow) return false;
-    this.laserT = LANCE_SECONDS;
-    this.pullTicks = this.mergeTicks = 0;
+    if (st.laserDps <= 0 || this.laserT > 0 || !plow || plow.dead) return false;
+    this.laserT = REP_SECONDS;
     this.laserOff = 0;
-    this.lanceN = Math.max(1, Math.min(LANCE_MAX, st.lanceBeams || 4));
-    plow.mountWorld('laser', 0, _p);
-    this.lockLance(_p.x, _p.y, _p.z, plow.heading, st.laserRange);
-    this.b.audio.play('zap', { pitch: 0.55, volume: 0.7 });
-    this.b.audio.play('charge', { pitch: 1.4, volume: 0.45 });
+    this.repHit.clear();
+    this.repHeading = plow.heading;
+    this.repR = st.laserRange;
+    this.repHalf = tankRepulseHalf(st);
+    plow.mountWorld('laser', 0, this.repAt);
+    const ctx = this.ctx;
+    const A = this.repAt;
+    const gy = Number.isFinite(plow.surfaceY) ? plow.surfaceY : plow.position.y;
+    const ground = this.snowTop(A.x, A.z, 2, gy);
+    // The wave: a tall magnetic wall sweeping the wedge, a quick flash ring at the nose.
+    this.arcs.spawn(A.x, ground, A.z, this.repHeading, this.repR, this.repHalf, REP_SECONDS * 1.25, 2.4);
+    this.shock.spawn(A.x, ground, A.z, 2.2, { dur: 0.25, flashR: 1.5, flashY: A.y - ground });
+    ctx.fx.burst(A, { color: 0xffffff, count: 10, speed: 9, size: 0.14, gravity: 0, life: 0.18 });
+    // Field lines: bright streaks flung out across the wedge.
+    for (let i = 0; i < 12; i++) {
+      const a = this.repHeading + ((i + Math.random()) / 12 - 0.5) * 2 * this.repHalf;
+      _fwd.set(Math.sin(a), 0.05 + Math.random() * 0.15, Math.cos(a)).normalize();
+      ctx.fx.sparks(A, _fwd, { count: 1, color: i % 2 ? CYAN : 0xd8ffff, speed: 26 + Math.random() * 10, spread: 0.05, size: 0.07, life: 0.32, gravity: 0, length: 0.16 });
+    }
+    if (this.b.authoritative) {
+      const props = ctx.world;
+      if (props) for (let i = -1; i <= 1; i++) props.blastPropRay(A.x, A.z, Math.sin(this.repHeading + i * this.repHalf * 0.6), Math.cos(this.repHeading + i * this.repHalf * 0.6), this.repR);
+    }
+    plow.gyroCharge = 1;
+    this.b.snow.melt(A.x + Math.sin(this.repHeading) * 3, A.z + Math.cos(this.repHeading) * 3, 2, 0.3);
+    this.b.audio.play('shockwave', { pitch: 1.5, volume: 0.75 });
+    this.b.audio.play('zap', { pitch: 0.45, volume: 0.8 });
+    this.shake(0.2);
+    if (this.b.local) this.impactHit('slam', A, 0.5, { stop: false });
     return true;
   }
 
-  /** Lock up to lanceN different bots within reach and LANCE_ARC of the nose, in sight, by threat score. */
-  private lockLance(x: number, y: number, z: number, heading: number, range: number): void {
-    const hits = this.collect(x, z, range);
-    const fx = Math.sin(heading);
-    const fz = Math.cos(heading);
-    const cosArc = Math.cos(LANCE_ARC);
-    const ranked: { e: EnemyHandle; s: number }[] = [];
-    for (let i = 0; i < hits.length; i++) {
-      const e = hits[i];
-      if (!e.alive) continue;
-      const dx = e.position.x - x;
-      const dz = e.position.z - z;
-      const d = Math.hypot(dx, dz);
-      if (d > range + e.radius) continue;
-      if (d > e.radius && (dx * fx + dz * fz) / d < cosArc) continue;
-      ranked.push({ e, s: this.h.threat.score(e, x, z) });
-    }
-    this.clearTargets();
-    ranked.sort((a, b) => b.s - a.s);
-    this.lanceTgt.length = 0;
-    for (const r of ranked) {
-      if (this.lanceTgt.length >= this.lanceN) break;
-      if (this.canSee(x, y, z, r.e)) this.lanceTgt.push(r.e);
-    }
-  }
-
-  /** The lance's pull point: LANCE_POINT m ahead of the nose, on the ground. */
-  private lancePoint(out: THREE.Vector3): THREE.Vector3 {
-    const plow = this.b.plow;
-    return out.set(plow.position.x + Math.sin(plow.heading) * LANCE_POINT, plow.position.y + 1, plow.position.z + Math.cos(plow.heading) * LANCE_POINT);
-  }
-
+  /** The wave front runs out over REP_SECONDS; every bot in the wedge it reaches takes one hit and is flung away. */
   updateLaser(dt: number): void {
     const plow = this.b.plow;
     if (this.laserT <= 0) return;
     this.laserT -= dt;
-    if (!plow || plow.dead) return this.endLance();
+    const k = Math.min(1, 1 - this.laserT / REP_SECONDS);
+    const lens = this.lens;
+    if (plow && !plow.dead) {
+      plow.mountWorld('laser', 0, _p);
+      lens.visible = true;
+      lens.position.copy(_p);
+      lens.scale.setScalar(0.7 * (1 - k) + 0.1);
+      plow.gyroCharge = Math.max(this.h.ultIdle ? 0 : plow.gyroCharge, 1 - k);
+    }
+    if (!this.puppet) {
+      const front = this.repR * (1 - (1 - k) ** 2);
+      this.repulseHits(front);
+    }
+    if (this.laserT <= 0) this.endRepulse();
+  }
+
+  /** Hit every bot in the wedge whose near edge the front (`front` m out) has reached, once per cast. */
+  private repulseHits(front: number): void {
     const st = this.b.stats;
-    const el = LANCE_SECONDS - this.laserT;
-    plow.gyroCharge = Math.min(1, el / 0.3);
-    plow.mountWorld('laser', 0, _p);
-    const P = this.lancePoint(_q);
-    const total = st.laserDps * LANCE_SECONDS;
-    const merging = el >= LANCE_MERGE;
-    // Thin beams: out to their bots (a free beam fans out ahead), converging on the pull point before the merge.
-    const reach = Math.min(1, el / LANCE_SPLIT);
-    const conv = THREE.MathUtils.smoothstep(el, 1.15, LANCE_MERGE);
-    const n = Math.max(this.lanceN, 1);
-    for (let i = 0; i < LANCE_MAX; i++) {
-      const m = this.lanceBeams[i];
-      const core = this.lanceCores[i];
-      const end = this.lanceEnds[i];
-      const e = this.lanceTgt[i];
-      if (merging || i >= n || (i < this.lanceTgt.length && (!e || !e.alive))) {
-        m.visible = core.visible = end.visible = false;
-        continue;
-      }
-      if (e) this.chest(e, _tip);
-      else {
-        // Free beam (nothing locked, or a duel puppet): fanned across the front arc.
-        const a = plow.heading + ((i + 0.5) / n - 0.5) * LANCE_ARC * 1.4;
-        _tip.set(_p.x + Math.sin(a) * 12, _p.y + 0.3 * Math.sin(el * 9 + i), _p.z + Math.cos(a) * 12);
-      }
-      _tip.lerp(P, conv);
-      _a.copy(_p).lerp(_tip, reach);
-      const wob = 1 + 0.3 * Math.sin(el * 40 + i * 2);
-      aimBeam(m, _p, _a, 0.085 * wob * (1 + conv));
-      aimBeam(core, _p, _a, 0.03 * wob * (1 + conv));
-      end.visible = reach >= 1 && !!e;
-      end.position.copy(_a);
-      end.scale.setScalar((0.35 + 0.12 * Math.sin(el * 30 + i)) * (1 - 0.5 * conv));
-    }
-    (this.lanceBeams[0].material as THREE.MeshBasicMaterial).opacity = 0.75 + 0.2 * Math.random();
-    // Lens flare at the emitter, and the pull-point node ahead (grows as the beams converge on it).
-    const lens = this.lanceLens;
-    lens.visible = true;
-    lens.position.copy(_p);
-    lens.scale.setScalar((merging ? 0.6 : 0.25 + 0.15 * conv) * (0.85 + 0.3 * Math.random()));
-    const nodeK = merging ? 0 : Math.min(1, Math.max(0, (el - LANCE_SPLIT) / 0.2)) * (0.55 + 0.6 * conv);
-    this.lanceNode.visible = this.lanceNodeTint.visible = nodeK > 0.01;
-    this.lanceNode.position.copy(P);
-    this.lanceNodeTint.position.copy(P);
-    this.lanceNode.scale.setScalar(0.22 * nodeK * (0.9 + 0.2 * Math.sin(el * 50)));
-    this.lanceNodeTint.scale.setScalar(0.55 * nodeK);
-    // PULL: drag each locked bot toward the point (bots only; bosses barely), small ticks.
-    if (el >= LANCE_SPLIT && el < LANCE_MERGE) {
-      for (const e of this.lanceTgt) if (e?.alive) this.pullBot(e, P.x, P.z, LANCE_PULL * (e.isBoss ? LANCE_BOSS : 1), dt);
-      if ((this.streakT -= dt) <= 0) {
-        this.streakT = 0.06;
-        for (const e of this.lanceTgt) {
-          if (!e?.alive) continue;
-          this.chest(e, _tip);
-          _fwd.subVectors(P, _tip).normalize();
-          this.ctx.fx.sparks(_tip, _fwd, { count: 1, color: CYAN, speed: 9, spread: 0.2, size: 0.05, life: 0.25, gravity: 0, length: 0.08 });
-        }
-      }
-    }
-    while (this.pullTicks < LANCE_PULL_TICKS && el >= LANCE_SPLIT + this.pullTicks * LANCE_PULL_TICK) {
-      this.pullTicks++;
-      if (this.puppet) continue;
-      const tug = this.canPull ? 0 : -LANCE_DUEL_TUG;
-      for (const e of this.lanceTgt) if (e?.alive) this.weaponHit(e, (total * LANCE_PULL_SHARE) / LANCE_PULL_TICKS, P.x, P.z, tug, 'beam');
-    }
-    // MERGE: one thick, very bright pulse straight ahead through the clump.
-    if (merging) {
-      const fx = Math.sin(plow.heading);
-      const fz = Math.cos(plow.heading);
-      let L = st.laserRange;
-      const ter = this.ctx.terrain;
-      if (ter?.active) {
-        const hit = ter.raycast(_p.x, _p.y, _p.z, fx, 0, fz, L, _hit);
-        if (hit) L = Math.max(0.5, hit.t);
-      }
-      _a.set(_p.x + fx * L, _p.y, _p.z + fz * L);
-      const k = THREE.MathUtils.clamp((LANCE_SECONDS - el) / (LANCE_SECONDS - LANCE_MERGE), 0, 1);
-      const w = tankBeamWidth(st) / LANCE_WIDTH;
-      const flick = 0.9 + Math.random() * 0.2;
-      aimBeam(this.mergeCore, _p, _a, 0.3 * w * flick * (0.4 + 0.6 * k));
-      aimBeam(this.mergeHot, _p, _a, 0.5 * w * flick * (0.4 + 0.6 * k));
-      aimBeam(this.mergeGlow, _p, _a, 0.9 * w * flick * (0.5 + 0.5 * k));
-      (this.mergeHot.material as THREE.MeshBasicMaterial).opacity = 0.8 * k + 0.1;
-      (this.mergeGlow.material as THREE.MeshBasicMaterial).opacity = 0.6 * k + 0.15;
-      if (this.mergeTicks === 0) this.mergeFlash(_p, P, L);
-      while (this.mergeTicks < LANCE_MERGE_TICKS && el >= LANCE_MERGE + this.mergeTicks * LANCE_MERGE_TICK) {
-        this.mergeTicks++;
-        if (this.b.authoritative && this.mergeTicks === 1) this.ctx.world?.blastPropRay(_p.x, _p.z, fx, fz, L);
-        if (!this.puppet) this.mergeHit(_p, fx, fz, L, (total * (1 - LANCE_PULL_SHARE)) / LANCE_MERGE_TICKS);
-      }
-    }
-    if (this.laserT <= 0) this.endLance();
-  }
-
-  /** Merge pulse start: flash at the lens, a shockwave ring through the clump, a kick. */
-  private mergeFlash(from: THREE.Vector3, P: THREE.Vector3, L: number): void {
-    const fx = this.ctx.fx;
-    fx.burst(from, { color: 0xffffff, count: 10, speed: 7, size: 0.14, gravity: 0, life: 0.2 });
-    const gy = this.snowTop(P.x, P.z, 4, Number.isFinite(this.b.plow.surfaceY) ? this.b.plow.surfaceY : 0);
-    // Flash at the lens; a shockwave ring (with a short wall and its own flash) bursting out of the clump.
-    this.shock.spawn(from.x, from.y - 0.9, from.z, 0.1, { dur: 0.3, flashR: 1.6, flashY: 0.9 });
-    this.shock.spawn(P.x, gy, P.z, 7, { dur: 0.5, flashR: 2.4, flashY: P.y - gy, wallH: 1.6 });
-    fx.sparks(P, null, { count: 18, color: CYAN, speed: 14, size: 0.06, life: 0.3, gravity: 2 });
-    this.b.snow.melt(P.x, P.z, 2, 0.5);
-    this.b.audio.play('zap', { pitch: 0.35, volume: 1 });
-    this.b.audio.play('shockwave', { pitch: 1.3, volume: 0.6 });
-    this.shake(0.22);
-    if (this.b.local) this.impactHit('slam', P, 0.6, { stop: false });
-    void L;
-  }
-
-  /** One merge-pulse tick on every bot whose chest is within the pulse's half-width of the beam line. */
-  private mergeHit(from: THREE.Vector3, fx: number, fz: number, L: number, dmg: number): void {
-    const w = tankBeamWidth(this.b.stats) + 0.3;
-    const hits = this.collect(from.x + fx * L * 0.5, from.z + fz * L * 0.5, L * 0.5 + 2);
+    const A = this.repAt;
+    const R = this.repR;
+    const fx = Math.sin(this.repHeading);
+    const fz = Math.cos(this.repHeading);
+    const hits = this.collect(A.x, A.z, front + 0.5);
+    const dmg0 = st.laserDps * REP_DMG_SECONDS;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
-      const dx = e.position.x - from.x;
-      const dy = e.position.y + Math.min(1.2, e.radius * 0.6) - from.y;
-      const dz = e.position.z - from.z;
-      const along = dx * fx + dz * fz;
-      if (along < -e.radius || along > L + e.radius) continue;
-      if (Math.hypot(dx - fx * along, dz - fz * along) > w + e.radius || Math.abs(dy) > 2.5 + e.radius) continue;
-      const dealt = this.weaponHit(e, dmg, from.x, from.z, 4, 'beam');
-      if (dealt > 0 && this.mergeTicks === 1) {
-        _tip.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
-        this.ctx.fx.floatText(_tip, `${Math.round(dealt)}`, '#7ff0ff', 0.8);
+      if (!e.alive || this.repHit.has(e)) continue;
+      const dx = e.position.x - A.x;
+      const dz = e.position.z - A.z;
+      const d = Math.hypot(dx, dz);
+      if (d - e.radius > front || d > R + e.radius) continue;
+      if (d > e.radius && Math.acos(THREE.MathUtils.clamp((dx * fx + dz * fz) / d, -1, 1)) - Math.asin(Math.min(1, e.radius / d)) > this.repHalf) continue;
+      if (Math.abs(e.position.y + Math.min(1.2, e.radius * 0.6) - A.y) > REP_DY + e.radius) continue;
+      if (!this.canSee(A.x, A.y, A.z, e)) continue;
+      this.repHit.add(e);
+      const far = 1 - (1 - REP_FAR) * THREE.MathUtils.clamp((d - R * 0.5) / (R * 0.5), 0, 1);
+      const knock = this.b.pvp ? REP_DUEL_KNOCK : REP_KNOCK * (e.isBoss ? REP_BOSS : 1);
+      const dealt = this.weaponHit(e, dmg0 * far * (this.b.pvp ? REP_PVP : 1), A.x, A.z, knock);
+      this.chest(e, _tip);
+      _fwd.set(dx / (d || 1), 0.3, dz / (d || 1)).normalize();
+      this.ctx.fx.sparks(_tip, _fwd, { count: 8, color: CYAN, speed: 12, spread: 0.6, size: 0.06, life: 0.25, gravity: 4 });
+      if (dealt > 0) {
+        _tip.y += e.radius + 0.6;
+        this.ctx.fx.floatText(_tip, `${Math.round(dealt)}`, '#7ff0ff', 0.9);
       }
     }
     this.clearTargets();
   }
 
-  private endLance(): void {
+  private endRepulse(): void {
     this.laserT = 0;
-    for (const m of this.lanceBeams) m.visible = false;
-    for (const m of this.lanceCores) m.visible = false;
-    for (const m of this.lanceEnds) m.visible = false;
-    this.mergeCore.visible = this.mergeGlow.visible = this.mergeHot.visible = false;
-    this.lanceLens.visible = this.lanceNode.visible = this.lanceNodeTint.visible = false;
-    this.lanceTgt.length = 0;
+    this.lens.visible = false;
+    this.repHit.clear();
     if (this.b.plow && this.h.ultIdle) this.b.plow.gyroCharge = 0;
   }
 
@@ -1130,18 +1036,20 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.scrapT = 0;
     this.gunT = this.gunBurstT = 0;
     this.gunsOn = false;
-    this.beamA = this.beamPulse = 0;
-    this.beamTgt = null;
-    this.beamHasEnd = false;
-    this.beamCore.visible = this.beamGlow.visible = this.beamHit.visible = false;
-    this.endLance();
+    for (const s of this.pellets) {
+      s.t = STREAK_LIFE;
+      s.core.visible = s.glow.visible = false;
+    }
+    this.flashK = 0;
+    this.flashCore.visible = this.flashTint.visible = false;
+    this.arcs.clear();
+    this.endRepulse();
     this.laserOff = 0;
     this.gunPitch = 0;
     this.trigHeld = this.trigPressed = false;
     this.burstT = -1;
     this.horizon.clear();
     this.shock.clear();
-    this.beamHitTint.visible = this.beamMuzzle.visible = false;
     const plow = this.b.plow;
     if (plow) plow.gyroFlat = plow.gyroCharge = 0;
   }

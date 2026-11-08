@@ -83,7 +83,7 @@ export class NetInput implements InputSource {
     const i = CODE_ACTION.get(code);
     return i !== undefined && this.now[i];
   }
-  /** Held keys travel as a bitmask in every input packet (ARSENAL's pulse laser fires while SPACE is held). */
+  /** Held keys travel as a bitmask in every input packet (ARSENAL's Mag Shotgun fires while SPACE is held). */
   isDown(code: string): boolean {
     const i = CODE_ACTION.get(code);
     return i !== undefined && this.enabled && (this.tracker.held & HELD_BIT(i)) !== 0;

@@ -362,3 +362,104 @@ export class Horizon {
     this.streaks.clear();
   }
 }
+
+/* ------------------------------------------------------------------ forward arc wave (MAG REPULSOR) */
+
+interface Arc { root: THREE.Group; band: THREE.Mesh; hot: THREE.Mesh; wall: THREE.Mesh; inner: THREE.Mesh; t: number; dur: number; R: number; wallH: number }
+
+/** A wedge of a ground ring (`half` rad either side of +Z, inner radius r0 of an outer 1). */
+function arcRing(r0: number, half: number, mat: THREE.Material): THREE.Mesh {
+  const g = new THREE.RingGeometry(r0, 1, 32, 1, -Math.PI / 2 - half, half * 2);
+  g.rotateX(-Math.PI / 2);
+  return new THREE.Mesh(g, mat);
+}
+
+/** An open arc of wall (radius 1, y 0..1, `half` rad either side of +Z) whose alpha fades out upward, in streaks. */
+function arcWall(half: number, seg: number): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(1, 1, 1, seg, 3, true, -half, half * 2);
+  g.translate(0, 0.5, 0);
+  const pos = g.getAttribute('position');
+  const col = new Float32Array(pos.count * 4);
+  for (let i = 0; i < pos.count; i++) {
+    const s = i % (seg + 1);
+    const h = Math.abs(Math.sin(s * 12.9898 + 78.233) * 43758.5453) % 1;
+    // Fades upward and toward both ends of the arc (no hard cut-off at the cone's edges).
+    const edge = Math.sin((s / seg) * Math.PI);
+    col.set([1, 1, 1, (1 - pos.getY(i)) ** 1.4 * (0.45 + 0.55 * h) * edge], i * 4);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  return g;
+}
+
+/** MAG REPULSOR: a cyan magnetic wall sweeping out across a forward wedge (painted band + hot line on the ground,
+ *  a streaked wall and a hot inner wall), built once per arc width bucket and pooled. */
+export class ArcWaves {
+  private arcs: Arc[] = [];
+
+  /** `half`: the wedge's half-angle (rad) the geometry is built for; spawn() scales it to other widths. */
+  constructor(scene: THREE.Scene, private half: number, n = 3) {
+    const wallGeo = arcWall(half, 24);
+    for (let i = 0; i < n; i++) {
+      const root = new THREE.Group();
+      root.visible = false;
+      const band = arcRing(0.82, half, paintMat(DEEP, 0.9));
+      const hot = arcRing(0.95, half, addMat(HOT, 1));
+      const wall = new THREE.Mesh(wallGeo, vMat(0x2ad8ff, 0.8));
+      const inner = new THREE.Mesh(wallGeo, vMat(0xc8fbff, 0.6, true));
+      band.renderOrder = 2;
+      hot.renderOrder = 3;
+      wall.renderOrder = 3;
+      inner.renderOrder = 4;
+      for (const m of [band, hot]) (m.material as THREE.MeshBasicMaterial).side = THREE.DoubleSide;
+      root.add(band, hot, wall, inner);
+      for (const m of root.children) m.frustumCulled = false;
+      scene.add(root);
+      this.arcs.push({ root, band, hot, wall, inner, t: 0, dur: 0, R: 0, wallH: 0 });
+    }
+  }
+
+  /** A wave from (x, groundY, z) facing `heading`, out to `R` m over `dur` s, `half` rad either side, `wallH` m tall. */
+  spawn(x: number, groundY: number, z: number, heading: number, R: number, half: number, dur: number, wallH: number): void {
+    let w = this.arcs.find((v) => !v.root.visible);
+    if (!w) w = this.arcs.reduce((a, b) => (a.t / a.dur > b.t / b.dur ? a : b));
+    w.t = 0;
+    w.dur = dur;
+    w.R = R;
+    w.wallH = wallH;
+    w.root.position.set(x, groundY + 0.1, z);
+    w.root.rotation.set(0, heading, 0);
+    // Wider / narrower than the built wedge: stretch it sideways (close enough for a few degrees either way).
+    w.root.userData.sx = Math.tan(Math.min(1.2, half)) / Math.tan(Math.min(1.2, this.half));
+    w.root.visible = true;
+    this.update(0, w);
+  }
+
+  update(dt: number, only?: Arc): void {
+    for (const w of only ? [only] : this.arcs) {
+      if (!w.root.visible) continue;
+      w.t += dt;
+      const k = w.t / w.dur;
+      if (k >= 1) {
+        w.root.visible = false;
+        continue;
+      }
+      const e = 1 - (1 - k) ** 2;
+      const r = Math.max(0.05, w.R * e);
+      const fade = (1 - k) ** 1.2;
+      const sx = (w.root.userData.sx as number) || 1;
+      w.band.scale.set(r * sx, r, r);
+      w.hot.scale.set(r * sx, r, r);
+      (w.band.material as THREE.MeshBasicMaterial).opacity = 0.9 * fade;
+      (w.hot.material as THREE.MeshBasicMaterial).opacity = fade;
+      const h = Math.max(0.01, w.wallH * (1 - 0.5 * k));
+      w.wall.scale.set(r * sx, h, r);
+      w.inner.scale.set(r * 0.97 * sx, h * 0.7, r * 0.97);
+      (w.wall.material as THREE.MeshBasicMaterial).opacity = 0.8 * fade;
+      (w.inner.material as THREE.MeshBasicMaterial).opacity = 0.6 * fade;
+    }
+  }
+
+  clear(): void {
+    for (const w of this.arcs) w.root.visible = false;
+  }
+}

@@ -30,10 +30,11 @@ import { GearVisuals } from './gearVisuals';
 import { STEP_UP, makeSurface, type Deck } from '../world/Terrain';
 import { AIR_SLAM_MIN_HEIGHT } from './combat/air';
 import type { VehicleBuildIn } from './vehicles/types';
-import { buildVoltVehicle } from './vehicles/volt';
+import { buildVoltVehicle, type VoltVehicleParts } from './vehicles/volt';
 import { buildBruteVehicle } from './vehicles/brute';
 import { buildIsotopeVehicle } from './vehicles/isotope';
 import { buildArsenalVehicle, type ArsenalVehicleParts } from './vehicles/arsenal';
+import { buildClassicVehicle, CLASSIC_EXHAUST, type ClassicVehicleParts } from './vehicles/classic';
 import {
   AIR_STEER, ICE_ACCEL, ICE_BRAKE, ICE_DRAG, ICE_GRIP, LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, makeVert, slopeAccel, stepVertical,
 } from '../world/terrainMotion';
@@ -290,10 +291,12 @@ export class Plow implements PlowAPI {
   private bladeGroup = new THREE.Group();
   private bladeSheet!: THREE.Mesh;
   /** Both blade-side hazard caps in one mesh (rebuilt for the blade width in setBladeWidth). */
-  private bladeCaps!: THREE.Mesh;
-  private capGeo!: THREE.BufferGeometry;
+  /** Blade wings / seams / LED markers (vehicles/classic.ts frame, rebuilt for the blade width). */
+  private bladeCaps!: THREE.Group;
   private capsWidth = -1;
-  private bladeArms!: THREE.Mesh;
+  /** Frame + arms meshes that cast (through bladeProxy; re-enabled before each proxy rebuild). */
+  private bladeCasters: THREE.Object3D[] = [];
+  private bladeArms!: THREE.Object3D;
   /** Depth-only caster for the caps + arms (rebuilt with the caps). */
   private bladeProxy: THREE.Mesh | null = null;
   /** Wheels as instances (tire / treads / hub, one shared matrix buffer). Each wheel keeps the spin (rotation.x)
@@ -306,8 +309,8 @@ export class Plow implements PlowAPI {
   private wheelsOff = false;
   private paintMat: THREE.MeshStandardMaterial;
   private bedMat: THREE.MeshStandardMaterial;
-  private paintBase = new THREE.Color(0xff7a1a);
-  private bedBase = new THREE.Color(0xffb21f);
+  private paintBase = new THREE.Color(0xffb81a);
+  private bedBase = new THREE.Color(0x23272e);
   private charColor = new THREE.Color(0x2a211c);
   private beaconMat: THREE.MeshStandardMaterial;
   private beaconLight: THREE.PointLight;
@@ -315,7 +318,9 @@ export class Plow implements PlowAPI {
   private beaconSpinner = new THREE.Group();
   // Starter-plow models: Classic dump truck, VOLT-9 low electric wedge, BRUTUS tracked bulldozer.
   private kind: PlowKind = 'classic';
-  private classicParts = new THREE.Group();
+  private classicParts!: THREE.Group;
+  /** Classic heavy-duty plow: blade dressing (wings / burners / fuel cell), hopper gauge, spreader (vehicles/classic.ts). */
+  private classicRig!: ClassicVehicleParts;
   private bruteParts!: THREE.Group;
   /** ISOTOPE: hazmat hull + reactor; the core's glow pulses (faster while Meltdown recharges). */
   private isoParts!: THREE.Group;
@@ -334,6 +339,10 @@ export class Plow implements PlowAPI {
   private cleatSpan = 3;
   private trackPhase = 0;
   private underglowMat!: THREE.MeshBasicMaterial;
+  private voltRig!: VoltVehicleParts;
+  /** TESLA ROVER: ARC LANCE firing / STATIC FIELD active 0..1 (set by combat/volt.ts; drive the tower FX). */
+  voltArc = false;
+  voltField = 0;
   private bruteBlade = new THREE.Group();
   /** Ground Pound hop height (m), driven by Combat while BRUTUS is airborne. */
   hop = 0;
@@ -433,14 +442,13 @@ export class Plow implements PlowAPI {
     this.bedMat = new THREE.MeshStandardMaterial({ color: this.bedBase, roughness: 0.5, metalness: 0.1, emissive: 0xff0000, emissiveIntensity: 0 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2f38, roughness: 0.7, metalness: 0.3 });
     const glassMat = new THREE.MeshStandardMaterial({ color: 0x1b2a40, roughness: 0.12, metalness: 0.6, emissive: 0x0b1830, emissiveIntensity: 0.4 });
-    const steelMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide, emissive: 0x000000 });
+    // Starts as the Classic's polished blade steel (setKind re-tints it per plow).
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0xd4dce4, roughness: 0.18, metalness: 0.85, side: THREE.DoubleSide, emissive: 0x000000 });
     this.steelMat = steelMat;
     const chromeMat = new THREE.MeshStandardMaterial({ color: 0xc9d2dc, roughness: 0.25, metalness: 0.85 });
     const rubberMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.9, flatShading: true });
     const hubMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.4, metalness: 0.4 });
     this.hubMat = hubMat;
-    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
-    const redMat = new THREE.MeshStandardMaterial({ color: 0xe8283a, roughness: 0.4, emissive: 0x550000, emissiveIntensity: 0.4 });
     this.headMat = new THREE.MeshStandardMaterial({ color: 0xfff6d0, emissive: 0xfff1b8, emissiveIntensity: 1.6 });
     this.beaconMat = new THREE.MeshStandardMaterial({ color: 0xffb000, emissive: 0xff9a00, emissiveIntensity: 1, transparent: true, opacity: 0.92, roughness: 0.2 });
 
@@ -457,46 +465,19 @@ export class Plow implements PlowAPI {
     // the three starter plows have different silhouettes, not just different paint. Each kind group gets its own
     // copy of the chassis so it bakes into that group's merged dark bodywork.
     const chassisGeo = new THREE.BoxGeometry(1.7, 0.35, 4.0);
-    const cp = this.classicParts;
-    add(chassisGeo, darkMat, 0, 0.62, 0.05, cp);
+    const vin: VehicleBuildIn = {
+      mats: { paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat, coil: this.coilMat, hub: this.hubMat, head: this.headMat },
+      chassis: chassisGeo,
+    };
 
-    /* ---- Classic: the orange municipal dump truck (tall cab, dump bed, exhaust stack, beacon). ---- */
-    add(new THREE.BoxGeometry(2.05, 0.22, 0.25), darkMat, 0, 0.62, -2.0, cp);
-    add(new THREE.BoxGeometry(2.1, 0.95, 2.1), this.bedMat, 0, 1.3, -0.95, cp);
-    add(new THREE.BoxGeometry(2.2, 0.12, 2.2), darkMat, 0, 1.82, -0.95, cp);
-    add(new THREE.BoxGeometry(2.12, 0.14, 0.9), stripeMat, 0, 1.1, -0.95, cp).scale.set(1, 1, 2.3);
-    add(new THREE.BoxGeometry(0.28, 0.18, 0.06), redMat, -0.78, 1.05, -2.02, cp, false);
-    add(new THREE.BoxGeometry(0.28, 0.18, 0.06), redMat, 0.78, 1.05, -2.02, cp, false);
-    add(new THREE.BoxGeometry(2.0, 1.25, 1.35), this.paintMat, 0, 1.55, 0.72, cp);
-    add(new THREE.BoxGeometry(2.08, 0.12, 1.45), this.paintMat, 0, 2.22, 0.72, cp);
-    const ws = add(new THREE.BoxGeometry(1.7, 0.6, 0.06), glassMat, 0, 1.85, 1.41, cp, false);
-    ws.rotation.x = -0.12;
-    add(new THREE.BoxGeometry(0.06, 0.55, 0.95), glassMat, -1.01, 1.85, 0.75, cp, false);
-    add(new THREE.BoxGeometry(0.06, 0.55, 0.95), glassMat, 1.01, 1.85, 0.75, cp, false);
-    add(new THREE.BoxGeometry(1.5, 0.45, 0.06), glassMat, 0, 1.88, 0.04, cp, false);
-    add(new THREE.BoxGeometry(1.85, 0.7, 0.85), this.paintMat, 0, 1.18, 1.78, cp);
-    add(new THREE.BoxGeometry(1.3, 0.42, 0.06), chromeMat, 0, 1.15, 2.22, cp);
-    add(new THREE.BoxGeometry(0.3, 0.2, 0.08), this.headMat, -0.72, 1.3, 2.22, cp, false);
-    add(new THREE.BoxGeometry(0.3, 0.2, 0.08), this.headMat, 0.72, 1.3, 2.22, cp, false);
-    add(new THREE.BoxGeometry(2.04, 0.1, 1.38), stripeMat, 0, 1.25, 0.72, cp, false);
-    const mirrorL = add(new THREE.BoxGeometry(0.08, 0.3, 0.18), darkMat, -1.18, 1.85, 1.2, cp, false);
-    const mirrorR = add(new THREE.BoxGeometry(0.08, 0.3, 0.18), darkMat, 1.18, 1.85, 1.2, cp, false);
-    const stack = add(new THREE.CylinderGeometry(0.09, 0.09, 1.4, 10), chromeMat, -0.72, 1.85, 0.05, cp);
-    add(new THREE.CylinderGeometry(0.12, 0.12, 0.12, 10), darkMat, 0, 0.65, 0, stack);
-    for (const [x, z] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const) {
-      add(new THREE.BoxGeometry(0.5, 0.1, 1.1), darkMat, x, WHEEL_R * 2 + 0.08, z, cp);
-    }
-    add(new THREE.BoxGeometry(0.9, 0.08, 0.3), darkMat, 0, 2.32, 0.8, cp);
-    this.beacon = add(new THREE.CylinderGeometry(0.16, 0.18, 0.24, 12), this.beaconMat, 0, 2.48, 0.8, cp, false);
+    /* ---- Classic: the heavy-duty pro plow (vehicles/classic.ts); its blade dressing goes on the blade below. ---- */
+    const classic = buildClassicVehicle(vin, { beacon: this.beaconMat, steel: steelMat });
+    this.classicParts = classic.group;
+    this.classicRig = classic.parts;
+    const { stacks, mirrors: [mirrorL, mirrorR] } = classic.parts;
+    this.beacon = classic.parts.beacon;
     this.beacon.add(this.beaconSpinner);
-    const reflector = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.04), new THREE.MeshBasicMaterial({ color: 0xffe08a }));
-    this.beaconSpinner.add(reflector);
-    // Static bodywork: one mesh per material + shadow flags. The pop-off parts stay separate.
-    // Shadows: one depth-only proxy for the whole body (chassis included), one for the stack + cap (it pops off).
-    mergeStatic(cp, { keep: [stack, mirrorL, mirrorR, this.beacon] });
-    cp.add(...makeShadowProxy(cp, cp, { keep: [stack, mirrorL, mirrorR, this.beacon] }));
-    stack.add(...makeShadowProxy(stack, stack));
-    this.body.add(cp);
+    this.body.add(this.classicParts);
 
     // Dash / wreck flame (out of the stack on the Classic; moved per plow in setKind).
     this.flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -506,14 +487,11 @@ export class Plow implements PlowAPI {
     this.flame.visible = false;
 
     /* ---- Per-vehicle bodies (one builder per file under ./vehicles/): VOLT-9, BRUTUS, ISOTOPE, ARSENAL. ---- */
-    const vin: VehicleBuildIn = {
-      mats: { paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat, coil: this.coilMat, hub: this.hubMat, head: this.headMat },
-      chassis: chassisGeo,
-    };
     const volt = buildVoltVehicle(vin);
     this.voltParts = volt.group;
     this.coilTops = volt.parts.coilTops;
     this.underglowMat = volt.parts.underglowMat;
+    this.voltRig = volt.parts;
 
     const brute = buildBruteVehicle(vin);
     this.bruteParts = brute.group;
@@ -598,9 +576,8 @@ export class Plow implements PlowAPI {
     this.bladeSheet.castShadow = true;
     this.bladeSheet.receiveShadow = true;
     this.bladeGroup.add(this.bladeSheet);
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 0.12), darkMat);
-    edge.position.set(0, 0.08, 0.22);
-    this.bladeSheet.add(edge);
+    // Classic dressing on the sheet (back skin, top rail, carbide edge, back beams): stretches with the sheet.
+    this.bladeSheet.add(classic.parts.sheetTrim);
     // BRUTUS hazard bands along the top and lower face of the blade (just in front of the concave sheet).
     const bandTex = hazardTexture();
     bandTex.repeat.set(1, 5);
@@ -614,10 +591,8 @@ export class Plow implements PlowAPI {
     mergeStatic(this.bruteBlade);
     this.bruteBlade.visible = false;
     this.bladeSheet.add(this.bruteBlade);
-    // Blade-side hazard caps (rebuilt at the blade ends in setBladeWidth). They used to be two meshes.
-    this.capGeo = new THREE.BoxGeometry(0.08, 1.2, 0.5);
-    this.bladeCaps = new THREE.Mesh(new THREE.BufferGeometry(), redMat);
-    this.bladeCaps.castShadow = true;
+    // Hinged wings, segment seams, LED markers, marker wands (rebuilt for the blade width in setBladeWidth).
+    this.bladeCaps = classic.parts.frame;
     this.bladeGroup.add(this.bladeCaps);
     // BRUTUS Buzzsaws (shown only with the upgrade; repositioned in setBladeWidth).
     for (let i = 0; i < 2; i++) {
@@ -626,19 +601,10 @@ export class Plow implements PlowAPI {
       this.bladeGroup.add(saw.group);
       this.saws.push(saw);
     }
-    const armGeo = new THREE.BoxGeometry(0.14, 0.14, 0.9);
-    for (const x of [-0.55, 0.55]) {
-      const arm = new THREE.Mesh(armGeo, darkMat);
-      arm.position.set(x, 0.75, -0.3);
-      arm.castShadow = true;
-      this.bladeGroup.add(arm);
-    }
-    const ram = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.8, 8), chromeMat);
-    ram.rotation.x = Math.PI / 2 - 0.5;
-    ram.position.set(0, 1.0, -0.3);
-    this.bladeGroup.add(ram);
-    // The two arms share a draw; the sheet, caps and saws move with the blade width.
-    this.bladeArms = mergeStatic(this.bladeGroup, { keep: [this.bladeSheet, this.bladeCaps, ...this.saws.map((s) => s.group)] }).meshes[0];
+    // Push frame + chrome ram rods (already merged), and the Classic's Inferno burners + fuel cell.
+    this.bladeArms = classic.parts.arms;
+    this.bladeGroup.add(this.bladeArms, classic.parts.inferno);
+    for (const o of [this.bladeCaps, this.bladeArms]) o.traverse((m) => m.castShadow && this.bladeCasters.push(m));
     this.bladeGroup.position.set(0, 0, BLADE_Z - 0.1);
     this.body.add(this.bladeGroup);
     this.gearVis = new GearVisuals(this.body, this.bladeGroup);
@@ -655,7 +621,7 @@ export class Plow implements PlowAPI {
     pop(this.wheelDebris[0], WHEEL_R);
     pop(this.wheelDebris[1], WHEEL_R);
     pop(this.beacon, 0.15);
-    pop(stack, 0.1);
+    pop(stacks, 0.1);
     pop(mirrorL, 0.05);
     pop(mirrorR, 0.05);
 
@@ -1202,7 +1168,10 @@ export class Plow implements PlowAPI {
     const ars = kind === 'arsenal';
     // Body paint + decals follow the Paint Shop look (factory colours unless a paint is equipped).
     this.syncLook(true);
-    this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : iso ? 0x9ad63a : 0xffd23a);
+    // The Classic's blade face is polished steel (it catches the sky: env map in syncLook).
+    this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : iso ? 0x9ad63a : kind === 'classic' ? 0xd4dce4 : 0xffd23a);
+    this.steelMat.metalness = kind === 'classic' ? 0.85 : 0.55;
+    this.steelMat.roughness = kind === 'classic' ? 0.18 : 0.35;
     this.steelMat.emissive.setHex(volt ? 0x1a8cff : iso ? 0x2f8a10 : 0x000000);
     this.steelMat.emissiveIntensity = volt ? 0.6 : iso ? 0.35 : 0;
     this.beaconMat.color.setHex(volt ? 0x7fdcff : iso ? 0x7dff4a : 0xffb000);
@@ -1232,12 +1201,12 @@ export class Plow implements PlowAPI {
       this.exhaustTip.set(0.55, 2.38, 0.12);
       this.flame.rotation.set(0, 0, 0);
     } else {
-      this.exhaustTip.set(-0.72, 2.55, 0.05);
+      this.exhaustTip.copy(CLASSIC_EXHAUST);
       this.flame.rotation.set(0, 0, 0);
     }
     this.flame.position.copy(this.exhaustTip);
     this.engineTip.set(0, brute ? 2.0 : 1.6, brute ? -1.0 : 1.7);
-    this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : iso ? 2.1 : 2.8, volt ? 0 : brute ? 1.4 : iso ? -1.0 : 0.8);
+    this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : iso ? 2.1 : 2.8, volt ? 0 : brute ? 1.4 : iso ? -1.0 : kind === 'classic' ? -0.1 : 0.8);
     this.applyBladeScale();
   }
 
@@ -1261,15 +1230,28 @@ export class Plow implements PlowAPI {
     // ARSENAL's factory finish is gunmetal: semi-metallic panels that pick up the sky (env map) instead of going black.
     const gunmetal = this.kind === 'arsenal' && p.body == null && p.metalness == null;
     this.paintMat.metalness = p.metalness ?? (gunmetal ? 0.45 : 0.15);
-    this.paintMat.roughness = p.roughness ?? (gunmetal ? 0.36 : 0.45);
+    this.paintMat.roughness = p.roughness ?? (gunmetal ? 0.36 : this.kind === 'volt' ? 0.28 : 0.45); // VOLT: glossy ceramic
     this.bedMat.metalness = p.metalness ?? (gunmetal ? 0.4 : 0.1);
     this.bedMat.roughness = p.roughness ?? 0.5;
-    const env = p.mirror || gunmetal ? getPaintEnvMap(this.ctx.renderer) : null;
+    // The Classic's factory yellow is a glossy clear coat (low roughness + a faint sky reflection).
+    const gloss = this.kind === 'classic' && p.metalness == null && p.roughness == null;
+    if (gloss) {
+      this.paintMat.metalness = 0;
+      this.paintMat.roughness = 0.3;
+    }
+    const env = p.mirror || gunmetal || gloss ? getPaintEnvMap(this.ctx.renderer) : null;
     if (this.paintMat.envMap !== env) {
       this.paintMat.envMap = this.bedMat.envMap = env;
       this.paintMat.needsUpdate = this.bedMat.needsUpdate = true;
     }
-    this.paintMat.envMapIntensity = this.bedMat.envMapIntensity = gunmetal ? 0.8 : 1;
+    this.paintMat.envMapIntensity = this.bedMat.envMapIntensity = gunmetal ? 0.8 : gloss ? 0.3 : 1;
+    // Classic chrome / tinted glass / polished blade steel reflect the sky; the other kinds' blade steel doesn't.
+    const steelEnv = this.kind === 'classic' ? getPaintEnvMap(this.ctx.renderer) : null;
+    for (const m of this.kind === 'classic' ? [...this.classicRig.metalMats, this.steelMat] : [this.steelMat]) {
+      if (m.envMap === steelEnv) continue;
+      m.envMap = steelEnv;
+      m.needsUpdate = true;
+    }
     if (this.kind === 'arsenal') {
       const metalEnv = getPaintEnvMap(this.ctx.renderer);
       for (const m of this.arsRig.metalMats) {
@@ -1278,8 +1260,8 @@ export class Plow implements PlowAPI {
         m.needsUpdate = true;
       }
     }
-    const fh = this.kind === 'volt' ? 0x7fdcff : this.kind === 'brute' ? 0xffc21a : this.kind === 'isotope' ? 0x7dff4a : 0xffd23a;
-    this.hubMat.color.setHex(p.accent ?? fh);
+    const fh = this.kind === 'volt' ? 0xc8743a : this.kind === 'brute' ? 0xffc21a : this.kind === 'isotope' ? 0x7dff4a : 0xffd23a;
+    this.hubMat.color.setHex(p.accent ?? (this.kind === 'classic' ? 0xc9d2dc : fh)); // Classic: polished alloy hubs
     if (!this._dead) {
       this.paintMat.color.copy(this.paintBase);
       this.bedMat.color.copy(this.bedBase);
@@ -1396,15 +1378,13 @@ export class Plow implements PlowAPI {
 
   private setBladeWidth(w: number): void {
     this.bladeWidth = w;
-    this.bladeSheet.scale.x = w;
+    // The sheet spans between the hinged wings; the wings fill the outer CLASSIC_WING on each side.
+    this.bladeSheet.scale.x = this.classicRig.setWidth(w);
     this.gearVis?.setWidth(w);
     if (w !== this.capsWidth) {
       this.capsWidth = w;
-      const parts = [-w / 2, w / 2].map((x) => bakeGeometry(this.capGeo, _m.makeTranslation(x, 0.7, 0.1)));
-      this.bladeCaps.geometry.dispose();
-      this.bladeCaps.geometry = mergeBaked(parts, this.bladeCaps.material as THREE.Material)[0];
-      // The caps + arms cast through one proxy (the sheet keeps its own: it is double-sided and scales with w).
-      this.bladeCaps.castShadow = this.bladeArms.castShadow = true;
+      // The frame + arms cast through one proxy (the sheet keeps its own: it is double-sided and scales).
+      for (const m of this.bladeCasters) m.castShadow = true;
       if (this.bladeProxy) {
         this.bladeProxy.removeFromParent();
         this.bladeProxy.geometry.dispose();
@@ -2530,6 +2510,8 @@ export class Plow implements PlowAPI {
     const jz = j > 0 ? (Math.random() - 0.5) * 0.14 * j : 0;
     this.body.rotation.set(this.pitch + poseP - kickP, 0, this.roll + jx * 0.4);
     this.body.position.set(jx, bob + (this.whirlT >= 0 ? 0.08 : 0) - this.squash * 0.18, poseZ - kickP * 1.5 + jz);
+    // The blade rams punch out with the slam lunge (the held ball rides 0.15 m further out too; see ballCenter).
+    this.bladeGroup.position.z = BLADE_Z - 0.1 + (sp > 0 ? 0.15 * sp : 0);
 
     // Buzzsaws: always spinning, screaming faster with speed and fury; the halos grow with the spin.
     const sawsOn = this.kind === 'brute' && stats.sawDps > 0;
@@ -2598,6 +2580,7 @@ export class Plow implements PlowAPI {
     if (this.kind === 'volt') {
       this.beaconLight.intensity = 3 + pf * 3;
       this.underglowMat.opacity = 0.28 + 0.12 * Math.sin(this.time * 6) + (this.dashT > 0 ? 0.3 : 0);
+      this.voltRig.update(dt, { arc: this.voltArc, field: this.voltField });
     }
     // VOLT-9: pulsing coils + arcs jumping between them.
     if (this.kind === 'volt') {
@@ -2611,6 +2594,11 @@ export class Plow implements PlowAPI {
       }
     }
     this.beaconSpinner.rotation.y += dt * (lowHp ? 16 : 9);
+    // Classic: spreader disc, hopper gauge (held snow), Inferno burners + fuel cell glow.
+    if (this.kind === 'classic') {
+      const maxR = this.b.stats.maxBallRadius;
+      this.classicRig.update(dt, { speed: this.speed, fill: maxR > 0 ? this.ballR / maxR : 0, flame: this.b.combat?.flameReady ?? -1 });
+    }
 
     // Damage flash.
     this.flash = Math.max(0, this.flash - dt * 4);
@@ -2647,6 +2635,7 @@ export class Plow implements PlowAPI {
     this.puffT -= dt;
     if (this.puffT <= 0) {
       this.puffT = dashing ? 0.035 : throttle !== 0 ? 0.18 : 0.45;
+      if (this.kind === 'classic') this.exhaustTip.x = -this.exhaustTip.x; // twin stacks take turns
       this.exhaustWorld(_c);
       // VOLT-9 is electric: cyan sparks instead of diesel smoke. BRUTUS belches thick black smoke.
       if (this.kind === 'volt') {
