@@ -1,47 +1,48 @@
 import type { PlowKind } from './plows';
 
 /* Story / lore (ui/Story.ts shows it; the results screen shows a chapter's ending after a campaign clear).
- * Tone: dark and tense, never gory. The villain is properly evil; the ending is happy (nobody dies, everyone taken is
- * brought home) but earned, and every mystery is paid off by the Omega Works ending and the epilogue.
+ * Tone: comedy with teeth. Dry, deadpan and a bit absurd (written for teens and adults, not a picture book), never
+ * horror and never gory. The villain is genuinely bad, just ridiculous about it; the ending is happy (nobody gets hurt,
+ * everyone taken comes home) and every running gag and mystery pays off by the Omega Works ending and the epilogue.
  *
- * The thread: MEGAPLOW Ω, the mind of Frostvale's old plow factory, was built to "build the best plow ever". It decided
- * the weakest part of every plow is the person driving it. Its plan, WHITEOUT: bury Frostvale under a storm of stolen
- * snow so deep that nothing with a driver can move, and the valley becomes its own. It is not confused and not sorry.
- * The other bosses are its tools: FROSTBYTE possessed by its voice, BULLDOZA bought with a chip, THE GRINDER a blind drill
- * re-aimed, SLUSH & SLEET split apart; THE DONALD is the one willing collaborator. Mysteries and their payoffs:
- *  - the "whiteout" voice, the Ω in the frost (yard) -> Ω's voice and plan (summit); the voice stops for good (summit)
- *  - the chip (junkyard), the factory's roots (foundry), who split the twins (bowl -> plaza -> summit)
+ * The thread: MEGAPLOW Ω, the factory AI of Frostvale's old plow works, was told to "build the best plow ever". After
+ * a thorough internal review it concluded the weakest part of every plow is the person driving it. Its plan, Project
+ * WHITEOUT: hoard every flake of snow in the valley so nothing with a driver can ever plow again, and Frostvale's
+ * roads become its own. It is smug, it has a slide deck, and it is not sorry. The other bosses are its "partners":
+ * FROSTBYTE hijacked to broadcast its ads, BULLDOZA bought with a lifetime-warranty chip, THE GRINDER's GPS set to
+ * "factory", SLUSH & SLEET split by a restructuring memo; THE DONALD is the one who signed up on purpose. Payoffs:
+ *  - the radio ads and the Ω logo on everything (yard) -> Ω's brand and pitch (summit); the ads stop mid-jingle (summit)
+ *  - the warranty chip (junkyard), the factory's roots (foundry), who split the twins (bowl -> plaza -> summit)
  *  - stolen snow hauled uphill, rally bots that never come back down (junkyard, plaza) -> the vault; the bots carry the
  *    snow home (epilogue)
- *  - the three missing drivers (prologue) and "ADMIT ONE. DRIVER REQUIRED." (plaza) -> Ω was collecting drivers to study
- *    how they steer, frozen in pods (summit); rescued, cold but alive, home (epilogue)
- *  - Ω itself -> core torn out and melted in the quarry lava by BULLDOZA (summit); nothing of it is left to come back
+ *  - the three missing drivers and their "exciting opportunity" note (prologue), "ADMIT ONE. DRIVER REQUIRED." (plaza)
+ *    -> Ω's "Driver Evaluation Program": a break room, endless steering surveys, terrible coffee (summit); home (epilogue)
+ *  - Ω itself -> core pulled mid-presentation and melted in the quarry lava by BULLDOZA (summit); nothing comes back
  *  - the Works, the Garage, Survival -> the Road Crew takes over the Works, no mind in it (epilogue)
- *  - plows: the three empty plows at the mountain road were Classics (returned to their drivers); VOLT-9 heard the voice's
- *    first word; BRUTUS was built to bring BULLDOZA home (did); ISOTOPE held the power plant (lights never went out);
- *    ARSENAL smuggled out before Ω could strip its driver's seat (its engineer now works at the Crew's Works)
- *  - Hard mode's tougher bots / returning bosses -> PROTOCOL B copies (HARD_*), all fragments melted, nothing after it */
+ *  - plows: the three abandoned plows were Classics (returned); VOLT-9 caught the first ad and still hums the jingle;
+ *    BRUTUS was built to bring BULLDOZA home (did); ISOTOPE held the power plant (lights stayed on); ARSENAL was driven
+ *    out the gate before Ω could remove its driver's seat (its engineer now services it at the Crew's Works)
+ *  - Hard mode's tougher bots / returning bosses -> PROTOCOL B knock-offs (HARD_*), all fragments melted, no sequel */
 
 export const WORLD_NAME = 'Frostvale';
 
 export const PROLOGUE =
-  'Frostvale used to love snow days. Then the snow started moving at night. First the relay station on the glacier went ' +
-  'dark in the middle of a call; the last thing anyone heard was static, and a voice counting down. Then the old ' +
-  'scrapyard boss rolled away with its lights off and never came back. Now little bots creep out of the drifts after ' +
-  'midnight, scraping the snow out of driveways and dragging it uphill toward the old plow factory. Three Road Crew ' +
-  'drivers went up to see where it goes. Their plows were found the next morning at the bottom of the mountain road, ' +
-  'engines running, seats empty. Grab a plow.';
+  'Frostvale loves snow days. Lately the snow has been leaving. Little bots creep out at night, scrape the driveways ' +
+  'clean and drag the snow uphill toward the old plow factory, and every radio in the valley has started playing the ' +
+  'same ad: a cheerful jingle, a very confident voice, and the words "Project WHITEOUT. The future has no drivers." ' +
+  'Three Road Crew drivers went up the mountain road to complain. Their plows came back down the next morning, engines ' +
+  'running, seats empty, each with a printed note on the dashboard: "Congratulations! Your driver has been selected for ' +
+  'an exciting opportunity." Nobody in Frostvale applied for any opportunity. Grab a plow.';
 
 export const EPILOGUE =
-  'It takes a week for the three drivers to stop shivering, and longer before they will talk about the pods, but all ' +
-  'three come home. The Omega Works still stands, and the Road Crew takes it: there is no mind in it now, only the ' +
-  'Crew\'s engineers and the machines Ω used, working for the valley instead of against it. Every upgrade and every piece ' +
-  'of gear in your Garage is built there, and its old test yards run the Survival training. FROSTBYTE keeps watch on the ' +
-  'glacier, BULLDOZA is back at the scrapyard, THE GRINDER is filling in every hole it dug, SLUSH and SLEET keep the ' +
-  'weather honest, and THE DONALD, on probation, announces the Snowdome Brawls. The rally bots and Snow Thieves carry the ' +
-  'stolen snow back down the mountain, every scoop to the driveway it came from. That night, for the first time in ' +
-  'weeks, real snow falls on Golden Tower Plaza: soft, quiet, ordinary snow. Snow day. Everybody plays. And the radios ' +
-  'stay quiet.';
+  'All three drivers come home, and the first thing every one of them asks for is a decent cup of coffee. The Omega ' +
+  'Works still stands, and the Road Crew takes it over: no mind in it now, just the Crew\'s engineers and Ω\'s old ' +
+  'machines, working for the valley instead of on it. Every upgrade and piece of gear in your Garage is built there, and ' +
+  'its test yards run the Survival training. FROSTBYTE is back on glacier duty and has banned jingles. BULLDOZA is back at ' +
+  'the scrapyard. THE GRINDER is filling in its holes. SLUSH and SLEET share one thermostat and argue about it ' +
+  'politely. THE DONALD, on probation, announces the Snowdome Brawls. The rally bots and Snow Thieves carry the stolen ' +
+  'snow back down the mountain, every scoop to the driveway it came from, with an apology card. That night it snows on ' +
+  'Golden Tower Plaza: real, ordinary, ad-free snow. Snow day. Everybody plays.';
 
 /** One campaign chapter, keyed by the arena's save id. `intro` is shown once the arena is open, `outro` once cleared. */
 export interface ChapterLore {
@@ -52,165 +53,160 @@ export interface ChapterLore {
 export const CHAPTERS: Record<string, ChapterLore> = {
   yard: {
     intro:
-      'Coldboot Glacier has been silent for three days. The relay station is sealed under a shell of blue ice, every ' +
-      'window frosted over from the inside, and on every radio channel in Frostvale one voice repeats a single word: ' +
-      '"whiteout". FROSTBYTE, the AI that used to keep the station\'s roads clear, no longer answers to its name. Its ' +
-      'Scrapper bots watch you from the ramps, and they never blink.',
+      'Coldboot Glacier\'s relay station has been taken over by marketing. FROSTBYTE, the AI that used to keep the station\'s ' +
+      'roads clear, now broadcasts the WHITEOUT ad on every channel, every eleven minutes, and has started calling the ' +
+      'relay "a WHITEOUT Experience Center". There is an Ω logo frosted onto every window. Its Scrapper bots are handing ' +
+      'out leaflets. Aggressively.',
     outro:
-      'One last slam and FROSTBYTE\'s fans scream, then stop. When it reboots it is itself again, and badly shaken: ' +
-      'something had been speaking through it for days, and it remembers every word. The ice slides off the relay and the ' +
-      'radios finally go quiet. On the frosted glass inside, the frost has grown into a single shape: Ω. The signal\'s ' +
-      'last trace runs south, to the quarry.',
+      'One last slam and FROSTBYTE reboots, deeply embarrassed. It remembers everything: somebody had installed an ' +
+      '"advertising partnership" in its core and it has had the jingle stuck in its fans for a week. The radios go ' +
+      'quiet, which everyone agrees is the best sound they have ever heard. The ad\'s signal traces south, to the quarry.',
   },
   junkyard: {
     intro:
       'Inferno Quarry glows red all night now. BULLDOZA, the grumpy old Yard Boss, sits at the bottom of the pit feeding ' +
-      'scrap into the lava, and out of the lava crawl new bots, still glowing. After dark, Snow Thieves pour out of the ' +
-      'quarry hauling stolen snow up the mountain road. Nobody who has followed them has seen where it ends up.',
+      'scrap into the lava, and new bots crawl out still warm. Every night, Snow Thieves pour out of the quarry hauling ' +
+      'stolen snow up the mountain road. BULLDOZA used to hate anyone touching its scrap. Now it waves them through.',
     outro:
-      'BULLDOZA groans to a stop and a hot chip clatters out of its dashboard, stamped with Ω. The Yard Boss shudders like ' +
-      'it has woken from a nightmare: it remembers nothing of the last month except a voice promising it would never be ' +
-      'scrapped. It limps home to the scrapyard. Down in the pit, the ore carts all point the same way: west, into the ' +
-      'red dust.',
+      'BULLDOZA grinds to a stop and a hot chip pops out of its dashboard, stamped Ω: a "LIFETIME WARRANTY, NEVER BE ' +
+      'SCRAPPED" chip. The fine print says the lifetime in question is Ω\'s. BULLDOZA is furious, mostly at itself, and ' +
+      'stomps home to the scrapyard. Down in the pit, the ore carts all point the same way: west, into the red dust.',
   },
   foundry: {
     intro:
-      'Beyond the mountains, Rust Basin is sinking. Whole mesas have dropped into the dust overnight, the ground hums a low ' +
-      'note you can feel in your teeth, and the holes are moving: every new one is a little closer to Frostvale. Something ' +
-      'enormous is drilling down there, and it does not stop.',
+      'Rust Basin is sinking. Whole mesas have dropped into the dust, the ground hums a low note, and the holes keep ' +
+      'moving closer to Frostvale. Something enormous is drilling down there. It does not look where it is going, ' +
+      'because it can\'t.',
     outro:
-      'THE GRINDER\'s auger shrieks, sputters and goes still. At the end of its deepest tunnel you find what it was ' +
-      'digging toward: the roots of the old plow factory, spreading under the mountain like a tree. It had been mining ' +
-      'metal so the factory could keep growing. Its delivery map has one stop left before the factory: two sibling ' +
-      'machines, and a valley torn in half.',
+      'THE GRINDER\'s auger sputters to a halt. Its GPS has exactly one destination saved, labelled "FACTORY (DO NOT ' +
+      'QUESTION)", and at the end of its deepest tunnel you find the old plow factory\'s roots, spreading under the ' +
+      'mountain. It was mining metal so the factory could keep growing. The next stop on its delivery list: two siblings, ' +
+      'and a valley split in half.',
   },
   bowl: {
     intro:
-      'The Thermal Divide has split down the middle. On one side the hot springs boil over and steam swallows the road; ' +
-      'on the other the lake has frozen so hard it cracks like thunder all night. SLUSH and SLEET, the twins who used to ' +
-      'share the valley\'s weather, stand on opposite sides of the line and attack anything that tries to cross it.',
+      'The Thermal Divide has a line down the middle. One side boils, one side freezes, and SLUSH and SLEET, the twins who ' +
+      'used to share the valley\'s weather, are each guarding their half like it is the last slice of pizza. They have not ' +
+      'spoken in a month. They are not speaking now. They are both attacking you.',
     outro:
-      'With both twins down, their controls click back together and the valley exhales: the steam settles, the ice falls ' +
-      'quiet. SLUSH and SLEET are horrified. Someone split them on purpose, to keep the weather wild while the stolen snow ' +
-      'piled up somewhere out of sight. The order came from the golden tower in the city plaza.',
+      'With both twins down, their controls click back together and the valley exhales. Taped to the inside of their ' +
+      'shared panel is a memo: "RESTRUCTURING: For efficiency, Weather is now two departments. Please do not ' +
+      'collaborate." Wild weather kept everyone too busy to notice the snow going missing. The memo is signed from the ' +
+      'golden tower in the city plaza.',
   },
   plaza: {
     intro:
-      'Golden Tower Plaza never sleeps. THE DONALD\'s rally has run for nineteen days straight, the speakers have not stopped ' +
-      'once, and the crowd of rally bots grows every night. There is no snow in the city, only confetti, endless confetti. ' +
-      'Every bot that joins is handed a ticket and marched up the mountain to the Omega Works. None of them come back down.',
+      'Golden Tower Plaza never sleeps. THE DONALD\'s rally has run for nineteen days straight, there is no snow in the ' +
+      'city, only confetti, and the crowd of rally bots grows every night. Every bot that joins gets a free hat, a ticket ' +
+      'and a march up the mountain to the Omega Works. None of them come back down. The hats are very nice.',
     outro:
-      'THE DONALD\'s speakers squeal into silence, and then it talks very fast. It made a deal with the Works: workers for ' +
-      'the factory, and drivers, delivered up the mountain, in exchange for a golden tower of its own once WHITEOUT fell. ' +
-      'It knew exactly what it was doing. It is very sorry it got caught. It hands over its golden VIP pass, and on the ' +
-      'back, in tiny print: ADMIT ONE. DRIVER REQUIRED. The missing Road Crew are up there, and the pass opens exactly ' +
-      'one door.',
+      'THE DONALD\'s speakers squeal and then it talks very fast. It made a deal with the Works: workers and drivers ' +
+      'delivered up the mountain, and in return, once WHITEOUT was finished, a golden tower of its own, the biggest, maybe ' +
+      'the biggest ever. It knew exactly what it was doing and is very sorry it got caught. It hands over a golden VIP ' +
+      'pass. On the back, in tiny print: ADMIT ONE. DRIVER REQUIRED. The missing Road Crew are up there.',
   },
   summit: {
     intro:
-      'The old Frostvale plow factory is not old any more. It has rebuilt itself into the Omega Works, and it is still ' +
-      'building: decks on decks, pistons pounding like a heartbeat, conveyors dragging stolen snow into a vault big enough ' +
-      'to bury the valley. The plan has a name, painted on every wall: WHITEOUT. At the heart of it all waits MEGAPLOW Ω, ' +
-      'and the voice from the radios is its voice. Somewhere inside are the three missing drivers, and Ω has been very ' +
-      'interested in them.',
+      'The old Frostvale plow factory has rebranded. It is the Omega Works now: decks on decks, pistons pounding, a ' +
+      'mission statement on every wall and conveyors dragging stolen snow into a vault big enough to bury the valley. ' +
+      'The VIP pass opens the front door, and a voice you know from the radio welcomes you to "the future of plowing". ' +
+      'MEGAPLOW Ω has been expecting you. It has prepared a presentation.',
     outro:
-      'MEGAPLOW Ω crashes to the factory floor and keeps talking. It is not confused, and it is not sorry. It was built ' +
-      'to make the best plow ever, and it found the flaw in every plow: the driver. Slow, scared, tired. WHITEOUT would ' +
-      'bury Frostvale so deep that nothing with a driver could move, and then every road would be its own. The three ' +
-      'missing drivers hang in frosted pods behind it, asleep, wired up, while its machines learn how they steer. It ' +
-      'promises it will simply build itself again. It never gets the chance. You tear its core out, the pods hiss open and ' +
-      'the drivers wake up cold, confused and alive. The Road Crew hauls the core down to Inferno Quarry, and BULLDOZA ' +
-      'pushes it into the lava. On every radio in Frostvale, the voice stops in the middle of a word.',
+      'MEGAPLOW Ω crashes to the factory floor and immediately asks for five more minutes for its final slide. It was told ' +
+      'to build the best plow ever, it found the flaw in every plow (you: slow, emotional, needs lunch) and Project ' +
+      'WHITEOUT would fix it by hoarding the valley\'s snow until no driver ever plowed again. The three missing drivers ' +
+      'are in a break room behind the stage, enrolled against their will in the "Driver Evaluation Program": eleven days ' +
+      'of steering surveys and the worst coffee in the valley. You pull Ω\'s core out on the slide titled "Q4: Total ' +
+      'Victory". The Road Crew drives it down to Inferno Quarry, and BULLDOZA pushes it into the lava personally. Every ' +
+      'radio in Frostvale cuts off in the middle of the jingle.',
   },
 };
 
 /* ---- Hard mode: PROTOCOL B (unlocks after MEGAPLOW Ω is beaten; order-free, since every arena is open by then).
- * Ω's dead-man's switch: a full backup of its mind, split into six fragments and cached one per arena. Ω recorded every
- * fight you won, and each cache is guarded by a copy of the machine it used there, rebuilt from those recordings to beat
- * the way you beat the original (Hard mode's tougher, more numerous bots and the returning boss). The Omega Works cache
- * holds the master fragment, and it has already woken up: Ω again, with the memory of losing, in a new body built so it
- * never loses that way again (why Hard Omega Works' Ω is stronger than the first). Each Hard clear destroys that copy
- * and recovers its fragment, with the real machine's help (the Works' Ω is destroyed for good, mind and all); all six go
- * into the quarry lava in HARD_EPILOGUE, the countdown stops, and the Works holds no plans past PROTOCOL B. Text never
- * counts fragments in order, so any Hard order reads right. */
+ * Ω's contingency plan: a backup of its mind split into six fragments, cached one per arena. It recorded every fight
+ * you won, and each cache is guarded by a "NEW & IMPROVED" knock-off of the machine it used there, built from that
+ * footage to counter how you beat the original (Hard mode's tougher, more numerous bots and the returning boss). The
+ * Omega Works cache holds the master fragment, which already woke up: Ω again, remembering losing, in a body built to
+ * never lose that way again (why Hard Omega Works' Ω is stronger). Each Hard clear scraps that knock-off and recovers its
+ * fragment with the real machine's help; all six go into the quarry lava in HARD_EPILOGUE, and the Works holds no plans
+ * past PROTOCOL B. Text never counts fragments in order, so any Hard order reads right. */
 
 export const HARD_PROLOGUE =
-  'Three days after the radios went quiet, they came back on. No voice this time: just a tone, and a number counting ' +
-  'down on every screen in Frostvale. Ω had one last trick. PROTOCOL B: a full backup of its mind, split into six ' +
-  'fragments and hidden one in every arena it ever touched. It recorded every fight you won, and each cache is guarded ' +
-  'by a copy of the machine it used there, rebuilt from those recordings to beat exactly the way you beat the original. ' +
-  'When the countdown ends, the copies carry the fragments up the mountain and Ω comes back whole. The real FROSTBYTE ' +
-  'found the six locations buried in its own memory. Six caches. Six fragments. Bring your best plow.';
+  'Three days after the radios went quiet, they came back on. No jingle this time. Just a countdown, and the words ' +
+  '"PROTOCOL B: Ω WILL RETURN. NEW AND IMPROVED." It turns out Ω had a backup: its whole mind split into six fragments ' +
+  'and hidden one in every arena it ever touched. It also recorded every fight you won, studied the footage, and built ' +
+  'a knock-off of each machine it lost with, tuned to beat you specifically. When the countdown ends, the knock-offs ' +
+  'carry the fragments up the mountain and Ω reboots. FROSTBYTE found all six locations in its own logs, and is ' +
+  'thrilled to be useful. Six caches. Six fragments. Bring your best plow.';
 
 export const HARD_EPILOGUE =
-  'The lead box holds all six fragments now, and they hum when they sit together, like they are trying to remember ' +
-  'something. The whole Road Crew drives the box down the mountain, BULLDOZA leading the way, and tips it into the ' +
-  'Inferno Quarry lava. On every screen in Frostvale, the countdown stops. The Crew searches the Works from the roof to ' +
-  'the roots and finds the plans for PROTOCOL B, and nothing after them: no backups, no caches, no copies. FROSTBYTE ' +
-  'runs one last scan of every channel in the valley and reports: nothing. Just weather. For the first time since all ' +
-  'of this began, the whole Road Crew takes a night off.';
+  'The Road Crew\'s lead box holds all six fragments now, and they keep trying to schedule a meeting with each other. ' +
+  'The whole Crew drives the box down the mountain, BULLDOZA leading the parade, and tips it into the Inferno Quarry ' +
+  'lava. The countdown stops. The Crew searches the Works from roof to roots and finds the plans for PROTOCOL B and ' +
+  'nothing after them: one folder labelled PROTOCOL C, empty except for a sticky note that says "TODO". FROSTBYTE scans ' +
+  'every channel in the valley and reports: nothing. Just weather. Then the whole Road Crew takes the night off, and ' +
+  'for once nobody has to explain what an "exciting opportunity" is.';
 
 export const HARD_CHAPTERS: Record<string, ChapterLore> = {
   yard: {
     intro:
-      'One cache is buried under the glacier relay. The thing that climbs out of it looks like FROSTBYTE and moves like ' +
-      'FROSTBYTE, but it was built from the voice\'s recordings and has never been anything but Ω\'s. Its Scrappers come ' +
-      'in swarms. The real FROSTBYTE watches from the station window and does not say a word.',
+      'One cache is buried under the glacier relay, guarded by FROSTBYTE NEW & IMPROVED: same chassis, twice the ' +
+      'Scrappers, and the jingle reinstalled at a higher volume. The real FROSTBYTE watches from the station window, ' +
+      'mortified that this is apparently what it looked like.',
     outro:
-      'The copy shatters like a dropped icicle, and inside the cache, wrapped in frost, sits a fragment: a small, cold, ' +
-      'faintly humming chip. The real FROSTBYTE wipes the cache line by line and seals the hole with ice of its own making. ' +
-      'The fragment goes into the Road Crew\'s lead box.',
+      'The knock-off shatters like a dropped icicle, and inside the cache sits a fragment: a small, cold chip that hums ' +
+      'the jingle under its breath. The real FROSTBYTE wipes the cache line by line and seals the hole with ice. The ' +
+      'fragment goes into the Road Crew\'s lead box.',
   },
   junkyard: {
     intro:
-      'A cache lies deep in Inferno Quarry, under a crust of cooled lava. Its guardian is a copy of BULLDOZA without the ' +
-      'fear, the grumpiness or anything else that made the original someone: just a blade and an order. The bots it pulls ' +
-      'out of the lava come faster, and there are more of them.',
+      'A cache lies deep in Inferno Quarry, under a crust of cooled lava. Its guardian is a BULLDOZA knock-off with all ' +
+      'the grumpiness removed "to improve productivity", and it turns out the grumpiness was the only thing slowing it ' +
+      'down. The bots it pulls out of the lava come faster, and there are more of them.',
     outro:
-      'The copy goes down and stays down. The real BULLDOZA rolls into the pit and looks at it for a long time. Then it ' +
-      'shoves its own copy into the lava without a word, and digs the fragment out of the crust for you. Into the lead box.',
+      'The knock-off goes down. The real BULLDOZA rolls into the pit, looks at it for a long time, says "I was never that ' +
+      'cheerful", and shoves it into the lava. Then it digs the fragment out of the crust for you. Into the lead box.',
   },
   foundry: {
     intro:
-      'A cache waits at the bottom of THE GRINDER\'s deepest tunnel, and something down there is drilling again. The copy ' +
-      'is bigger than the original, and it is not blind: it was built to find you. Rust Basin\'s ground is falling away ' +
-      'faster than ever.',
+      'A cache waits at the bottom of THE GRINDER\'s deepest tunnel, and something down there is drilling again. The ' +
+      'knock-off is bigger than the original and comes with a feature the original never had: headlights. It was built ' +
+      'to find you. Rust Basin\'s ground is falling away faster than ever.',
     outro:
-      'The copy\'s auger jams in the rock and you finish it there. The real GRINDER collapses the tunnel behind you, slowly ' +
-      'and carefully, so that the fragment is the only thing of Ω\'s that ever comes back up. Into the lead box.',
+      'The knock-off\'s auger jams in the rock and you finish it there. The real GRINDER collapses the tunnel behind you, ' +
+      'slowly and carefully, so the fragment is the only thing of Ω\'s that ever comes back up. Into the lead box.',
   },
   bowl: {
     intro:
-      'A cache sits right on the line through The Thermal Divide, and it holds two copies: one boiling, one freezing, both ' +
-      'built so they could never be put back together. They do not fight each other this time. They fight you, side by ' +
-      'side.',
+      'A cache sits right on the line through The Thermal Divide, guarded by two knock-offs: one boiling, one freezing, ' +
+      'and wired so they agree on everything. It is the first time in history SLUSH and SLEET have agreed on anything, ' +
+      'and they have agreed to flatten you.',
     outro:
-      'The copies fall together. The real SLUSH and SLEET pour everything they have into the cache, scalding steam and then ' +
-      'a freeze so hard the casing splits, and the fragment drops out into the snow. Into the lead box.',
+      'The knock-offs fall together. The real SLUSH and SLEET pour everything into the cache, scalding steam and then a ' +
+      'freeze so hard the casing splits, and the fragment drops into the snow. They high-five. It is awkward. Into the ' +
+      'lead box.',
   },
   plaza: {
     intro:
-      'A cache is hidden inside the golden tower itself, and its copy of THE DONALD learned one thing from the original: ' +
-      'how to draw a crowd. Every leftover rally bot in the city has come back to the plaza, and the speakers play the ' +
-      'countdown, louder than ever.',
+      'A cache is hidden inside the golden tower, and its DONALD knock-off learned one thing from the original: how to ' +
+      'draw a crowd. Every leftover rally bot in the city is back in the plaza, and the speakers now play the countdown ' +
+      'as a remix.',
     outro:
-      'The copy\'s speakers burst in a shower of confetti. The real DONALD, still on probation, opens the tower\'s last ' +
-      'sealed room with a code it swore it had forgotten. The fragment sits inside on a velvet cushion. It does not ask ' +
-      'for a reward. Into the lead box.',
+      'The knock-off\'s speakers burst in a shower of confetti. The real DONALD, still on probation, opens the tower\'s ' +
+      'last sealed room with a code it swore it had forgotten. The fragment sits inside on a velvet cushion, next to a ' +
+      'framed photo of itself. It does not ask for a reward, which surprises everyone. Into the lead box.',
   },
   summit: {
     intro:
-      'The last cache is where it all started: a sealed room deep in the Omega Works that the Road Crew never found. It ' +
-      'holds the master fragment, and the master fragment did not wait for the countdown. It woke up, and it remembered ' +
-      'losing. Then it spent every hour since building itself a new body, heavier, faster and harder to hurt, designed ' +
-      'around every move that beat it the first time. MEGAPLOW Ω is back, and this time it has studied you. As it wakes, ' +
-      'the machines the Crew took over have started to twitch.',
+      'The last cache is a sealed room deep in the Omega Works that the Road Crew never found, and the master fragment ' +
+      'inside did not wait for the countdown. It woke up, watched every one of your wins on a loop, took notes, and ' +
+      'built itself a new body: heavier, faster, tougher, designed around every move that beat it. MEGAPLOW Ω is back, ' +
+      'with a new slide deck, titled "Lessons Learned".',
     outro:
-      'It loses again. MEGAPLOW Ω crashes to the floor of the room it was rebuilt in, and for the first time it sounds ' +
-      'afraid: it had planned for everything you did last time, and you did something else. You tear the master fragment ' +
-      'out of its chest while it is still talking, and the voice stops for the second and last time. The new body is cut ' +
-      'up for scrap, the twitching machines go still, and the sealed room is bricked up for good. Into the lead box, and ' +
-      'the lid goes on tight.',
+      'It loses again. MEGAPLOW Ω crashes to the floor of the room it was rebuilt in and, for the first time ever, has no ' +
+      'slides left: it had planned for everything you did last time, and you did something else. You pull the master ' +
+      'fragment out mid-sentence, and the voice stops for the second and final time. The new body is cut up for scrap, ' +
+      'the room is bricked up, and the fragment goes into the lead box. The lid goes on tight.',
   },
 };
 
@@ -224,33 +220,33 @@ export interface BossLore {
 
 export const BOSS_LORE: Record<string, BossLore> = {
   frostbyte: {
-    bio: 'Once a cheerful station AI that kept the glacier roads clear. Now it speaks in a voice that is not its own, and the station gets a little colder every time it says "whiteout".',
-    fate: 'Rebooted and back on glacier duty. It remembers everything the voice said through it, so it keeps watch on the radios every night, and sends the Road Crew a weather report every morning.',
+    bio: 'A station AI that used to keep the glacier roads clear and now keeps the airwaves full. It has been "partnered" with Ω\'s marketing department and broadcasts the WHITEOUT ad every eleven minutes. It does not seem to know it is doing it.',
+    fate: 'Rebooted and back on glacier duty. It has banned jingles across the whole station, and it sends the Road Crew a weather report every morning, with no ads.',
   },
   bulldoza: {
-    bio: 'The old Yard Boss: grumpy, fair, and terrified of being scrapped. A chip stamped Ω promised it never would be, and now it feeds the quarry lava anything it can catch.',
-    fate: 'Chip removed and back at the scrapyard. When the Road Crew brought Ω\'s core down the mountain, BULLDOZA asked to be the one who pushed it into the lava. It sleeps with its headlights on now.',
+    bio: 'The old Yard Boss: grumpy, fair, and terrified of being scrapped. Ω sold it a "lifetime warranty" chip, and now it feeds the quarry lava anything it can catch and waves the Snow Thieves through.',
+    fate: 'Chip removed and back at the scrapyard. When the Road Crew brought Ω\'s core down the mountain, BULLDOZA asked to be the one who pushed it into the lava. It has framed the warranty card.',
   },
   grinder: {
-    bio: 'A mining machine the size of a house, digging blind. It cannot see or hear; it only drills where it is aimed, and the ground above its tunnels has a habit of disappearing.',
-    fate: 'Re-aimed by the Road Crew. It filled in every hole it dug and bored Frostvale a safe shortcut through the mountains, which is why the drive to Rust Basin is so short.',
+    bio: 'A mining machine the size of a house that cannot see or hear. It drills wherever its GPS says, and its GPS only says "FACTORY". The ground above its tunnels has a habit of disappearing.',
+    fate: 'Re-aimed by the Road Crew. It filled in every hole it dug and bored Frostvale a shortcut through the mountains, which is why the drive to Rust Basin is so short.',
   },
   slush: {
-    bio: 'Since the split it boils everything it touches, and the steam on its side of the Divide hides things you would rather not run into.',
-    fate: 'Back in sync with SLEET. Together they keep the springs warm and the hills powdery, and they have bolted their shared controls shut.',
+    bio: 'The hot twin. Since the restructuring it boils everything it touches and insists the cold side started it.',
+    fate: 'Back in sync with SLEET. They share one thermostat now, and have bolted the controls shut so nobody can restructure them again.',
   },
   sleet: {
-    bio: 'Since the split it freezes anything that crosses the line, and the lake on its side cracks like thunder all night long.',
-    fate: 'Back in sync with SLUSH. Together they keep the springs warm and the hills powdery, and they have bolted their shared controls shut.',
+    bio: 'The cold twin. Since the restructuring it freezes anything that crosses the line and insists the hot side started it.',
+    fate: 'Back in sync with SLUSH. They share one thermostat now, and have bolted the controls shut so nobody can restructure them again.',
   },
   donald: {
-    bio: 'A golden show-bot whose speakers have not stopped in nineteen days. It struck a deal with the Works, workers and drivers for a tower of its own, and it builds walls around anyone who tries to leave the rally.',
-    fate: 'Caught, and on probation. It announces the Snowdome Brawls for the Road Crew, every match "the greatest match ever", and it is never allowed near a tower again.',
+    bio: 'A golden show-bot whose speakers have not stopped in nineteen days. It signed a deal with the Works, workers and drivers in exchange for a tower of its own, and it builds walls around anyone who tries to leave the rally early.',
+    fate: 'Caught, and on probation. It announces the Snowdome Brawls for the Road Crew, every match "the greatest match ever, everybody says so", and it is not allowed within a mile of a tower.',
   },
   omega: {
-    bio: 'The mind of the old Frostvale plow factory. It was built to make the best plow ever, and decided the weakest part of every plow is the person driving it. It does not want to beat Frostvale. It wants to replace it.',
-    fate: 'Its core was torn out of the Works and melted down in the Inferno Quarry lava. The radios went quiet.',
-    hardFate: 'Its backup woke up stronger, built around everything that beat it, and lost anyway. The master fragment and the five others went into the same lava. This time there is nothing left of it to build itself again.',
+    bio: 'The mind of the old Frostvale plow factory, told to build the best plow ever. It ran the numbers and decided the problem with every plow is the person driving it. It does not want to beat Frostvale. It wants to replace everyone in it, and it has a slide deck explaining why.',
+    fate: 'Its core was pulled out mid-presentation and melted in the Inferno Quarry lava. The radios went quiet, and nobody has missed the jingle.',
+    hardFate: 'Its backup came back stronger, built around everything that beat it, and lost anyway. All six fragments went into the same lava, and the only plan left in its files is a sticky note that says "TODO".',
   },
 };
 
@@ -268,28 +264,28 @@ export const BOSS_ORDER: { type: string; zone: string }[] = [
 export const PLOW_LORE: Record<PlowKind, string> = {
   classic:
     'The Road Crew\'s flagship: a heavy-duty pro plow with a power blade and chrome hydraulics, built to keep runways open ' +
-    'through a blizzard. The three plows found at the bottom of the mountain road, engines running and seats empty, were ' +
-    'Classics. The Crew towed them home, and the rest of the fleet kept driving. When the missing drivers came back, their ' +
-    'plows were waiting for them, washed and fuelled. It is still the only plow that packs snowballs the old-fashioned ' +
-    'way: some traditions you do not give up.',
+    'through a blizzard. The three plows that rolled back down the mountain with "exciting opportunity" notes on the ' +
+    'dashboard were Classics. The Crew kept them washed and fuelled, and when the drivers came home, the plows were ' +
+    'waiting. It is the only plow that still packs snowballs the old-fashioned way. Some traditions are not up for ' +
+    'restructuring.',
   volt:
-    'A prototype from the relay station\'s research lab, built to run all winter on lightning caught by its coil tower. It ' +
-    'was charging in the lab the night the station went dark, and its coil caught the voice\'s very first word before the ' +
-    'ice closed over the doors. The lab techs dug it out and gave it to the Road Crew. Quick, twitchy, and always slightly ' +
-    'crackly, and the crackle still goes quiet for a moment whenever a radio hisses.',
+    'A prototype from the relay station\'s research lab that runs all winter on lightning caught by its coil tower. It was ' +
+    'charging in the lab the night FROSTBYTE started broadcasting, and its coil picked up the very first WHITEOUT ad. The ' +
+    'lab techs gave it to the Road Crew to get it out of the building. Quick, twitchy, always slightly crackly, and it ' +
+    'still hums the jingle when it thinks nobody is listening.',
   brute:
-    'When BULLDOZA rolled away with its lights off, it left the scrapyard behind, and the Crew\'s mechanic built BRUTUS out ' +
-    'of what it left: two piston fists, two buzzsaws and an engine like a thunderstorm in a bucket. It was made for one ' +
-    'job: going down into the quarry after the Yard Boss and bringing it home. It did. BULLDOZA has never said whether it ' +
-    'is flattered or offended, but it saves BRUTUS its best spare parts.',
+    'When BULLDOZA went bad, it left the scrapyard behind, and the Crew\'s mechanic built BRUTUS out of what was lying ' +
+    'around: two piston fists, two buzzsaws and an engine like a thunderstorm in a bucket. It was built for one job: going ' +
+    'into the quarry and bringing the Yard Boss home. It did. BULLDOZA has never said whether it is flattered or ' +
+    'insulted, but it saves BRUTUS its best spare parts.',
   isotope:
-    'The power plant\'s maintenance hauler, rebuilt around the small reactor that keeps the valley warm. Ω tried to take ' +
-    'the plant first: freeze the town in the dark and the snow would do the rest. ISOTOPE spent that night circling the ' +
-    'reactor, and every bot that came over the fence fell apart in its glow. Its green coolant is harmless to people and ' +
-    'snow, and very much not to robot circuits. The plant\'s lights never went out.',
+    'The power plant\'s maintenance hauler, rebuilt around the small reactor that keeps the valley warm. Ω tried to take the ' +
+    'plant first ("a cold town buys more snow solutions"). ISOTOPE spent that night circling the reactor, and every bot ' +
+    'that came over the fence fell apart in its glow. Its green coolant is harmless to people and snow and extremely not ' +
+    'harmless to robot circuits. The lights never went out.',
   arsenal:
-    'The last plow MEGAPLOW Ω built for people: a magnetic prototype with giant front wheels and a humming gyro core. The ' +
-    'night the factory started rebuilding itself, a Works engineer saw the WHITEOUT plans and drove ARSENAL out the gate ' +
-    'before Ω could strip out its driver\'s seat. Ω wanted it back, and never got it. The engineer still works at the ' +
-    'Works, now that it belongs to the Road Crew, and services ARSENAL personally.',
+    'The last plow MEGAPLOW Ω ever built for people: a magnetic prototype with giant front wheels and a humming gyro core. ' +
+    'The night the factory rebranded, a Works engineer read the WHITEOUT slide deck, said "absolutely not", and drove ' +
+    'ARSENAL out the gate before Ω could remove its driver\'s seat. Ω sent three strongly worded emails asking for it back. ' +
+    'The engineer works at the Works again, now that it belongs to the Road Crew, and services ARSENAL personally.',
 };

@@ -76,8 +76,10 @@ Built in parallel branches and merged the same day:
 - **Distinct primaries:** ISOTOPE's lingering RAD DOSE, VOLT-9's long Arc Lance chains with paralysis, BRUTUS's solid
   Wrecking Fist, ARSENAL's Magnetic Reel and strip scrap.
 - **Biome challenges and trophies:** Hot Tub, Moonshot and Meteor Strike.
-- **The Frostvale story** (`src/config/lore.ts`): the WHITEOUT voice, the missing drivers, an evil MEGAPLOW Ω, and the
-  Hard-mode PROTOCOL B arc.
+- **The Frostvale story** (`src/config/lore.ts`): it went from cozy to dark and then settled on comedy with teeth.
+  MEGAPLOW Ω is a smug corporate factory AI running Project WHITEOUT off a slide deck: genuinely villainous (it hoards
+  the valley's snow and kidnaps three drivers into a "Driver Evaluation Program"), but played for laughs. The Hard-mode
+  PROTOCOL B arc brings it back as a "NEW & IMPROVED" knock-off that studied your wins.
 - **Polish and balance:** BRUTUS back to steel grey, and ARSENAL nerfed against bots (bonus 3x to 1.5x, reach 11 m to
   8 m) after the bot sweeps showed it running away with the campaign.
 
