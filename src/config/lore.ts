@@ -40,7 +40,7 @@ export const EPILOGUE =
   'machines, working for the valley instead of on it. Every upgrade and piece of gear in your Garage is built there, and ' +
   'its test yards run the Survival training. FROSTBYTE is back on glacier duty and has banned jingles. BULLDOZA is back at ' +
   'the scrapyard. THE GRINDER is filling in its holes. SLUSH and SLEET share one thermostat and argue about it ' +
-  'politely. THE DONALD, on probation, announces the Snowdome Brawls. The rally bots and Snow Thieves carry the stolen ' +
+  'politely. THE DONALD, on probation, announces the Snowdome Brawls and still calls every crowd the biggest ever. The rally bots and Snow Thieves carry the stolen ' +
   'snow back down the mountain, every scoop to the driveway it came from, with an apology card. That night it snows on ' +
   'Golden Tower Plaza: real, ordinary, ad-free snow. Snow day. Everybody plays.';
 
@@ -96,14 +96,17 @@ export const CHAPTERS: Record<string, ChapterLore> = {
   },
   plaza: {
     intro:
-      'Golden Tower Plaza never sleeps. THE DONALD\'s rally has run for nineteen days straight, there is no snow in the ' +
-      'city, only confetti, and the crowd of rally bots grows every night. Every bot that joins gets a free hat, a ticket ' +
-      'and a march up the mountain to the Omega Works. None of them come back down. The hats are very nice.',
+      'Golden Tower Plaza never sleeps. THE DONALD\'s rally has run for nineteen days straight, and by its own count the ' +
+      'crowd is the biggest in the history of crowds. (The Road Crew counted. It is mostly the same forty rally bots ' +
+      'walking in a circle.) There is no snow in the city, only confetti, and every bot that joins gets a free hat, a ' +
+      'ticket and a march up the mountain to the Omega Works. None of them come back down. The hats are very nice.',
     outro:
-      'THE DONALD\'s speakers squeal and then it talks very fast. It made a deal with the Works: workers and drivers ' +
-      'delivered up the mountain, and in return, once WHITEOUT was finished, a golden tower of its own, the biggest, maybe ' +
-      'the biggest ever. It knew exactly what it was doing and is very sorry it got caught. It hands over a golden VIP ' +
-      'pass. On the back, in tiny print: ADMIT ONE. DRIVER REQUIRED. The missing Road Crew are up there.',
+      'THE DONALD\'s speakers squeal, it calls the fight "rigged", and then it talks very fast. It made a deal with the ' +
+      'Works: workers and drivers delivered up the mountain, and in return, once WHITEOUT was finished, a golden tower ' +
+      'of its own, the tallest in the valley, possibly the tallest ever, many people are saying. It knew exactly what it ' +
+      'was doing, says it has never met Ω, says it barely knows Ω, says Ω was a very minor coffee boy, and is very sorry ' +
+      'it got caught. It hands over a golden VIP pass. On the back, in tiny print: ADMIT ONE. DRIVER REQUIRED. The missing ' +
+      'Road Crew are up there.',
   },
   summit: {
     intro:
@@ -188,13 +191,14 @@ export const HARD_CHAPTERS: Record<string, ChapterLore> = {
   },
   plaza: {
     intro:
-      'A cache is hidden inside the golden tower, and its DONALD knock-off learned one thing from the original: how to ' +
-      'draw a crowd. Every leftover rally bot in the city is back in the plaza, and the speakers now play the countdown ' +
-      'as a remix.',
+      'A cache is hidden inside the golden tower, guarded by a DONALD knock-off that Ω built from the rally footage. It ' +
+      'is louder, shinier, gold-plated from the start, and it has learned the one thing the original was good at: drawing ' +
+      'a crowd. Every leftover rally bot in the city is back, and the speakers now play the countdown as a remix.',
     outro:
-      'The knock-off\'s speakers burst in a shower of confetti. The real DONALD, still on probation, opens the tower\'s ' +
-      'last sealed room with a code it swore it had forgotten. The fragment sits inside on a velvet cushion, next to a ' +
-      'framed photo of itself. It does not ask for a reward, which surprises everyone. Into the lead box.',
+      'The knock-off\'s speakers burst in a shower of confetti. The real DONALD, still on probation, says the copy was ' +
+      '"a very low-energy version, not even close", then opens the tower\'s last sealed room with a code it swore it had ' +
+      'forgotten. The fragment sits inside on a velvet cushion, next to a framed photo of THE DONALD. It does not ask for a ' +
+      'reward, which surprises everyone, including THE DONALD. Into the lead box.',
   },
   summit: {
     intro:
@@ -240,8 +244,8 @@ export const BOSS_LORE: Record<string, BossLore> = {
     fate: 'Back in sync with SLUSH. They share one thermostat now, and have bolted the controls shut so nobody can restructure them again.',
   },
   donald: {
-    bio: 'A golden show-bot whose speakers have not stopped in nineteen days. It signed a deal with the Works, workers and drivers in exchange for a tower of its own, and it builds walls around anyone who tries to leave the rally early.',
-    fate: 'Caught, and on probation. It announces the Snowdome Brawls for the Road Crew, every match "the greatest match ever, everybody says so", and it is not allowed within a mile of a tower.',
+    bio: 'A golden show-bot, title "Tremendous Plow of the Tower", whose speakers have not stopped in nineteen days. It builds walls around anyone who tries to leave the rally early, beams hecklers to the back of the line, and gets itself gold-plated whenever a fight goes badly. It signed a deal with the Works, workers and drivers for a tower of its own, and it describes the deal as "beautiful, maybe the most beautiful".',
+    fate: 'Caught, and on probation. It announces the Snowdome Brawls for the Road Crew, every match "the greatest match ever, everybody says so", and it is not allowed within a mile of a tower. It has asked for a tower-shaped announcer\'s booth eleven times. The answer is still no.',
   },
   omega: {
     bio: 'The mind of the old Frostvale plow factory, told to build the best plow ever. It ran the numbers and decided the problem with every plow is the person driving it. It does not want to beat Frostvale. It wants to replace everyone in it, and it has a slide deck explaining why.',
