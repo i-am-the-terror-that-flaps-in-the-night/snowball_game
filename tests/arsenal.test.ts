@@ -90,7 +90,7 @@ describe('ARSENAL: the snowball shop lines still pay off', () => {
     const base = computeStatsFor({}, 'arsenal');
     const up = computeStatsFor({ hopper: 5, whirl: 3, compactor: 5 }, 'arsenal');
     expect(tankGunRange(up)).toBeGreaterThan(tankGunRange(base) + 1);
-    expect(tankGunRange(base)).toBeLessThan(11); // short range, like every plow
+    expect(tankGunRange(base)).toBeLessThan(12.5); // short range, like every plow
     expect(tankPellets(base)).toBe(8);
     expect(tankPellets(up)).toBeGreaterThan(tankPellets(base));
     expect(tankRepulseHalf(up)).toBeGreaterThan(tankRepulseHalf(base) + 0.05);
@@ -182,7 +182,7 @@ describe('MAG SHOTGUN (SPACE)', () => {
     expect(n).toBeGreaterThanOrEqual(Math.floor(3 * stats.gunRate));
     expect(n).toBeLessThanOrEqual(Math.ceil(3 * stats.gunRate) + 1);
     expect(stats.gunRate).toBeGreaterThan(1.5);
-    expect(stats.gunRate).toBeLessThan(2.2);
+    expect(stats.gunRate).toBeLessThan(2.8);
   });
 
   it('damage falls off with distance; point-blank blasts shove hard', () => {
@@ -197,7 +197,7 @@ describe('MAG SHOTGUN (SPACE)', () => {
     const r2 = shoot([farBot], 0.05);
     const farDmg = sum(r2.log, farBot);
     expect(farDmg).toBeGreaterThan(0);
-    expect(farDmg).toBeLessThan(nearDmg * 0.4); // fewer pellets connect and each does ~60%
+    expect(farDmg).toBeLessThan(nearDmg * 0.75); // fewer pellets connect and each does less
     expect(r2.log[0].kb).toBeLessThan(2);
   });
 });

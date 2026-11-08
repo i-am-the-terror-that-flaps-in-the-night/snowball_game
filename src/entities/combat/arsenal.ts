@@ -42,10 +42,10 @@ const DEG = Math.PI / 180;
  *  one bot land as ONE hit (the Duel caps a blast as one hit, armour is paid once per blast). */
 const SHOT_PELLETS = 8;
 const PELLET_MAX = 12;
-const SHOT_HALF = 15 * DEG;
-const SHOT_PELLET_R = 0.25;
-const SHOT_FULL = 2.5;
-const SHOT_FAR = 0.4;
+const SHOT_HALF = 18 * DEG;
+const SHOT_PELLET_R = 0.4;
+const SHOT_FULL = 5;
+const SHOT_FAR = 0.6;
 const SHOT_PB = 3.5;
 const SHOT_PB_KNOCK = 7;
 const SHOT_KNOCK = 1.2;

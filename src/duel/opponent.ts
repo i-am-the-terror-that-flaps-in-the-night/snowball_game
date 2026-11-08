@@ -79,7 +79,7 @@ const KNOCK_SCALE = 0.7;
  */
 /** Per-vehicle Duel damage multiplier (applied before the caps): VOLT-9's kit is tuned for crowds and lagged the
  *  field plow-vs-plow. */
-export const DUEL_KIND_MULT: Partial<Record<string, number>> = { volt: 1.8, brute: 0.7 };
+export const DUEL_KIND_MULT: Partial<Record<string, number>> = { volt: 1.8, brute: 0.7, arsenal: 0.78 };
 
 export class OpponentTarget implements EnemyManagerAPI {
   readonly bosses: readonly EnemyHandle[] = [];

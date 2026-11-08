@@ -111,8 +111,8 @@ close and aims by steering: neither main weapon auto-aims.
 
 - **Space (hold): Mag Shotgun.** The emitter is fixed straight ahead along the hull (it only tilts up to 20° to
   follow a bot on a slope). While held it fires a blast about every 0.55 s (faster with levels): 8 cyan pellets fanned
-  across a 30° cone (Whirlwind Turbine adds more), each stopping in the first bot it meets. Short reach (~9.5 m, a
-  little more with levels and Mega Hopper); pellets hit full out to 2.5 m and fall to 40% at full reach, so it is
+  across a 36° cone (Whirlwind Turbine adds more), each stopping in the first bot it meets. Short reach (~11 m, a
+  little more with levels and Mega Hopper); pellets hit full out to 5 m and fall to 60% at full reach, so it is
   deadliest point-blank, where a blast also shoves the bot back. All of one blast's pellets on a bot land as one hit
   (one armour check; in the Duel it is soft-capped as one hit, so even a point-blank blast can't one-shot).
 - **E: Mag Repulsor.** A magnetic wave bursts out of the nose across a 60° wedge (Snow Compactor widens it, 90° at
