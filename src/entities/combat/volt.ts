@@ -19,6 +19,10 @@ const ARC_CHAIN_R = 8;
  *  grounds into it: ARC_SOLO x damage, facing only half its flat armour (the chain weapon was weakest on lone,
  *  armoured targets; bosses always have adds around them, so they ground regardless and the chain still runs on). */
 export const ARC_SOLO = 1.75;
+/** On a boss the grounded arc hits harder still: ARC_BOSS x (instead of ARC_SOLO). VOLT-9's boss fights ran about
+ *  twice as long as the other plows' (replicate Plaza / Omega Works runs): its sustained single-target damage was
+ *  the lowest and its Thunderclap costs HP, so the lance has to carry the boss fight. */
+export const ARC_BOSS = 2.6;
 /** PARALYSIS: every arc hit (any hop) has PARA_CHANCE to lock the bot up for PARA_SECONDS (a stun); a paralysed bot
  *  can't be paralysed again for PARA_IMMUNE s after it wears off. */
 const PARA_CHANCE = 0.07;
@@ -172,7 +176,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         this.paraReady.set(hit.id, ctx.time + PARA_SECONDS + PARA_IMMUNE);
         if (this.paraReady.size > 64) for (const [id, t] of this.paraReady) if (t < ctx.time) this.paraReady.delete(id);
       }
-      const share = hop === 0 ? (solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
+      const share = hop === 0 ? (grounded ? ARC_BOSS : solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
       const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), {
         source: 'other',
         fromX: px,

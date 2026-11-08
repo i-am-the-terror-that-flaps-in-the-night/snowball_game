@@ -4,7 +4,7 @@ import { Combat } from '../src/entities/Combat';
 import { computeStatsFor } from '../src/core/Progression';
 import type { EnemyHandle, GameContext } from '../src/core/types';
 import type { PilotBinding } from '../src/entities/pilot';
-import { ARC_SOLO, arcRange, staticRadius } from '../src/entities/combat/volt';
+import { ARC_BOSS, ARC_SOLO, arcRange, staticRadius } from '../src/entities/combat/volt';
 
 /* VOLT-9 TESLA ROVER: ARC LANCE (SPACE, hold) and STATIC FIELD (E) through Combat's vehicle routing. */
 
@@ -120,7 +120,7 @@ describe('VOLT-9 Tesla Rover', () => {
     expect(lone.dealt / paired.dealt).toBeCloseTo(ARC_SOLO, 1);
   });
 
-  it('GROUNDED ARC: a boss always grounds (adds around it or not), and the chain still runs on to the adds', () => {
+  it('GROUNDED ARC: a boss always grounds, harder (ARC_BOSS), adds around it or not, and the chain still runs on to the adds', () => {
     const boss = Object.assign(bot(0, 5), { isBoss: true });
     const add = bot(3, 6);
     const r1 = rig([boss, add]);
@@ -131,7 +131,7 @@ describe('VOLT-9 Tesla Rover', () => {
     const r2 = rig([plain, add2]);
     r2.held.add('Space');
     r2.run(1);
-    expect(boss.dealt / plain.dealt).toBeCloseTo(ARC_SOLO, 1);
+    expect(boss.dealt / plain.dealt).toBeCloseTo(ARC_BOSS, 1);
     expect(add.dealt).toBeGreaterThan(0);
   });
 
