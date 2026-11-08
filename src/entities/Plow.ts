@@ -32,7 +32,7 @@ import { AIR_SLAM_MIN_HEIGHT } from './combat/air';
 import type { VehicleBuildIn } from './vehicles/types';
 import { buildVoltVehicle, type VoltVehicleParts } from './vehicles/volt';
 import { buildBruteVehicle } from './vehicles/brute';
-import { buildIsotopeVehicle, type IsotopeVehicleParts } from './vehicles/isotope';
+import { buildIsotopeVehicle } from './vehicles/isotope';
 import { buildArsenalVehicle, type ArsenalVehicleParts } from './vehicles/arsenal';
 import { buildClassicVehicle, CLASSIC_EXHAUST, type ClassicVehicleParts } from './vehicles/classic';
 import {
@@ -325,10 +325,6 @@ export class Plow implements PlowAPI {
   /** ISOTOPE: hazmat hull + reactor; the core's glow pulses (faster while Meltdown recharges). */
   private isoParts!: THREE.Group;
   private coreMat!: THREE.MeshStandardMaterial;
-  private isoRig!: IsotopeVehicleParts;
-  /** REACTOR HAULER: RAD SPRAYER held / FALLOUT TRAIL dumping (set by combat/isotope.ts; nozzle + dump valve FX). */
-  isoSpray = false;
-  isoTrail = false;
   private cleats: Cleat[] = [];
   /** All BRUTUS track cleats as instances (matrices follow cleatZ). */
   private cleatMesh!: THREE.InstancedMesh;
@@ -508,7 +504,6 @@ export class Plow implements PlowAPI {
     const iso = buildIsotopeVehicle(vin);
     this.isoParts = iso.group;
     this.coreMat = iso.parts.coreMat;
-    this.isoRig = iso.parts;
 
     const ars = buildArsenalVehicle(vin);
     this.arsenalParts = ars.group;
@@ -1203,7 +1198,7 @@ export class Plow implements PlowAPI {
       this.exhaustTip.set(0, 1.17, -3.65); // out of the back of the gyro core
       this.flame.rotation.set(-Math.PI / 2, 0, 0);
     } else if (iso) {
-      this.exhaustTip.set(0.55, 2.72, 0.86); // the cab's vent stack
+      this.exhaustTip.set(0.55, 2.38, 0.12);
       this.flame.rotation.set(0, 0, 0);
     } else {
       this.exhaustTip.copy(CLASSIC_EXHAUST);
@@ -2581,7 +2576,6 @@ export class Plow implements PlowAPI {
       const flick = ready < 1 ? 0.5 + 0.5 * Math.sin(this.time * 25) : 0.5 + 0.5 * Math.sin(this.time * 3);
       this.coreMat.emissiveIntensity = 1.1 + flick * (ready < 1 ? 0.3 : 0.9);
       this.beaconLight.intensity = 2.5 + flick * 3;
-      this.isoRig.update(dt, { spray: this.isoSpray, trail: this.isoTrail });
     }
     if (this.kind === 'volt') {
       this.beaconLight.intensity = 3 + pf * 3;

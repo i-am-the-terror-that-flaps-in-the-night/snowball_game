@@ -604,7 +604,7 @@ export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: numb
   classic: { body: 0xffb81a, trim: 0x23272e },
   volt: { body: 0xe9edf1, trim: 0x2c323b }, // TESLA ROVER: pale composite panels over a graphite tub
   brute: { body: 0x7d8794, trim: 0x4a525d },
-  isotope: { body: 0xe8cf1f, trim: 0x5d646a }, // rad-suit yellow + lead grey
+  isotope: { body: 0xe8cf1f, trim: 0x3a4038 },
   arsenal: { body: 0x55606c, trim: 0x2c333b },
 };
 
@@ -859,10 +859,10 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
     { face: 'rear', at: [0, 1.84, -1.95], size: [1.5, 0.13], tags: ['band'] },
   ],
   isotope: [
-    { face: 'top', at: [0, 2.28, 1.0], size: [0.5, 1.5], tags: ['stripe', 'emblem', 'band'], emblem: 0.48 }, // cab roof (behind the boom turret)
-    { face: 'top', at: [0, 1.62, 1.83], size: [0.36, 1.5], tags: ['stripe', 'flame', 'emblem'], emblem: 0.34 }, // hood ledge under the nozzle
-    { face: 'side', at: [1.0, 1.04, -0.75], size: [2.75, 0.1], tags: ['band', 'stripe', 'flame'] }, // deck edge
-    { face: 'side', at: [0.96, 1.36, 1.17], size: [0.62, 0.3], tags: ['flame', 'band', 'stripe'] }, // cab door
+    { face: 'top', at: [0, 2.38, 0.82], size: [1.12, 1.7], tags: ['stripe', 'emblem', 'band'], emblem: 1.0 }, // cab roof
+    { face: 'top', at: [0, 1.32, 1.55], size: [0.95, 1.84], tags: ['stripe', 'flame', 'emblem'], emblem: 0.8 }, // nose
+    { face: 'side', at: [1.0, 1.45, -0.45], size: [2.7, 0.14], tags: ['band', 'stripe', 'flame'] }, // hull flank
+    { face: 'side', at: [0.81, 1.62, 0.82], size: [1.0, 0.3], tags: ['flame', 'band', 'stripe'] }, // cab flank
   ],
 };
 
@@ -926,7 +926,7 @@ export const TRAIL_REAR: Readonly<Record<PlowKind, { x: number; y: number; z: nu
   classic: { x: 0.8, y: 0.9, z: -2.15 },
   volt: { x: 0.75, y: 0.85, z: -2.1 },
   brute: { x: 1.1, y: 0.8, z: -2.3 },
-  isotope: { x: 0.8, y: 0.85, z: -2.25 },
+  isotope: { x: 0.8, y: 0.85, z: -2.05 },
   arsenal: { x: 0.85, y: 1.1, z: -2.05 },
 };
 
