@@ -32,6 +32,13 @@ export const SCRAP_LIFE = 15;
 const SCRAP_HIT_R = 0.7;
 const SCRAP_HIT_CD = 0.4;
 const SCRAP_POOL = 12;
+/** STRIP SCRAP: the ring doesn't depend on wrecking cannon fodder. Every SHED_FRAC of a target's max HP that ARSENAL's
+ *  weapons tear off (shotgun, repulsor, burst, singularity) rips a shard off it; bosses shed every SHED_FRAC_BOSS (a boss
+ *  fight keeps the ring full). The ring's own shard hits and the field count at SHED_SELF (partial self-feeding: a ring
+ *  grinding a boss slowly tops itself up, but it still needs you firing to stay full). Wrecks still shed one. */
+const SHED_FRAC = 0.2;
+const SHED_FRAC_BOSS = 0.06;
+const SHED_SELF = 0.25;
 interface Shard { mesh: THREE.Mesh; state: 0 | 1 | 2; t: number; from: THREE.Vector3; slot: number; hitAt: Map<EnemyHandle, number> }
 
 const DEG = Math.PI / 180;
@@ -224,6 +231,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private scrapT = 0;
   private scrapFxT = 0;
   private scrapSpin = 0;
+  /** STRIP SCRAP: weapon damage dealt to each target since its last shed shard. */
+  private shedDmg = new Map<EnemyHandle, number>();
   /** Shards flying in or orbiting (HUD / tests). */
   get scrapCount(): number {
     let n = 0;
@@ -234,6 +243,30 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   /** A bot the player wrecked: if it was within SCRAP_PULL m, its scrap flies in to join the orbit ring (the oldest
    *  shard makes room when the ring is full). */
   scrapFrom(e: EnemyHandle): void {
+    this.shedDmg.delete(e);
+    this.addShard(e);
+  }
+
+  /** STRIP SCRAP: count weapon damage on `e`; every SHED_FRAC (bosses SHED_FRAC_BOSS) of its max HP sheds a shard. */
+  private shedScrap(e: EnemyHandle, dealt: number): void {
+    if (dealt <= 0 || this.b.stats.scrapMax <= 0 || this.puppet) return;
+    if (!e.alive) {
+      this.shedDmg.delete(e);
+      return;
+    }
+    const step = Math.max(1, (e.isBoss ? SHED_FRAC_BOSS : SHED_FRAC) * (e.maxHp || 1));
+    let acc = (this.shedDmg.get(e) ?? 0) + dealt;
+    // At most two per hit (a huge blast on a small bot is a wreck, not a scrap fountain).
+    for (let n = 0; acc >= step && n < 2; n++) {
+      acc -= step;
+      this.addShard(e);
+    }
+    this.shedDmg.set(e, Math.min(acc, step));
+    if (this.shedDmg.size > 96) for (const [k] of this.shedDmg) if (!k.alive) this.shedDmg.delete(k);
+  }
+
+  /** One shard torn off `e` flies in to the ring if `e` is within SCRAP_PULL m (the oldest makes room when full). */
+  private addShard(e: EnemyHandle): void {
     const st = this.b.stats;
     const plow = this.b.plow;
     if (st.scrapMax <= 0 || !plow || plow.dead) return;
@@ -285,7 +318,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       this.scrapT = SCRAP_TICK;
       if (!this.puppet) {
         const hits = this.collect(px, pz, R);
-        for (let i = 0; i < hits.length; i++) this.weaponHit(hits[i], st.scrapDps * SCRAP_TICK, px, pz, 0);
+        for (let i = 0; i < hits.length; i++) this.weaponHit(hits[i], st.scrapDps * SCRAP_TICK, px, pz, 0, undefined, SHED_SELF);
       }
     }
     this.scrapSpin += dt * SCRAP_SPIN;
@@ -317,7 +350,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const en = hits[i];
         if (!en.alive || ctx.time - (s.hitAt.get(en) ?? -1e9) < SCRAP_HIT_CD) continue;
         s.hitAt.set(en, ctx.time);
-        if (this.weaponHit(en, st.scrapHit, px, pz, 2) > 0) ctx.fx.burst(s.mesh.position, { color: 0xd8f4ff, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 });
+        if (this.weaponHit(en, st.scrapHit, px, pz, 2, undefined, SHED_SELF) > 0) ctx.fx.burst(s.mesh.position, { color: 0xd8f4ff, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 });
       }
     }
   }
@@ -385,7 +418,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (pulse ticks, lance ticks), see
    *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it. Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam'): number {
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -401,6 +434,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);
+    if (shed > 0 && !killed) this.shedScrap(e, dealt * shed);
     return dealt;
   }
 
@@ -1100,6 +1134,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   clear(): void {
     this.missileCharge = 1;
     for (const s of this.shards) this.dropShard(s);
+    this.shedDmg.clear();
     this.scrapT = 0;
     this.gunT = this.gunBurstT = 0;
     this.reel.clear();

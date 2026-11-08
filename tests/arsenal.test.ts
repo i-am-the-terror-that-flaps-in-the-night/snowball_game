@@ -211,6 +211,27 @@ describe('MAG SHOTGUN (SPACE)', () => {
   });
 });
 
+describe('SCRAP MAGNET: strip scrap', () => {
+  const scrap = (c: Combat) => (c as unknown as { arsenal: { scrapCount: number } }).arsenal.scrapCount;
+
+  it('blasting a tough bot sheds shards into the ring with no kill (every 20% of its max HP)', () => {
+    const tank = bot(0, 5, 300);
+    const r = gravRig([tank], { armMagnet: 3 });
+    r.held.add('Space');
+    r.run(1.5);
+    expect(tank.hp).toBeGreaterThan(0);
+    expect(scrap(r.c)).toBeGreaterThan(0);
+  });
+
+  it('the ring and field alone feed it only at a quarter rate (no shard off a 300-HP bot in 6 s)', () => {
+    const tank = bot(0, -4, 300);
+    const r = gravRig([tank], { armMagnet: 3 });
+    r.run(6);
+    expect(tank.hp).toBeLessThan(300);
+    expect(scrap(r.c)).toBe(0);
+  });
+});
+
 describe('MAG REPULSOR (E)', () => {
   it('a forward wedge: hits a bot ahead hard, not one behind, beyond reach or well off the nose, and flings it away', () => {
     const ahead = bot(1.5, 6, 1e6);

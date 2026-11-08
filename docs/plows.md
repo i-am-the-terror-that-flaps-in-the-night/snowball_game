@@ -143,10 +143,13 @@ close and aims by steering: neither main weapon auto-aims.
 
 Line: Mag Shotgun, Mag Repulsor, Polarity Burst, Energy Barrier (a recharging shield, since there's no ball to hide
 behind), Scrap Magnet (passive: a magnetic field, 7 m and wider with levels, does a
-trickle of damage to bots inside, about a quarter of Rad Aura before the PvE bonus; every bot you wreck within 12 m sheds
-a scrap shard that flies in and orbits the vehicle 3.5 m out for 15 s, up to 4 + level shards (12 at most); each shard
-that passes through a bot hits it, each bot at most every 0.4 s per shard; all of it gets the 3x PvE bonus against
-bots, and in the Duel only the field and shards from wrecks count). The line ids are the old ones (armCannon,
+trickle of damage to bots inside, about a quarter of Rad Aura before the PvE bonus. **Strip scrap:** the ring doesn't
+depend on wrecking cannon fodder: every 20% of a target's max HP your weapons tear off (shotgun, repulsor, burst,
+singularity) rips a shard off it, bosses every 6% (at most 2 per hit), and every bot you wreck sheds one too; the ring's
+own shard hits and the field count at a quarter rate (a ring grinding a boss slowly tops itself up, but stays full only
+while you fight). A shard torn off within 12 m flies in and orbits the vehicle 3.5 m out for 15 s, up to 4 + level
+shards (12 at most); each shard that passes through a bot hits it, each bot at most every 0.4 s per shard; all of it
+gets the 3x PvE bonus against bots. In the Duel the opponent sheds shards the same way.) The line ids are the old ones (armCannon,
 armLaser, armMissiles, ...), so saved levels carry over.
 
 The snowball lines still pay off: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds shotgun
