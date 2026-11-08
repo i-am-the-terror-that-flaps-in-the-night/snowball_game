@@ -28,6 +28,13 @@ export const LIFE = {
   killsRam: 'killsRam',
   killsWhirl: 'killsWhirl',
   killsOther: 'killsOther',
+  /** Bots burned to death in lava, flattened by an air slam (Classic slam / BRUTUS Ground Pound while airborne), or
+   *  landed on (stomp). Older saves counted these under killsOther. */
+  killsLava: 'killsLava',
+  killsAirSlam: 'killsAirSlam',
+  killsStomp: 'killsStomp',
+  /** Longest single flight, in centiseconds (counters are whole numbers). */
+  airtimeBestCs: 'airtimeBestCs',
   slams: 'slams',
   /** Most bots hit by one slam. */
   slamHitsBest: 'slamHitsBest',
@@ -131,8 +138,10 @@ export function killsBySource(p: Progression): { slam: number; ram: number; whir
   const slam = life(p, LIFE.killsSlam);
   const ram = life(p, LIFE.killsRam);
   const whirl = life(p, LIFE.killsWhirl);
+  // Lava / air-slam / stomp kills have their own counters now but still sit in the 'other' bucket here.
+  const split = life(p, LIFE.killsLava) + life(p, LIFE.killsAirSlam) + life(p, LIFE.killsStomp);
   const total = Math.max(fin(p.data.totalKills), life(p, LIFE.kills));
-  const other = Math.max(life(p, LIFE.killsOther), total - slam - ram - whirl);
+  const other = Math.max(life(p, LIFE.killsOther) + split, total - slam - ram - whirl);
   return { slam, ram, whirl, other, total: Math.max(total, slam + ram + whirl + other) };
 }
 
@@ -147,6 +156,7 @@ export function dailyBestWave(p: Progression): number {
 }
 
 const metres = (cm: number) => `${(cm / 100).toFixed(2)} m`;
+const seconds = (cs: number) => `${(cs / 100).toFixed(2)} s`;
 
 /* ------------------------------------------------------------------ the list */
 
@@ -182,6 +192,10 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'ball_150', name: 'Snow Globe', desc: 'Pack a 1.50 m snowball.', icon: '⚪', category: 'combat', goal: 150, reward: 50, value: (p) => life(p, LIFE.ballBestCm), fmt: metres },
   { id: 'ball_250', name: 'Avalanche Pending', desc: 'Pack a 2.50 m snowball.', icon: '🏔️', category: 'combat', goal: 250, reward: 250, value: (p) => life(p, LIFE.ballBestCm), fmt: metres },
   { id: 'combo_25', name: 'Combo Breaker', desc: 'Hit a x25 combo.', icon: '🔥', category: 'combat', goal: 25, reward: 100, value: (p) => life(p, LIFE.comboBest), fmt: (v) => `x${v}` },
+  // Biome trophies (docs/level-overhaul.md). Airtime: the best ramps (Rust Basin, The Omega Works) give 1-1.5 s.
+  { id: 'airtime_1', name: 'Frequent Flyer', desc: 'Stay airborne for 1 second in one jump.', icon: '🛸', category: 'combat', goal: 100, reward: 150, value: (p) => life(p, LIFE.airtimeBestCs), fmt: seconds },
+  { id: 'lava_kills_25', name: 'Hot Potato', desc: 'Scrap 25 bots in lava (knock them in).', icon: '🌋', category: 'combat', goal: 25, reward: 150, value: (p) => life(p, LIFE.killsLava) },
+  { id: 'air_slam_kills_10', name: 'Death From Above', desc: 'Scrap 10 bots with air slams (slam or Ground Pound while airborne).', icon: '☄️', category: 'combat', goal: 10, reward: 150, value: (p) => life(p, LIFE.killsAirSlam) },
   { id: 'combo_50', name: 'C-C-C-Combo!', desc: 'Hit a x50 combo.', icon: '🎆', category: 'combat', goal: 50, reward: 250, value: (p) => life(p, LIFE.comboBest), fmt: (v) => `x${v}` },
 
   // ---- Bosses (Survival bosses count too)

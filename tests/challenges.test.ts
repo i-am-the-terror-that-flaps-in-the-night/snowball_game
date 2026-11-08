@@ -52,14 +52,19 @@ describe('challenge definitions', () => {
     expect(ids(evaluateRun(p, run(0, { biggestBall: 1.2 })))).toEqual(['ball']);
     expect(ids(evaluateRun(p, run(0, { duration: 59 })))).toEqual(['speed']);
     expect(ids(evaluateRun(p, run(0, { duration: 60 })))).toEqual([]);
-    expect(ids(evaluateRun(p, run(1, { bestCombo: 30 })))).toEqual(['combo']);
+    expect(ids(evaluateRun(p, run(1, { killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 3 } })))).toEqual(['lava']);
+    expect(ids(evaluateRun(p, run(1, { bestCombo: 99 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { damageTaken: 10 })))).toEqual(['hp']);
-    expect(ids(evaluateRun(p, run(1, { bossTime: 20 })))).toEqual(['blitz']);
+    expect(ids(evaluateRun(p, run(1, { bossTime: 14.9 })))).toEqual(['blitz']);
+    expect(ids(evaluateRun(p, run(1, { bossTime: 15 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { bossTime: 0 })))).toEqual([]); // boss round never started
-    expect(ids(evaluateRun(p, run(2, { strikes: 2 })))).toEqual(['strike']);
+    expect(ids(evaluateRun(p, run(2, { airtime: 1.2 })))).toEqual(['air']);
+    expect(ids(evaluateRun(p, run(2, { airtime: 1.19 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(2, { plow: 'volt' })))).toEqual([]);
     expect(ids(evaluateRun(p, run(2, { plow: 'volt', damageTaken: 99 })))).toEqual(['plow-volt']);
-    expect(ids(evaluateRun(p, run(3, { killsBy: { slam: 0, ram: 0, whirl: 4, other: 0 } })))).toEqual(['whirl']);
+    expect(ids(evaluateRun(p, run(3, { killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 1, lava: 0 } })))).toEqual(['airSlam']);
+    expect(ids(evaluateRun(p, run(3, { duration: 89 })))).toEqual(['speed']);
+    expect(ids(evaluateRun(p, run(3, { duration: 90 })))).toEqual([]);
     // Golden Tower Plaza (slot 5 after the level-overhaul swap).
     expect(ids(evaluateRun(p, run(4, { strikes: 3 })))).toEqual(['strike']);
     expect(ids(evaluateRun(p, run(4, { bossDamage: 79 })))).toEqual(['bossHp']);
@@ -113,10 +118,10 @@ describe('star awards', () => {
 
   it('stars survive a save reload', () => {
     const p = new Progression();
-    awardRun(p, run(2, { plow: 'volt', damageTaken: 50, strikes: 5 }));
+    awardRun(p, run(2, { plow: 'volt', damageTaken: 50, airtime: 1.3 }));
     const q = new Progression();
     expect(zoneStars(q, 2)).toBe(2);
-    expect(awardRun(q, run(2, { plow: 'volt', damageTaken: 50, strikes: 5 }))!.bonus).toBe(0);
+    expect(awardRun(q, run(2, { plow: 'volt', damageTaken: 50, airtime: 1.3 }))!.bonus).toBe(0);
   });
 
   it('star bonus scales with the arena', () => {

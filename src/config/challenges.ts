@@ -57,6 +57,18 @@ const combo = (n: number, name = 'Combo King'): ChallengeDef => ({
 const strikes = (n: number, name = 'Strike Force'): ChallengeDef => ({
   id: 'strike', icon: '🎳', name, goal: `Land ${n} STRIKE!s`, test: (r) => r.strikes >= n,
 });
+/* Biome challenges (docs/level-overhaul.md "Challenges and trophies"). */
+const lavaKills = (n: number, name = 'Hot Tub'): ChallengeDef => ({
+  id: 'lava', icon: '🌋', name, goal: `${n} lava kills`, test: (r) => (r.killsBy.lava ?? 0) >= n,
+});
+/** Longest single flight. The best ramp in the campaign (Rust Basin, low gravity) gives ~1.5 s at full speed. */
+const airtime = (sec: number, name = 'Moonshot'): ChallengeDef => ({
+  id: 'air', icon: '🛸', name, goal: `${sec.toFixed(1)} s of airtime`, test: (r) => (r.airtime ?? 0) >= sec,
+});
+/** Air-slam kills: the Classic's slam while airborne, or BRUTUS's airborne Ground Pound. */
+const airSlamKills = (n: number, name = 'Meteor Strike'): ChallengeDef => ({
+  id: 'airSlam', icon: '☄️', name, goal: n === 1 ? 'An air-slam kill' : `${n} air-slam kills`, test: (r) => (r.killsBy.airSlam ?? 0) >= n,
+});
 const bossBlitz = (sec: number, name = 'Boss Blitz'): ChallengeDef => ({
   id: 'blitz', icon: '💨', name, goal: `Beat the boss in ${sec}s`, test: (r) => r.bossTime > 0 && r.bossTime < sec,
 });
@@ -75,24 +87,25 @@ const withPlow = (kind: PlowKind, name: string, extra?: { goal: string; test: (r
 /** Zone id -> its three challenges (card / results order). Keyed by save id, so a challenge follows its arena's id
  *  (docs/level-overhaul.md "Swaps and saves"): ids never change, only titles get rethemed. */
 export const CHALLENGES: Record<string, ChallengeDef[]> = {
-  // Coldboot Glacier (arena 1, FROSTBYTE): learn the basics: slam, max out a ball, keep moving.
-  // TODO(terrain retune): 'speed' (Quick Plow, 1:00) was tuned on the flat yard. With FROSTBYTE as the intro boss a
-  // light-garage autopilot clears in ~0:44 (was ~0:38 vs BULLDOZA), so 1:00 still holds; re-check once the glacier's
-  // ramps / bowl and ice sheets land.
+  // Coldboot Glacier (arena 1, FROSTBYTE): learn the basics: slam, max out a ball, keep moving. 'speed' re-checked on
+  // the terrain build (scripts/omega-probe.mjs, fresh garage): every plow clears in 0:24-0:48, so 1:00 holds.
   yard: [slamKills(3), ball(1.2, 'Big Ball Energy'), speed(60, 'Quick Plow')],
-  // Inferno Quarry (arena 2, BULLDOZA): thieves and spinners; chain hits, dodge, scrap the Yard Boss fast.
-  // TODO(terrain retune): 'blitz' (30 s boss) — BULLDOZA dies in ~9-14 s to a light-garage autopilot on flat ground;
-  // re-check once the quarry pit, lava rivers and BULLDOZA's phase-2 leap land.
-  junkyard: [combo(30), untouchable(90, 'Thief-Proof'), bossBlitz(30, 'Eviction Notice')],
-  // Rust Basin (arena 3, THE GRINDER): brutes everywhere. Hit hard, hit many, survive it on the fragile electric plow.
+  // Inferno Quarry (arena 2, BULLDOZA): thieves and lava. Knock bots into the lava, dodge, scrap the Yard Boss fast.
+  // 'lava' replaced the x30 combo (Golden Tower Plaza keeps a combo star). 'blitz' retuned 30 s -> 15 s: the probe's
+  // fresh-garage boss fights run 3-16 s (mid garage 2-3 s), so 30 s was a free star.
+  junkyard: [lavaKills(3, 'Hot Tub'), untouchable(90, 'Thief-Proof'), bossBlitz(15, 'Eviction Notice')],
+  // Rust Basin (arena 3, THE GRINDER): brutes everywhere and low gravity. Hit hard, catch big air off the ramp, survive
+  // it on the fragile electric plow. 'air' replaced 2 STRIKE!s (the Plaza keeps a STRIKE! star): its ramp gives ~1.5 s of
+  // flight at full speed (straight off the lip), so 1.2 s needs a clean, fast run-up.
   foundry: [
     ramKills(10),
-    strikes(2),
+    airtime(1.2, 'Moonshot'),
     withPlow('volt', 'Live Wire', { goal: 'lose < 100 HP', test: (r) => r.damageTaken < 100 }),
   ],
-  // The Thermal Divide (arena 4, SLUSH & SLEET): a hot twin and a cold twin. Big balls, spin, and do it fast.
-  // TODO(terrain retune): 'speed' (Divide & Conquer, 1:45) — re-check once the central dip, ramps and vents land.
-  bowl: [ball(1.8, 'Cold Front'), whirlKills(4), speed(105, 'Divide & Conquer')],
+  // The Thermal Divide (arena 4, SLUSH & SLEET): a hot twin and a cold twin. Big balls, a jump and a dive, and do it
+  // fast. 'airSlam' replaced 4 whirlwind kills (Classic slam or BRUTUS's Ground Pound while airborne, off one of the
+  // small ramps). 'speed' retuned 1:45 -> 1:30: fresh-garage clears run 0:53-1:42, mid 0:38-0:47.
+  bowl: [ball(1.8, 'Cold Front'), airSlamKills(1, 'Meteor Strike'), speed(90, 'Divide & Conquer')],
   // Golden Tower Plaza (arena 5, THE DONALD): break up the rally crowds, dodge the walls and the beam, keep the combo
   // going bigly.
   plaza: [strikes(3, 'Crowd Control'), bossClean(80, 'Fake Damage'), combo(40, 'Tremendous Combo')],

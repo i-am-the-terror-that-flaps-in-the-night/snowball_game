@@ -1,10 +1,8 @@
 # Level overhaul plan
 
-Status: tracks A-F have landed (biomes, terrain physics, 3D combat, modes / UX, the Omega Works, ARSENAL 3D; arena 6
-balance check done). Still open, see Follow-ups: the biome challenges and trophies (lava kills, airtime, air-slam
-kills) with their lifetime counters and `LIFE` keys, and the time-based challenge retune (the `TODO(terrain retune)`
-notes in `src/config/challenges.ts`). Two deviations from this design are accepted as built (Duel venue, Inferno
-Quarry jumps).
+Status: done. Every track (A-F) has landed, the arena 6 balance check is done and the biome challenges, trophies and
+time-based retune are in (see "Challenges and trophies"). Two deviations from the design are accepted as built (Duel
+venue, Inferno Quarry jumps; see Follow-ups).
 
 Goal: move the campaign off "snow only" into six distinct biomes, add real 3D movement (slopes, jumps, air slam, boss
 leap), and finish on a huge multi-level factory. Most changes are cosmetic or additive; the core loop (plow snow into
@@ -117,8 +115,27 @@ fewer bots remain, and the last 2 bots route straight to you.
 
 ### Challenges and trophies
 
-Retune time-based challenges for terrain and arena 6's size. Add biome challenges ("3 lava kills", "2 s of airtime",
-"air-slam kill"). New trophies: airtime, lava kills, air-slam kills.
+**Done.** Still three stars per arena; each biome challenge replaced a star that another arena also has (earned stars
+for a removed id stop counting; their coins were already paid):
+
+| Arena | New challenge | Replaced |
+|---|---|---|
+| Inferno Quarry | **Hot Tub**: 3 lava kills | x30 combo (the Plaza keeps a combo star) |
+| Rust Basin | **Moonshot**: 1.2 s of airtime | 2 STRIKE!s (the Plaza keeps a STRIKE! star) |
+| The Thermal Divide | **Meteor Strike**: an air-slam kill (Classic slam or BRUTUS Ground Pound while airborne) | 4 whirlwind kills |
+
+The plan's "2 s of airtime" is out of reach: driving every ramp and straight lines across each arena through the real
+vertical motion (`stepVertical`) gives at most ~1.5 s (Rust Basin's ramp, low gravity), ~0.8-0.9 s elsewhere and
+~1.1 s on The Omega Works' ramps, so the goal is 1.2 s in Rust Basin.
+
+Time-based retune, from `node scripts/omega-probe.mjs --arenas 0,1,3 --tiers fresh,mid --runs 1` (every plow):
+Coldboot Glacier clears in 0:24-0:48 (fresh), so Quick Plow's 1:00 stays. Inferno Quarry's BULLDOZA fight runs 3-16 s
+fresh (2-3 s mid), so Eviction Notice is now 15 s (was 30 s). The Thermal Divide clears in 0:53-1:42 fresh (0:38-0:47
+mid), so Divide & Conquer is now 1:30 (was 1:45).
+
+Trophies (combat): **Frequent Flyer** (1 s in one jump), **Hot Potato** (25 lava kills), **Death From Above** (10
+air-slam kills). Lifetime counters `LIFE.killsLava`, `killsAirSlam`, `killsStomp` and `airtimeBestCs`; the kill
+breakdown still shows the new sources under "other".
 
 ### Tests and probes
 
@@ -152,24 +169,15 @@ record.
   zone; the biome (look + ground terrain) rotates every 5 waves in campaign order (glacier first, so FROSTBYTE closes
   the first block), the Daily seeds its start biome, and a biome switch re-seats the plow with `Plow.reset()` (keeps
   the run's hp only).
-- **Partly done. [C] `run.airtime` stat** (plus its lifetime counterpart in `src/meta/achievements.ts`), for the
-  airtime challenge and trophy. *Landed:* `run.airtime` (longest single flight, from `plowLanded` in
-  `src/core/Game.ts`, reported in `runFinished`) and the lifetime best `AIRTIME_BEST_CS` (`airtimeBestCs`, centiseconds)
-  in `src/meta/achievements.ts`. *Still missing:* the key in `LIFE` (`src/config/achievements.ts`; the meta module
-  keeps its own constant until then) and the airtime challenge / trophy (see [A] below).
-- **Partly done. [D] `killsBy.lava` and `killsBy.airSlam`** (new `KillSource` values in `src/core/events.ts` plus
-  lifetime stats), for the lava / air-slam challenges and trophies. *Landed:* the `KillSource` values `'lava'` (a bot
-  burned in lava) and `'airSlam'` (the airborne slam's shockwave), counted per run in `run.killsBy`. *Still missing:*
-  lifetime counters (`src/meta/achievements.ts` maps only slam / ram / whirl / other, so lava, air-slam and stomp kills
-  land in `killsOther`) and the challenges / trophies.
+- **Done. [C] `run.airtime` stat** (plus its lifetime counterpart): `run.airtime` (longest single flight, from
+  `plowLanded` in `src/core/Game.ts`, reported in `runFinished`) and `LIFE.airtimeBestCs` (centiseconds).
+- **Done. [D] `killsBy.lava` and `killsBy.airSlam`**: the `KillSource` values `'lava'` and `'airSlam'` (and
+  `'stomp'`), counted per run in `run.killsBy` and for life in `LIFE.killsLava` / `killsAirSlam` / `killsStomp`.
 - **Done. [E] Tutorial zone and menu backdrop:** `src/core/Game.ts` `TUTORIAL_ZONE`, the menu backdrop zone and the
   menu / default `ctx.zone` spread `ZONES[0]` and will inherit the glacier's terrain and ice. Pin an explicit flat
   tutorial zone (`terrain: undefined`, fixed look) and pick the backdrop from a random campaign biome per launch.
   *Landed:* `TUTORIAL_ZONE` and `pickMenuZone` in `src/core/modeZones.ts`.
-- **[A, after C / D and terrain land] Challenges and trophies:** add the three biome challenges ("3 lava kills",
-  "2 s of airtime", "air-slam kill") and three trophies (airtime, lava kills, air-slam kills), then retune the
-  time-based challenges for terrain and arena 6's size (the `TODO`s in `src/config/challenges.ts`). Until then Inferno
-  Quarry's "Eviction Notice" (30 s boss kill) is temporarily loose: BULLDOZA dies in about 9-14 s on autopilot.
+- **Done. [A] Challenges and trophies:** see "Challenges and trophies" above.
 - **[B, deviation] Duel venue:** "Other modes" says the Duel host picks the venue or it is random. As built, both peers
   derive it from the room code (`duelVenueFor` in `src/config/duel.ts`, FNV-1a over the code), so it is effectively
   random and needs no protocol message, but the host cannot choose. A host choice can ride in the host's hello (a venue

@@ -1389,8 +1389,9 @@ export class Plow implements PlowAPI {
         this.bladeProxy.removeFromParent();
         this.bladeProxy.geometry.dispose();
       }
-      this.bladeProxy = makeShadowProxy([this.bladeCaps, this.bladeArms], this.bladeGroup)[0];
-      this.bladeGroup.add(this.bladeProxy);
+      // A bladeless vehicle has nothing here that casts: no proxy (makeShadowProxy returns none).
+      this.bladeProxy = makeShadowProxy([this.bladeCaps, this.bladeArms], this.bladeGroup)[0] ?? null;
+      if (this.bladeProxy) this.bladeGroup.add(this.bladeProxy);
       this.applyBladeVis();
     }
     // Mounted high (~1.3 m world) so the flat saws ride above the snow and the berms the blade pushes aside.

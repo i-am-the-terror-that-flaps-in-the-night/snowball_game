@@ -10,7 +10,7 @@ import { bumpLifetime, maxLifetime } from './progress';
  * paid exactly once: an id is marked in SaveData.achievements before its coins are added. */
 
 /** Lifetime counter: longest single flight (centiseconds). */
-export const AIRTIME_BEST_CS = 'airtimeBestCs';
+export const AIRTIME_BEST_CS = LIFE.airtimeBestCs;
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
@@ -77,8 +77,8 @@ export function recordRunLifetime(p: Progression, r: GameEvents['runFinished']):
   bumpLifetime(p, LIFE.damageTaken, Math.max(0, Math.round(n(r.damageTaken))));
   maxLifetime(p, LIFE.comboBest, n(r.bestCombo));
   maxLifetime(p, LIFE.ballBestCm, Math.round(n(r.biggestBall) * 100));
-  // Longest flight, in centiseconds (counters are whole numbers). Key: LIFE.airtimeBestCs once config adds it.
-  maxLifetime(p, AIRTIME_BEST_CS, Math.round(n(r.airtime) * 100));
+  // Longest flight, in centiseconds (counters are whole numbers).
+  maxLifetime(p, LIFE.airtimeBestCs, Math.round(n(r.airtime) * 100));
   if (r.mode === 'campaign' && r.won) {
     bumpLifetime(p, LIFE.campaignWins);
     bumpLifetime(p, lifeWinsPlow(r.plow));
@@ -197,5 +197,8 @@ const SOURCE_KEY: Record<string, string> = {
   slam: LIFE.killsSlam,
   ram: LIFE.killsRam,
   whirl: LIFE.killsWhirl,
+  lava: LIFE.killsLava,
+  airSlam: LIFE.killsAirSlam,
+  stomp: LIFE.killsStomp,
   other: LIFE.killsOther,
 };

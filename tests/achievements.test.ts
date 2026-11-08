@@ -166,6 +166,25 @@ describe('Achievements (event wiring)', () => {
     expect(store.get('snowplow-showdown-save-v2')).toContain('slam_5');
   });
 
+  it('biome trophies: lava and air-slam kills get their own counters, airtime comes from the run', () => {
+    const { ctx, p } = fakeCtx();
+    for (let i = 0; i < 25; i++) ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'lava' });
+    for (let i = 0; i < 10; i++) ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'airSlam' });
+    ctx.events.emit('enemyKilled', { enemy: bot(), coins: 5, source: 'stomp' });
+    expect(life(p, LIFE.killsLava)).toBe(25);
+    expect(life(p, LIFE.killsAirSlam)).toBe(10);
+    expect(life(p, LIFE.killsStomp)).toBe(1);
+    expect(life(p, LIFE.killsOther)).toBe(0);
+    expect(killsBySource(p).other).toBe(36); // still shown in the 'other' bucket of the kill breakdown
+    expect(isUnlocked(p, 'lava_kills_25')).toBe(true);
+    expect(isUnlocked(p, 'air_slam_kills_10')).toBe(true);
+    ctx.events.emit('runFinished', run({ airtime: 0.8 }));
+    expect(isUnlocked(p, 'airtime_1')).toBe(false);
+    ctx.events.emit('runFinished', run({ airtime: 1.04 }));
+    expect(life(p, LIFE.airtimeBestCs)).toBe(104);
+    expect(isUnlocked(p, 'airtime_1')).toBe(true);
+  });
+
   it('ignores Tutorial fights (coinMult 0)', () => {
     const { ctx, toast, p } = fakeCtx();
     ctx.zone = { ...ZONES[0], coinMult: 0 };
