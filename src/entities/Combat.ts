@@ -564,6 +564,7 @@ export class Combat implements CombatAPI {
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.volt.chainLightning(target, dealt, heal);
     if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
     if (killed && target && st.chainBlast > 0 && this.isotope.rads.has(target)) this.isotope.chainQueue.push({ x: target.position.x, y: target.position.y, z: target.position.z });
+    if (killed && target && st.scrapMax > 0) this.arsenal.scrapFrom(target);
     if (killed && st.killRecharge > 0) {
       // Plow keeps its cooldown charges private; refund them through a narrow duck-typed view.
       const p = plow as unknown as { dashCharge: number; whirlCharge: number };
@@ -606,12 +607,14 @@ export class Combat implements CombatAPI {
     this.volt.updateStorm(dt);
     this.volt.updateField(dt);
     this.brute.updateSaws(dt);
+    this.brute.updateSpikes(dt);
     this.isotope.updateMeltdown(dt);
     this.threat.update(dt);
     this.updateVehicle(dt);
     this.arsenal.updateGuns(dt);
     this.arsenal.updateLaser(dt);
     this.arsenal.updateMissiles(dt);
+    this.arsenal.updateScrap(dt);
     this.isotope.updatePools(dt);
     this.isotope.updateAura(dt);
     this.isotope.updateRads(dt);

@@ -12,6 +12,19 @@ import { MissileTrail } from './missileTrail';
  *  and burns longer (ULT_FUSE) to cover the range. The ultimate lasts until the last one lands (ULT_MAX_T cap). */
 /** Every ARSENAL weapon hits bots this many times harder outside the Duel (the tank's duel balance is unchanged). */
 export const PVE_MULT = 3;
+/** SCRAP MAGNET (passive): field tick (s); wrecks within SCRAP_PULL m shed a shard that flies in over SCRAP_FLY s and
+ *  orbits SCRAP_ORBIT m out (SCRAP_SPIN rad/s) for SCRAP_LIFE s; a shard hits bots within SCRAP_HIT_R m of it, each
+ *  bot at most every SCRAP_HIT_CD s. SCRAP_POOL = the most shards any level holds (FX.scrapMax cap). */
+const SCRAP_TICK = 0.5;
+export const SCRAP_PULL = 12;
+const SCRAP_FLY = 0.55;
+export const SCRAP_ORBIT = 3.5;
+const SCRAP_SPIN = 2.6;
+export const SCRAP_LIFE = 15;
+const SCRAP_HIT_R = 0.7;
+const SCRAP_HIT_CD = 0.4;
+const SCRAP_POOL = 12;
+interface Shard { mesh: THREE.Mesh; state: 0 | 1 | 2; t: number; from: THREE.Vector3; slot: number; hitAt: Map<EnemyHandle, number> }
 const ULT_MISSILES = 21;
 const ULT_RANGE = 75;
 const ULT_RIPPLE = 0.05;
@@ -186,6 +199,125 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   constructor(h: CombatHost) {
     super(h);
     this.buildArsenalFx(h.ctx.scene);
+    const geo = new THREE.TetrahedronGeometry(0.32);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 0.85, roughness: 0.35, emissive: 0x1a2a44 });
+    for (let i = 0; i < SCRAP_POOL; i++) {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.visible = false;
+      mesh.scale.set(1, 0.6, 1.6);
+      h.ctx.scene.add(mesh);
+      this.shards.push({ mesh, state: 0, t: 0, from: new THREE.Vector3(), slot: i, hitAt: new Map() });
+    }
+  }
+
+  /* ---- SCRAP MAGNET (passive) ---- */
+  private shards: Shard[] = [];
+  private scrapT = 0;
+  private scrapFxT = 0;
+  private scrapSpin = 0;
+  /** Shards flying in or orbiting (HUD / tests). */
+  get scrapCount(): number {
+    let n = 0;
+    for (const s of this.shards) if (s.state) n++;
+    return n;
+  }
+
+  /** A bot the player wrecked: if it was within SCRAP_PULL m, its scrap flies in to join the orbit ring (the oldest
+   *  shard makes room when the ring is full). */
+  scrapFrom(e: EnemyHandle): void {
+    const st = this.b.stats;
+    const plow = this.b.plow;
+    if (st.scrapMax <= 0 || !plow || plow.dead) return;
+    if (Math.hypot(e.position.x - plow.position.x, e.position.z - plow.position.z) > SCRAP_PULL) return;
+    let free: Shard | null = null;
+    let live = 0;
+    let oldest: Shard | null = null;
+    for (const s of this.shards) {
+      if (s.slot >= st.scrapMax) continue;
+      if (!s.state) free ??= s;
+      else {
+        live++;
+        if (!oldest || s.t > oldest.t) oldest = s;
+      }
+    }
+    const s = free ?? (live >= st.scrapMax ? oldest : null);
+    if (!s) return;
+    s.state = 1;
+    s.t = 0;
+    s.hitAt.clear();
+    s.from.set(e.position.x, e.position.y + 0.6, e.position.z);
+    s.mesh.position.copy(s.from);
+    s.mesh.visible = true;
+    this.ctx.fx.burst(s.from, { color: 0xb8c2cc, count: 6, speed: 4, size: 0.16, gravity: 6, life: 0.4 });
+  }
+
+  /** The field's slow damage, the shards' flight and orbit, their hits and decay. */
+  updateScrap(dt: number): void {
+    const st = this.b.stats;
+    const plow = this.b.plow;
+    const on = st.scrapMax > 0 && !!plow && !plow.dead;
+    if (!on) {
+      for (const s of this.shards) if (s.state) this.dropShard(s);
+      return;
+    }
+    const ctx = this.ctx;
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    const y0 = (plow.surfaceY || 0) + 1.2;
+    const R = st.scrapRadius;
+    // Field cue: grey filings drifting in from the rim.
+    if ((this.scrapFxT -= dt) <= 0) {
+      this.scrapFxT = 0.18;
+      const a = Math.random() * Math.PI * 2;
+      _q.set(px + Math.sin(a) * R, y0 - 0.6, pz + Math.cos(a) * R);
+      ctx.fx.burst(_q, { color: 0x8f9aa6, count: 1, speed: 0.5, size: 0.12, gravity: -1, life: 0.6 });
+    }
+    if ((this.scrapT -= dt) <= 0) {
+      this.scrapT = SCRAP_TICK;
+      if (!this.puppet) {
+        const hits = this.collect(px, pz, R);
+        for (let i = 0; i < hits.length; i++) this.weaponHit(hits[i], st.scrapDps * SCRAP_TICK, px, pz, 0);
+      }
+    }
+    this.scrapSpin += dt * SCRAP_SPIN;
+    const max = Math.max(1, st.scrapMax);
+    for (const s of this.shards) {
+      if (!s.state) continue;
+      s.t += dt;
+      if (s.t >= SCRAP_LIFE || s.slot >= st.scrapMax) {
+        this.dropShard(s);
+        continue;
+      }
+      const a = this.scrapSpin + (s.slot / max) * Math.PI * 2;
+      const ox = px + Math.sin(a) * SCRAP_ORBIT;
+      const oz = pz + Math.cos(a) * SCRAP_ORBIT;
+      const oy = y0 + Math.sin(this.scrapSpin * 1.7 + s.slot) * 0.25;
+      if (s.state === 1) {
+        const k = Math.min(1, s.t / SCRAP_FLY);
+        const e = k * k * (3 - 2 * k);
+        s.mesh.position.set(s.from.x + (ox - s.from.x) * e, s.from.y + (oy - s.from.y) * e + Math.sin(k * Math.PI) * 1.5, s.from.z + (oz - s.from.z) * e);
+        if (k >= 1) s.state = 2;
+      } else s.mesh.position.set(ox, oy, oz);
+      s.mesh.rotation.set(s.t * 7, a, s.t * 4);
+      // Fading out: the last 2 s it shrinks away.
+      const life = Math.min(1, (SCRAP_LIFE - s.t) / 2);
+      s.mesh.scale.set(life, 0.6 * life, 1.6 * life);
+      if (s.state !== 2 || this.puppet) continue;
+      const hits = this.collect(s.mesh.position.x, s.mesh.position.z, SCRAP_HIT_R);
+      for (let i = 0; i < hits.length; i++) {
+        const en = hits[i];
+        if (!en.alive || ctx.time - (s.hitAt.get(en) ?? -1e9) < SCRAP_HIT_CD) continue;
+        s.hitAt.set(en, ctx.time);
+        if (this.weaponHit(en, st.scrapHit, px, pz, 2) > 0) ctx.fx.burst(s.mesh.position, { color: 0xd8e0e8, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 });
+      }
+    }
+  }
+
+  private dropShard(s: Shard): void {
+    s.state = 0;
+    s.t = 0;
+    s.mesh.visible = false;
+    s.hitAt.clear();
   }
 
   /** Back to driving its own guns (a re-bind). */
@@ -961,6 +1093,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   clear(): void {
     this.missileCharge = 1;
+    for (const s of this.shards) this.dropShard(s);
+    this.scrapT = 0;
     this.gunT = this.gunBurstT = 0;
     this.gunsOn = false;
     this.laserT = 0;

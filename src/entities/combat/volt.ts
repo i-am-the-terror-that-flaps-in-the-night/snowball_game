@@ -30,7 +30,7 @@ export const staticRadius = (fieldR: number) => 6.5 + Math.max(0, fieldR - 4.5);
 /** Thunderclap upgrades overcharge the whole coil: ARC LANCE and STATIC FIELD grow with the clap's base damage. */
 const coilBoost = (clapDamage: number) => Math.max(1, clapDamage / 36);
 /** ARC LANCE leans harder on the coil than the field does: coilBoost to this power (balance: single-target DPS late). */
-const ARC_COIL_EXP = 1.8;
+const ARC_COIL_EXP = 1.15;
 const _f = new THREE.Vector3();
 const _r = new THREE.Vector3();
 
@@ -79,7 +79,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     }
     if (this.arcT > 0) return;
     // Overclock speeds the arc up like every other ability.
-    const tick = ARC_TICK * Math.max(0.4, this.b.stats.cooldownMult || 1);
+    const tick = (ARC_TICK * Math.max(0.4, this.b.stats.cooldownMult || 1)) / (this.b.stats.arcRate || 1);
     this.arcT += tick;
     if (this.arcT < 0) this.arcT = 0;
     const plow = this.b.plow;
@@ -127,7 +127,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       if (this.arcN % 3 === 0) this.b.audio.play('zap', { volume: 0.18, pitch: 1.6 + Math.random() * 0.3 });
       return;
     }
-    const dmg = ARC_DAMAGE * st.damageMult * coilBoost(st.clapDamage) ** ARC_COIL_EXP;
+    const dmg = ARC_DAMAGE * st.damageMult * coilBoost(st.clapDamage) ** ARC_COIL_EXP * (st.arcBoost || 1);
     this.arcHit.clear();
     let src = tgt;
     let hit: EnemyHandle | null = tgt;

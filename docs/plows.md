@@ -36,7 +36,9 @@ snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% dama
   it, and the meter over the F icon shows the next clap's cost.
 
 Line: Chain Lightning (also adds Arc Lance hops: +1 per 2 arcs), Tesla Field (passive aura, and a wider Static Field),
-Thunderclap (its damage also overcharges Arc Lance and Static Field), Battery Shield. Packed Ice raises all of it.
+Thunderclap (its damage also overcharges Arc Lance and Static Field), Battery Shield, Arc Lance (the primary's own
+line: every level +10% arc damage, chain hops included, and +5% arcs per second, the rate tapering past level 5).
+Packed Ice raises all of it.
 
 **Ultimate: SUPERCELL.** Any damage fills the meter. Three waves of sky lightning hit everything within 18 m, with
 no Overload backlash.
@@ -59,6 +61,11 @@ Upgrade mapping: Mega Hopper = bigger fists (reach and damage); Momentum = harde
 the level) plus rams / dash strikes scaled by speed; Buzzsaws = Saw Charge damage (+half its dps) and reach;
 Whirlwind Turbine = Saw Charge damage and recharge; Iron Hide and Ground Pound unchanged.
 
+Line: Ground Pound, Buzzsaws, Iron Hide, Momentum, Piston Fists (the primary's own line: every level +10% punch damage,
+finisher and splash included, and +0.3 m fist reach, tapering past level 5), Spiked Hull (passive: bots within about
+3.4 m of the mech take 7+ dps, x your damage mult, ticking every 0.3 s, and get shoved away; sparks on the hull show
+it).
+
 **Ultimate: EARTHQUAKE.** Any damage fills the meter. Three shockwaves roll out to 19 m (1.07x pound damage each, a little more as Ground Pound is upgraded).
 
 ## ISOTOPE ☢️
@@ -80,7 +87,8 @@ and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose).
 
 Line: Meltdown (also overheats the reactor: Rad Sprayer and Fallout Trail hit harder, steeply at high levels),
 Half-Life (bigger, hotter, longer pools and wider, hotter trail puddles), Rad Aura (passive radiation around you),
-Chain Reaction (irradiated bots explode when wrecked, setting off their neighbours).
+Chain Reaction (irradiated bots explode when wrecked, setting off their neighbours), Rad Sprayer (the primary's own
+line: every level +10% spray dose, splash included, and +0.5 m reach, tapering past level 5).
 
 Upgrade mapping: Packed Ice = all damage; Mega Hopper = Rad Sprayer reach; Whirlwind Turbine = Fallout Trail recharge
 and heat; Snow Compactor = puddles linger longer (up to 2x); Avalanche Core = 50% wider spray cone; Frost Core = the
@@ -106,7 +114,11 @@ it surges, and box missile launchers on the rear fenders. Snow slows it like any
   the damage they've dealt you.
 
 Line: Pulse Laser, Laser Lance, Swarm Missiles, Energy Barrier (a recharging shield, since there's no ball to hide
-behind).
+behind), Scrap Magnet (passive: a magnetic field, 7 m and wider with levels, does a
+trickle of damage to bots inside, about a quarter of Rad Aura before the PvE bonus; every bot you wreck within 12 m sheds
+a scrap shard that flies in and orbits the hull 3.5 m out for 15 s, up to 4 + level shards (12 at most); each shard
+that passes through a bot hits it, each bot at most every 0.4 s per shard; all of it gets the 3x PvE bonus against
+bots, and in the Duel only the field and shards from wrecks count).
 
 The snowball lines still pay off on the tank: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds
 pulse-laser reach (+5 m per extra metre of max ball radius), Whirlwind Turbine speeds the turret traverse and the laser

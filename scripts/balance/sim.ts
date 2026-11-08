@@ -19,10 +19,10 @@ export const TIERS: Tier[] = ['fresh', 'mid', 'high'];
 
 const LINE: Record<PlowKind, UpgradeId[]> = {
   classic: ['inferno', 'classicShatter', 'classicReserve', 'classicCombo'],
-  volt: ['voltClap', 'voltChain', 'voltField', 'voltCell'],
-  brute: ['brutePound', 'bruteSaws', 'bruteHide', 'bruteMomentum'],
-  isotope: ['isoMeltdown', 'isoHalfLife', 'isoAura', 'isoChain'],
-  arsenal: ['armCannon', 'armLaser', 'armMissiles', 'armBarrier'],
+  volt: ['voltClap', 'voltChain', 'voltField', 'voltCell', 'voltArc'],
+  brute: ['brutePound', 'bruteSaws', 'bruteHide', 'bruteMomentum', 'bruteFist', 'bruteSpikes'],
+  isotope: ['isoMeltdown', 'isoHalfLife', 'isoAura', 'isoChain', 'isoSpray'],
+  arsenal: ['armCannon', 'armLaser', 'armMissiles', 'armBarrier', 'armMagnet'],
 };
 
 /** Garage levels (core four + the plow's own line) and equipped gear per tier. */
@@ -378,6 +378,7 @@ export function duelTtk(atk: PlowKind, def: PlowKind, tier: Tier, cap = 60, only
 export function duelGunDamage(tier: Tier, seconds = 2, def: PlowKind = 'classic'): number {
   const ctx = newCtx();
   const sa = statsFor('arsenal', tier);
+  sa.scrapMax = sa.scrapDps = sa.scrapHit = 0; // the minigun ALONE: Scrap Magnet off
   const sd = statsFor(def, tier);
   const pa = fakePlow(sa, 0, 0, 0);
   const pd = fakePlow(sd, 0, NEAR + 0.6, Math.PI);

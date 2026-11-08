@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import type { KillSource } from '../../core/events';
 import { Kit, type AbilityDesc, type VehicleKit, Reach, _fwd, _q, waveFloor, type CastOrigin } from './shared';
+import { MOMENTUM_FIST } from '../../config/upgrades';
 import { ultBlast, type UltScript } from './ultimates';
 
 /** EARTHQUAKE (BRUTUS): QUAKE_RINGS shockwaves rolling outward, each hitting the band it sweeps for QUAKE_MULT x
@@ -51,6 +52,9 @@ const SAW_BASE_DPS = 40;
 /** Share of the Buzzsaws line's dps (stats.sawDps) the charge adds. */
 const SAW_LINE = 0.5;
 const NO_STOP = { stop: false } as const;
+/** Spiked Hull: damage tick (s) and outward shove (m/s) on bots in reach. */
+const SPIKE_TICK = 0.3;
+const SPIKE_KNOCK = 3;
 
 /** Mega Hopper on BRUTUS: heavier fists (bigger reach and damage), from the ball-size stat. */
 function fistSize(st: PlayerStats): number {
@@ -58,7 +62,7 @@ function fistSize(st: PlayerStats): number {
 }
 /** One jab's raw damage: base x Mega Hopper x Momentum line (the parked share of its at-speed bonus). */
 export function fistDamage(st: PlayerStats): number {
-  return FIST_BASE * fistSize(st) * (1 + 120 * st.momentum * st.momentum);
+  return FIST_BASE * fistSize(st) * (1 + MOMENTUM_FIST * st.momentum * st.momentum) * (st.fistBoost || 1);
 }
 /** Saw Charge reach (Buzzsaws line widens it) and damage per second (Whirlwind Turbine and Buzzsaws scale it). */
 export function sawReach(st: PlayerStats): number {
@@ -170,7 +174,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
     if (fin) this.armT[0] = this.armT[1] = 0;
     else this.armT[step] = 0;
     plow.getForward(_fwd);
-    const reach = FIST_REACH * fistSize(st);
+    const reach = FIST_REACH * fistSize(st) + (st.fistReach || 0);
     const cx = plow.position.x + _fwd.x * (plow.radius + reach * 0.5);
     const cz = plow.position.z + _fwd.z * (plow.radius + reach * 0.5);
     const R = reach * (fin ? 0.9 : 0.8);
@@ -334,6 +338,51 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
 
   /** Passive Buzzsaws are gone (the saws only cut during SAW CHARGE, E); kept for Combat's update order. */
   updateSaws(_dt: number): void {}
+
+  /** Spiked Hull (BRUTUS passive): every SPIKE_TICK s, bots within spikeRadius of the mech take spikeDps x SPIKE_TICK
+   *  (x damage mult) and get shoved outward; sparks on the hull ring show the reach. */
+  private spikeT = 0;
+  private spikeFxT = 0;
+  updateSpikes(dt: number): void {
+    const st = this.b.stats;
+    const plow = this.b.plow;
+    if (st.spikeDps <= 0 || !plow || plow.dead) return;
+    const ctx = this.ctx;
+    const R = st.spikeRadius;
+    const px = plow.position.x;
+    const pz = plow.position.z;
+    const y = (plow.surfaceY || 0) + 0.6;
+    if ((this.spikeFxT -= dt) <= 0) {
+      this.spikeFxT = 0.15;
+      const a = Math.random() * Math.PI * 2;
+      _q.set(px + Math.sin(a) * plow.radius * 1.1, y, pz + Math.cos(a) * plow.radius * 1.1);
+      ctx.fx.burst(_q, { color: 0xffb347, count: 2, speed: 3, size: 0.12, gravity: 6, life: 0.25 });
+    }
+    if ((this.spikeT -= dt) > 0) return;
+    this.spikeT = SPIKE_TICK;
+    if (this.puppet) return;
+    const hits = this.collect(px, pz, R, Reach.Body);
+    let any = false;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - px;
+      const dz = e.position.z - pz;
+      const d = Math.hypot(dx, dz) || 1;
+      const hp0 = e.hp;
+      const killed = this.b.enemies.damage(e, st.spikeDps * SPIKE_TICK * st.damageMult * this.hitMult(e), {
+        source: 'other',
+        knockback: new THREE.Vector3((dx / d) * SPIKE_KNOCK, 0, (dz / d) * SPIKE_KNOCK),
+        fromX: px,
+        fromZ: pz,
+      });
+      this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
+      _q.set(px + (dx / d) * plow.radius, y, pz + (dz / d) * plow.radius);
+      ctx.fx.burst(_q, { color: 0xffd27a, count: 4, speed: 5, size: 0.14, gravity: 8, life: 0.25 });
+      any = true;
+    }
+    if (any) this.b.audio.play('whirlTick', { volume: 0.25, pitch: 1.5 });
+  }
 
   /** Ground Pound (F on BRUTUS): the plow hops, then slams down — a snow shockwave that damages, stuns and hurls
    *  every bot in the ring outward. */

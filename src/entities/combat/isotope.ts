@@ -34,6 +34,8 @@ const SPRAY_SPLASH = 0.55;
 const SPRAY_COS = Math.cos(0.75);
 /** Avalanche Core on the hauler: a 50% wider spray cone. */
 const SPRAY_COS_WIDE = Math.cos(1.05);
+/** RAD SPRAYER leans on Meltdown's reactor overheat to this power (its own Rad Sprayer line does the rest). */
+const SPRAY_REACTOR_EXP = 0.8;
 export const sprayRange = (ballR: number) => 8.5 + 2 * Math.max(0, ballR - 1.2);
 const NOZZLE_Y = 1.25;
 const NOZZLE_Z = 2.3;
@@ -93,7 +95,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
     const pz = plow.position.z;
     plow.getForward(_f);
     const floor = plow.surfaceY || 0;
-    const range = sprayRange(st.maxBallRadius);
+    const range = sprayRange(st.maxBallRadius) + (st.sprayReach || 0);
     this.sprayN++;
     // Nozzle jet: green streaks + a glowing mist down the cone.
     _p.set(px + _f.x * NOZZLE_Z, floor + NOZZLE_Y, pz + _f.z * NOZZLE_Z);
@@ -123,7 +125,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       }
     }
     if (near) {
-      const dmg = SPRAY_DAMAGE * reactorBoost(st.meltDamage);
+      const dmg = SPRAY_DAMAGE * reactorBoost(st.meltDamage) ** SPRAY_REACTOR_EXP * (st.sprayBoost || 1);
       for (let i = 0; i < n; i++) {
         const e = hits[i];
         const hp0 = e.hp;

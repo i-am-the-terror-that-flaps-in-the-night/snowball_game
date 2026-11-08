@@ -152,6 +152,23 @@ export interface PlayerStats {
   auraRadius: number;
   auraDps: number;
   chainBlast: number;
+  /** Primary-weapon lines (1 / 0 = level 0, i.e. the base weapon). Arc Lance (VOLT-9): damage mult, rate mult
+   *  (arcs per second x this). Piston Fists (BRUTUS): damage mult, extra reach (m). Rad Sprayer (ISOTOPE): dose mult,
+   *  extra reach (m). */
+  arcBoost: number;
+  arcRate: number;
+  fistBoost: number;
+  fistReach: number;
+  sprayBoost: number;
+  sprayReach: number;
+  /** Spiked Hull (BRUTUS passive): reach (m) and damage per second (0 = not owned). */
+  spikeRadius: number;
+  spikeDps: number;
+  /** Scrap Magnet (ARSENAL passive, 0 = not owned): field reach (m), field dps, most orbiting shards, damage per shard hit. */
+  scrapRadius: number;
+  scrapDps: number;
+  scrapMax: number;
+  scrapHit: number;
   /** VOLT-9 line (all 0 unless driving VOLT-9 with the upgrade): chain lightning arcs + share of the hit. */
   chainCount: number;
   chainFrac: number;

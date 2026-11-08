@@ -36,10 +36,8 @@ describe('upgrade definitions', () => {
     for (const u of UPGRADES) if (u.plowOnly) expect(PLOWS[u.plowOnly]).toBeDefined();
   });
 
-  it('every starter plow has an equally deep upgrade line', () => {
-    const sizes = Object.keys(PLOWS).map((k) => UPGRADES.filter((u) => u.plowOnly === k).length);
-    expect(new Set(sizes).size).toBe(1);
-    expect(sizes[0]).toBeGreaterThanOrEqual(4);
+  it('every starter plow has an upgrade line at least 4 deep (lines may differ in length)', () => {
+    for (const k of Object.keys(PLOWS)) expect(UPGRADES.filter((u) => u.plowOnly === k).length, k).toBeGreaterThanOrEqual(4);
   });
 
   it('plow-line and pilot upgrades are player-only', () => {
