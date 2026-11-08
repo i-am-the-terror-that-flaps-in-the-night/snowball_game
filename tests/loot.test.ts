@@ -70,7 +70,7 @@ describe('loot tables', () => {
 });
 
 describe('Progression.rollLoot', () => {
-  it('a miss gives nothing; a hit grants the item, equips it into an empty slot and saves', () => {
+  it('a miss gives nothing; a hit grants the item, equips it and saves', () => {
     const p = new Progression();
     expect(p.rollLoot('boss', seq(0.99))).toBeNull();
     const drop = p.rollLoot('bossFirst', seq(0, 0, 0))!;
@@ -87,7 +87,7 @@ describe('Progression.rollLoot', () => {
     const first = p.rollLoot('bossFirst', seq(0, 0, 0))!;
     const other = GEAR.find((d) => d.slot === GEAR.find((x) => x.id === first.item)!.slot && d.id !== first.item)!;
     p.data.gear!.owned[other.id] = 1;
-    p.data.gear!.equipped[other.slot] = other.id;
+    p.data.gear!.equipped.push(other.id);
     const again = p.rollLoot('bossFirst', seq(0, 0, 0))!;
     expect(again).toMatchObject({ item: first.item, outcome: 'level', level: 2 });
     expect(p.isEquipped(other.id)).toBe(true);

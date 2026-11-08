@@ -1,6 +1,6 @@
 import { SHOP_UPGRADES, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
-import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_SLOTS, gearCost, gearLevels, type GearSlot, type GearState } from '../config/gear';
+import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, type GearState } from '../config/gear';
 import type { Progression } from '../core/Progression';
 
 /** What the Garage UI buys through: the save (Progression) or the pre-duel DuelWallet. */
@@ -38,7 +38,7 @@ export class DuelWallet implements ShopWallet {
   /** Temporary item levels bought with the bonus. */
   private tempGear: Record<string, number> = {};
   /** Working copy of the equipped loadout (committed with the temp levels). */
-  private equipped: Partial<Record<GearSlot, string>>;
+  private equipped: string[];
   private listeners = new Set<() => void>();
   /** Bonus coins handed out this garage phase / left to spend. */
   readonly bonusTotal: number;
@@ -49,7 +49,7 @@ export class DuelWallet implements ShopWallet {
     bonus: number,
   ) {
     this.bonusTotal = this.bonus = Math.max(0, Math.floor(bonus));
-    this.equipped = { ...p.gear.equipped };
+    this.equipped = [...p.gear.equipped];
   }
 
   onChange(fn: () => void): () => void {
@@ -132,7 +132,7 @@ export class DuelWallet implements ShopWallet {
   get gear(): GearState {
     const owned: Record<string, number> = { ...this.p.gear.owned };
     for (const id of Object.keys(this.tempGear)) owned[id] = this.itemLevel(id);
-    return { owned, equipped: { ...this.equipped } };
+    return { owned, equipped: [...this.equipped] };
   }
 
   tempItemLevel(id: string): number {
@@ -165,29 +165,28 @@ export class DuelWallet implements ShopWallet {
     return this.paysItemWithBonus(id) || this.p.canBuyItem(id);
   }
 
-  /** Buy (auto-equipped into an empty slot) or level up an item: bonus first, then real coins. */
+  /** Buy (auto-equipped when new) or level up an item: bonus first, then real coins. */
   buyItem(id: string): boolean {
-    const def = GEAR_BY_ID[id];
-    if (!def || !this.canBuyItem(id)) return false;
+    if (!GEAR_BY_ID[id] || !this.canBuyItem(id)) return false;
+    const fresh = !this.itemLevel(id);
     if (this.paysItemWithBonus(id)) {
       this.bonus -= this.bonusItemCost(id);
       this.tempGear[id] = this.tempItemLevel(id) + 1;
     } else if (!this.p.buyItem(id)) return false;
-    if (!this.equipped[def.slot]) this.equipped[def.slot] = id;
+    if (fresh && !this.equipped.includes(id)) this.equipped.push(id);
     this.changed();
     return true;
   }
 
   isEquipped(id: string): boolean {
-    const def = GEAR_BY_ID[id];
-    return !!def && this.equipped[def.slot] === id;
+    return !!GEAR_BY_ID[id] && this.equipped.includes(id);
   }
 
   toggleEquip(id: string): boolean {
-    const def = GEAR_BY_ID[id];
-    if (!def || !this.itemLevel(id)) return false;
-    if (this.equipped[def.slot] === id) delete this.equipped[def.slot];
-    else this.equipped[def.slot] = id;
+    if (!GEAR_BY_ID[id] || !this.itemLevel(id)) return false;
+    const i = this.equipped.indexOf(id);
+    if (i >= 0) this.equipped.splice(i, 1);
+    else this.equipped.push(id);
     this.changed();
     return true;
   }
@@ -247,8 +246,8 @@ export class DuelWallet implements ShopWallet {
   }
 
   /** AUTO-SPEND's next purchase: the cheapest step the bonus can pay for among the core upgrades, this plow's line,
-   *  levelling an equipped gear item, or filling an empty gear slot (with that slot's cheapest item). Null when the
-   *  bonus can't afford anything. */
+   *  levelling an equipped gear item, or buying (and equipping) a gear item not owned yet. Only items that do
+   *  something in a duel; owned items the player took off stay off. Null when the bonus can't afford anything. */
   private autoStep(): { kind: 'up'; id: UpgradeId; cost: number } | { kind: 'item'; id: string; cost: number } | null {
     let best: { kind: 'up'; id: UpgradeId; cost: number } | { kind: 'item'; id: string; cost: number } | null = null;
     for (const def of SHOP_UPGRADES) {
@@ -256,13 +255,10 @@ export class DuelWallet implements ShopWallet {
       const cost = this.bonusCost(def.id);
       if (cost <= this.bonus && (!best || cost < best.cost)) best = { kind: 'up', id: def.id, cost };
     }
-    for (const slot of GEAR_SLOTS) {
-      // Level what's equipped if it helps in a duel; otherwise (empty slot, or e.g. a coin magnet) the slot's
-      // cheapest item that does.
-      const on = this.equipped[slot.id];
-      const pool = GEAR.filter((d) => d.slot === slot.id && duelUseful(d.id));
-      const id = on && duelUseful(on) ? on : pool.length ? pool.reduce((a, b) => (b.cost < a.cost ? b : a)).id : null;
-      if (!id) continue;
+    for (const d of GEAR) {
+      // Multi-equip: every useful item can be worn at once, so any of them is a candidate step.
+      if (!duelUseful(d.id) || (this.itemLevel(d.id) > 0 && !this.equipped.includes(d.id))) continue;
+      const id = d.id;
       const cost = this.bonusItemCost(id);
       if (cost <= this.bonus && (!best || cost < best.cost)) best = { kind: 'item', id, cost };
     }
@@ -277,7 +273,7 @@ export class DuelWallet implements ShopWallet {
   /**
    * AUTO-SPEND: spend the catch-up bonus in one go. First MATCH OPPONENT (raise the shared upgrades to the
    * opponent's levels), then keep buying the cheapest next step across core upgrades, this plow's line and gear
-   * (level what's equipped, fill empty slots) until the bonus runs out, so the coins spread evenly instead of piling
+   * (level what's equipped, buy items not owned yet) until the bonus runs out, so the coins spread evenly instead of piling
    * into one stat. Bonus only: real coins are never touched. Returns how many purchases it made.
    */
   autoSpend(target: Partial<Record<UpgradeId, number>> | null): number {
@@ -289,9 +285,7 @@ export class DuelWallet implements ShopWallet {
       if (step.kind === 'up') this.temp[step.id] = this.tempLevel(step.id) + 1;
       else {
         this.tempGear[step.id] = this.tempItemLevel(step.id) + 1;
-        const slot = GEAR_BY_ID[step.id].slot;
-        const on = this.equipped[slot];
-        if (!on || !duelUseful(on)) this.equipped[slot] = step.id;
+        if (!this.equipped.includes(step.id)) this.equipped.push(step.id);
       }
       n++;
     }
@@ -317,7 +311,7 @@ export class DuelWallet implements ShopWallet {
     this.tempGear = {};
     const eq = this.equipped;
     if (equipChanged(g.equipped, eq)) {
-      g.equipped = { ...eq };
+      g.equipped = [...eq];
       any = true;
     }
     if (any) this.p.commit();
@@ -338,8 +332,6 @@ function duelUseful(id: string): boolean {
   return !!def && def.grants.some((g) => !DUEL_IGNORED.has(g.stat));
 }
 
-function equipChanged(a: Partial<Record<GearSlot, string>>, b: Partial<Record<GearSlot, string>>): boolean {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as GearSlot[]);
-  for (const k of keys) if (a[k] !== b[k]) return true;
-  return false;
+function equipChanged(a: readonly string[], b: readonly string[]): boolean {
+  return a.length !== b.length || a.some((id, i) => id !== b[i]);
 }

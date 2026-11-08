@@ -1,5 +1,5 @@
 import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
-import { GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_PRICE_REV, REMOVED_GEAR, REPRICED_GEAR, gearCost, gearLevels, gearSpent, type GearDef, type GearSlot, type GearState } from '../config/gear';
+import { GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_PRICE_REV, REMOVED_GEAR, REPRICED_GEAR, cleanEquipped, gearCost, gearLevels, gearSpent, type GearDef, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
 import type { PlayerStats } from './types';
@@ -44,7 +44,7 @@ export interface SaveData {
   lifetime?: Record<string, number>;
   /** Daily Survival (meta/daily.ts): day key 'YYYY-MM-DD' -> best wave that day. */
   dailyBest?: Record<string, number>;
-  /** Gear (config/gear.ts): owned item levels and the equipped item per slot. */
+  /** Gear (config/gear.ts): owned item levels and the equipped item ids (any number). */
   gear?: GearState;
   /** Gear price cuts already refunded (GEAR_PRICE_REV); missing = an older save. */
   gearPrices?: number;
@@ -111,7 +111,7 @@ function refundRemovedGear(d: SaveData, raw: unknown): void {
 }
 
 function cleanGear(raw: unknown): GearState {
-  const out: GearState = { owned: {}, equipped: {} };
+  const out: GearState = { owned: {}, equipped: [] };
   if (!raw || typeof raw !== 'object') return out;
   const r = raw as Record<string, unknown>;
   if (r.owned && typeof r.owned === 'object') {
@@ -119,11 +119,8 @@ function cleanGear(raw: unknown): GearState {
       if (GEAR_BY_ID[id] && typeof lv === 'number' && Number.isFinite(lv) && lv >= 1) out.owned[id] = Math.min(GEAR_MAX_LEVEL, Math.floor(lv));
     }
   }
-  if (r.equipped && typeof r.equipped === 'object') {
-    for (const [slot, id] of Object.entries(r.equipped as Record<string, unknown>)) {
-      if (typeof id === 'string' && out.owned[id] && GEAR_BY_ID[id].slot === slot) out.equipped[slot as GearSlot] = id;
-    }
-  }
+  // Multi-equip: a string[] now; older saves hold one id per slot ({ slot: id }), which reads as that list.
+  out.equipped = cleanEquipped(r.equipped, out.owned);
   return out;
 }
 
@@ -314,7 +311,10 @@ export class Progression {
   /* ---------------------------------------------------------------- gear */
 
   get gear(): GearState {
-    return (this.data.gear ??= { owned: {}, equipped: {} });
+    const g = (this.data.gear ??= { owned: {}, equipped: [] });
+    // Tolerate an old one-per-slot map assigned at runtime (tests, a duel commit from an older build).
+    if (!Array.isArray(g.equipped)) g.equipped = cleanEquipped(g.equipped, g.owned);
+    return g;
   }
 
   /** Item level (0 = not owned). */
@@ -332,36 +332,36 @@ export class Progression {
     return this.data.coins >= this.itemCost(id);
   }
 
-  /** Buy an item (auto-equipped if its slot is empty) or raise its level. */
+  /** Buy an item (auto-equipped when it's new) or raise its level. */
   buyItem(id: string): boolean {
     const def = GEAR_BY_ID[id];
     if (!def || !this.canBuyItem(id)) return false;
     this.data.coins -= this.itemCost(id);
     const g = this.gear;
+    const fresh = !this.itemLevel(id);
     g.owned[id] = this.itemLevel(id) + 1;
-    if (!g.equipped[def.slot]) g.equipped[def.slot] = id;
+    if (fresh && !g.equipped.includes(id)) g.equipped.push(id);
     this.changed();
     return true;
   }
 
   isEquipped(id: string): boolean {
-    const def = GEAR_BY_ID[id];
-    return !!def && this.data.gear?.equipped[def.slot] === id;
+    return !!GEAR_BY_ID[id] && !!this.data.gear && this.gear.equipped.includes(id);
   }
 
-  /** Equip an owned item in its slot, or take it off if it's already equipped. */
+  /** Equip an owned item (alongside everything else equipped), or take it off if it's already equipped. */
   toggleEquip(id: string): boolean {
-    const def = GEAR_BY_ID[id];
-    if (!def || !this.itemLevel(id)) return false;
+    if (!GEAR_BY_ID[id] || !this.itemLevel(id)) return false;
     const g = this.gear;
-    if (g.equipped[def.slot] === id) delete g.equipped[def.slot];
-    else g.equipped[def.slot] = id;
+    const i = g.equipped.indexOf(id);
+    if (i >= 0) g.equipped.splice(i, 1);
+    else g.equipped.push(id);
     this.changed();
     return true;
   }
 
   /**
-   * Roll gear loot from `source` (config/loot.ts) and apply it: a new item (auto-equipped into an empty slot), +1
+   * Roll gear loot from `source` (config/loot.ts) and apply it: a new item (auto-equipped), +1
    * item level, or coins for a ★10 item. `chance` overrides the source's own (Survival scales it by wave). Returns
    * the drop, or null when the roll misses. Saves.
    */
@@ -374,8 +374,8 @@ export class Progression {
       this.data.coins += drop.coins;
       this.data.totalCoinsEarned += drop.coins;
     } else {
+      if (drop.outcome === 'new' && !g.equipped.includes(def.id)) g.equipped.push(def.id);
       g.owned[def.id] = drop.level;
-      if (!g.equipped[def.slot]) g.equipped[def.slot] = def.id;
     }
     this.changed();
     return drop;

@@ -1,8 +1,10 @@
 import { UPGRADE_BY_ID, type UpgradeId } from './upgrades';
 
-/** Gear: items you buy once, level up, and equip one per slot (Prodigy-style). Each item grants levels of the
- *  stats that left the Garage (ITEM_STATS in config/upgrades.ts); those levels then go through the same FX curves
- *  as everything else, so Combat / Brawl / Duel see ordinary upgrade levels. */
+/** Gear: items you buy once, level up, and equip (Prodigy-style). Any number of owned items can be equipped at once;
+ *  each one is switched on or off on its own, and the slots are only categories for browsing (and for where an
+ *  item shows on the model). Each item grants levels of the stats that left the Garage (ITEM_STATS in
+ *  config/upgrades.ts); the grants of every equipped item add up, and those levels then go through the same FX
+ *  curves as everything else, so Combat / Brawl / Duel see ordinary upgrade levels. */
 export type GearSlot = 'blade' | 'chassis' | 'booster' | 'core' | 'charm';
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
@@ -114,17 +116,26 @@ export function gearSpent(def: GearDef, level: number): number {
 export interface GearState {
   /** item id -> level (>= 1 once bought). */
   owned: Record<string, number>;
-  equipped: Partial<Record<GearSlot, string>>;
+  /** Equipped item ids, any number of them (in equip order, no repeats). Saves from before multi-equip stored a
+   *  one-per-slot map ({ slot: id }); cleanEquipped reads both. */
+  equipped: string[];
 }
 
-/** Stat levels from the equipped gear. */
+/** The equipped ids from a save / wire value: the current string[] or the old one-per-slot map ({ slot: id }).
+ *  Known items that are owned (level >= 1) only, no repeats, in order. Never throws. */
+export function cleanEquipped(raw: unknown, owned: Record<string, number>): string[] {
+  const list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.values(raw as Record<string, unknown>) : [];
+  const out: string[] = [];
+  for (const id of list) if (typeof id === 'string' && GEAR_BY_ID[id] && (owned[id] ?? 0) >= 1 && !out.includes(id)) out.push(id);
+  return out;
+}
+
+/** Stat levels from the equipped gear: every equipped item's grants, added up per stat. */
 export function gearLevels(state: GearState | undefined): Partial<Record<UpgradeId, number>> {
   const out: Partial<Record<UpgradeId, number>> = {};
   if (!state) return out;
-  for (const slot of GEAR_SLOTS) {
-    const id = state.equipped[slot.id];
-    const def = id ? GEAR_BY_ID[id] : undefined;
-    if (!def || def.slot !== slot.id) continue;
+  for (const id of cleanEquipped(state.equipped, state.owned)) {
+    const def = GEAR_BY_ID[id];
     const lvl = state.owned[def.id] ?? 0;
     for (const gr of def.grants) {
       const n = grantLevels(gr, lvl);

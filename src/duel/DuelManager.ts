@@ -400,7 +400,7 @@ export class DuelManager {
     // Gear counts: send what the plow fights with (Garage + equipped items).
     const levels = cleanLevels(p.effectiveLevels());
     const eq: DuelGear = {};
-    for (const id of Object.values(p.gear.equipped)) if (id && p.itemLevel(id) > 0) eq[id] = p.itemLevel(id);
+    for (const id of p.gear.equipped) if (p.itemLevel(id) > 0) eq[id] = p.itemLevel(id);
     const gear = cleanDuelGear(eq);
     return { name: this.playerName ?? duelName(), plow: p.plow, look: { ...cosmeticsState(p).equipped }, levels, gear, coins: p.coins, spent: duelSpent(levels, gear) };
   }
@@ -1347,6 +1347,6 @@ export class DuelManager {
 function walletGear(w: DuelWallet): DuelGear {
   const g = w.gear;
   const out: DuelGear = {};
-  for (const id of Object.values(g.equipped)) if (id && g.owned[id]) out[id] = g.owned[id];
+  for (const id of g.equipped) if (g.owned[id]) out[id] = g.owned[id];
   return cleanDuelGear(out);
 }

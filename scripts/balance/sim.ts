@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { Combat } from '../../src/entities/Combat';
 import { computeStatsFor } from '../../src/core/Progression';
-import { GEAR_BY_ID, gearLevels, type GearState } from '../../src/config/gear';
+import { gearLevels, type GearState } from '../../src/config/gear';
 import { UPGRADE_BY_ID, type UpgradeId } from '../../src/config/upgrades';
 import { ballVolume, type EnemyHandle, type GameContext, type PlayerStats } from '../../src/core/types';
 import { OpponentTarget, PlowHandle } from '../../src/duel/opponent';
@@ -28,7 +28,7 @@ const LINE: Record<PlowKind, UpgradeId[]> = {
 /** Garage levels (core four + the plow's own line) and equipped gear per tier. */
 const TIER_DEF: Record<Tier, { core: number; line: number; gear: Record<string, number> }> = {
   fresh: { core: 0, line: 0, gear: {} },
-  // Mid-game: a few levels everywhere, commons + a couple of rares at item level 3 (one per slot).
+  // Mid-game: a few levels everywhere, commons + a couple of rares at item level 3 (one per slot; multi-equip would allow more, see docs/balance.md).
   mid: { core: 4, line: 3, gear: { steelWedge: 3, scrapRecycler: 3, turbineFan: 3, packCompactor: 3, repairDrone: 3 } },
   // Late-game: heavily upgraded, legendary / epic gear at item level 8.
   high: { core: 10, line: 8, gear: { avalancheBlade: 8, phoenixPlating: 8, jetTurbine: 8, overclockChip: 8, repairDrone: 8 } },
@@ -39,8 +39,7 @@ export function levelsFor(kind: PlowKind, tier: Tier): Partial<Record<UpgradeId,
   const out: Partial<Record<UpgradeId, number>> = {};
   for (const id of ['engine', 'armor', 'packedIce', 'hopper'] as UpgradeId[]) if (t.core) out[id] = t.core;
   for (const id of LINE[kind]) if (t.line) out[id] = t.line;
-  const gear: GearState = { owned: { ...t.gear }, equipped: {} };
-  for (const id of Object.keys(t.gear)) gear.equipped[GEAR_BY_ID[id].slot] = id;
+  const gear: GearState = { owned: { ...t.gear }, equipped: Object.keys(t.gear) };
   for (const [id, n] of Object.entries(gearLevels(gear)) as [UpgradeId, number][]) out[id] = Math.min(UPGRADE_BY_ID[id].maxLevel, (out[id] ?? 0) + n);
   return out;
 }

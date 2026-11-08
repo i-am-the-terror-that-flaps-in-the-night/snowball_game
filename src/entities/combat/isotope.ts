@@ -3,6 +3,7 @@ import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, type AbilityDesc, type VehicleKit, Reach, WAVE_BAND, _p, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
+import { ISOTOPE_NOZZLE } from '../vehicles/isotope';
 
 /** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
  *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
@@ -37,8 +38,8 @@ const SPRAY_COS_WIDE = Math.cos(1.05);
 /** RAD SPRAYER leans on Meltdown's reactor overheat to this power (its own Rad Sprayer line does the rest). */
 const SPRAY_REACTOR_EXP = 0.8;
 export const sprayRange = (ballR: number) => 8.5 + 2 * Math.max(0, ballR - 1.2);
-const NOZZLE_Y = 1.25;
-const NOZZLE_Z = 2.3;
+const NOZZLE_Y = ISOTOPE_NOZZLE.y;
+const NOZZLE_Z = ISOTOPE_NOZZLE.z;
 const SPRAY_CRIT = 0.5;
 /** FALLOUT TRAIL (E): seconds of trail, a puddle every TRAIL_DROP s (TRAIL_N pooled), each PUDDLE_LIFE s; damage tick
  *  and dps (Half-Life pool dps share), radius (Half-Life pool radius share). */
@@ -84,6 +85,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
   primary(dt: number, held: boolean, _pressed: boolean): void {
     this.sprayT -= dt;
     this.sprayOn = held;
+    if (this.b.plow) this.b.plow.isoSpray = held && !this.b.plow.dead; // nozzle FX (vehicles/isotope.ts)
     if (!held || this.sprayT > 0) return;
     const st = this.b.stats;
     const tick = SPRAY_TICK * Math.max(0.4, st.cooldownMult || 1);
@@ -168,6 +170,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         this.ctx.fx.burst(_q, { color: 0x7dff4a, count: 3, speed: 1.5, size: 0.2, gravity: -2, life: 0.5 });
       }
     }
+    if (plow) plow.isoTrail = this.trailT > 0; // dump valves + stack vapour (vehicles/isotope.ts)
     this.updatePuddles(dt);
     return fired;
   }

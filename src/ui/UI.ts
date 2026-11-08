@@ -146,7 +146,7 @@ type ShopTabId = 'core' | 'gear' | 'line';
  *  (category id === PlowKind), and takes that plow's name and icon. */
 const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; groups: { cat: UpgradeCategory; title?: string }[] }[] = [
   { id: 'core', label: 'Core', icon: '⚙️', blurb: 'The four core upgrades: speed, slam power, ball size and HP. They never max out.', groups: [{ cat: 'plow' }, { cat: 'ball' }, { cat: 'defense' }] },
-  { id: 'gear', label: 'Gear', icon: '🎒', blurb: 'Buy items, level them up to 10 and equip one per slot. Gear works on every plow.', groups: [] },
+  { id: 'gear', label: 'Gear', icon: '🎒', blurb: 'Buy items, level them up to 10 and equip as many as you like. Gear works on every plow.', groups: [] },
   { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }, { cat: 'arsenal' }] },
 ];
 
@@ -1156,7 +1156,7 @@ export class UI implements UIAPI {
     return { def, tab, root, pips, lvl, cur, next, arrow, buy };
   }
 
-  /** Gear tab: one section per slot, each with its items. */
+  /** Gear tab: one section per slot (a browsing category: any number of items can be equipped), each with its items. */
   private buildGear(pane: HTMLElement): void {
     for (const slot of GEAR_SLOTS) {
       const sec = el('section', `ss-cat ss-gear-slot ss-gear-${slot.id}`, undefined, pane);
@@ -1203,9 +1203,12 @@ export class UI implements UIAPI {
     const p = this.shop;
     const dw = this.duelWallet;
     for (const slot of GEAR_SLOTS) {
-      const id = p.gear.equipped[slot.id];
-      const def = id ? GEAR.find((d) => d.id === id) : undefined;
-      this.gearSlotLabels.get(slot.id)!.textContent = def ? ` · equipped: ${def.icon} ${def.name}` : ' · empty slot';
+      const on = GEAR.filter((d) => d.slot === slot.id && p.isEquipped(d.id));
+      this.gearSlotLabels.get(slot.id)!.textContent = !on.length
+        ? ' · none equipped'
+        : on.length === 1
+          ? ` · equipped: ${on[0].icon} ${on[0].name}`
+          : ` · ${on.length} equipped: ${on.map((d) => d.icon).join(' ')}`;
     }
     for (const c of this.gearCards) {
       const lvl = p.itemLevel(c.def.id);
@@ -1323,7 +1326,7 @@ export class UI implements UIAPI {
     this.shopStart.innerHTML = '⚔ FIGHT ▶';
     this.shopHint.textContent = 'Press ENTER to fight';
     this.shopTitle.textContent = 'GARAGE';
-    this.shopSub.textContent = 'Core upgrades never max out. Gear: buy items, level them up and equip one per slot.';
+    this.shopSub.textContent = 'Core upgrades never max out. Gear: buy items, level them up and equip as many as you like.';
     this.shopPreview.classList.add('hidden');
     this.plowPick.classList.remove('hidden');
     this.shopBack.classList.remove('hidden');

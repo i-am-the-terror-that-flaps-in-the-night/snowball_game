@@ -60,7 +60,7 @@ describe('gear identities', () => {
     const cut = gearSpent({ cost: REPRICED_GEAR.jetTurbine } as GearDef, 2) - gearSpent(GEAR_BY_ID.jetTurbine, 2);
     expect(p.coins).toBe(gearSpent(REMOVED_GEAR.adrenalineShot as GearDef, 4) + cut);
     expect(p.gear.owned).toEqual({ jetTurbine: 2 });
-    expect(p.gear.equipped).toEqual({ booster: 'jetTurbine' });
+    expect(p.gear.equipped).toEqual(['jetTurbine']);
   });
 
   it('refunds gear price cuts once, on load and on import, and never for new saves', () => {
@@ -88,7 +88,7 @@ describe('gear identities', () => {
     // A brand-new save that buys a cut item later never gets a refund.
     store.clear();
     const n = new Progression();
-    n.data.gear = { owned: { jetTurbine: 3 }, equipped: {} };
+    n.data.gear = { owned: { jetTurbine: 3 }, equipped: [] };
     n.save();
     expect(new Progression().coins).toBe(0);
   });

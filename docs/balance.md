@@ -41,6 +41,15 @@ High is the core four at 10, the line at 8, and item level 8 legendaries and epi
 Jet Turbine, Overclock Chip, Repair Drone. Phoenix Plating gives everyone Second Wind at high tier. Duel TTKs there
 include that 1.5 s save. With it turned off, the fastest high-tier kill is 4.2 s (ARSENAL vs VOLT-9).
 
+**Multi-equip.** Gear is no longer one item per slot: every owned item can be equipped at once. The sim tiers still
+wear five items (one per slot), so the tables below don't include a fully stacked plow. For reference, a Classic with
+the high-tier core and line but all 16 items at ★8 (instead of five) gets: blade width 2.6 -> 4.6 m, damage taken
+x1.0 -> x0.75, dash cooldown 1.25 -> 0.56 s, whirl cooldown 3.1 -> 1.3 s, whirl damage 10 -> 32, ram damage 14 -> 45,
+15% lifesteal, Ice Shield and Frost on top of Avalanche. In the sim that is about +5 to 15% single-target DPS and +1
+to 27% cluster DPS depending on the plow, and in a mirror where both duellists are fully stacked TTKs go up (more
+armour and lifesteal), e.g. Brute 5.1 -> 8.7 s. The Duel catch-up already values every equipped item at cost (the
+high-tier garage goes from about 100k to 140k), so a weaker garage still gets the whole gap in coins.
+
 ## Before
 
 #### fresh

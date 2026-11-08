@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEAR_BY_ID, GEAR_SLOTS, RARITY_COLOR, type GearDef, type GearSlot } from '../config/gear';
+import { GEAR_BY_ID, GEAR_SLOTS, RARITY_COLOR, type GearDef, type GearSlot, type Rarity } from '../config/gear';
 import type { PlowKind } from '../config/plows';
 
 /**
@@ -8,6 +8,8 @@ import type { PlowKind } from '../config/plows';
  * gem on the deck, charms a little ornament. Data-driven: GEAR_LOOKS maps item id -> style; an unknown id falls back
  * to its slot's default in the item's rarity colour. Geometry + materials are shared module-wide and built lazily;
  * the attachments are rebuilt only when the equipped set or the plow body changes.
+ * Any number of items can be equipped, but each slot has one mount, so the model shows ONE item per slot: the
+ * showcase pick (highest rarity, then priciest) among the equipped items of that slot (GearVisuals.showcase).
  */
 
 type BladeStyle = 'edge' | 'steel' | 'spikes' | 'frost' | 'molten';
@@ -82,8 +84,8 @@ interface Anchors {
 const ANCHORS: Record<PlowKind, Anchors> = {
   classic: { side: [1.07, 1.0, -0.95, 1.9], rear: [1.15, -2.12], deck: [0, 2.06, -1.27], charm: [0.78, 2.3, 0.45], nose: null },
   volt: { side: [0.95, 1.11, -0.05, 2.7], rear: [1.05, -2.0], deck: [0, 1.28, -1.15], charm: [-0.42, 1.55, 1.12], nose: null },
-  brute: { side: [1.12, 1.25, -0.4, 2.2], rear: [1.6, -2.0], deck: [-0.45, 2.15, -0.6], charm: [0.75, 2.75, 0.45], nose: null },
-  isotope: { side: [1.11, 1.16, -0.45, 2.4], rear: [1.1, -1.9], deck: [0, 2.45, -0.9], charm: [-0.7, 2.38, 1.0], nose: null },
+  brute: { side: [1.12, 1.25, -0.4, 2.2], rear: [1.6, -2.0], deck: [-0.58, 2.66, -0.6], charm: [0.6, 2.66, -0.55], nose: null },
+  isotope: { side: [1.03, 1.04, -0.75, 2.5], rear: [1.22, -2.2], deck: [0, 2.37, -0.55], charm: [-0.62, 2.28, 1.12], nose: null },
   arsenal: { side: [1.0, 1.6, -0.6, 1.5], rear: [1.95, -1.15], deck: [-0.45, 2.14, -0.95], charm: [0.6, 2.12, -1.1], nose: [1.43, 2.14, 1.5] },
 };
 
@@ -170,6 +172,8 @@ function colorMat(color: number): THREE.MeshStandardMaterial {
   return m;
 }
 
+const RARITY_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
+
 const hex = (css: string) => parseInt(css.replace('#', ''), 16);
 
 /* ------------------------------------------------------------------------------------------------ the attachment set */
@@ -200,9 +204,10 @@ export class GearVisuals {
     blade.add(this.bladeLayer);
   }
 
-  /** Rebuild for `kind` wearing `ids` (one item id per slot; unknown ids use the slot default). Cheap no-op when
+  /** Rebuild for `kind` wearing `ids` (any equipped ids; one per slot is shown, see showcase). Cheap no-op when
    *  nothing changed. */
-  sync(kind: PlowKind, ids: readonly string[], bladeWidth: number): void {
+  sync(kind: PlowKind, equipped: readonly string[], bladeWidth: number): void {
+    const ids = GearVisuals.showcase(equipped);
     const key = `${kind}|${[...ids].sort().join(',')}`;
     if (key === this.key) return this.setWidth(bladeWidth);
     this.key = key;
@@ -389,9 +394,23 @@ export class GearVisuals {
     }
   }
 
-  /** Slots in display order with the item id for each (helper for callers holding a GearState). */
-  static idsFrom(equipped: Partial<Record<GearSlot, string>>): string[] {
-    return GEAR_SLOTS.map((s) => equipped[s.id]).filter((id): id is string => !!id);
+  /** The ids to draw for an equipped set: one per slot in slot order, the highest-rarity (then priciest) item
+   *  equipped in that slot. Unknown ids are dropped. */
+  static showcase(ids: readonly string[]): string[] {
+    const best = new Map<GearSlot, GearDef>();
+    for (const id of ids) {
+      const def = GEAR_BY_ID[id];
+      if (!def) continue;
+      const cur = best.get(def.slot);
+      if (!cur || RARITY_RANK[def.rarity] > RARITY_RANK[cur.rarity] || (def.rarity === cur.rarity && def.cost > cur.cost)) best.set(def.slot, def);
+    }
+    return GEAR_SLOTS.map((s) => best.get(s.id)?.id).filter((id): id is string => !!id);
+  }
+
+  /** Helper for callers holding a GearState: the equipped ids to draw (the showcase). Also takes an old one-per-slot
+   *  map. */
+  static idsFrom(equipped: readonly string[] | Partial<Record<GearSlot, string>>): string[] {
+    return GearVisuals.showcase(Array.isArray(equipped) ? equipped : Object.values(equipped).filter((id): id is string => typeof id === 'string'));
   }
 }
 

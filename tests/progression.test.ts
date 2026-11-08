@@ -181,7 +181,7 @@ describe('save export / import', () => {
     const p = new Progression();
     p.data.coins = 1234;
     p.data.upgrades = { engine: 7, voltChain: 2, brutePound: 3 };
-    p.data.gear = { owned: { overclockChip: 4, steelWedge: 1 }, equipped: { core: 'overclockChip' } };
+    p.data.gear = { owned: { overclockChip: 4, steelWedge: 1 }, equipped: ['overclockChip'] };
     p.data.unlockedZones = 3;
     p.data.zones = { [ZONES[0].id]: { cleared: true, bestRound: 4 } };
     p.data.totalKills = 99;
@@ -303,13 +303,14 @@ describe('save export / import', () => {
     expect('wreckingBall' in a.data.upgrades).toBe(false);
     expect(a.level('engine')).toBe(2);
     expect(a.gear.owned).toEqual({ [keep.id]: 2 });
-    expect(a.gear.equipped).toEqual({ charm: keep.id });
+    // The old one-per-slot map migrates to the list, minus the removed item.
+    expect(a.gear.equipped).toEqual([keep.id]);
     expect(() => a.computeStats()).not.toThrow();
     const p = new Progression();
     expect(p.importSave(JSON.stringify(raw)).ok).toBe(true);
     expect(p.coins).toBe(10 + wbCost(4) + coreCost);
     expect('wreckingBall' in p.data.upgrades).toBe(false);
-    expect(p.gear.equipped.core).toBeUndefined();
+    expect(p.gear.equipped).toEqual([keep.id]);
   });
 
   it('round-trips meta progression fields (cosmetics, stars, hard clears, achievements, lifetime, daily)', () => {
@@ -365,7 +366,7 @@ describe('gear', () => {
     p.data.coins = 100000;
     const base = p.computeStats();
     expect(p.buyItem('nitroTank')).toBe(true);
-    // Auto-equipped into the empty slot.
+    // Auto-equipped when bought.
     expect(p.isEquipped('nitroTank')).toBe(true);
     expect(p.computeStats().dashCooldown).toBeLessThan(base.dashCooldown);
     const c1 = p.itemCost('nitroTank');
@@ -374,16 +375,26 @@ describe('gear', () => {
     expect(p.itemLevel('nitroTank')).toBe(GEAR_MAX_LEVEL);
     expect(p.buyItem('nitroTank')).toBe(false);
     expect(p.effectiveLevels().nitro).toBe(grantLevels(GEAR_BY_ID.nitroTank.grants[0], GEAR_MAX_LEVEL));
-    // A second booster replaces the first only when equipped.
+    // A second booster is equipped ALONGSIDE the first (multi-equip), and levelling doesn't re-equip.
     expect(p.buyItem('turbineFan')).toBe(true);
-    expect(p.isEquipped('turbineFan')).toBe(false);
-    expect(p.toggleEquip('turbineFan')).toBe(true);
-    expect(p.isEquipped('nitroTank')).toBe(false);
-    expect(p.effectiveLevels().nitro ?? 0).toBe(0);
+    expect(p.isEquipped('turbineFan')).toBe(true);
+    expect(p.isEquipped('nitroTank')).toBe(true);
+    expect(p.gear.equipped).toEqual(['nitroTank', 'turbineFan']);
+    expect(p.effectiveLevels().nitro).toBe(grantLevels(GEAR_BY_ID.nitroTank.grants[0], GEAR_MAX_LEVEL));
     expect(p.effectiveLevels().whirl).toBe(1);
-    // Unequip.
+    // Each item toggles on its own.
+    expect(p.toggleEquip('nitroTank')).toBe(true);
+    expect(p.isEquipped('nitroTank')).toBe(false);
+    expect(p.isEquipped('turbineFan')).toBe(true);
+    expect(p.effectiveLevels().nitro ?? 0).toBe(0);
+    p.buyItem('turbineFan');
+    expect(p.isEquipped('nitroTank')).toBe(false);
+    // Unequip everything.
     p.toggleEquip('turbineFan');
+    expect(p.gear.equipped).toEqual([]);
     expect(p.computeStats()).toEqual(base);
+    // Not owned: can't be equipped.
+    expect(p.toggleEquip('jetTurbine')).toBe(false);
   });
 
   it('one-time specials come from gear and cap at 1', () => {
@@ -401,7 +412,15 @@ describe('gear', () => {
     const p = new Progression();
     const raw = { version: 1, coins: 0, upgrades: {}, unlockedZones: 1, zones: {}, gear: { owned: { nitroTank: 99, bogus: 3, luckyMagnet: 0 }, equipped: { booster: 'nitroTank', charm: 'luckyMagnet', core: 'nitroTank' } } };
     expect(p.importSave(JSON.stringify(raw)).ok).toBe(true);
-    expect(p.data.gear).toEqual({ owned: { nitroTank: GEAR_MAX_LEVEL }, equipped: { booster: 'nitroTank' } });
+    expect(p.data.gear).toEqual({ owned: { nitroTank: GEAR_MAX_LEVEL }, equipped: ['nitroTank'] });
+    // The new list form: unknown, unowned, non-string and repeated ids are dropped.
+    const list = { ...raw, gear: { owned: { nitroTank: 2, turbineFan: 1, luckyMagnet: 3 }, equipped: ['turbineFan', 'bogus', 7, 'nitroTank', 'turbineFan', 'jetTurbine'] } };
+    expect(p.importSave(JSON.stringify(list)).ok).toBe(true);
+    expect(p.data.gear!.equipped).toEqual(['turbineFan', 'nitroTank']);
+    for (const bad of [null, 'x', 5, { a: 1 }]) {
+      expect(p.importSave(JSON.stringify({ ...raw, gear: { owned: { nitroTank: 1 }, equipped: bad } })).ok).toBe(true);
+      expect(p.data.gear!.equipped).toEqual([]);
+    }
   });
 
   it('the Garage only sells the core upgrades and plow lines', () => {

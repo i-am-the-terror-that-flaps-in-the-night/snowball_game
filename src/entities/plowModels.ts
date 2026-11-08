@@ -602,9 +602,9 @@ export function buildBuzzsaw(): Buzzsaw {
  *  hopper rails and blade ribs). The 'stock' paint keeps these. */
 export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: number }>> = {
   classic: { body: 0xffb81a, trim: 0x23272e },
-  volt: { body: 0xe9edf1, trim: 0x3c4656 }, // TESLA ROVER: white ceramic panels over a slate tub
+  volt: { body: 0xe9edf1, trim: 0x2c323b }, // TESLA ROVER: pale composite panels over a graphite tub
   brute: { body: 0x7d8794, trim: 0x4a525d },
-  isotope: { body: 0xe8cf1f, trim: 0x3a4038 },
+  isotope: { body: 0xe8cf1f, trim: 0x5d646a }, // rad-suit yellow + lead grey
   arsenal: { body: 0x55606c, trim: 0x2c333b },
 };
 
@@ -850,19 +850,19 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
     { face: 'rear', at: [0, 1.37, -1.83], size: [0.95, 0.22], tags: ['band', 'emblem'], emblem: 0.2 }, // transformer box
   ],
   brute: [
-    { face: 'top', at: [0, 2.26, 0.65], size: [1.1, 1.5], tags: ['stripe', 'emblem'], emblem: 1.05 }, // cab roof
-    { face: 'top', at: [0, 1.275, 1.75], size: [0.8, 1.75], tags: ['stripe', 'flame'] }, // front deck
-    { face: 'top', at: [0, 2.012, -1.0], size: [1.9, 1.75], tags: ['stripe', 'band', 'emblem'], emblem: 1.4 }, // over the engine vents
-    { face: 'top', at: [1.12, 1.06, 0.1], size: [4.0, 0.7], tags: ['flame', 'stripe', 'band'], pair: true }, // track guards
-    { face: 'side', at: [0.875, 1.78, -1.0], size: [1.85, 0.3], tags: ['band', 'stripe', 'flame'] }, // engine flank
-    { face: 'rear', at: [0, 1.38, -1.95], size: [1.75, 0.95], tags: ['emblem'], emblem: 0.85 },
-    { face: 'rear', at: [0, 1.84, -1.95], size: [1.75, 0.18], tags: ['band'] },
+    { face: 'top', at: [0, 2.585, 0.66], size: [0.6, 0.8], tags: ['stripe', 'emblem'], emblem: 0.5 }, // head roof
+    { face: 'top', at: [0, 2.66, -0.2], size: [1.1, 0.7], tags: ['stripe', 'band', 'emblem'], emblem: 0.62 }, // torso roof
+    { face: 'top', at: [0, 1.28, 1.08], size: [0.7, 1.2], tags: ['stripe', 'flame'] }, // front deck
+    { face: 'top', at: [1.18, 1.06, -0.35], size: [1.5, 0.56], tags: ['flame', 'stripe', 'band'], pair: true }, // track guards
+    { face: 'side', at: [0.8, 2.25, -1.24], size: [0.62, 0.22], tags: ['band', 'stripe', 'flame'] }, // engine flank
+    { face: 'rear', at: [0, 1.45, -1.95], size: [1.6, 0.8], tags: ['emblem'], emblem: 0.66 }, // counterweight
+    { face: 'rear', at: [0, 1.84, -1.95], size: [1.5, 0.13], tags: ['band'] },
   ],
   isotope: [
-    { face: 'top', at: [0, 2.38, 0.82], size: [1.12, 1.7], tags: ['stripe', 'emblem', 'band'], emblem: 1.0 }, // cab roof
-    { face: 'top', at: [0, 1.32, 1.55], size: [0.95, 1.84], tags: ['stripe', 'flame', 'emblem'], emblem: 0.8 }, // nose
-    { face: 'side', at: [1.0, 1.45, -0.45], size: [2.7, 0.14], tags: ['band', 'stripe', 'flame'] }, // hull flank
-    { face: 'side', at: [0.81, 1.62, 0.82], size: [1.0, 0.3], tags: ['flame', 'band', 'stripe'] }, // cab flank
+    { face: 'top', at: [0, 2.28, 1.0], size: [0.5, 1.5], tags: ['stripe', 'emblem', 'band'], emblem: 0.48 }, // cab roof (behind the boom turret)
+    { face: 'top', at: [0, 1.62, 1.83], size: [0.36, 1.5], tags: ['stripe', 'flame', 'emblem'], emblem: 0.34 }, // hood ledge under the nozzle
+    { face: 'side', at: [1.0, 1.04, -0.75], size: [2.75, 0.1], tags: ['band', 'stripe', 'flame'] }, // deck edge
+    { face: 'side', at: [0.96, 1.36, 1.17], size: [0.62, 0.3], tags: ['flame', 'band', 'stripe'] }, // cab door
   ],
 };
 
@@ -926,7 +926,7 @@ export const TRAIL_REAR: Readonly<Record<PlowKind, { x: number; y: number; z: nu
   classic: { x: 0.8, y: 0.9, z: -2.15 },
   volt: { x: 0.75, y: 0.85, z: -2.1 },
   brute: { x: 1.1, y: 0.8, z: -2.3 },
-  isotope: { x: 0.8, y: 0.85, z: -2.05 },
+  isotope: { x: 0.8, y: 0.85, z: -2.25 },
   arsenal: { x: 0.85, y: 1.1, z: -2.05 },
 };
 

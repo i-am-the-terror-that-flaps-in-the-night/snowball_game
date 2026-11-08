@@ -1,6 +1,6 @@
 import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from './upgrades';
 import { BIOME_ZONE, ZONES, zoneLook, type BiomeKey, type ZoneDef } from './zones';
-import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearLevels, gearSpent, type GearSlot } from './gear';
+import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearLevels, gearSpent } from './gear';
 
 /* ------------------------------------------------------------------------------------------------
  * Online DUEL tuning: 1v1, best of 3 rounds in a campaign-size arena.
@@ -109,18 +109,16 @@ export function garageSpent(levels: Partial<Record<UpgradeId, number>>): number 
   return total;
 }
 
-/** Equipped gear as sent over the wire: item id -> item level (one item per slot). */
+/** Equipped gear as sent over the wire: item id -> item level (any number of items, several per slot allowed). */
 export type DuelGear = Record<string, number>;
 
-/** Sanitise equipped gear received over the network: known ids only, levels 1..GEAR_MAX_LEVEL, one per slot. */
+/** Sanitise equipped gear received over the network: known ids only, levels 1..GEAR_MAX_LEVEL (each id at most
+ *  once, so the list can never hold more than the whole catalog). */
 export function cleanDuelGear(raw: unknown): DuelGear {
   const out: DuelGear = {};
-  if (!raw || typeof raw !== 'object') return out;
-  const slots = new Set<GearSlot>();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
   for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
-    const def = GEAR_BY_ID[id];
-    if (!def || slots.has(def.slot) || typeof v !== 'number' || !Number.isFinite(v) || v < 1) continue;
-    slots.add(def.slot);
+    if (!GEAR_BY_ID[id] || typeof v !== 'number' || !Number.isFinite(v) || v < 1) continue;
     out[id] = Math.min(GEAR_MAX_LEVEL, Math.floor(v));
   }
   return out;
@@ -128,12 +126,7 @@ export function cleanDuelGear(raw: unknown): DuelGear {
 
 /** Stat levels the equipped `gear` grants (same rules as the save's gearLevels). */
 export function duelGearLevels(gear: DuelGear): Partial<Record<UpgradeId, number>> {
-  const equipped: Partial<Record<GearSlot, string>> = {};
-  for (const id of Object.keys(gear)) {
-    const def = GEAR_BY_ID[id];
-    if (def) equipped[def.slot] = id;
-  }
-  return gearLevels({ owned: gear, equipped });
+  return gearLevels({ owned: gear, equipped: Object.keys(gear) });
 }
 
 /** Garage value for the catch-up: core levels at the upgrade cost curves, plus the equipped items at what they

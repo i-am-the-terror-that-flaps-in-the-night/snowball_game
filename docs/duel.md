@@ -21,12 +21,13 @@ Before the match both players get a 90 s **DUEL GARAGE** (60 s before a rematch)
 coins**: enough to match the opponent's full garage value (everything they've spent, plus their coins on hand) on
 top of what it has already spent, with no cap. The stronger garage never gets any.
 
-Garage value counts core and plow-line levels at their shop prices plus each equipped gear item at what it cost to
-buy and level. Catch-up coins (🎁 on a price) pay first, for upgrades **or gear** (buying new items, levelling them,
+Garage value counts core and plow-line levels at their shop prices plus every equipped gear item (any number of
+them) at what it cost to buy and level. Catch-up coins (🎁 on a price) pay first, for upgrades **or gear** (buying new items, levelling them,
 and re-equipping). Whatever they buy is **yours to keep** once the match starts. Don't want to shop? **⚡ AUTO-SPEND**
 spends all of it in one click: first it raises every shared, non plow-specific upgrade to the opponent's level
 (the catch-up always covers that), then it spreads the rest evenly, always buying the cheapest next step among
-the core upgrades, your plow's line, levelling your equipped gear and filling empty gear slots. You can still shop
+the core upgrades, your plow's line, levelling your equipped gear and buying (and equipping) gear you don't own yet.
+Owned items you took off stay off. Items that do nothing in a duel (Lucky Magnet, Snow Globe) are skipped. You can still shop
 by hand before or after, and then keep buying with your own coins.
 
 ## Netcode

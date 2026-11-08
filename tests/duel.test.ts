@@ -4,7 +4,7 @@ import {
   encodeSnap, encodeSnow, fromJson, quantDepth, seqNewer, toJson, type InputFrame, type SnapHeader,
 } from '../src/net/protocol';
 import { CATCHUP_MAX, DUEL_ZONE, catchUp, catchUpBonus, cleanDuelGear, cleanLevels, duelBonus, duelPower, duelSpent, garageSpent, sharedMatchCost } from '../src/config/duel';
-import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, gearSpent } from '../src/config/gear';
+import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, gearSpent, grantLevels } from '../src/config/gear';
 import { ZONES } from '../src/config/zones';
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/config/upgrades';
 import { Progression, computeStatsFor } from '../src/core/Progression';
@@ -402,7 +402,7 @@ describe('SnapBuffer (opponent interpolation)', () => {
 
 describe('height sync (terrain: feet height, vertical speed, airborne)', () => {
   it('is part of protocol v4: three floats at the end of each 35-float plow block', () => {
-    expect(PROTOCOL_VERSION).toBe(4);
+    expect(PROTOCOL_VERSION).toBe(5);
     expect(NET_PLOW_LEN).toBe(35);
     expect([NP.y, NP.vy, NP.air]).toEqual([32, 33, 34]);
     const idx = Object.values(NP);
@@ -475,7 +475,7 @@ describe('duel garage gear', () => {
 
   it('duelSpent values equipped gear at its real price, not at the stat curves', () => {
     const gear = { [common.id]: 3 };
-    const levels = { ...(gearLevels({ owned: gear, equipped: { [common.slot]: common.id } }) as Record<string, number>), engine: 2 };
+    const levels = { ...(gearLevels({ owned: gear, equipped: [common.id] }) as Record<string, number>), engine: 2 };
     expect(duelSpent(levels, gear)).toBe(garageSpent({ engine: 2 }) + gearSpent(common, 3));
     expect(duelSpent({ engine: 2 }, {})).toBe(garageSpent({ engine: 2 }));
   });
@@ -484,18 +484,28 @@ describe('duel garage gear', () => {
     const fake = { [common.id]: 10 };
     // Claims a ★10 item but fights with none of its stats: valued on the levels alone.
     expect(duelSpent({ engine: 2 }, fake)).toBe(garageSpent({ engine: 2 }));
-    const grants = gearLevels({ owned: { [common.id]: 1 }, equipped: { [common.slot]: common.id } }) as Record<string, number>;
+    const grants = gearLevels({ owned: { [common.id]: 1 }, equipped: [common.id] }) as Record<string, number>;
     // Fights with ★1 stats but claims ★10: also rejected.
     expect(duelSpent({ ...grants }, fake)).toBe(garageSpent(grants));
   });
 
-  it('cleanDuelGear drops unknown ids, bad levels and second items in a slot', () => {
+  it('cleanDuelGear drops unknown ids and bad levels, and keeps several items in a slot (multi-equip)', () => {
     const sameSlot = GEAR.filter((d) => d.slot === common.slot);
-    const raw: Record<string, unknown> = { nope: 3, [sameSlot[0].id]: 99, [sameSlot[1].id]: 2, bad: 'x' };
+    const raw: Record<string, unknown> = { nope: 3, [sameSlot[0].id]: 99, [sameSlot[1].id]: 2, bad: 'x', [sameSlot[2]?.id ?? 'x']: 0 };
     const g = cleanDuelGear(raw);
-    expect(Object.keys(g)).toEqual([sameSlot[0].id]);
+    expect(Object.keys(g)).toEqual([sameSlot[0].id, sameSlot[1].id]);
     expect(g[sameSlot[0].id]).toBe(GEAR_MAX_LEVEL);
+    expect(g[sameSlot[1].id]).toBe(2);
     expect(cleanDuelGear(null)).toEqual({});
+    expect(cleanDuelGear(['steelWedge'])).toEqual({});
+  });
+
+  it('duelSpent counts every equipped item, and stacked grants of a shared stat must match the levels', () => {
+    // Turbine Fan + Frostbite Edge both grant Whirlwind: the levels carry the sum.
+    const gear = { turbineFan: 3, frostEdge: 2, steelWedge: 1 };
+    const levels: Record<string, number> = { ...(gearLevels({ owned: gear, equipped: Object.keys(gear) }) as Record<string, number>), engine: 1 };
+    expect(levels.whirl).toBe(grantLevels(GEAR_BY_ID.turbineFan.grants[0], 3) + grantLevels(GEAR_BY_ID.frostEdge.grants[1], 2));
+    expect(duelSpent(levels, gear)).toBe(garageSpent({ engine: 1 }) + gearSpent(GEAR_BY_ID.turbineFan, 3) + gearSpent(GEAR_BY_ID.frostEdge, 2) + gearSpent(GEAR_BY_ID.steelWedge, 1));
   });
 
   it('the bonus buys temporary gear that counts in effective levels and is committed at match start', () => {
@@ -508,7 +518,7 @@ describe('duel garage gear', () => {
     expect(w.buyItem(common.id)).toBe(true);
     expect(w.itemLevel(common.id)).toBe(2);
     expect(w.isEquipped(common.id)).toBe(true);
-    const grants = gearLevels({ owned: { [common.id]: 2 }, equipped: { [common.slot]: common.id } });
+    const grants = gearLevels({ owned: { [common.id]: 2 }, equipped: [common.id] });
     expect(w.effectiveLevels()).toMatchObject(grants);
     expect(w.bonus).toBe(1e6 - gearCost(common, 0) - gearCost(common, 1));
     // Nothing reaches the save until the match starts...
@@ -572,7 +582,7 @@ describe('DuelWallet AUTO-SPEND', () => {
     const p = new Progression();
     p.data.coins = coins;
     p.data.upgrades = {};
-    p.data.gear = { owned: {}, equipped: {} };
+    p.data.gear = { owned: {}, equipped: [] };
     p.save();
     return p;
   };
@@ -587,7 +597,7 @@ describe('DuelWallet AUTO-SPEND', () => {
     expect(n).toBeGreaterThan(5);
     expect(w.level('engine')).toBeGreaterThanOrEqual(3);
     expect(w.level('armor')).toBeGreaterThanOrEqual(2);
-    // It spread: several core stats and at least one gear item, and every slot it filled is equipped.
+    // It spread: several core stats and at least one gear item, and every item it bought is equipped.
     const coreBought = ['engine', 'armor', 'packedIce', 'hopper'].filter((id) => w.level(id as UpgradeId) > 0);
     expect(coreBought.length).toBeGreaterThanOrEqual(3);
     const items = w.tempItemLevels();

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { GEAR, GEAR_SLOTS } from '../src/config/gear';
+import { GEAR, GEAR_BY_ID, GEAR_SLOTS } from '../src/config/gear';
 import { PLOWS, type PlowKind } from '../src/config/plows';
 import { GEAR_LOOKS, GearVisuals, gearLook } from '../src/entities/gearVisuals';
 
@@ -45,6 +45,28 @@ describe('gear visuals', () => {
     expect(v.flame).toBe(GEAR_LOOKS[tinted.id].flame);
     v.sync('classic', [], 2);
     expect(v.flame).toBeNull();
-    expect(GearVisuals.idsFrom({ charm: 'a', blade: 'b' })).toEqual(GEAR_SLOTS.map((s) => ({ charm: 'a', blade: 'b' } as Record<string, string>)[s.id]).filter(Boolean));
+    // Taking the tinted booster off while a plain one stays on also clears it.
+    const plain = GEAR.find((d) => d.slot === 'booster' && GEAR_LOOKS[d.id]?.flame === undefined)!;
+    v.sync('classic', [plain.id], 2);
+    expect(v.flame).toBeNull();
+  });
+
+  it('several items in one slot show as one per slot: the highest rarity (then priciest), in slot order', () => {
+    const rank = { common: 0, rare: 1, epic: 2, legendary: 3 } as const;
+    const all = GEAR.map((d) => d.id);
+    const shown = GearVisuals.showcase(all);
+    expect(shown.length).toBe(GEAR_SLOTS.length);
+    expect(shown.map((id) => GEAR_BY_ID[id].slot)).toEqual(GEAR_SLOTS.map((s) => s.id));
+    for (const id of shown) {
+      const d = GEAR_BY_ID[id];
+      for (const o of GEAR.filter((x) => x.slot === d.slot)) expect(rank[o.rarity] * 1e6 + o.cost).toBeLessThanOrEqual(rank[d.rarity] * 1e6 + d.cost);
+    }
+    // Unknown ids drop; the old one-per-slot map still reads.
+    expect(GearVisuals.showcase(['nope', 'luckyMagnet', 'snowGlobe'])).toEqual(['snowGlobe']);
+    expect(GearVisuals.idsFrom({ charm: 'luckyMagnet', blade: 'steelWedge' })).toEqual(['steelWedge', 'luckyMagnet']);
+    expect(GearVisuals.idsFrom(['luckyMagnet', 'steelWedge', 'spikedShare'])).toEqual(['spikedShare', 'luckyMagnet']);
+    // Building every item at once doesn't throw and stays one attachment set per slot.
+    const v = new GearVisuals(new THREE.Group(), new THREE.Group());
+    expect(() => v.sync('classic', all, 2.4)).not.toThrow();
   });
 });
