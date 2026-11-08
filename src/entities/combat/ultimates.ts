@@ -7,7 +7,7 @@ import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type
  *  nothing refills it. */
 /** ARSENAL's meter needs this much more damage against bots (its hits there are PVE_MULT x; overkill on dying bots
  *  is not counted, so it's below PVE_MULT): tuned so the SINGULARITY fills in about 20 s fresh (the faster charge asked for). */
-const PVE_ULT = 2.4;
+const PVE_ULT = 1.75;
 const ULT_CHARGE = { volt: 2700, brute: 2100, arsenal: 1200 } as const;
 const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🌀 SINGULARITY' } as const;
 /** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every

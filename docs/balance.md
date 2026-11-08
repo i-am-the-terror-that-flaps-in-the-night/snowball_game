@@ -231,6 +231,51 @@ Duel minigun alone, 2 s held: 42 HP of a 325-HP Classic; 0 of a 234-HP ARSENAL m
 
 Duel minigun alone, 2 s held: 86 HP of a 500-HP Classic; 0 of a 360-HP ARSENAL mirror.
 
+## Current numbers (ARSENAL's PvE bonus cut to 1.5x)
+
+The tables in the sections above predate the ARSENAL buff commits (cone blast, plate pierce, Mag Shotgun range / rate,
+Repulsor cooldown). After those, with every ARSENAL weapon hitting bots 3x as hard (`PVE_MULT`), it out-damaged the
+snowball plows about 3x on one target (+194% / +211% / +231% by tier) and doubled their ultimate damage. The bot sweep
+(`scripts/omega-probe.mjs`) showed it in real runs too: fresh, it cleared The Omega Works in 72 s against 177-256 s for
+the others, and at mid / high it finished most arenas 10-25% faster while barely getting hit.
+
+`PVE_MULT` is now 1.5 (the Duel never used it), and the SINGULARITY meter's matching divisor (`PVE_ULT`,
+`ultimates.ts`) went from 2.4 to 1.75 so it still fills in about 16 s fresh. ARSENAL keeps an edge on single targets
+(no ball shield, no slam / whirl, less HP); its cluster damage is now in line with the others.
+
+The distinct-primaries pass (Rad Dose, Arc Lance chains + paralysis, Wrecking Fist stagger, Magnetic Reel, strip
+scrap) left the sim's numbers unchanged: its dummies have 10M HP and stand still, so lingering doses, reels and shed
+shards barely register.
+
+#### fresh
+
+| plow | HP | 1-target DPS (vs plow mean) | cluster DPS | ult fill: fight / boss (s) | ult dmg, bots hit (vs mean) | duel TTK avg (vs mean) / min (s) |
+| classic | 150 | 78 (+5%) | 334 | 24.1 / 17.0 | 2722, 6 (-13%) | 6.3 (-7%) / 4.8 |
+| volt | 102 | 67 (-10%) | 272 | 20.7 / 39.4 | 2832, 8 (-9%) | 6.1 (-10%) / 4.7 |
+| brute | 162 | 82 (+10%) | 333 | 20.7 / 27.1 | 2850, 8 (-8%) | 6.7 (-1%) / 5.7 |
+| isotope | 132 | 71 (-5%) | 248 | 22.5 / 39.9 | 2908, 8 (-7%) | 7.7 (+14%) / 7.0 |
+| arsenal | 108 | 114 (+52%) | 358 | 15.9 / 18.7 | 4256, 8 (+37%) | 7.0 (+4%) / 5.5 |
+
+#### mid
+
+| plow | HP | 1-target DPS (vs plow mean) | cluster DPS | ult fill: fight / boss (s) | ult dmg, bots hit (vs mean) | duel TTK avg (vs mean) / min (s) |
+| classic | 325 | 436 (+21%) | 1716 | 23.4 / 9.7 | 11161, 6 (-9%) | 6.1 (-13%) / 5.2 |
+| volt | 221 | 291 (-19%) | 1490 | 20.5 / 38.3 | 11166, 8 (-9%) | 7.2 (+3%) / 5.8 |
+| brute | 351 | 412 (+14%) | 1747 | 19.3 / 21.4 | 11127, 8 (-9%) | 6.1 (-13%) / 5.9 |
+| isotope | 286 | 305 (-15%) | 1338 | 15.8 / 30.7 | 10846, 8 (-11%) | 9.1 (+29%) / 8.3 |
+| arsenal | 234 | 568 (+57%) | 2139 | 17.1 / 15.9 | 16773, 8 (+37%) | 6.6 (-6%) / 5.6 |
+
+#### high
+
+| plow | HP | 1-target DPS (vs plow mean) | cluster DPS | ult fill: fight / boss (s) | ult dmg, bots hit (vs mean) | duel TTK avg (vs mean) / min (s) |
+| classic | 500 | 1259 (-15%) | 5188 | 21.6 / 14.5 | 27603, 6 (-8%) | 7.2 (+9%) / 6.3 |
+| volt | 340 | 1433 (-4%) | 7497 | 26.4 / 33.1 | 27874, 8 (-8%) | 7.3 (+10%) / 6.7 |
+| brute | 540 | 1673 (+12%) | 7323 | 27.3 / 24.9 | 28048, 8 (-7%) | 5.3 (-21%) / 5.1 |
+| isotope | 440 | 1591 (+7%) | 7736 | 26.1 / 30.1 | 26451, 8 (-12%) | 7.3 (+9%) / 6.6 |
+| arsenal | 360 | 2472 (+66%) | 7611 | 26.0 / 16.8 | 40855, 8 (+35%) | 6.2 (-7%) / 6.0 |
+
+The four snowball plows sit within about ±20% of each other and every Duel kill takes at least 4.7 s (floor 4 s).
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

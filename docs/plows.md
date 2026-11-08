@@ -111,7 +111,7 @@ puddle sludge holds bots (0.6 s per tick).
 ## ARSENAL 🎯
 
 Not a plow at all: a futuristic magnetic / laser vehicle with no blade and no snowball (+10% speed, -10% HP). **Every
-weapon hits bots 3x as hard** (Campaign, Survival, Brawl); in the Duel it fights at normal strength. Two huge rugged
+weapon hits bots 1.5x as hard** (Campaign, Survival, Brawl); in the Duel it fights at normal strength. Two huge rugged
 off-road wheels carry the nose (armoured hubs, glowing cyan rims, they spin with the ground speed); there are no
 wheels at the back: the rear hovers on a **gyro core**, three thin armoured rings nested like a gyroscope, each
 spinning on its own axis round a small white-hot crystal, held in an armoured cradle between two short struts and
@@ -149,7 +149,7 @@ singularity) rips a shard off it, bosses every 6% (at most 2 per hit), and every
 own shard hits and the field count at a quarter rate (a ring grinding a boss slowly tops itself up, but stays full only
 while you fight). A shard torn off within 12 m flies in and orbits the vehicle 3.5 m out for 15 s, up to 4 + level
 shards (12 at most); each shard that passes through a bot hits it, each bot at most every 0.4 s per shard; all of it
-gets the 3x PvE bonus against bots. In the Duel the opponent sheds shards the same way.) The line ids are the old ones (armCannon,
+gets the 1.5x PvE bonus against bots. In the Duel the opponent sheds shards the same way.) The line ids are the old ones (armCannon,
 armLaser, armMissiles, ...), so saved levels carry over.
 
 The snowball lines still pay off: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds shotgun

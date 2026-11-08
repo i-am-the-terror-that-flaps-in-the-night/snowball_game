@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { Combat } from '../src/entities/Combat';
+import { PVE_MULT } from '../src/entities/combat/arsenal';
 import { computeStatsFor } from '../src/core/Progression';
 import { HELD_BIT, INPUT_BYTES, PressTracker, decodeInput, encodeInput, type InputFrame } from '../src/net/protocol';
 import { NetInput } from '../src/duel/plumbing';
@@ -190,7 +191,7 @@ describe('MAG SHOTGUN (SPACE)', () => {
     const { stats, log } = shoot([near], 0.05);
     const nearDmg = sum(log, near);
     // Point-blank: all 8 pellets at full damage (x the PvE bonus), no shove.
-    expect(nearDmg).toBeCloseTo(8 * stats.gunDamage * stats.damageMult * 3, 3);
+    expect(nearDmg).toBeCloseTo(8 * stats.gunDamage * stats.damageMult * PVE_MULT, 3);
     expect(log[0].kb).toBeLessThan(1);
     const farBot = bot(0, 10, 1e6);
     const r2 = shoot([farBot], 0.05);
@@ -244,7 +245,7 @@ describe('MAG REPULSOR (E)', () => {
     run(0.4);
     const hits = log.filter((h) => h.e === ahead);
     expect(hits.length).toBe(1);
-    expect(hits[0].n).toBeCloseTo(stats.laserDps * 1.5 * stats.damageMult * 3, 3);
+    expect(hits[0].n).toBeCloseTo(stats.laserDps * 1.5 * stats.damageMult * PVE_MULT, 3);
     expect(hits[0].kb).toBeGreaterThan(12);
     expect(hits[0].kz).toBeGreaterThan(0); // away from the vehicle
     for (const e of [behind, beyond, wide]) expect(e.hp).toBe(e.maxHp);
