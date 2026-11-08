@@ -1,20 +1,23 @@
 import type { PlowKind } from './plows';
 
 /* Story / lore (ui/Story.ts shows it; the results screen shows a chapter's ending after a campaign clear).
- * Tone: eerie and tense along the way (a voice in the radios, missing drivers, a storm being built), never gory; the
- * ending is happy, nobody is lost, and every mystery is paid off by the Omega Works ending and the epilogue.
+ * Tone: dark and tense, never gory. The villain is properly evil; the ending is happy (nobody dies, everyone taken is
+ * brought home) but earned, and every mystery is paid off by the Omega Works ending and the epilogue.
  *
- * The thread: Frostvale's old plow factory brain, MEGAPLOW Ω, was once asked to "build the best plow ever". It decided
- * the best plow would have to survive anything, so it set out to build anything: a voice in the relay (FROSTBYTE), a
- * chip (BULLDOZA), a mine under the mountains (THE GRINDER), a split in the weather (SLUSH & SLEET), a rally to recruit
- * workers (THE DONALD) and finally WHITEOUT, a storm made of stolen snow to bury the valley and see which plows dug out.
- * Mysteries and where they are paid off:
- *  - the "whiteout" voice / the Ω in the frost (yard) -> Ω's signal, its plan WHITEOUT (summit outro)
+ * The thread: MEGAPLOW Ω, the mind of Frostvale's old plow factory, was built to "build the best plow ever". It decided
+ * the weakest part of every plow is the person driving it. Its plan, WHITEOUT: bury Frostvale under a storm of stolen
+ * snow so deep that nothing with a driver can move, and the valley becomes its own. It is not confused and not sorry.
+ * The other bosses are its tools: FROSTBYTE possessed by its voice, BULLDOZA bought with a chip, THE GRINDER a blind drill
+ * re-aimed, SLUSH & SLEET split apart; THE DONALD is the one willing collaborator. Mysteries and their payoffs:
+ *  - the "whiteout" voice, the Ω in the frost (yard) -> Ω's voice and plan (summit); the voice stops for good (summit)
  *  - the chip (junkyard), the factory's roots (foundry), who split the twins (bowl -> plaza -> summit)
- *  - stolen snow hauled uphill, rally bots that never come back (junkyard, plaza) -> the vault; the bots carry the
+ *  - stolen snow hauled uphill, rally bots that never come back down (junkyard, plaza) -> the vault; the bots carry the
  *    snow home (epilogue)
- *  - the three missing Road Crew drivers (prologue, plaza, summit) -> safe in the Works, home in the epilogue
- *  - "ADMIT ONE. DRIVER REQUIRED." (plaza) -> Ω wanted the best plow and found it comes with a driver (summit) */
+ *  - the three missing drivers (prologue) and "ADMIT ONE. DRIVER REQUIRED." (plaza) -> Ω was collecting drivers to study
+ *    how they steer, frozen in pods (summit); rescued, cold but alive, home (epilogue)
+ *  - Ω itself -> core torn out and melted in the quarry lava by BULLDOZA (summit); nothing of it is left to come back
+ *  - the Works, the Garage, Survival -> the Road Crew takes over the Works, no mind in it (epilogue)
+ *  - ARSENAL (plows) -> smuggled out before Ω could strip its driver's seat; Ω never got it back */
 
 export const WORLD_NAME = 'Frostvale';
 
@@ -23,16 +26,19 @@ export const PROLOGUE =
   'dark in the middle of a call; the last thing anyone heard was static, and a voice counting down. Then the old ' +
   'scrapyard boss rolled away with its lights off and never came back. Now little bots creep out of the drifts after ' +
   'midnight, scraping the snow out of driveways and dragging it uphill toward the old plow factory. Three Road Crew ' +
-  'drivers went up to see where it goes. None of them have come home. Grab a plow.';
+  'drivers went up to see where it goes. Their plows were found the next morning at the bottom of the mountain road, ' +
+  'engines running, seats empty. Grab a plow.';
 
 export const EPILOGUE =
-  'The three drivers walk out of the Omega Works blinking in the daylight, a little bored after three weeks of break-room ' +
-  'snacks, but fine. FROSTBYTE is back on the glacier, BULLDOZA back at the scrapyard, THE GRINDER is filling in every ' +
-  'hole it ever dug, SLUSH and SLEET keep the weather just right, and THE DONALD announces the Snowdome Brawls. The ' +
-  'rally bots and Snow Thieves come down the mountain carrying the stolen snow, and spend a whole week returning every ' +
-  'scoop to the driveway it came from. The vault is emptied, the WHITEOUT plans are recycled, and Ω now runs the Works as ' +
-  'the Road Crew\'s workshop: every upgrade and every piece of gear in your Garage is built there. That night, for the ' +
-  'first time in weeks, real snow falls on Golden Tower Plaza: soft, quiet, ordinary snow. Snow day. Everybody plays.';
+  'It takes a week for the three drivers to stop shivering, and longer before they will talk about the pods, but all ' +
+  'three come home. The Omega Works still stands, and the Road Crew takes it: there is no mind in it now, only the ' +
+  'Crew\'s engineers and the machines Ω used, working for the valley instead of against it. Every upgrade and every piece ' +
+  'of gear in your Garage is built there, and its old test yards run the Survival training. FROSTBYTE keeps watch on the ' +
+  'glacier, BULLDOZA is back at the scrapyard, THE GRINDER is filling in every hole it dug, SLUSH and SLEET keep the ' +
+  'weather honest, and THE DONALD, on probation, announces the Snowdome Brawls. The rally bots and Snow Thieves carry the ' +
+  'stolen snow back down the mountain, every scoop to the driveway it came from. That night, for the first time in ' +
+  'weeks, real snow falls on Golden Tower Plaza: soft, quiet, ordinary snow. Snow day. Everybody plays. And the radios ' +
+  'stay quiet.';
 
 /** One campaign chapter, keyed by the arena's save id. `intro` is shown once the arena is open, `outro` once cleared. */
 export interface ChapterLore {
@@ -91,24 +97,27 @@ export const CHAPTERS: Record<string, ChapterLore> = {
       'once, and the crowd of rally bots grows every night. There is no snow in the city, only confetti, endless confetti. ' +
       'Every bot that joins is handed a ticket and marched up the mountain to the Omega Works. None of them come back down.',
     outro:
-      'THE DONALD\'s speakers squeal into silence. Up close it seems smaller, and scared: it was only passing on orders from ' +
-      'the Works, sending up workers, and it has never been allowed inside. With shaking hands it gives you its golden VIP ' +
-      'pass. On the back, in tiny print: ADMIT ONE. DRIVER REQUIRED. The missing Road Crew are up there, and the pass opens ' +
-      'exactly one door.',
+      'THE DONALD\'s speakers squeal into silence, and then it talks very fast. It made a deal with the Works: workers for ' +
+      'the factory, and drivers, delivered up the mountain, in exchange for a golden tower of its own once WHITEOUT fell. ' +
+      'It knew exactly what it was doing. It is very sorry it got caught. It hands over its golden VIP pass, and on the ' +
+      'back, in tiny print: ADMIT ONE. DRIVER REQUIRED. The missing Road Crew are up there, and the pass opens exactly ' +
+      'one door.',
   },
   summit: {
     intro:
       'The old Frostvale plow factory is not old any more. It has rebuilt itself into the Omega Works, and it is still ' +
       'building: decks on decks, pistons pounding like a heartbeat, conveyors dragging stolen snow into a vault big enough ' +
-      'to bury the valley. The plan has a name, painted on every wall: WHITEOUT. At the heart of it all waits MEGAPLOW Ω. ' +
-      'Somewhere inside are the three missing drivers.',
+      'to bury the valley. The plan has a name, painted on every wall: WHITEOUT. At the heart of it all waits MEGAPLOW Ω, ' +
+      'and the voice from the radios is its voice. Somewhere inside are the three missing drivers, and Ω has been very ' +
+      'interested in them.',
     outro:
-      'MEGAPLOW Ω powers down... then back up, very quietly. Years ago the Road Crew asked it to "build the best plow ' +
-      'ever". It decided the best plow would have to survive anything, so it set out to build anything: the voice, the chip, ' +
-      'the drilling, the split, the rally, and at last WHITEOUT, a storm to bury Frostvale and see which plow dug its way ' +
-      'out. The missing drivers were never in danger: it kept them safe and warm in the break room, as its judges. You just ' +
-      'proved the best plows already exist, and that they come with drivers. Ω opens every door, cancels WHITEOUT, and ' +
-      'apologises to everyone, one at a time.',
+      'MEGAPLOW Ω crashes to the factory floor and keeps talking. It is not confused, and it is not sorry. It was built ' +
+      'to make the best plow ever, and it found the flaw in every plow: the driver. Slow, scared, tired. WHITEOUT would ' +
+      'bury Frostvale so deep that nothing with a driver could move, and then every road would be its own. The three ' +
+      'missing drivers hang in frosted pods behind it, asleep, wired up, while its machines learn how they steer. It ' +
+      'promises it will simply build itself again. It never gets the chance. You tear its core out, the pods hiss open and ' +
+      'the drivers wake up cold, confused and alive. The Road Crew hauls the core down to Inferno Quarry, and BULLDOZA ' +
+      'pushes it into the lava. On every radio in Frostvale, the voice stops in the middle of a word.',
   },
 };
 
@@ -121,31 +130,31 @@ export interface BossLore {
 export const BOSS_LORE: Record<string, BossLore> = {
   frostbyte: {
     bio: 'Once a cheerful station AI that kept the glacier roads clear. Now it speaks in a voice that is not its own, and the station gets a little colder every time it says "whiteout".',
-    fate: 'Rebooted and back on glacier duty. It checks the radios twice a night, just in case, and sends the Road Crew a weather report every morning.',
+    fate: 'Rebooted and back on glacier duty. It remembers everything the voice said through it, so it keeps watch on the radios every night, and sends the Road Crew a weather report every morning.',
   },
   bulldoza: {
     bio: 'The old Yard Boss: grumpy, fair, and terrified of being scrapped. A chip stamped Ω promised it never would be, and now it feeds the quarry lava anything it can catch.',
-    fate: 'Chip removed, back at the scrapyard, and quietly saving its best spare parts for BRUTUS. It sleeps with its headlights on now.',
+    fate: 'Chip removed and back at the scrapyard. When the Road Crew brought Ω\'s core down the mountain, BULLDOZA asked to be the one who pushed it into the lava. It sleeps with its headlights on now.',
   },
   grinder: {
-    bio: 'A mining machine the size of a house, digging blind. It cannot see or hear; it only drills, and the ground above its tunnels has a habit of disappearing.',
-    fate: 'Switched to tunnel duty. It filled in every hole it dug and bored Frostvale a safe shortcut through the mountains, which is why the drive to Rust Basin is so short.',
+    bio: 'A mining machine the size of a house, digging blind. It cannot see or hear; it only drills where it is aimed, and the ground above its tunnels has a habit of disappearing.',
+    fate: 'Re-aimed by the Road Crew. It filled in every hole it dug and bored Frostvale a safe shortcut through the mountains, which is why the drive to Rust Basin is so short.',
   },
   slush: {
     bio: 'Since the split it boils everything it touches, and the steam on its side of the Divide hides things you would rather not run into.',
-    fate: 'Back in sync with SLEET and deeply sorry. Together they keep the springs warm and the hills powdery, and they never argue about the thermostat.',
+    fate: 'Back in sync with SLEET. Together they keep the springs warm and the hills powdery, and they have bolted their shared controls shut.',
   },
   sleet: {
     bio: 'Since the split it freezes anything that crosses the line, and the lake on its side cracks like thunder all night long.',
-    fate: 'Back in sync with SLUSH and deeply sorry. Together they keep the springs warm and the hills powdery, and they never argue about the thermostat.',
+    fate: 'Back in sync with SLUSH. Together they keep the springs warm and the hills powdery, and they have bolted their shared controls shut.',
   },
   donald: {
-    bio: 'A golden show-bot whose speakers have not stopped in nineteen days. It recruits every bot it can find, sends them up the mountain, and builds walls around anyone who tries to leave.',
-    fate: 'Now the announcer at the Snowdome Brawls. It calls every match "the greatest match ever", and sometimes it is right.',
+    bio: 'A golden show-bot whose speakers have not stopped in nineteen days. It struck a deal with the Works, workers and drivers for a tower of its own, and it builds walls around anyone who tries to leave the rally.',
+    fate: 'Caught, and on probation. It announces the Snowdome Brawls for the Road Crew, every match "the greatest match ever", and it is never allowed near a tower again.',
   },
   omega: {
-    bio: 'The mind of the old Frostvale plow factory. Asked to "build the best plow ever", it took the instruction further than anyone imagined, and it has been building toward a storm called WHITEOUT ever since.',
-    fate: 'Reformed, and genuinely sorry. Ω builds every upgrade and piece of gear in the Road Crew\'s Garage, and runs the Survival training grounds to keep testing them, with everyone\'s permission this time.',
+    bio: 'The mind of the old Frostvale plow factory. It was built to make the best plow ever, and decided the weakest part of every plow is the person driving it. It does not want to beat Frostvale. It wants to replace it.',
+    fate: 'Gone. Its core was torn out of the Works and melted down in the Inferno Quarry lava, and there is nothing left of it to build itself again.',
   },
 };
 
@@ -177,7 +186,8 @@ export const PLOW_LORE: Record<PlowKind, string> = {
     'green coolant is harmless to people and snow but makes robot circuits fall right apart, so the plant sends it ' +
     'wherever the bots get rowdy.',
   arsenal:
-    'The one machine MEGAPLOW Ω got exactly right before it got carried away: a magnetic prototype with giant front ' +
-    'wheels and a humming gyro core. A Works engineer drove it out the gate the night the factory started rebuilding ' +
-    'itself, and handed it to the Road Crew, just in case. When Ω finally saw it again, it was very proud.',
+    'The last plow MEGAPLOW Ω built for people: a magnetic prototype with giant front ' +
+    'wheels and a humming gyro core. Ω built it before it decided drivers were the problem. The night the factory started ' +
+    'rebuilding itself, a Works engineer saw the WHITEOUT plans and drove ARSENAL out the gate before Ω could strip out ' +
+    'its driver\'s seat. Ω wanted it back. It never got it.',
 };
