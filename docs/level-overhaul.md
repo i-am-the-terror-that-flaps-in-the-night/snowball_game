@@ -1,6 +1,10 @@
 # Level overhaul plan
 
-Status: in progress. This is the agreed design; keep it updated as work lands.
+Status: tracks A-F have landed (biomes, terrain physics, 3D combat, modes / UX, the Omega Works, ARSENAL 3D; arena 6
+balance check done). Still open, see Follow-ups: the biome challenges and trophies (lava kills, airtime, air-slam
+kills) with their lifetime counters and `LIFE` keys, and the time-based challenge retune (the `TODO(terrain retune)`
+notes in `src/config/challenges.ts`). Two deviations from this design are accepted as built (Duel venue, Inferno
+Quarry jumps).
 
 Goal: move the campaign off "snow only" into six distinct biomes, add real 3D movement (slopes, jumps, air slam, boss
 leap), and finish on a huge multi-level factory. Most changes are cosmetic or additive; the core loop (plow snow into
