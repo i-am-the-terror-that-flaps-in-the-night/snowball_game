@@ -39,7 +39,10 @@ const SHOCK_W = 1.8;
 const SHOCK_MULT = 1;
 /** Bots beside the one the fist lands on take this share. */
 const FIST_SPLASH = 0.35;
-const FIST_KNOCK = 5;
+const FIST_KNOCK = 8;
+/** Every jab that lands STAGGERS the bot it hits square (a short stun: it reels instead of shrugging it off), and the
+ *  fist crunches through frontal plates (pierce) — solid hits, not a thrown snowball. */
+const FIST_STAGGER = 0.18;
 const FIST_FINISH_KNOCK = 24;
 const FIST_FINISH_STUN = 0.5;
 /* ---- SAW CHARGE (E): length (s), push speed (m/s), damage tick, sideways fling (m/s), reach and damage per second. */
@@ -52,6 +55,7 @@ const SAW_BASE_DPS = 40;
 /** Share of the Buzzsaws line's dps (stats.sawDps) the charge adds. */
 const SAW_LINE = 0.5;
 const NO_STOP = { stop: false } as const;
+const _back = new THREE.Vector3();
 /** Spiked Hull: damage tick (s) and outward shove (m/s) on bots in reach. */
 const SPIKE_TICK = 0.3;
 const SPIKE_KNOCK = 3;
@@ -202,36 +206,56 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const killed = this.b.enemies.damage(e, dmg * share * st.damageMult * this.hitMult(e), {
         source: 'ram',
         knockback: new THREE.Vector3(_fwd.x * knock * share, 0, _fwd.z * knock * share),
-        stunSeconds: fin ? FIST_FINISH_STUN : undefined,
+        stunSeconds: fin ? FIST_FINISH_STUN : e === best ? FIST_STAGGER : undefined,
+        pierce: true,
         fromX: plow.position.x,
         fromZ: plow.position.z,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e);
       landed = true;
+      if (e === best) {
+        // Contact point: the face of the bot the fist hits.
+        _q.set(e.position.x - _fwd.x * e.radius * 0.8, e.position.y + e.radius * 0.7, e.position.z - _fwd.z * e.radius * 0.8);
+        this.fistImpact(_q, fin);
+        this.impactHit('punch', _q, fin ? 1.4 : 1);
+      }
       if (dealt > 0) {
         _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
-        ctx.fx.floatText(_q, `👊${Math.round(dealt)}`, fin ? '#ffd23a' : '#ffffff', fin ? 1.1 : 0.8);
+        ctx.fx.floatText(_q, `👊${Math.round(dealt)}`, fin ? '#ffb020' : '#ffe2b8', fin ? 1.25 : 0.9);
       }
     }
     this.clearTargets();
     if (fin) this.shockwave(plow, cx, cz, reach, dmg / FIST_FINISH);
-    // Fist FX at the knuckles: a puff on every jab, a shock ring + snow blast on the finisher.
+    // Fist FX: a whiff is just a dusty air-punch; a landed jab already threw sparks + grit at the contact point (see
+    // fistImpact). The finisher slams a shock ring into the ground. No white puffs: nothing that reads as snowballs.
     _q.set(cx, (plow.surfaceY || 0) + 1, cz);
     if (fin) {
-      ctx.fx.burst(_q, { color: 0xffffff, count: 26, speed: 11, size: 0.2, gravity: 16, life: 0.5 });
-      ctx.fx.burst(_q, { color: 0xffc21a, count: 12, speed: 8, size: 0.1, gravity: 10, life: 0.35 });
       _q.y = (plow.surfaceY || 0) + 0.1;
-      ctx.fx.ring(_q, R, 0xffc21a);
-      this.shake(0.45);
-      this.impactHit('pound', _q, landed ? 0.6 : 0.3, landed ? undefined : NO_STOP);
-      this.b.audio.play('slam', { pitch: 0.75 });
-      if (landed) this.b.audio.play('thud', { pitch: 1.2, volume: 0.7 });
+      ctx.fx.ring(_q, R, 0xff9a2a);
+      ctx.fx.smoke(_q, { count: 8, color: 0x8a7f72, size: 1.1, grow: 2.4, life: 0.8, speed: 6, up: 0.6, rise: 0.4, drag: 2.2, spread: 0.8, opacity: 0.6, radial: true });
+      this.shake(landed ? 0.55 : 0.35);
+      if (!landed) this.impactHit('pound', _q, 0.3, NO_STOP);
+      this.b.audio.play('slam', { pitch: 0.7 });
+      if (landed) this.b.audio.play('thud', { pitch: 0.9, volume: 0.9 });
     } else {
-      ctx.fx.burst(_q, { color: landed ? 0xfff2b0 : 0xffffff, count: landed ? 12 : 5, speed: 6, size: 0.12, gravity: 12, life: 0.3 });
-      if (landed) this.shake(0.12);
-      this.b.audio.play(landed ? 'ram' : 'dash', { pitch: landed ? 1.1 + step * 0.15 : 1.8, volume: landed ? 0.6 : 0.25 });
+      if (!landed) ctx.fx.smoke(_q, { count: 2, color: 0x9a9088, size: 0.4, grow: 1.6, life: 0.3, speed: 4, up: 0, rise: 0.2, drag: 3, spread: 0.3, opacity: 0.35 });
+      if (landed) this.shake(0.2);
+      if (landed) {
+        this.b.audio.play('thud', { pitch: 1.05 + step * 0.12, volume: 0.75 });
+        this.b.audio.play('ram', { pitch: 0.8 + step * 0.1, volume: 0.5 });
+      } else this.b.audio.play('dash', { pitch: 1.8, volume: 0.25 });
     }
+  }
+
+  /** Where a fist lands: hot metal sparks spraying back off the hull, dark grit and a dust puff, a warm flash. */
+  private fistImpact(at: THREE.Vector3, fin: boolean): void {
+    const fx = this.ctx.fx;
+    _back.set(-_fwd.x, 0.35, -_fwd.z);
+    fx.sparks(at, _back, { color: 0xffb040, count: fin ? 22 : 12, speed: fin ? 13 : 9, spread: 0.9, size: 0.07, length: 0.08, gravity: 14, life: 0.32 });
+    fx.sparks(at, _back, { color: 0xfff0c0, count: fin ? 8 : 4, speed: fin ? 16 : 11, spread: 0.5, size: 0.05, length: 0.1, gravity: 10, life: 0.2 });
+    fx.burst(at, { color: 0x3a3632, count: fin ? 10 : 5, speed: fin ? 8 : 5, size: 0.12, gravity: 20, life: 0.45 });
+    fx.smoke(at, { count: fin ? 4 : 2, color: 0x8a7f72, size: fin ? 0.9 : 0.55, grow: 2, life: 0.45, speed: 2.5, up: 0.4, rise: 0.3, drag: 3, spread: 0.4, opacity: 0.45 });
   }
 
   /** Finisher SHOCKWAVE: rolls on SHOCK_LEN m past the fist, hitting each bot in the lane once. */
@@ -264,10 +288,11 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       this.onPlayerHit(dealt, killed, e);
     }
     this.clearTargets();
-    // A line of snow bursts rolling out along the lane.
+    // A line of ground-cracking dust + rock grit rolling out along the lane.
     for (let k = 1; k <= 4; k++) {
       _q.set(cx + fx * k * 2, (plow.surfaceY || 0) + 0.3, cz + fz * k * 2);
-      ctx.fx.burst(_q, { color: 0xfff2b0, count: 8, speed: 5, size: 0.16, gravity: 14, life: 0.35 });
+      ctx.fx.burst(_q, { color: 0x5a4f46, count: 6, speed: 6, size: 0.14, gravity: 18, life: 0.4 });
+      ctx.fx.smoke(_q, { count: 2, color: 0x8a7f72, size: 0.8, grow: 2, life: 0.6, speed: 2, up: 1.5, rise: 0.4, drag: 2, spread: 0.6, opacity: 0.5 });
     }
   }
 

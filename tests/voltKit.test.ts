@@ -17,6 +17,7 @@ const bot = (x: number, z: number): Bot =>
 function rig(bots: Bot[]) {
   const press = new Set<string>();
   const held = new Set<string>();
+  const stuns: number[] = [];
   const plow = {
     position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, turretAim: 0, turretHeading: 0, whirlCharge: 1, surfaceY: 0,
     get eCharge() {
@@ -40,8 +41,9 @@ function rig(bots: Bot[]) {
       for (const b of bots) if (b.alive && Math.hypot(b.position.x - x, b.position.z - z) <= r + b.radius) o.push(b);
       return o;
     },
-    damage: (e: EnemyHandle, n: number, opts?: { freezeSeconds?: number }) => {
+    damage: (e: EnemyHandle, n: number, opts?: { freezeSeconds?: number; stunSeconds?: number }) => {
       const b = e as Bot;
+      stuns.push(opts?.stunSeconds ?? 0);
       b.dealt += n;
       b.hp -= n;
       b.frozen = Math.max(b.frozen, opts?.freezeSeconds ?? 0);
@@ -63,29 +65,45 @@ function rig(bots: Bot[]) {
       press.clear();
     }
   };
-  return { c, plow, press, held, run };
+  return { c, plow, press, held, run, stuns };
 }
 
 describe('VOLT-9 Tesla Rover', () => {
-  it('ARC LANCE hits the nearest bot ahead and chains to 2 more, never a bot behind', () => {
+  it('ARC LANCE hits the nearest bot ahead and chains a long way (6 hops), thinning per hop, never a bot out of chain reach', () => {
     const front = bot(0, 5);
     const c1 = bot(3, 7);
     const c2 = bot(-3, 8);
-    const c3 = bot(0, 13); // 4th in line: beyond the 2 base hops
-    const behind = bot(0, -4);
-    const r = rig([front, c1, c2, c3, behind]);
+    const c3 = bot(0, 13);
+    const c4 = bot(5, 18);
+    const c5 = bot(0, 24);
+    const lone = bot(0, 60); // far past every hop
+    const r = rig([front, c1, c2, c3, c4, c5, lone]);
     r.held.add('Space');
     r.run(1);
-    expect(front.dealt).toBeGreaterThan(0);
-    expect(c1.dealt).toBeGreaterThan(0);
-    expect(c2.dealt).toBeGreaterThan(0);
+    for (const b of [front, c1, c2, c3, c4, c5]) expect(b.dealt).toBeGreaterThan(0);
     expect(c1.dealt).toBeLessThan(front.dealt);
-    expect(c3.dealt).toBe(0);
-    expect(behind.dealt).toBe(0);
+    expect(c5.dealt).toBeLessThan(c1.dealt);
+    expect(lone.dealt).toBe(0);
     r.held.clear();
     const before = front.dealt;
     r.run(0.5);
     expect(front.dealt).toBe(before);
+  });
+
+  it('ARC LANCE arcs can PARALYSE (a stun), and a paralysed bot is immune for a while after', () => {
+    const front = bot(0, 5);
+    const r = rig([front]);
+    const rnd = Math.random;
+    Math.random = () => 0; // every roll succeeds
+    try {
+      r.held.add('Space');
+      r.run(1);
+    } finally {
+      Math.random = rnd;
+    }
+    const stuns = r.stuns.filter((s) => s > 0);
+    expect(stuns.length).toBe(1); // immunity: only the first roll lands within the window
+    expect(stuns[0]).toBeGreaterThanOrEqual(1);
   });
 
   it('ARC LANCE reach grows with Mega Hopper', () => {

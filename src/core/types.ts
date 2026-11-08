@@ -563,7 +563,7 @@ export interface CameraRigAPI {
 }
 
 /** Impact feel kinds (see fx/impact.ts for the per-kind light colour, hit-stop and camera numbers). */
-export type ImpactKind = 'slam' | 'wreck' | 'kill' | 'bossHit' | 'bossKill' | 'pound' | 'clap' | 'meltdown' | 'nuke' | 'player';
+export type ImpactKind = 'slam' | 'wreck' | 'kill' | 'bossHit' | 'bossKill' | 'pound' | 'punch' | 'clap' | 'meltdown' | 'nuke' | 'player';
 
 export interface ImpactOpts {
   /** false = light + camera only, no hit-stop (rival-vs-rival effects, slams that hit nothing). */

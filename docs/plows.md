@@ -26,8 +26,11 @@ No blade: a low, wide rover under a crackling coil tower. It doesn't plow snow o
 snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% damage, but -15% HP.
 
 - **SPACE (hold): Arc Lance.** Every 0.15 s an arc jumps from the tower to the nearest bot within 60° of the nose and
-  9 m (Mega Hopper adds reach), then chains to 2 more bots nearby at half damage. It stays locked onto its target
-  while that bot stays in reach. Overclock speeds the arc up.
+  9 m (Mega Hopper adds reach), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
+  nearest unhit bot within 8 m, the first hop at half damage and each one after keeping 90% of the one before. Every
+  arc hit (any hop) has a 7% chance to **PARALYSE** the bot for 1.2 s (a stun; bosses half); a paralysed bot can't be
+  paralysed again for 2.5 s after. It stays locked onto its target while that bot stays in reach. Overclock speeds
+  the arc up.
 - **E: Static Field.** An electrified field rides with the rover for 2.5 s (6.5 m, wider with Tesla Field). It pulses
   every 0.5 s, the first pulse a bigger burst: each pulse damages and stuns every bot inside for 0.7 s, so bots caught in
   it stay locked down while you drive through a pack. It recharges on the E timer (Whirlwind Turbine and Overclock
@@ -51,7 +54,10 @@ No blade, no snowball (snow still drags on the tracks). +35% HP and +20% damage,
 - **SPACE (hold): Wrecking Fist.** Punch, punch, finisher, one every 0.26 s with **no cooldown**: the combo loops for
   as long as you hold SPACE. The bot nearest the fist line takes the full hit, the rest of the fist's arc 35%. The
   finisher (both fists) hits 2.2x, stuns 0.5 s, hurls the bot away and sends a **shockwave** rolling 8 m on down a
-  lane ahead, hitting every bot in it for a jab's damage and shoving it back. Fists reach 4 m past the hull. In the Duel BRUTUS hits at 0.7x so it stays fair.
+  lane ahead, hitting every bot in it for a jab's damage and shoving it back. Fists reach 4 m past the hull.
+  **Solid hits, not snowballs:** every jab that lands square **staggers** the bot (0.18 s stun, it reels back), punches
+  crunch through frontal plates (Brute Dozer / Frostbyte front take 80% instead of 30% / 50%), and each landed jab gives
+  a short meaty hit-stop with hot metal sparks, grit and dust at the contact point (no white puffs). In the Duel BRUTUS hits at 0.7x so it stays fair.
 - **E: Saw Charge.** A 0.6 s forward charge (17 m/s) with both saws screaming: every bot around the nose is shredded
   every 0.1 s and flung aside. Recharge = the E (Whirlwind Turbine) cooldown.
 - **F: Ground Pound**, a free leap you can't be hit during, then an AoE damage ring with knockback and stun.
@@ -73,11 +79,16 @@ it).
 A long, low nuclear flatbed: a stubby armoured cab, a big glowing reactor capsule lying on the bed with control rods
 bobbing out of it, twin cooling stacks, a spinning vent fan and a sprayer nozzle over the nose. No blade, no snowball
 (deep snow still slows it). +5% speed and +10% HP; bots it irradiates glow green, take +30% damage from you
-and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose).
+and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose, or for as long as a RAD DOSE is
+still soaking in).
 
 - **SPACE (hold): Rad Sprayer.** Every 0.12 s (faster with Overclock) the nozzle hoses a glowing cone (about 70°
-  wide, 8.5 m + Mega Hopper reach). The nearest bot in it takes the full dose, every other bot in the cone 85%; all
-  of them get irradiated. Half of the spray's damage counts toward Critical Mass.
+  wide, 8.5 m + Mega Hopper reach). The nearest bot in it takes the full dose, every other bot in the cone 55%; all
+  of them get irradiated. **RAD DOSE (extended radiation):** only 35% of a spray hit lands on contact; the rest soaks
+  in as a dose (x1.4 for the wait) that keeps burning long after you stop spraying or move on — a slice every 0.5 s
+  (a fifth of what's left, plus a small floor), roughly 8-15 s of burn after a good soak — and the bot stays
+  irradiated (+30% damage taken, base burn) while it carries a dose. Contagion: every burn leaks 20% into the nearest
+  undosed bot within 3.5 m, so a dense pack keeps cooking. Half of the spray's damage counts toward Critical Mass.
 - **E: Fallout Trail.** For 4 s the reactor dumps coolant: a toxic puddle every 0.3 s behind you (about 2 m wide,
   3.5 s each) that doses and irradiates every bot driving through it and grips it for a moment (once per 0.3 s,
   overlaps don't stack). Recharge = the E
@@ -113,7 +124,10 @@ close and aims by steering: neither main weapon auto-aims.
   follow a bot on a slope). While held it fires a blast about every 0.55 s (faster with levels): 8 cyan pellets fanned
   across a 36° cone (Whirlwind Turbine adds more), and every bot inside the cone takes the WHOLE blast (no pellet luck). Short reach (~11 m, a
   little more with levels and Mega Hopper); pellets hit full out to 6 m and fall to 70% at full reach, so it is
-  deadliest point-blank, where a blast also shoves the bot back. All of one blast's pellets on a bot land as one hit
+  deadliest point-blank. **MAGNETIC REEL** (its signature): every bot a blast leaves alive is magnetized and dragged
+  for 0.9 s toward a sweet spot 3.6 m in front of the emitter (cyan sparks stream off it), so a far bot gets reeled
+  into full-damage range and a pack gets clumped up for the next blast; nothing is shoved away. In the Duel (a pilot
+  can't be dragged) a point-blank blast shoves instead. All of one blast's pellets on a bot land as one hit
   (one armour check; in the Duel it is soft-capped as one hit, so even a point-blank blast can't one-shot).
 - **E: Mag Repulsor.** A magnetic wave bursts out of the nose across a 60° wedge (Snow Compactor widens it, 90° at
   most) and sweeps out to ~11 m in 0.3 s: a cyan arc wall racing over the snow, field-line streaks and a gyro flare.

@@ -41,6 +41,8 @@ const KINDS: Record<ImpactKind, KindDef> = {
   bossHit: { color: 0xffffff, light: 0, range: 0, stop: 0.05, kick: 0.25, fov: 0 },
   bossKill: { color: 0xffd27a, light: 260, range: 40, stop: 0.09, kick: 0.9, fov: -6, force: true },
   pound: { color: 0xdff2ff, light: 110, range: 26, stop: 0.075, kick: 0.7, fov: -4 },
+  /** BRUTUS's Wrecking Fist jab: a short, warm, meaty crunch (not a slam). */
+  punch: { color: 0xffa040, light: 55, range: 12, stop: 0.035, kick: 0.28, fov: -1.5, force: true },
   clap: { color: 0x8fd8ff, light: 150, range: 28, stop: 0.07, kick: 0.6, fov: -4 },
   meltdown: { color: 0x6dff3a, light: 120, range: 26, stop: 0.065, kick: 0.55, fov: -3.5 },
   nuke: { color: 0x7dff4a, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true },

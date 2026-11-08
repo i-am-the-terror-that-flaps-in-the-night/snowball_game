@@ -40,6 +40,17 @@ export const sprayRange = (ballR: number) => 8.5 + 2 * Math.max(0, ballR - 1.2);
 const NOZZLE_Y = 1.25;
 const NOZZLE_Z = 2.3;
 const SPRAY_CRIT = 0.5;
+/** RAD DOSE: the sprayer's signature. Only SPRAY_DIRECT of a spray hit lands on contact; the rest soaks in as a dose
+ *  (x DOSE_BONUS for the wait) that keeps burning long after the nozzle moves on: each RAD_TICK the bot loses
+ *  dose/DOSE_TAU of it (plus a small floor so it always runs out), roughly 10-15 s of burn after a good soak. A dosed
+ *  bot stays irradiated (vulnerable + the base burn) for as long as it carries a dose, and leaks DOSE_SPREAD of every
+ *  burn into the nearest bot within DOSE_SPREAD_R m (contagion: a dense pack keeps cooking). */
+const SPRAY_DIRECT = 0.35;
+const DOSE_BONUS = 1.4;
+const DOSE_TAU = 5;
+const DOSE_FLOOR = 0.6;
+const DOSE_SPREAD = 0.2;
+const DOSE_SPREAD_R = 3.5;
 /** FALLOUT TRAIL (E): seconds of trail, a puddle every TRAIL_DROP s (TRAIL_N pooled), each PUDDLE_LIFE s; damage tick
  *  and dps (Half-Life pool dps share), radius (Half-Life pool radius share). */
 const TRAIL_SECONDS = 4;
@@ -129,7 +140,9 @@ export class IsotopeKit extends Kit implements VehicleKit {
       for (let i = 0; i < n; i++) {
         const e = hits[i];
         const hp0 = e.hp;
-        this.radHit(e, dmg * (e === near ? 1 : SPRAY_SPLASH), true, SPRAY_CRIT);
+        const share = dmg * (e === near ? 1 : SPRAY_SPLASH);
+        this.radHit(e, share * SPRAY_DIRECT, true, SPRAY_CRIT);
+        this.addDose(e, share * (1 - SPRAY_DIRECT) * DOSE_BONUS);
         if (this.sprayN % 2 === 0) {
           _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
           ctx.fx.burst(_q, { color: 0x9dff5a, count: 3, speed: 3, size: 0.1, gravity: -2, life: 0.4 });
@@ -229,6 +242,8 @@ export class IsotopeKit extends Kit implements VehicleKit {
   private pools: { disc: GroundDisc; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; t: number; life: number; tickT: number; from: CastOrigin }[] = [];
   /** Irradiated bots -> seconds of radiation left. */
   readonly rads = new Map<EnemyHandle, number>();
+  /** RAD DOSE still soaking in, per bot (raw damage, before damage mult / vulnerability). */
+  readonly doses = new Map<EnemyHandle, number>();
   /** Radiation burn tick timer. */
   private radBurnT = 0;
   /** Chain Reaction blasts queued by irradiated wrecks. */
@@ -275,6 +290,13 @@ export class IsotopeKit extends Kit implements VehicleKit {
   /** Dose a bot: (re)start its radiation timer. */
   private irradiate(e: EnemyHandle): void {
     if (e.alive) this.rads.set(e, RAD_SECONDS);
+  }
+
+  /** Soak a RAD DOSE into a bot (it burns off over the next several seconds, see updateRads). */
+  addDose(e: EnemyHandle, amount: number): void {
+    if (!e.alive || amount <= 0) return;
+    this.irradiate(e);
+    this.doses.set(e, (this.doses.get(e) ?? 0) + amount);
   }
 
   /** Radiation damage to one bot (player credit, irradiates it). */
@@ -492,23 +514,48 @@ export class IsotopeKit extends Kit implements VehicleKit {
     if (burn) {
       const st = this.b.stats;
       const amt = RAD_DPS * RAD_TICK * reactorBoost(st.meltDamage);
+      const floor = DOSE_FLOOR * RAD_TICK * reactorBoost(st.meltDamage) ** SPRAY_REACTOR_EXP * (st.sprayBoost || 1);
       for (const [e] of this.rads) {
         if (!e.alive) continue;
+        // RAD DOSE: burn off a slice of what has soaked in; leak some of it into the nearest neighbour.
+        let dose = this.doses.get(e) ?? 0;
+        let soak = 0;
+        if (dose > 0) {
+          soak = Math.min(dose, dose * (RAD_TICK / DOSE_TAU) + floor);
+          dose -= soak;
+          if (dose > floor * 0.1) {
+            this.doses.set(e, dose);
+            this.rads.set(e, Math.max(this.rads.get(e) ?? 0, RAD_TICK * 2.5));
+          } else this.doses.delete(e);
+          // Contagion only seeds a bot that isn't already carrying a dose (no ping-pong between two neighbours).
+          const nb = soak * DOSE_SPREAD >= floor * 0.25 ? this.nearestOther(e, DOSE_SPREAD_R) : null;
+          if (nb && !this.doses.has(nb)) this.addDose(nb, soak * DOSE_SPREAD);
+        }
         const hp0 = e.hp;
-        const killed = this.b.enemies.damage(e, amt * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' });
+        const killed = this.b.enemies.damage(e, (amt + soak) * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(dealt, killed, e, false, false);
         if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultCharge(st, NUKE_CHARGE_DMG));
+        if (soak > 0 && dealt > 0 && glow) {
+          _q.set(e.position.x, e.position.y + e.radius + 0.9, e.position.z);
+          ctx.fx.floatText(_q, `☣${Math.round(dealt)}`, '#7dff4a', 0.6);
+        }
       }
     }
     for (const [e, t] of this.rads) {
       const left = t - dt;
       if (left <= 0 || !e.alive) {
         this.rads.delete(e);
+        this.doses.delete(e);
         continue;
       }
       this.rads.set(e, left);
       if (glow) {
+        // A heavy dose glows hotter: a sickly halo of extra motes.
+        if (this.doses.has(e)) {
+          _q.set(e.position.x, e.position.y + e.radius * 0.6, e.position.z);
+          ctx.fx.burst(_q, { color: 0xb8ff6a, count: 2, speed: 1.6, size: 0.12, gravity: -1.5, life: 0.55 });
+        }
         _q.set(e.position.x + (Math.random() - 0.5) * e.radius, e.position.y + e.radius * 1.3, e.position.z + (Math.random() - 0.5) * e.radius);
         ctx.fx.burst(_q, { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.16, gravity: -3, life: 0.5 });
       }
@@ -526,9 +573,27 @@ export class IsotopeKit extends Kit implements VehicleKit {
     }
   }
 
+  /** The nearest other live bot within r m of e (RAD DOSE contagion), or null. */
+  private nearestOther(e: EnemyHandle, r: number): EnemyHandle | null {
+    const near = this.b.enemies.query(e.position.x, e.position.z, r, this.buf);
+    let best: EnemyHandle | null = null;
+    let bd = Infinity;
+    for (let i = 0; i < near.length; i++) {
+      const o = near[i];
+      if (o === e || !o.alive) continue;
+      const d = Math.hypot(o.position.x - e.position.x, o.position.z - e.position.z);
+      if (d < bd) {
+        bd = d;
+        best = o;
+      }
+    }
+    return best;
+  }
+
   clear(): void {
     this.meltCharge = 1;
     this.rads.clear();
+    this.doses.clear();
     this.chainQueue.length = 0;
     this.poolHitAt.clear();
     for (const pl of this.pools) {

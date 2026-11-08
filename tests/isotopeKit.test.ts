@@ -88,12 +88,17 @@ describe('ISOTOPE Reactor Hauler', () => {
     // Radiation fills Critical Mass.
     expect((r.c as unknown as { critCharge: number }).critCharge).toBeGreaterThan(0);
     r.held.clear();
-    // Off the trigger: no more spray doses, but the radiation keeps burning until it wears off (3 s after the last
-    // dose), then nothing.
+    // Off the trigger: no more spray, but the RAD DOSE that soaked in keeps burning for a long time (well past the
+    // old 3 s), keeping the bot irradiated, then runs out.
     const before = near.dealt;
     r.run(1);
     expect(near.dealt).toBeGreaterThan(before);
-    r.run(2.6);
+    r.run(5);
+    const mid = near.dealt;
+    r.run(1);
+    expect(near.dealt).toBeGreaterThan(mid);
+    expect(iso(r.c).rads.has(near)).toBe(true);
+    r.run(30);
     const settled = near.dealt;
     r.run(1);
     expect(near.dealt).toBe(settled);

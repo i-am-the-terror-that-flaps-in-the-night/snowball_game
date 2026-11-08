@@ -77,7 +77,10 @@ describe('BRUTUS Wrecking Fist (SPACE)', () => {
     expect(r.hits[1].amount).toBeCloseTo(jab, 3);
     expect(r.hits[2].amount).toBeGreaterThan(jab * 2);
     expect(r.hits[2].stun).toBeGreaterThan(0);
-    expect(r.hits[2].knock).toBeGreaterThan(r.hits[0].knock * 3);
+    expect(r.hits[2].knock).toBeGreaterThan(r.hits[0].knock * 2.5);
+    // Every jab that lands square staggers (a short stun); the finisher stuns longer.
+    expect(r.hits[0].stun).toBeGreaterThan(0);
+    expect(r.hits[2].stun).toBeGreaterThan(r.hits[0].stun);
     // No cooldown: the ring stays full and the next combo starts straight away.
     expect(r.c.abilityHud!.primaryReady).toBe(1);
     r.run(0.3);

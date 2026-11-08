@@ -9,9 +9,17 @@ const TOWER_Y = 3.15;
  *  aim cone (cos of the half angle off the nose) and reach (+ Mega Hopper: ball radius above the 1.2 m base). */
 const ARC_TICK = 0.15;
 export const ARC_DAMAGE = 2.1;
-const ARC_HOPS = 2;
-const ARC_CHAIN_FRAC = 0.35;
-const ARC_CHAIN_R = 6;
+// Design from the user: the ARC LANCE is the chain weapon — it chains a ton and can paralyse.
+const ARC_HOPS = 6;
+const ARC_CHAIN_FRAC = 0.5;
+/** Each hop past the first keeps this share of the hop before it (a long chain thins out but still bites). */
+const ARC_HOP_DECAY = 0.9;
+const ARC_CHAIN_R = 8;
+/** PARALYSIS: every arc hit (any hop) has PARA_CHANCE to lock the bot up for PARA_SECONDS (a stun); a paralysed bot
+ *  can't be paralysed again for PARA_IMMUNE s after it wears off. */
+const PARA_CHANCE = 0.07;
+const PARA_SECONDS = 1.2;
+const PARA_IMMUNE = 2.5;
 const ARC_CONE = 0.5;
 export const arcRange = (ballR: number) => 9 + 2.5 * Math.max(0, ballR - 1.2);
 /** STATIC FIELD (E): a lingering electrified field that rides with the rover for STATIC_SECONDS, pulsing every
@@ -65,6 +73,8 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
   private arcLock: EnemyHandle | null = null;
   private arcBuf: EnemyHandle[] = [];
   private arcHit = new Set<number>();
+  /** PARALYSIS: bot id -> ctx.time it can be paralysed again. */
+  private paraReady = new Map<number, number>();
   /** Is the lance firing this frame (HUD / tests). */
   arcOn = false;
 
@@ -132,7 +142,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     this.arcHit.clear();
     let src = tgt;
     let hit: EnemyHandle | null = tgt;
-    const hops = ARC_HOPS + (st.chainCount >> 1);
+    const hops = ARC_HOPS + st.chainCount;
     const frac = ARC_CHAIN_FRAC + st.chainFrac * 0.5;
     for (let hop = 0; hop <= hops && hit; hop++) {
       this.arcHit.add(hit.id);
@@ -146,7 +156,20 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       }
       ctx.fx.burst(_q, { color: 0x9fe8ff, count: 4, speed: 5, size: 0.08, gravity: 8, life: 0.25 });
       const hp0 = hit.hp;
-      const killed = this.b.enemies.damage(hit, dmg * (hop === 0 ? 1 : frac) * this.hitMult(hit), { source: 'other', fromX: px, fromZ: pz });
+      // PARALYSIS roll (not on a bot still immune from its last one).
+      let para = 0;
+      if (Math.random() < PARA_CHANCE && ctx.time >= (this.paraReady.get(hit.id) ?? 0)) {
+        para = PARA_SECONDS;
+        this.paraReady.set(hit.id, ctx.time + PARA_SECONDS + PARA_IMMUNE);
+        if (this.paraReady.size > 64) for (const [id, t] of this.paraReady) if (t < ctx.time) this.paraReady.delete(id);
+      }
+      const share = hop === 0 ? 1 : frac * ARC_HOP_DECAY ** (hop - 1);
+      const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), { source: 'other', fromX: px, fromZ: pz, stunSeconds: para || undefined });
+      if (para && !killed) {
+        ctx.fx.floatText(_q, 'PARALYZED', '#bff0ff', 0.85);
+        ctx.fx.sparks(_q, null, { color: 0xdff6ff, count: 14, speed: 7, size: 0.07, length: 0.06, gravity: 4, life: 0.4 });
+        this.lightning.bolt(_q, _r.set(_q.x, _q.y + 2.2, _q.z), { life: 0.3, width: 0.2, jag: 1.4, color: 0xdff6ff });
+      }
       const dealt = Math.max(0, hp0 - Math.max(0, hit.hp));
       this.onPlayerHit(dealt, killed, hit, false, true);
       if (dealt > 0 && hop === 0 && this.arcN % 4 === 0) ctx.fx.floatText(_q, `⚡${Math.round(dealt * 4)}`, '#9fe8ff', 0.75);
@@ -598,6 +621,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
 
   clear(): void {
     this.staticT = 0;
+    this.paraReady.clear();
     this.clapCharge = 1;
     this.clapHeat = 0;
     this.lastClapAt = -999;
