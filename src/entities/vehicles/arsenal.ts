@@ -39,17 +39,30 @@ const WHEEL_R = 0.68;
 const WHEEL_W = 0.6;
 const WHEEL_X = 1.24;
 const WHEEL_Z = 1.2;
-/** Gyro core: centre (model space) and the three ring radii (outer to inner). The rings sit on nested spheres, so
- *  however they turn they never touch. */
-const GYRO_Y = 1.65;
-const GYRO_Z = -2.75;
-const RING_R = [1.12, 0.86, 0.6] as const;
-/** Cradle struts: x of their bearing caps (just outside the outer ring). */
-const CRADLE_X = RING_R[0] + 0.2;
-/** Gyro ring spin (rad/s) idle, extra per m/s of speed, extra while the pulse laser fires. */
+/** Gyro core: centre (model space), tucked under the rear deck with its top just below the deck's underside. */
+const GYRO_Y = 1.22;
+const GYRO_Z = -2.6;
+/** Gimbal rings, outer to inner: mid radius, radial half-thickness, axial half-width, facet count. Each ring (clamps
+ *  and pin bosses included) stays inside the inner face of its parent, so however the three pivots turn, nothing
+ *  touches: outer sweep r <= 0.97, middle <= 0.73 (outer housings start at 0.735), inner <= 0.52 (middle housings 0.54). */
+const RING_R = [0.86, 0.64, 0.44] as const;
+const RING_H = [0.075, 0.06, 0.05] as const;
+const RING_W = [0.09, 0.075, 0.06] as const;
+const RING_N = [16, 14, 12] as const;
+/** Cradle bearing caps: x of their centres (the outer ring's trunnions run into them). */
+const CRADLE_X = 1.12;
+/** Gyro ring spin (rad/s) idle, extra per m/s of speed, extra while the pulse laser fires; per-ring rate factors
+ *  (outer about x in the cradle, middle about the outer ring's y, inner about the middle ring's z). */
 const RING_IDLE = 1.2;
 const RING_SPEED = 0.35;
 const RING_FIRE = 6;
+const RING_RATE = [0.55, -1.0, 1.7] as const;
+/** The outer ring rocks in its trunnions (rad about x: centre and swing) rather than spinning round to face back. */
+const OUTER_TILT = 0.9;
+const OUTER_SWING = 0.45;
+/** Energy arcs from the core to the inner ring's emitter nodes: count, segments each. */
+const ARCS = 4;
+const ARC_SEG = 6;
 
 const CYAN = 0x38e8ff;
 
@@ -94,12 +107,46 @@ function loft(secs: readonly LoftSection[]): THREE.BufferGeometry {
   return g;
 }
 
+/** A faceted armour band in the XY plane (axis Z): an n-gon annulus from rIn to rOut (vertex radii), spanning
+ *  z0..z1, first vertex at angle a0. Non-indexed, one normal per face (flat-shaded with any material). */
+function band(n: number, rIn: number, rOut: number, z0: number, z1: number, a0 = 0): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const P = (r: number, a: number, z: number) => [r * Math.cos(a), r * Math.sin(a), z];
+  const quad = (a: number[], b: number[], c: number[], d: number[]) => pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+  for (let k = 0; k < n; k++) {
+    const a = a0 + (k / n) * Math.PI * 2;
+    const b = a0 + ((k + 1) / n) * Math.PI * 2;
+    quad(P(rOut, a, z0), P(rOut, b, z0), P(rOut, b, z1), P(rOut, a, z1)); // outer face
+    quad(P(rIn, a, z0), P(rIn, a, z1), P(rIn, b, z1), P(rIn, b, z0)); // inner face
+    quad(P(rIn, a, z1), P(rOut, a, z1), P(rOut, b, z1), P(rIn, b, z1)); // +z side
+    quad(P(rIn, a, z0), P(rIn, b, z0), P(rOut, b, z0), P(rOut, a, z0)); // -z side
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Soft fresnel halo shell: bright at the silhouette, clear face-on (additive), so the core glows in 3D. */
+function fresnelMat(color: number, power: number, strength: number): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(color) }, uK: { value: strength } },
+    vertexShader: `varying vec3 vN; varying vec3 vV;
+      void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uColor; uniform float uK; varying vec3 vN; varying vec3 vV;
+      void main() { float f = 1.0 - abs(dot(normalize(vN), normalize(vV))); gl_FragColor = vec4(uColor * pow(f, ${power.toFixed(2)}) * uK, 1.0); }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+}
+
 /**
  * ARSENAL: a futuristic magnetic / laser vehicle (not a mech, not a tank). Two huge rugged off-road wheels at the
  * front (armoured hubs, glowing cyan rims) carry the nose; there are no wheels at the back: the rear hovers on a GYRO
- * CORE, the signature: three big armoured rings nested like a gyroscope on three different axes (each spinning in its
- * own plane, cyan seams) round a white-hot crystal, held in an armoured cradle between two swept struts, projecting
- * light rings onto the snow (clamped bearings, hydraulic pistons, cable bundles). Between them a faceted gunmetal hull
+ * CORE, the signature: a three-axis gimbal of faceted armour rings (each pinned in its parent and turning about its
+ * own pivot) round a crystal reactor core with energy arcs, tucked into a bay under an armoured rear deck (cheek
+ * skirts, bearing caps, swept struts, pistons, cables), projecting light rings onto the snow. Between them a faceted gunmetal hull
  * (lofted octagonal sections, sloped two-facet glacis) dressed in layered bolted plates, armoured wheel arches, coil
  * pods on the rear quarters and nose greebles (ram bar, tow hooks, caged headlights, the Grav Lance lens); an angled
  * turret with armour cheeks, optics, hatch and antenna carries the finned pulse-laser emitter. Static parts merge into
@@ -113,7 +160,6 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x323a44, roughness: 0.45, metalness: 0.45, flatShading: true });
   const rubberMat = new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.95, flatShading: true });
   const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 1.6 });
-  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   const add = (color: number, opacity: number) =>
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
 
@@ -156,10 +202,10 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     return box(w, t, len, mat, x, (y0 + y1) / 2 + Math.cos(a) * n, (z0 + z1) / 2 + Math.sin(a) * n, a);
   };
 
-  // Main hull: rear wall, roof run, upper glacis, lower glacis / nose.
+  // Main hull: rear wall (the front of the gyro bay), roof run, upper glacis, lower glacis / nose.
   addMesh(
     loft([
-      { z: -1.5, y: [0.64, 0.82, 1.62, 1.86], w: [0.55, 0.78, 0.6] },
+      { z: -1.5, y: [0.64, 0.82, 1.72, 2.07], w: [0.55, 0.78, 0.6] },
       { z: -1.25, y: [0.55, 0.72, 1.72, 2.07], w: [0.62, 0.84, 0.66] },
       { z: 0.8, y: [0.55, 0.72, 1.72, 2.07], w: [0.62, 0.84, 0.66] },
       { z: 1.3, y: [0.55, 0.72, 1.62, 1.86], w: [0.62, 0.84, 0.66] },
@@ -180,14 +226,9 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     bolts(3, sx * 0.12, 1.86, 1.38, sx * 0.5, 1.86, 1.38);
   }
   slopePlate(0.035, 0.035, 0, 1.86, 1.3, 1.6, 1.78, glowMat);
-  // Roof: a trim panel behind the turret (decal spot) and engine grille slats down the raked tail.
-  box(1.2, 0.04, 0.7, m.trim, 0, 2.09, -0.86);
-  bolts(2, -0.55, 2.115, -0.55, -0.55, 2.115, -1.17);
-  bolts(2, 0.55, 2.115, -0.55, 0.55, 2.115, -1.17);
-  for (let i = 0; i < 5; i++) {
-    const k = (i + 0.5) / 5;
-    box(0.96, 0.03, 0.04, m.dark, 0, 2.07 - 0.22 * k + 0.02, -1.25 - 0.25 * k, -0.72);
-  }
+  // Roof: a trim panel behind the turret (decal spot).
+  box(1.2, 0.04, 0.34, m.trim, 0, 2.09, -0.66);
+  bolts(2, -0.55, 2.115, -0.55, 0.55, 2.115, -0.55);
 
   for (const sx of [-1, 1]) {
     // Side armour: a thick upper plate (decal face, chamfered top edge), a bevel plate on the roof edge, two
@@ -293,65 +334,123 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   laser.position.set(0, 1.47, 2.3);
   ap.add(laser);
 
-  // Rear wall: a recessed vent grille, red tail lights, a tow hook, cable sockets.
-  box(0.9, 0.36, 0.04, m.dark, 0, 1.33, -1.52);
-  for (let i = 0; i < 5; i++) box(0.86, 0.03, 0.05, armorMat, 0, 1.19 + i * 0.07, -1.54, 0.5);
+  /* ---- rear section: an armoured rear deck (a raised engine-bay hood continuing the hull's faceted lines) that
+   * overhangs the GYRO BAY. The gyro sits under it in a cradle: the hull's rear wall is the bay's back frame (an
+   * octagonal socket facing the core), the deck is its roof, armour skirts hang from the deck edges as cheek plates
+   * and carry the bearing caps the outer ring pivots in; swept struts, pistons and cables tie the caps to the hull ---- */
+  addMesh(
+    loft([
+      { z: -3.3, y: [2.26, 2.2, 2.28, 2.34], w: [0.7, 1.15, 0.8] },
+      { z: -3.0, y: [2.3, 2.2, 2.36, 2.44], w: [0.8, 1.3, 1.0] },
+      { z: -1.8, y: [2.3, 2.2, 2.36, 2.44], w: [0.8, 1.3, 1.0] },
+      { z: -1.45, y: [2.05, 2.05, 2.2, 2.3], w: [0.6, 0.86, 0.68] },
+      { z: -0.85, y: [1.95, 1.95, 2.03, 2.085], w: [0.6, 0.84, 0.66] },
+    ]),
+    m.paint,
+    0, 0, 0, ap,
+  );
+  // Deck top: an armour plate, twin engine vents (recessed grilles with slats), a cyan spine seam, heat-sink fins at
+  // the tail, chamfer plates on the edges, a cyan line down each flank.
+  box(1.94, 0.035, 1.12, armorMat, 0, 2.455, -2.42);
+  bolts(4, -0.88, 2.48, -1.92, -0.88, 2.48, -2.92);
+  bolts(4, 0.88, 2.48, -1.92, 0.88, 2.48, -2.92);
   for (const sx of [-1, 1]) {
-    box(0.16, 0.06, 0.03, tailMat, sx * 0.56, 1.58, -1.51, 0, 0, 0, ap, false);
-    box(0.06, 0.06, 0.03, glowMat, sx * 0.4, 1.58, -1.51, 0, 0, 0, ap, false);
-    box(0.2, 0.12, 0.08, trimMat, sx * 0.48, 1.0, -1.52);
+    box(0.56, 0.03, 0.62, m.dark, sx * 0.42, 2.475, -2.3);
+    for (let i = 0; i < 5; i++) box(0.52, 0.025, 0.05, armorMat, sx * 0.42, 2.49, -2.06 - i * 0.12, -0.5, 0, 0, ap, false);
+    box(0.32, 0.03, 1.2, armorMat, sx * 1.15, 2.415, -2.4, 0, 0, -sx * 0.26);
+    box(0.02, 0.03, 1.15, glowMat, sx * 1.305, 2.28, -2.4, 0, 0, 0, ap, false);
+    // Tail light cluster and a cyan marker on the deck's rear face.
+    box(0.26, 0.05, 0.03, tailMat, sx * 0.62, 2.27, -3.31, 0, 0, 0, ap, false);
+    box(0.06, 0.05, 0.03, glowMat, sx * 0.4, 2.27, -3.31, 0, 0, 0, ap, false);
   }
-  box(0.14, 0.1, 0.12, trimMat, 0, 0.84, -1.55);
-  box(0.04, 0.12, 0.06, m.chrome, 0, 0.8, -1.63, 0, 0, 0, ap, false);
+  box(0.035, 0.02, 1.0, glowMat, 0, 2.475, -2.42, 0, 0, 0, ap, false);
+  for (let i = 0; i < 5; i++) box(0.025, 0.07, 0.24, trimMat, -0.3 + i * 0.15, 2.5, -2.88);
+  // Rear bumper under the deck's tail with a tow hook.
+  box(1.86, 0.08, 0.1, trimMat, 0, 2.16, -3.27);
+  bolts(4, -0.7, 2.16, -3.325, 0.7, 2.16, -3.325);
+  for (const dx of [-0.05, 0.05]) box(0.03, 0.12, 0.14, trimMat, dx, 2.07, -3.3);
+  box(0.13, 0.04, 0.04, m.chrome, 0, 2.05, -3.34, 0, 0, 0, ap, false);
+  // Hood projector under the deck: a cyan octagon ring over the gyro.
+  const hoodRing = addMesh(band(8, 0.3, 0.34, -0.008, 0.008, Math.PI / 8), glowMat, 0, 2.29, GYRO_Z, ap, false);
+  hoodRing.rotation.x = Math.PI / 2;
 
-  // Gyro cradle: two armoured struts (ribbed, bolted, cyan seam) sweeping back from the hull to clamped bearing
-  // caps either side of the gyro; hydraulic pistons from the hull's rear corners brace the caps from below and cable
-  // bundles (one live cyan line each side) sag from the rear wall into the caps.
+  // Bay back frame on the hull's rear wall: an octagonal socket facing the core (armoured frame, dark well, cyan
+  // conduit ring, a hex emitter), clamps and bolts; cable sockets either side.
+  const SY = 1.25;
+  addMesh(band(8, 0.4, 0.52, -0.08, 0.0, Math.PI / 8), trimMat, 0, SY, -1.5, ap);
+  addMesh(new THREE.CircleGeometry(0.42, 8), m.dark, 0, SY, -1.515, ap, false).rotation.set(0, Math.PI, Math.PI / 8);
+  addMesh(band(8, 0.29, 0.33, -0.035, 0, Math.PI / 8), glowMat, 0, SY, -1.5, ap, false);
+  addMesh(new THREE.CylinderGeometry(0.1, 0.13, 0.08, 6), glowMat, 0, SY, -1.53, ap, false).rotation.x = Math.PI / 2;
+  for (let k = 0; k < 4; k++) {
+    const a = Math.PI / 4 + (k * Math.PI) / 2;
+    box(0.13, 0.18, 0.1, trimMat, Math.cos(a) * 0.47, SY + Math.sin(a) * 0.47, -1.57, 0, 0, a + Math.PI / 2);
+  }
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    addMesh(boltGeo, m.chrome, Math.cos(a) * 0.46, SY + Math.sin(a) * 0.46, -1.585, ap, false);
+  }
+  for (const sx of [-1, 1]) box(0.24, 0.14, 0.08, trimMat, sx * 0.64, 0.9, -1.52);
+
   {
     const x0 = 0.72;
     const z0 = -1.2;
     const dx = CRADLE_X - x0;
     const dz = GYRO_Z - z0;
     const len = Math.hypot(dx, dz);
+    const skirtGeo = (() => {
+      const sh = new THREE.Shape();
+      sh.moveTo(-3.15, 2.22);
+      sh.lineTo(-1.85, 2.22);
+      sh.lineTo(-1.85, 2.0);
+      sh.lineTo(-2.05, 1.78);
+      sh.lineTo(-3.0, 1.78);
+      sh.lineTo(-3.15, 1.9);
+      sh.closePath();
+      const g = new THREE.ExtrudeGeometry(sh, { depth: 0.07, bevelEnabled: false });
+      g.translate(0, 0, -0.035);
+      g.rotateY(-Math.PI / 2);
+      return g;
+    })();
     for (const sx of [-1, 1]) {
+      // Cheek skirt: an armour plate hanging from the deck edge, a trim strip on its lower edge, three cyan slots,
+      // bolts; a hanger block carries the bearing cap under it.
+      addMesh(skirtGeo, armorMat, sx * 1.3, 0, 0, ap);
+      box(0.09, 0.06, 0.9, trimMat, sx * 1.31, 1.8, -2.55);
+      for (const z of [-2.15, -2.3, -2.9, -3.05]) box(0.02, 0.14, 0.05, glowMat, sx * 1.34, 2.01, z, 0, 0, 0, ap, false);
+      bolts(4, sx * 1.34, 2.16, -2.0, sx * 1.34, 2.16, -3.05);
+      bolts(3, sx * 1.34, 1.87, -2.25, sx * 1.34, 1.87, -2.95);
+      // Hanger post down to the cap's upper clamp.
+      box(0.16, 0.32, 0.26, trimMat, sx * 1.2, 1.64, GYRO_Z);
+      box(0.2, 0.06, 0.34, armorMat, sx * 1.2, 1.8, GYRO_Z);
+
+      // Swept strut from the hull flank to the cap (ribbed, bolted, cyan seam).
       const ry = sx * Math.atan2(dx, dz);
       const cx = sx * (x0 + dx / 2);
       const cz = z0 + dz / 2;
-      box(0.2, 0.26, len, armorMat, cx, GYRO_Y - 0.02, cz, 0, ry);
-      box(0.26, 0.05, len * 0.8, trimMat, cx, GYRO_Y + 0.12, cz, 0, ry);
-      box(0.06, 0.04, len * 0.7, glowMat, cx, GYRO_Y + 0.16, cz, 0, ry, 0, ap, false);
-      box(0.12, 0.08, len * 0.85, trimMat, cx, GYRO_Y - 0.18, cz, 0, ry);
-      const ux = dx / len;
-      const uz = dz / len;
-      for (let i = 0; i < 4; i++) {
-        const k = 0.22 + i * 0.18;
-        const bx = sx * (x0 + dx * k);
-        const bz = z0 + dz * k;
-        addMesh(boltGeo, m.chrome, bx + sx * uz * 0.1, GYRO_Y + 0.16, bz - ux * 0.1, ap, false);
-        addMesh(boltGeo, m.chrome, bx - sx * uz * 0.1, GYRO_Y + 0.16, bz + ux * 0.1, ap, false);
+      box(0.2, 0.24, len, armorMat, cx, GYRO_Y - 0.02, cz, 0, ry);
+      box(0.24, 0.05, len * 0.8, trimMat, cx, GYRO_Y + 0.11, cz, 0, ry);
+      box(0.06, 0.04, len * 0.7, glowMat, cx, GYRO_Y + 0.15, cz, 0, ry, 0, ap, false);
+      box(0.12, 0.08, len * 0.85, trimMat, cx, GYRO_Y - 0.17, cz, 0, ry);
+      // Bearing cap (faceted) with clamp blocks above and below, a back plate, the trunnion pin (cyan) the outer
+      // ring's boss turns on.
+      addMesh(new THREE.CylinderGeometry(0.19, 0.23, 0.24, 8), trimMat, sx * CRADLE_X, GYRO_Y, GYRO_Z, ap).rotation.z = Math.PI / 2;
+      for (const dy of [-0.26, 0.26]) {
+        box(0.24, 0.08, 0.38, armorMat, sx * (CRADLE_X + 0.02), GYRO_Y + dy, GYRO_Z);
+        bolts(2, sx * (CRADLE_X + 0.08), GYRO_Y + dy + Math.sign(dy) * 0.045, GYRO_Z - 0.13, sx * (CRADLE_X + 0.08), GYRO_Y + dy + Math.sign(dy) * 0.045, GYRO_Z + 0.13);
       }
-      // Bearing cap (faceted), clamp blocks above and below it with bolts, a cyan pin.
-      const cap = addMesh(new THREE.CylinderGeometry(0.23, 0.28, 0.26, 8), trimMat, sx * CRADLE_X, GYRO_Y, GYRO_Z, ap);
-      cap.rotation.z = Math.PI / 2;
-      for (const dy of [-0.3, 0.3]) {
-        box(0.28, 0.1, 0.42, armorMat, sx * (CRADLE_X + 0.02), GYRO_Y + dy, GYRO_Z);
-        bolts(2, sx * (CRADLE_X + 0.1), GYRO_Y + dy + Math.sign(dy) * 0.05, GYRO_Z - 0.14, sx * (CRADLE_X + 0.1), GYRO_Y + dy + Math.sign(dy) * 0.05, GYRO_Z + 0.14);
-      }
-      box(0.1, 0.62, 0.14, trimMat, sx * (CRADLE_X + 0.13), GYRO_Y, GYRO_Z);
-      const pin = addMesh(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 6), glowMat, sx * (CRADLE_X - 0.15), GYRO_Y, GYRO_Z, ap, false);
-      pin.rotation.z = Math.PI / 2;
-      // Piston: cylinder body from the hull corner, chrome rod into the lower clamp.
-      const pa = new THREE.Vector3(sx * 0.7, 0.95, -1.42);
-      const pb = new THREE.Vector3(sx * CRADLE_X, GYRO_Y - 0.34, GYRO_Z + 0.12);
+      box(0.08, 0.6, 0.14, trimMat, sx * (CRADLE_X + 0.13), GYRO_Y, GYRO_Z);
+      addMesh(new THREE.CylinderGeometry(0.045, 0.045, 0.12, 6), glowMat, sx * 0.97, GYRO_Y, GYRO_Z, ap, false).rotation.z = Math.PI / 2;
+      // Piston: cylinder body from the hull's rear corner, chrome rod into the lower clamp.
+      const pa = new THREE.Vector3(sx * 0.62, 0.8, -1.45);
+      const pb = new THREE.Vector3(sx * CRADLE_X, GYRO_Y - 0.3, GYRO_Z + 0.12);
       const pm = new THREE.Vector3().lerpVectors(pa, pb, 0.55);
-      beam(pa, pm, 0.14, 0.14, trimMat);
-      beam(pm.clone().lerp(pa, 0.1), pb, 0.06, 0.06, m.chrome);
-      box(0.18, 0.14, 0.14, trimMat, pa.x, pa.y, pa.z);
-      // Cables: two dark, one cyan, from sockets on the rear wall into the cap's underside.
+      beam(pa, pm, 0.13, 0.13, trimMat);
+      beam(pm.clone().lerp(pa, 0.1), pb, 0.055, 0.055, m.chrome);
+      // Cables: two dark, one cyan, from the rear wall's sockets into the cap's underside.
       for (let k = 0; k < 3; k++) {
         cable(
-          _v.set(sx * (0.42 + k * 0.06), 1.0, -1.55).clone(),
-          _u.set(sx * (CRADLE_X - 0.06 + k * 0.05), GYRO_Y - 0.32, GYRO_Z + 0.2).clone(),
+          _v.set(sx * (0.58 + k * 0.06), 0.86, -1.55).clone(),
+          _u.set(sx * (CRADLE_X - 0.06 + k * 0.05), GYRO_Y - 0.28, GYRO_Z + 0.2).clone(),
           k === 1 ? 0.035 : 0.05,
           0.16 + k * 0.03,
           k === 1 ? glowMat : m.dark,
@@ -476,50 +575,214 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     wheels.push(w);
   }
 
-  /* ---- gyro core: three nested armoured rings on three different axes (outer: an upright hoop facing back, riding
-   * in the cradle's bearings; middle: upright, fore-aft; inner: level), each spinning in its own plane with two cyan
-   * seam lines and armour blocks, round a white-hot crystal ---- */
+  /* ---- gyro core: a three-axis GIMBAL. The outer ring turns about x on trunnions in the cradle's bearing caps;
+   * the middle ring turns inside it about the outer ring's y, on pins in housings on the outer ring's inner face;
+   * the inner ring turns inside the middle about the middle ring's z, on pins the same way. Each ring is a faceted
+   * armour band (raised panels, clamp blocks, a cyan groove between two lips on its inner face, cyan seams on its
+   * sides). In the middle floats the core: a faceted crystal round a white plasma heart in a fresnel halo, with
+   * energy arcs licking out to the inner ring's emitter nodes ---- */
   const gyroRoot = new THREE.Group();
   gyroRoot.position.set(0, GYRO_Y, GYRO_Z);
   ap.add(gyroRoot);
-  // Base orientation of each ring (a torus lies in its XY plane: normal +Z).
-  const baseQ = [
-    new THREE.Quaternion(),
-    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2),
-    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2),
-  ];
-  const flatQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-  const rings: THREE.Group[] = [];
-  for (let i = 0; i < 3; i++) {
+  const pivots = [new THREE.Group(), new THREE.Group(), new THREE.Group()];
+  gyroRoot.add(pivots[0]);
+  pivots[0].add(pivots[1]);
+  pivots[1].add(pivots[2]);
+  const clampGeo = new THREE.BoxGeometry(1, 1, 1);
+  /** Ring i in a holder (plane XY, pins on the holder's y axis unless pinA = 0: x axis) under its pivot; `orient`
+   *  turns the holder into the pivot's frame. Returns the inner face's apothem. */
+  const buildRing = (i: number, pinA: number, orient: THREE.Euler) => {
     const R = RING_R[i];
+    const h = RING_H[i];
+    const w = RING_W[i];
+    const n = RING_N[i];
+    const rIn = R - h;
+    const rOut = R + h;
+    const c = Math.cos(Math.PI / n);
+    const a0 = pinA - Math.PI / n; // a face centred on each pin
     const g = new THREE.Group();
-    gyroRoot.add(g);
-    const tube = 0.075 - i * 0.01;
-    addMesh(new THREE.TorusGeometry(R, tube, 6, 48), armorMat, 0, 0, 0, g, false);
-    for (const dz of [-tube, tube]) addMesh(new THREE.TorusGeometry(R, 0.02, 3, 48), glowMat, 0, 0, dz, g, false);
-    // Outer edge glow line, so the ring reads edge-on too.
-    addMesh(new THREE.TorusGeometry(R + tube * 0.9, 0.016, 3, 48), glowMat, 0, 0, 0, g, false);
-    const nb = 6 - i;
-    for (let k = 0; k < nb; k++) {
-      const a = (k / nb) * Math.PI * 2 + i * 0.4;
-      const blk = addMesh(new THREE.BoxGeometry(0.16, 0.13, 0.2 - i * 0.02), trimMat, Math.cos(a) * R, Math.sin(a) * R, 0, g, false);
-      blk.rotation.z = a;
+    g.rotation.copy(orient);
+    pivots[i].add(g);
+    // Structural band, the two inner lips either side of the glowing groove, the groove, side seams.
+    addMesh(band(n, rIn + 0.025, rOut, -w, w, a0), armorMat, 0, 0, 0, g, false);
+    for (const sz of [-1, 1]) {
+      addMesh(band(n, rIn, rIn + 0.03, sz > 0 ? w - 0.028 : -w, sz > 0 ? w : -w + 0.028, a0), armorMat, 0, 0, 0, g, false);
+      addMesh(band(n, R - 0.012, R + 0.012, sz > 0 ? w : -w - 0.006, sz > 0 ? w + 0.006 : -w, a0), glowMat, 0, 0, 0, g, false);
     }
-    mergeStatic(g);
-    rings.push(g);
+    addMesh(band(n, rIn + 0.008, rIn + 0.026, -w + 0.028, w - 0.028, a0), glowMat, 0, 0, 0, g, false);
+    const chord = 2 * rOut * c * Math.tan(Math.PI / n);
+    const near = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 0.01;
+    for (let k = 0; k < n; k++) {
+      const mA = a0 + ((k + 0.5) / n) * Math.PI * 2;
+      const cs = Math.cos(mA);
+      const sn = Math.sin(mA);
+      if (near(mA, pinA) || near(mA, pinA + Math.PI)) {
+        // Pin boss on the outer face (the pivot runs through it) with a cyan cap.
+        const boss = addMesh(new THREE.CylinderGeometry(0.075 - i * 0.012, 0.09 - i * 0.012, 0.07, 8), trimMat, cs * (rOut * c + 0.02), sn * (rOut * c + 0.02), 0, g, false);
+        boss.rotation.z = mA - Math.PI / 2;
+        continue;
+      }
+      // Raised panel (gaps between them read as segments); every quarter a clamp block wrapping the band, bolted.
+      const pl = addMesh(clampGeo, armorMat, cs * (rOut * c + 0.012), sn * (rOut * c + 0.012), 0, g, false);
+      pl.scale.set(chord * 0.84, 0.024, w * 1.7);
+      pl.rotation.z = mA - Math.PI / 2;
+      if ((k + 2) % (n / 4) === 0) {
+        const cl = addMesh(clampGeo, trimMat, cs * R * c, sn * R * c, 0, g, false);
+        cl.scale.set(chord * 0.45, 2 * h + 0.045, 2 * w + 0.04);
+        cl.rotation.z = mA - Math.PI / 2;
+        for (const sz of [-1, 1]) addMesh(boltGeo, m.chrome, cs * (rOut * c + 0.03), sn * (rOut * c + 0.03), sz * w * 0.55, g, false);
+      } else if (k % 2 === 1) {
+        // Small cyan emitter stud on alternate panels.
+        addMesh(boltGeo, glowMat, cs * (rOut * c + 0.03), sn * (rOut * c + 0.03), 0, g, false);
+      }
+    }
+    return rIn * c;
+  };
+  const inOuter = buildRing(0, 0, new THREE.Euler());
+  const inMiddle = buildRing(1, Math.PI / 2, new THREE.Euler(0, Math.PI / 2, 0));
+  const inInner = buildRing(2, Math.PI / 2, new THREE.Euler(Math.PI / 2, 0, 0));
+  /** Bearing housings on a parent ring's inner face (pivot `p`, along `axis`) and the cyan pins through them into
+   *  the child ring's bosses. */
+  const housings = (p: THREE.Object3D, axis: 'y' | 'z', rFace: number, rChild: number, size: number) => {
+    for (const sg of [-1, 1]) {
+      const at = (d: number) => (axis === 'y' ? [0, sg * d, 0] : [0, 0, sg * d]) as [number, number, number];
+      const hb = addMesh(clampGeo, trimMat, ...at(rFace - 0.012), p, false);
+      hb.scale.set(size, size, size);
+      hb.scale[axis] = 0.05;
+      const pin = addMesh(new THREE.CylinderGeometry(0.03, 0.03, rFace - rChild + 0.02, 6), glowMat, ...at((rFace + rChild) / 2), p, false);
+      if (axis === 'z') pin.rotation.x = Math.PI / 2;
+      const col = addMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 8), m.chrome, ...at(rFace - 0.045), p, false);
+      if (axis === 'z') col.rotation.x = Math.PI / 2;
+    }
+  };
+  housings(pivots[0], 'y', inOuter, RING_R[1], 0.17);
+  housings(pivots[1], 'z', inMiddle, RING_R[2], 0.14);
+  // Emitter nodes on the inner ring's groove (the arcs land on them), in the inner pivot's frame (ring plane XZ).
+  const nodes: THREE.Vector3[] = [];
+  for (let k = 0; k < ARCS; k++) {
+    const a = Math.PI / 4 + (k * Math.PI) / 2;
+    const v = new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).multiplyScalar(inInner - 0.02);
+    nodes.push(v);
+    const nd = addMesh(new THREE.OctahedronGeometry(0.04, 0), glowMat, v.x, v.y, v.z, pivots[2], false);
+    nd.scale.set(1, 1.6, 1);
   }
-  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), coreMat);
-  core.scale.set(1, 1.5, 1);
+  mergeStatic(pivots[0], { keep: [pivots[1]] });
+  mergeStatic(pivots[1], { keep: [pivots[2]] });
+  mergeStatic(pivots[2]);
+
+  // Core: a faceted crystal (flat-shaded, emissive white-cyan, see-through) round a white plasma heart, with edge
+  // lines on the facets and two fresnel halo shells.
+  const crystalGeo = new THREE.IcosahedronGeometry(0.17, 0);
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: 0xd8fbff, emissive: 0x52dcff, emissiveIntensity: 0.9, roughness: 0.15, metalness: 0.1,
+    flatShading: true, transparent: true, opacity: 0.72, depthWrite: false,
+  });
+  const core = new THREE.Group();
   gyroRoot.add(core);
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), add(CYAN, 0.5));
-  halo.renderOrder = 3;
+  const plasma = new THREE.Mesh(new THREE.IcosahedronGeometry(0.095, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+  core.add(plasma);
+  const shell = new THREE.Mesh(crystalGeo, crystalMat);
+  shell.renderOrder = 3;
+  core.add(shell);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xe8fdff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(crystalGeo), edgeMat);
+  edges.renderOrder = 4;
+  core.add(edges);
+  core.scale.set(1, 1.3, 1);
+  const haloMat = fresnelMat(CYAN, 2.2, 1.1);
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 12), haloMat);
+  halo.renderOrder = 5;
   gyroRoot.add(halo);
-  const haloOut = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 10), add(0x1a7cff, 0.22));
-  haloOut.renderOrder = 3;
+  const haloOutMat = fresnelMat(0x1a7cff, 1.6, 0.45);
+  const haloOut = new THREE.Mesh(new THREE.SphereGeometry(0.34, 18, 12), haloOutMat);
+  haloOut.renderOrder = 5;
   gyroRoot.add(haloOut);
-  // Polarity Burst disc: a flat cyan glow filling the folded rings.
+
+  // Energy arcs: ARCS jagged filaments from the core to the emitter nodes, each a crossed pair of thin ribbons per
+  // segment, rewritten in place every few frames (one preallocated buffer).
+  const arcPos = new Float32Array(ARCS * ARC_SEG * 12 * 3);
+  const arcGeo = new THREE.BufferGeometry();
+  const arcAttr = new THREE.BufferAttribute(arcPos, 3).setUsage(THREE.DynamicDrawUsage);
+  arcGeo.setAttribute('position', arcAttr);
+  arcGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0.6);
+  const arcMat = add(0xbff8ff, 0.9);
+  arcMat.side = THREE.DoubleSide;
+  const arcs = new THREE.Mesh(arcGeo, arcMat);
+  arcs.renderOrder = 4;
+  pivots[2].add(arcs);
+  const arcPts = new Float32Array((ARC_SEG + 1) * 3);
+  const zapArcs = () => {
+    let o = 0;
+    const put = (x: number, y: number, z: number) => {
+      arcPos[o++] = x;
+      arcPos[o++] = y;
+      arcPos[o++] = z;
+    };
+    for (let j = 0; j < ARCS; j++) {
+      const e = nodes[j];
+      const live = Math.random() < 0.75;
+      // Unit direction (in the XZ plane) and its two perpendiculars: y and the in-plane normal.
+      const len = Math.hypot(e.x, e.z);
+      const dx = e.x / len;
+      const dz = e.z / len;
+      for (let s = 0; s <= ARC_SEG; s++) {
+        const k = s / ARC_SEG;
+        const r = 0.13 + (len - 0.13) * k;
+        const amp = live ? 0.07 * Math.sin(Math.PI * k) : 0;
+        const jy = (Math.random() * 2 - 1) * amp;
+        const jn = (Math.random() * 2 - 1) * amp;
+        arcPts[s * 3] = dx * r - dz * jn;
+        arcPts[s * 3 + 1] = jy;
+        arcPts[s * 3 + 2] = dz * r + dx * jn;
+      }
+      const wd = live ? 0.012 : 0;
+      for (let s = 0; s < ARC_SEG; s++) {
+        const ax = arcPts[s * 3], ay = arcPts[s * 3 + 1], az = arcPts[s * 3 + 2];
+        const bx = arcPts[s * 3 + 3], by = arcPts[s * 3 + 4], bz = arcPts[s * 3 + 5];
+        // Ribbon 1: offset along y.
+        put(ax, ay - wd, az); put(bx, by - wd, bz); put(bx, by + wd, bz);
+        put(ax, ay - wd, az); put(bx, by + wd, bz); put(ax, ay + wd, az);
+        // Ribbon 2: offset along the in-plane normal (-dz, 0, dx).
+        put(ax + dz * wd, ay, az - dx * wd); put(bx + dz * wd, by, bz - dx * wd); put(bx - dz * wd, by, bz + dx * wd);
+        put(ax + dz * wd, ay, az - dx * wd); put(bx - dz * wd, by, bz + dx * wd); put(ax - dz * wd, ay, az + dx * wd);
+      }
+    }
+    arcAttr.needsUpdate = true;
+  };
+  zapArcs();
+
+  // Polarity Burst disc: when the gimbal folds flat, a spiral-vaned cyan glow fills it and spins (vertex colours,
+  // additive: dark bands are clear).
+  const discGeo = (() => {
+    const segs = 48;
+    const radii = [0.1, 0.4, 0.7, RING_R[0] + RING_H[0]];
+    const pos: number[] = [];
+    const col: number[] = [];
+    const pt = (r: number, a: number) => {
+      pos.push(r * Math.cos(a), r * Math.sin(a), 0);
+      const b = 0.25 + 0.75 * Math.max(0, Math.cos(6 * a - r * 7));
+      const fade = r < 0.15 ? 0.3 : 1;
+      col.push(b * fade, b * fade, b * fade);
+    };
+    for (let ri = 0; ri + 1 < radii.length; ri++) {
+      for (let k = 0; k < segs; k++) {
+        const a = (k / segs) * Math.PI * 2;
+        const b = ((k + 1) / segs) * Math.PI * 2;
+        const r0 = radii[ri];
+        const r1 = radii[ri + 1];
+        pt(r0, a); pt(r1, a); pt(r1, b);
+        pt(r0, a); pt(r1, b); pt(r0, b);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    return g;
+  })();
   const discMat = add(CYAN, 0);
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(RING_R[0] + 0.08, 40), discMat);
+  discMat.vertexColors = true;
+  discMat.side = THREE.DoubleSide;
+  const disc = new THREE.Mesh(discGeo, discMat);
   disc.rotation.x = -Math.PI / 2;
   disc.renderOrder = 3;
   disc.visible = false;
@@ -550,48 +813,65 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   mergeStatic(rotor);
   for (const w of wheels) mergeStatic(w);
   ap.add(turret, gyroRoot, ...wheels, ...ground);
-  // Shadow: hull, turret and wheels (cylinders: their spin doesn't change the shadow); the gyro rings cast none.
+  // Shadow: hull, rear deck, cradle, turret and wheels (cylinders: their spin doesn't change the shadow); the gyro
+  // rings cast none (they spin).
   ap.add(...makeShadowProxy(ap, ap, { keep: [gyroRoot, ...ground] }));
 
   // Animation state.
-  const spin = [0.3, 1.1, 2.0];
-  const _q = new THREE.Quaternion();
-  const _w = new THREE.Quaternion();
-  const _e = new THREE.Euler();
+  const ang = [0.4, 1.2, 2.1];
+  const foldTo = [0, 0, 0];
+  let folding = false;
+  let zapT = 0;
   let wheelA = 0;
   let t = 0;
   let ringW = RING_IDLE;
+  /** Ring i's angle about its pivot: the outer ring rocks, the middle and inner spin. */
+  const pose = (i: number) => (i === 0 ? OUTER_TILT + OUTER_SWING * Math.sin(ang[0]) : ang[i]);
   const update = (dt: number, s: ArsenalRigState) => {
     t += dt;
     wheelA += (s.speed * dt) / WHEEL_R;
     for (const w of wheels) w.rotation.x = wheelA;
-    // Rings: each spins in its own plane (faster with speed, while firing, charging); each base axis wobbles a little
-    // so the gyro feels alive, never enough to bring two rings into line. Folded flat (Polarity Burst) all three lie
-    // level as one concentric spinning disc.
+    // Gimbal: each ring turns about its own pivot axis relative to its parent (faster with speed, while firing,
+    // charging). Polarity Burst folds all three flat: each eases to the nearest quarter turn that lays it level
+    // (latched when the fold starts), which puts the three rings in one plane as a disc.
     const want = RING_IDLE + RING_SPEED * Math.abs(s.speed) + (s.firing ? RING_FIRE : 0) + s.charge * 5 + s.flat * 9;
     ringW += (want - ringW) * Math.min(1, dt * 3);
     const f = THREE.MathUtils.clamp(s.flat, 0, 1);
     const fe = f * f * (3 - 2 * f);
+    if (fe > 0.001 && !folding) {
+      folding = true;
+      for (let i = 0; i < 3; i++) foldTo[i] = Math.round((pose(i) - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2;
+    } else if (fe <= 0.001 && folding) folding = false;
     for (let i = 0; i < 3; i++) {
-      spin[i] += dt * ringW * (1 + i * 0.45) * (i % 2 ? -1 : 1);
-      const wob = 0.22 * (1 - fe);
-      _e.set(wob * Math.sin(t * (0.9 + i * 0.37) + i), wob * Math.sin(t * (0.7 + i * 0.29) + i * 2), 0);
-      _w.setFromEuler(_e);
-      _q.copy(baseQ[i]).premultiply(_w).slerp(flatQ, fe);
-      rings[i].quaternion.copy(_q);
-      rings[i].rotateZ(spin[i]);
+      ang[i] += dt * ringW * RING_RATE[i] * (1 - fe);
+      if (!folding) ang[i] = ((ang[i] % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const a = folding ? pose(i) + (foldTo[i] - pose(i)) * fe : pose(i);
+      if (i === 0) pivots[0].rotation.x = a;
+      else if (i === 1) pivots[1].rotation.y = a;
+      else pivots[2].rotation.z = a;
     }
-    core.rotation.y += dt * (2 + ringW);
-    const hot = 1 + 0.12 * Math.sin(t * 13) + s.charge * 0.6 + f * 0.5;
-    core.scale.set(hot, 1.5 * hot, hot);
-    halo.scale.setScalar(1 + 0.15 * Math.sin(t * 7) + s.charge * 0.8 + f * 0.6);
-    haloOut.scale.setScalar(1 + 0.1 * Math.sin(t * 5) + s.charge * 0.6 + f * 0.8);
+    // Core: slow tumble, pulse; halos breathe; arcs re-jitter every few frames (faster when hot).
+    core.rotation.x += dt * 0.6;
+    core.rotation.y += dt * (0.9 + 0.25 * ringW);
+    const hot = 1 + 0.1 * Math.sin(t * 9) + s.charge * 0.5 + f * 0.4;
+    core.scale.set(hot, 1.3 * hot, hot);
+    plasma.scale.setScalar(1 + 0.18 * Math.sin(t * 13));
+    halo.scale.setScalar(Math.min(1.6, 1 + 0.12 * Math.sin(t * 7) + s.charge * 0.5 + f * 0.4));
+    haloOut.scale.setScalar(Math.min(1.4, 1 + 0.08 * Math.sin(t * 5) + s.charge * 0.35 + f * 0.3));
+    haloMat.uniforms.uK.value = 1.1 + s.charge * 0.8 + f * 0.6;
+    zapT -= dt;
+    if (zapT <= 0) {
+      zapT = s.firing || s.charge > 0.1 ? 0.035 : 0.07;
+      zapArcs();
+    }
+    arcMat.opacity = (0.65 + 0.35 * Math.random()) * (1 - 0.7 * fe);
     disc.visible = f > 0.02;
-    discMat.opacity = 0.55 * f;
+    discMat.opacity = 0.6 * f;
+    disc.rotation.z -= dt * ringW * 0.8;
     // Hover bob: the rear floats on the gyro, pitching gently about the front axle; the light rings breathe with it.
     const bob = Math.sin(t * 2.3) * 0.5 + Math.sin(t * 3.7) * 0.2;
     ap.rotation.x = 0.012 * bob;
-    gyroRoot.position.y = GYRO_Y + 0.05 * bob;
+    gyroRoot.position.y = GYRO_Y + 0.035 * bob;
     groundMat.opacity = 0.5 + 0.12 * Math.sin(t * 4) + s.charge * 0.2 + f * 0.25;
     for (let i = 0; i < ground.length; i++) {
       const k = i < 2 ? 1 + 0.06 * bob : i < 4 ? 1 + 0.08 * Math.sin(t * 1.7) + f * 0.6 : 1 + 0.25 * ((t * 0.6) % 1) + f * 1.2;
