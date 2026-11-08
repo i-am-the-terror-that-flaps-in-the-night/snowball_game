@@ -50,3 +50,4 @@ bound). In menus the gamepad d-pad / stick moves, A selects and B goes back.
 - [docs/duel.md](docs/duel.md): hosting / joining, the duel garage and catch-up, netcode
 - [docs/development.md](docs/development.md): project layout, tests, headless probes, the balance harness
 - [docs/balance.md](docs/balance.md): balance numbers and the reasoning behind them
+- [docs/history.md](docs/history.md): how the game got here, from the snowball-cannon base defense to today
