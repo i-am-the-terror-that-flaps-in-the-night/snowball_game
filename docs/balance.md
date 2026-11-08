@@ -301,6 +301,25 @@ A Hard sweep (mid / high garages, every arena) after the ARSENAL nerfs showed th
   x1.4 bot damage on top of Hard's own. On the rerun the late-game Plaza / Omega Works Hard clears went from about 50 s
   to 60-79 s, bosses took about twice as long, and HP lost roughly doubled.
 
+## Correction: the sweeps' autopilot never fired three primaries
+
+Until commit `4f80f0f`, `scripts/omega-probe.mjs` only pressed SPACE when it held a snowball (0.5 m+), so in every
+sweep before it VOLT-9, BRUTUS and ISOTOPE never used their Arc Lance, Wrecking Fist or Rad Sprayer (ARSENAL had its
+own branch and always fired). Read the earlier sweep numbers in this file with that in mind:
+
+- ARSENAL's lead in the sweeps was overstated: it was the only vehicle shooting. Its PvE-bonus cut still stands on the
+  balance sim's evidence (3x everyone else, with every weapon firing).
+- VOLT-9's "slow bosses" were mostly the autopilot not attacking; the GROUNDED ARC buff was made on that evidence.
+
+With the autopilot fixed (normal mode, mid garage, one run each) the five plows clear every arena within a few
+seconds of each other (Plaza 51-63 s, Omega Works 49-62 s), and on Hard (mid and high garage, 60 runs, no errors)
+the late arenas take 69-92 s at mid with bosses at 20-31 s, and 47-60 s at high with bosses at 8-14 s.
+
+Replicate runs (3 per plow, Plaza / Omega Works, mid) separated noise from signal: BRUTUS's slow first Plaza run was
+noise, but VOLT-9 was the slowest in every run, its boss fights about twice as long as the Classic's or ARSENAL's.
+The Arc Lance only locks a boss inside a 60° cone within 9 m, and THE DONALD and Ω charge, leap and climb, so
+VOLT-9 got a BOSS LOCK (wide cone and a 3 m hold on bosses; see [plows.md](plows.md)).
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more
