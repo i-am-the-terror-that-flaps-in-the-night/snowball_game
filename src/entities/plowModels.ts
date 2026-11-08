@@ -829,7 +829,7 @@ interface DecalSpot {
 const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
   arsenal: [
     { face: 'top', at: [0, 2.11, -0.86], size: [1.2, 0.56], tags: ['stripe', 'band', 'emblem'], emblem: 0.5 }, // roof behind the turret
-    { face: 'side', at: [0.97, 1.56, -0.45], size: [1.9, 0.3], tags: ['band', 'stripe', 'flame'] }, // angled side armour (raised hull)
+    { face: 'side', at: [0.96, 1.56, -0.45], size: [1.9, 0.3], tags: ['band', 'stripe', 'flame'] }, // upper side armour plate (bolted)
   ],
   classic: [
     { face: 'top', at: [0, 1.53, 1.78], size: [0.85, 1.85], tags: ['stripe', 'flame'] }, // hood
