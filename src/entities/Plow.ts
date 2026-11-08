@@ -1226,7 +1226,7 @@ export class Plow implements PlowAPI {
       this.exhaustTip.set(0.55, 3.1, -1.45);
       this.flame.rotation.set(0, 0, 0);
     } else if (ars) {
-      this.exhaustTip.set(0, 1.06, -3.3); // out of the back of the gyro core
+      this.exhaustTip.set(0, 1.65, -3.8); // out of the back of the gyro core
       this.flame.rotation.set(-Math.PI / 2, 0, 0);
     } else if (iso) {
       this.exhaustTip.set(0.55, 2.38, 0.12);
@@ -1258,14 +1258,25 @@ export class Plow implements PlowAPI {
     const p = look.paint;
     this.paintBase.setHex(p.body ?? f.body);
     this.bedBase.setHex(p.trim ?? f.trim);
-    this.paintMat.metalness = p.metalness ?? 0.15;
-    this.paintMat.roughness = p.roughness ?? 0.45;
-    this.bedMat.metalness = p.metalness ?? 0.1;
+    // ARSENAL's factory finish is gunmetal: semi-metallic panels that pick up the sky (env map) instead of going black.
+    const gunmetal = this.kind === 'arsenal' && p.body == null && p.metalness == null;
+    this.paintMat.metalness = p.metalness ?? (gunmetal ? 0.45 : 0.15);
+    this.paintMat.roughness = p.roughness ?? (gunmetal ? 0.36 : 0.45);
+    this.bedMat.metalness = p.metalness ?? (gunmetal ? 0.4 : 0.1);
     this.bedMat.roughness = p.roughness ?? 0.5;
-    const env = p.mirror ? getPaintEnvMap(this.ctx.renderer) : null;
+    const env = p.mirror || gunmetal ? getPaintEnvMap(this.ctx.renderer) : null;
     if (this.paintMat.envMap !== env) {
       this.paintMat.envMap = this.bedMat.envMap = env;
       this.paintMat.needsUpdate = this.bedMat.needsUpdate = true;
+    }
+    this.paintMat.envMapIntensity = this.bedMat.envMapIntensity = gunmetal ? 0.8 : 1;
+    if (this.kind === 'arsenal') {
+      const metalEnv = getPaintEnvMap(this.ctx.renderer);
+      for (const m of this.arsRig.metalMats) {
+        if (m.envMap === metalEnv) continue;
+        m.envMap = metalEnv;
+        m.needsUpdate = true;
+      }
     }
     const fh = this.kind === 'volt' ? 0x7fdcff : this.kind === 'brute' ? 0xffc21a : this.kind === 'isotope' ? 0x7dff4a : 0xffd23a;
     this.hubMat.color.setHex(p.accent ?? fh);

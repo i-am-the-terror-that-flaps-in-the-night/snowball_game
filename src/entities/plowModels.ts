@@ -828,8 +828,8 @@ interface DecalSpot {
 /** Decal spots on each starter plow's bodywork (model-local coordinates; see the builders above + Plow.ts). */
 const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
   arsenal: [
-    { face: 'top', at: [0, 1.43, -0.86], size: [1.2, 0.56], tags: ['stripe', 'band', 'emblem'], emblem: 0.5 }, // roof behind the turret
-    { face: 'side', at: [0.94, 1.04, -0.45], size: [1.9, 0.26], tags: ['band', 'stripe', 'flame'] }, // angled side armour
+    { face: 'top', at: [0, 2.11, -0.86], size: [1.2, 0.56], tags: ['stripe', 'band', 'emblem'], emblem: 0.5 }, // roof behind the turret
+    { face: 'side', at: [0.97, 1.56, -0.45], size: [1.9, 0.3], tags: ['band', 'stripe', 'flame'] }, // angled side armour (raised hull)
   ],
   classic: [
     { face: 'top', at: [0, 1.53, 1.78], size: [0.85, 1.85], tags: ['stripe', 'flame'] }, // hood
@@ -927,7 +927,7 @@ export const TRAIL_REAR: Readonly<Record<PlowKind, { x: number; y: number; z: nu
   volt: { x: 0.75, y: 0.85, z: -2.1 },
   brute: { x: 1.1, y: 0.8, z: -2.3 },
   isotope: { x: 0.8, y: 0.85, z: -2.05 },
-  arsenal: { x: 0.85, y: 0.85, z: -2.05 },
+  arsenal: { x: 0.85, y: 1.1, z: -2.05 },
 };
 
 const _trailCol = new THREE.Color();

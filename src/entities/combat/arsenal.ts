@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EnemyHandle } from '../../core/types';
 import { settings } from '../../core/settings';
 import { SingularityFx } from '../../fx/singularity';
+import { Horizon, Shockwaves, addMat, aimBeam, beamGeometry, paintMat } from './arsenalFx';
 import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
 import type { UltScript } from './ultimates';
 
@@ -130,30 +131,9 @@ const CYAN = 0x38e8ff;
 const _a = new THREE.Vector3();
 const _hit = { t: 0, x: 0, y: 0, z: 0, what: 'ground' as 'ground' | number };
 
-/** Unit cylinder along +Z (0..1): beams are scaled (width, width, length) and pointed with lookAt. */
-function beamGeometry(): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
-  g.rotateX(Math.PI / 2);
-  g.translate(0, 0, 0.5);
-  return g;
-}
-const glowMat = (color: number, opacity: number) =>
-  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+const glowMat = addMat;
 /** Normal-blended tint: additive cyan washes out to white over sunlit snow, so the outer glows are painted on. */
-const tintMat = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false });
-
-/** Point a unit beam from `from` to `to` with half-width `w` (hidden when degenerate). */
-function aimBeam(m: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3, w: number): void {
-  const len = from.distanceTo(to);
-  if (!(len > 1e-3)) {
-    m.visible = false;
-    return;
-  }
-  m.visible = true;
-  m.position.copy(from);
-  m.lookAt(to);
-  m.scale.set(w, w, len);
-}
+const tintMat = paintMat;
 
 /** ARSENAL: pulse laser, Grav Lance, Polarity Burst, the SINGULARITY and the Scrap Magnet (plus the duel guest's view). */
 export class ArsenalKit extends Kit implements UltScript, VehicleKit {
@@ -170,6 +150,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private beamCore!: THREE.Mesh;
   private beamGlow!: THREE.Mesh;
   private beamHit!: THREE.Mesh;
+  private beamHitTint!: THREE.Mesh;
+  private beamMuzzle!: THREE.Mesh;
   private beamA = 0;
   private beamPulse = 0;
   private beamTgt: EnemyHandle | null = null;
@@ -182,20 +164,27 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   /** Thin beams: locked bots (null = free beam, fanned out ahead), their meshes and free-beam fan angles. */
   private lanceTgt: (EnemyHandle | null)[] = [];
   private lanceBeams: THREE.Mesh[] = [];
+  private lanceCores: THREE.Mesh[] = [];
+  private lanceEnds: THREE.Mesh[] = [];
   private lanceN = 0;
   private mergeCore!: THREE.Mesh;
   private mergeGlow!: THREE.Mesh;
+  private mergeHot!: THREE.Mesh;
+  /** Lens flare during the lance, and the pull-point node ahead. */
+  private lanceLens!: THREE.Mesh;
+  private lanceNode!: THREE.Mesh;
+  private lanceNodeTint!: THREE.Mesh;
+  /** Expanding shockwaves (lance merge, burst detonation). */
+  private shock!: Shockwaves;
   /** Polarity Burst recharge 0..1 (the F slot; the name is the old missile line's, net field NP.fReady). */
   missileCharge = 1;
   /** Polarity Burst: elapsed (-1 idle), singularity point, caught bots, meshes. */
   private burstT = -1;
   private burstAt = new THREE.Vector3();
   private burstY = 0;
-  private horizon!: THREE.Mesh;
-  private horizonIn!: THREE.Mesh;
-  private burstCore!: THREE.Mesh;
-  private burstGlow!: THREE.Mesh;
+  private horizon!: Horizon;
   private streakT = 0;
+  private burstStreakT = 0;
   /** Singularity: centre and FX (built on first use, only with a camera: headless sims have none). */
   private singAt = new THREE.Vector3();
   private singY = 0;
@@ -282,7 +271,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const ctx = this.ctx;
     const px = plow.position.x;
     const pz = plow.position.z;
-    const y0 = (plow.surfaceY || 0) + 1.2;
+    const y0 = (plow.surfaceY || 0) + 1.5;
     const R = st.scrapRadius;
     // Field cue: filings drifting in from the rim.
     if ((this.scrapFxT -= dt) <= 0) {
@@ -367,45 +356,41 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   private buildArsenalFx(scene: THREE.Scene): void {
     const beam = beamGeometry();
-    const mk = (mat: THREE.Material, order = 3) => {
-      const m = new THREE.Mesh(beam, mat);
+    const mk = (mat: THREE.Material, order = 3, geo: THREE.BufferGeometry = beam) => {
+      const m = new THREE.Mesh(geo, mat);
       m.visible = false;
       m.renderOrder = order;
       m.frustumCulled = false;
       scene.add(m);
       return m;
     };
-    // Pulse laser: a white-cyan core inside a wider cyan glow, plus a soft glow ball where it lands.
-    this.beamCore = mk(glowMat(0xe8fdff, 0.95));
-    this.beamGlow = mk(tintMat(0x14c8f5, 0.45), 2);
-    this.beamHit = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), glowMat(CYAN, 0.7));
-    this.beamHit.visible = false;
-    this.beamHit.renderOrder = 3;
-    scene.add(this.beamHit);
-    // Grav Lance: LANCE_MAX thin beams and the thick merge pulse (core + glow).
-    const thin = tintMat(0x22d4ff, 0.7);
-    for (let i = 0; i < LANCE_MAX; i++) this.lanceBeams.push(mk(thin));
-    this.mergeCore = mk(glowMat(0xffffff, 1));
-    this.mergeGlow = mk(tintMat(0x14c8f5, 0.6), 2);
-    // Polarity Burst: the expanding event-horizon ring (+ a fainter inner ring) and the singularity point.
-    const ringMat = glowMat(CYAN, 0.8);
-    ringMat.side = THREE.DoubleSide;
-    this.horizon = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 72), ringMat);
-    this.horizonIn = new THREE.Mesh(new THREE.RingGeometry(0.6, 1, 72), glowMat(0x1a8cb0, 0.25));
-    (this.horizonIn.material as THREE.Material).side = THREE.DoubleSide;
-    for (const r of [this.horizon, this.horizonIn]) {
-      r.rotation.x = -Math.PI / 2;
-      r.visible = false;
-      r.renderOrder = 2;
-      scene.add(r);
+    const ball = new THREE.SphereGeometry(1, 14, 10);
+    // Pulse laser: a white-hot core inside a painted cyan sheath, a flare at the emitter and a glow where it lands.
+    this.beamCore = mk(glowMat(0xf0feff, 1), 4);
+    this.beamGlow = mk(tintMat(0x10c0f2, 0.55), 3);
+    this.beamHit = mk(glowMat(0xc8fbff, 0.9), 4, ball);
+    this.beamHitTint = mk(tintMat(0x22ccff, 0.45), 3, ball);
+    this.beamMuzzle = mk(glowMat(0xc8fbff, 0.9), 4, ball);
+    // Grav Lance: LANCE_MAX thin beams (painted cyan sheath + white core, a glow on each bot), the lens flare, the
+    // pull-point node and the thick merge pulse (white core, hot sheath, painted glow).
+    const sheath = tintMat(0x0fb6ec, 0.85);
+    const thinCore = glowMat(0xe0fdff, 1);
+    const endGlow = tintMat(0x22ccff, 0.6);
+    for (let i = 0; i < LANCE_MAX; i++) {
+      this.lanceBeams.push(mk(sheath, 3));
+      this.lanceCores.push(mk(thinCore, 4));
+      this.lanceEnds.push(mk(endGlow, 3, ball));
     }
-    this.burstCore = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
-    this.burstGlow = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), glowMat(CYAN, 0.5));
-    for (const m of [this.burstCore, this.burstGlow]) {
-      m.visible = false;
-      m.renderOrder = 3;
-      scene.add(m);
-    }
+    this.lanceLens = mk(glowMat(0xd8ffff, 0.9), 4, ball);
+    this.lanceNode = mk(glowMat(0xe8ffff, 1), 4, ball);
+    this.lanceNodeTint = mk(tintMat(0x16c6f2, 0.5), 3, ball);
+    this.mergeCore = mk(glowMat(0xffffff, 1), 5);
+    this.mergeHot = mk(glowMat(0x9ff4ff, 0.8), 4);
+    this.mergeGlow = mk(tintMat(0x10bff2, 0.6), 3);
+    // Polarity Burst: event horizon, pull point, tethers, streaks; shared shockwaves.
+    this.horizon = new Horizon(scene, beam);
+    this.shock = new Shockwaves(scene);
+    this.shock.reduceFlash = settings.reduceFlash;
   }
 
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (pulse ticks, lance ticks), see
@@ -532,14 +517,14 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return out.set(e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
   }
 
-  /** The continuous pulse beam from the emitter to its target (or last end point), brightening on every tick. */
+  /** The continuous pulse beam from the emitter to its target (or last end point), flaring on every damage tick. */
   private drawBeam(dt: number): void {
     const on = this.gunsOn && this.beamHasEnd;
     this.beamA = on ? Math.min(1, this.beamA + dt * 25) : Math.max(0, this.beamA - dt / BEAM_FADE);
     this.beamPulse = Math.max(0, this.beamPulse - dt * BEAM_PULSE_DECAY);
     const plow = this.b.plow;
     if (this.beamA <= 0 || !plow) {
-      this.beamCore.visible = this.beamGlow.visible = this.beamHit.visible = false;
+      this.beamCore.visible = this.beamGlow.visible = this.beamHit.visible = this.beamHitTint.visible = this.beamMuzzle.visible = false;
       if (!on) this.beamHasEnd = false;
       return;
     }
@@ -548,14 +533,21 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const p = this.beamPulse;
     const flick = 0.85 + Math.random() * 0.3;
     const a = this.beamA;
-    aimBeam(this.beamCore, _a, this.beamEnd, (0.03 + 0.04 * p) * flick * a);
-    aimBeam(this.beamGlow, _a, this.beamEnd, (0.1 + 0.12 * p) * flick * a);
-    (this.beamGlow.material as THREE.MeshBasicMaterial).opacity = (0.3 + 0.45 * p) * a;
-    (this.beamCore.material as THREE.MeshBasicMaterial).opacity = (0.75 + 0.25 * p) * a;
-    const hit = this.beamHit;
-    hit.visible = !!this.beamTgt?.alive || p > 0.2;
-    hit.position.copy(this.beamEnd);
-    hit.scale.setScalar((0.2 + 0.35 * p) * flick * a);
+    aimBeam(this.beamCore, _a, this.beamEnd, (0.04 + 0.05 * p) * flick * a);
+    aimBeam(this.beamGlow, _a, this.beamEnd, (0.15 + 0.15 * p) * flick * a);
+    (this.beamGlow.material as THREE.MeshBasicMaterial).opacity = (0.45 + 0.4 * p) * a;
+    (this.beamCore.material as THREE.MeshBasicMaterial).opacity = (0.85 + 0.15 * p) * a;
+    const m = this.beamMuzzle;
+    m.visible = true;
+    m.position.copy(_a);
+    m.scale.setScalar((0.14 + 0.16 * p) * flick * a);
+    const hitOn = !!this.beamTgt?.alive || p > 0.2;
+    this.beamHit.visible = this.beamHitTint.visible = hitOn;
+    this.beamHit.position.copy(this.beamEnd);
+    this.beamHitTint.position.copy(this.beamEnd);
+    this.beamHit.scale.setScalar((0.28 + 0.32 * p) * flick * a);
+    this.beamHitTint.scale.setScalar((0.6 + 0.5 * p) * flick * a);
+    (this.beamHitTint.material as THREE.MeshBasicMaterial).opacity = (0.3 + 0.35 * p) * a;
   }
 
   /**
@@ -685,13 +677,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const n = Math.max(this.lanceN, 1);
     for (let i = 0; i < LANCE_MAX; i++) {
       const m = this.lanceBeams[i];
-      if (merging || i >= n) {
-        m.visible = false;
-        continue;
-      }
+      const core = this.lanceCores[i];
+      const end = this.lanceEnds[i];
       const e = this.lanceTgt[i];
-      if (i < this.lanceTgt.length && (!e || !e.alive)) {
-        m.visible = false;
+      if (merging || i >= n || (i < this.lanceTgt.length && (!e || !e.alive))) {
+        m.visible = core.visible = end.visible = false;
         continue;
       }
       if (e) this.chest(e, _tip);
@@ -702,9 +692,25 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       }
       _tip.lerp(P, conv);
       _a.copy(_p).lerp(_tip, reach);
-      aimBeam(m, _p, _a, (0.06 + 0.025 * Math.sin(el * 40 + i * 2)) * (1 + conv));
+      const wob = 1 + 0.3 * Math.sin(el * 40 + i * 2);
+      aimBeam(m, _p, _a, 0.085 * wob * (1 + conv));
+      aimBeam(core, _p, _a, 0.03 * wob * (1 + conv));
+      end.visible = reach >= 1 && !!e;
+      end.position.copy(_a);
+      end.scale.setScalar((0.35 + 0.12 * Math.sin(el * 30 + i)) * (1 - 0.5 * conv));
     }
-    (this.lanceBeams[0].material as THREE.MeshBasicMaterial).opacity = 0.6 + 0.3 * Math.random();
+    (this.lanceBeams[0].material as THREE.MeshBasicMaterial).opacity = 0.75 + 0.2 * Math.random();
+    // Lens flare at the emitter, and the pull-point node ahead (grows as the beams converge on it).
+    const lens = this.lanceLens;
+    lens.visible = true;
+    lens.position.copy(_p);
+    lens.scale.setScalar((merging ? 0.6 : 0.25 + 0.15 * conv) * (0.85 + 0.3 * Math.random()));
+    const nodeK = merging ? 0 : Math.min(1, Math.max(0, (el - LANCE_SPLIT) / 0.2)) * (0.55 + 0.6 * conv);
+    this.lanceNode.visible = this.lanceNodeTint.visible = nodeK > 0.01;
+    this.lanceNode.position.copy(P);
+    this.lanceNodeTint.position.copy(P);
+    this.lanceNode.scale.setScalar(0.22 * nodeK * (0.9 + 0.2 * Math.sin(el * 50)));
+    this.lanceNodeTint.scale.setScalar(0.55 * nodeK);
     // PULL: drag each locked bot toward the point (bots only; bosses barely), small ticks.
     if (el >= LANCE_SPLIT && el < LANCE_MERGE) {
       for (const e of this.lanceTgt) if (e?.alive) this.pullBot(e, P.x, P.z, LANCE_PULL * (e.isBoss ? LANCE_BOSS : 1), dt);
@@ -738,9 +744,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       const k = THREE.MathUtils.clamp((LANCE_SECONDS - el) / (LANCE_SECONDS - LANCE_MERGE), 0, 1);
       const w = tankBeamWidth(st) / LANCE_WIDTH;
       const flick = 0.9 + Math.random() * 0.2;
-      aimBeam(this.mergeCore, _p, _a, 0.22 * w * flick * (0.4 + 0.6 * k));
-      aimBeam(this.mergeGlow, _p, _a, 0.75 * w * flick * (0.5 + 0.5 * k));
-      (this.mergeGlow.material as THREE.MeshBasicMaterial).opacity = 0.65 * k + 0.1;
+      aimBeam(this.mergeCore, _p, _a, 0.3 * w * flick * (0.4 + 0.6 * k));
+      aimBeam(this.mergeHot, _p, _a, 0.5 * w * flick * (0.4 + 0.6 * k));
+      aimBeam(this.mergeGlow, _p, _a, 0.9 * w * flick * (0.5 + 0.5 * k));
+      (this.mergeHot.material as THREE.MeshBasicMaterial).opacity = 0.8 * k + 0.1;
+      (this.mergeGlow.material as THREE.MeshBasicMaterial).opacity = 0.6 * k + 0.15;
       if (this.mergeTicks === 0) this.mergeFlash(_p, P, L);
       while (this.mergeTicks < LANCE_MERGE_TICKS && el >= LANCE_MERGE + this.mergeTicks * LANCE_MERGE_TICK) {
         this.mergeTicks++;
@@ -755,7 +763,10 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private mergeFlash(from: THREE.Vector3, P: THREE.Vector3, L: number): void {
     const fx = this.ctx.fx;
     fx.burst(from, { color: 0xffffff, count: 10, speed: 7, size: 0.14, gravity: 0, life: 0.2 });
-    fx.ring(_tip.set(P.x, (this.b.plow.surfaceY || 0) + 0.15, P.z), 5, CYAN);
+    const gy = this.snowTop(P.x, P.z, 4, Number.isFinite(this.b.plow.surfaceY) ? this.b.plow.surfaceY : 0);
+    // Flash at the lens; a shockwave ring (with a short wall and its own flash) bursting out of the clump.
+    this.shock.spawn(from.x, from.y - 0.9, from.z, 0.1, { dur: 0.3, flashR: 1.6, flashY: 0.9 });
+    this.shock.spawn(P.x, gy, P.z, 7, { dur: 0.5, flashR: 2.4, flashY: P.y - gy, wallH: 1.6 });
     fx.sparks(P, null, { count: 18, color: CYAN, speed: 14, size: 0.06, life: 0.3, gravity: 2 });
     this.b.snow.melt(P.x, P.z, 2, 0.5);
     this.b.audio.play('zap', { pitch: 0.35, volume: 1 });
@@ -789,12 +800,30 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private endLance(): void {
     this.laserT = 0;
     for (const m of this.lanceBeams) m.visible = false;
-    this.mergeCore.visible = this.mergeGlow.visible = false;
+    for (const m of this.lanceCores) m.visible = false;
+    for (const m of this.lanceEnds) m.visible = false;
+    this.mergeCore.visible = this.mergeGlow.visible = this.mergeHot.visible = false;
+    this.lanceLens.visible = this.lanceNode.visible = this.lanceNodeTint.visible = false;
     this.lanceTgt.length = 0;
     if (this.b.plow && this.h.ultIdle) this.b.plow.gyroCharge = 0;
   }
 
   /* ------------------------------------------------------------------ F: Polarity Burst */
+
+  /** Highest snow top round (x, z) out to `r` m (centre + 8 rim samples), at least `y`: flat ground FX sit on it so
+   *  the snow never swallows them. */
+  private snowTop(x: number, z: number, r: number, y: number): number {
+    const snow = this.ctx.snow;
+    if (!snow) return y;
+    let top = y;
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const rr = i === 8 ? 0 : r * 0.9;
+      const h = snow.topAt(x + Math.sin(a) * rr, z + Math.cos(a) * rr);
+      if (Number.isFinite(h) && h > top) top = h;
+    }
+    return top;
+  }
 
   /** Polarity Burst (F on ARSENAL), or the SINGULARITY when the meter is full. Runs the burst once it's out. */
   updateBurst(dt: number): void {
@@ -802,6 +831,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const plow = this.b.plow;
     this.tickBurst(dt);
     this.tickSingFx(dt);
+    this.shock.update(dt);
+    this.horizon.streaks.update(dt);
     if (st.missileDamage <= 0 || !plow || plow.dead) return;
     if (this.missileCharge < 1) this.missileCharge = Math.min(1, this.missileCharge + (st.missileCooldown > 0 ? dt / st.missileCooldown : 1));
     if (!this.b.input.wasPressed('KeyF')) return;
@@ -818,6 +849,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private startBurst(): void {
     const plow = this.b.plow;
     this.burstT = 0;
+    this.burstStreakT = 0;
     this.burstAt.set(plow.position.x + Math.sin(plow.heading) * BURST_POINT, 0, plow.position.z + Math.cos(plow.heading) * BURST_POINT);
     this.burstY = Number.isFinite(plow.surfaceY) ? plow.surfaceY : 0;
     this.burstAt.y = this.burstY + 1.3;
@@ -839,23 +871,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const shut = THREE.MathUtils.smoothstep(t, BURST_DET - 0.25, BURST_DET);
     const r = Math.max(0.3, BURST_R * open * (1 - 0.92 * shut));
     const vis = t < BURST_DET;
-    for (const m of [this.horizon, this.horizonIn]) {
-      m.visible = vis;
-      m.position.set(S.x, this.burstY + 0.12, S.z);
-      m.scale.setScalar(r);
-    }
-    (this.horizon.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.35 * Math.sin(t * 30) * Math.sin(t * 7) + 0.2 * shut;
-    (this.horizonIn.material as THREE.MeshBasicMaterial).opacity = 0.18 + 0.2 * shut;
-    this.horizon.rotation.z = t * 2;
-    const coreK = vis ? 0.2 + 0.25 * open + 0.35 * shut + 0.05 * Math.sin(t * 40) : 0;
-    this.burstCore.visible = this.burstGlow.visible = vis;
-    this.burstCore.position.copy(S);
-    this.burstGlow.position.copy(S);
-    this.burstCore.scale.setScalar(coreK);
-    this.burstGlow.scale.setScalar(coreK * 4);
-    this.burstCore.rotation.set(t * 5, t * 7, 0);
-    (this.burstGlow.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.3 * shut;
-    // Pull every bot inside the horizon toward the point, with streaks.
+    const hz = this.horizon;
+    if (vis) hz.set(S.x, this.snowTop(S.x, S.z, r, this.burstY), S.z, r, S, 0.5 + 0.5 * open + 0.6 * shut, t, Math.min(1, 0.3 + open) * (1 - 0.5 * shut));
+    else hz.hide();
+    // Pull every bot inside the horizon toward the point: tethers to the point, streaks rushing in.
+    let nt = 0;
     if (t >= BURST_OPEN * 0.5 && t < BURST_DET) {
       const hits = this.collect(S.x, S.z, r);
       const streak = (this.streakT -= dt) <= 0;
@@ -864,21 +884,31 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const e = hits[i];
         if (!e.alive) continue;
         this.pullBot(e, S.x, S.z, BURST_PULL * (e.isBoss ? BURST_BOSS : 1), dt);
+        this.chest(e, _tip);
+        hz.tether(nt++, _tip, 0.05 * (0.8 + 0.4 * Math.random()));
         if (streak) {
-          this.chest(e, _tip);
           _fwd.subVectors(S, _tip).normalize();
           this.ctx.fx.sparks(_tip, _fwd, { count: 2, color: CYAN, speed: 12, spread: 0.15, size: 0.06, life: 0.25, gravity: 0, length: 0.1 });
         }
       }
       this.clearTargets();
+      // Streaks of light (and snow) rushing in from the rim.
+      this.burstStreakT -= dt;
+      while (this.burstStreakT <= 0) {
+        this.burstStreakT += 0.022;
+        const a = Math.random() * Math.PI * 2;
+        const rr = r * (0.75 + 0.25 * Math.random());
+        _tip.set(S.x + Math.sin(a) * rr, this.burstY + 0.2 + Math.random() * 1.8, S.z + Math.cos(a) * rr);
+        hz.streaks.spawn(_tip, 0.35 + 0.25 * Math.random());
+      }
       if (streak) {
-        // Snow and filings spiralling in from the rim.
         const a = Math.random() * Math.PI * 2;
         _tip.set(S.x + Math.sin(a) * r, this.burstY + 0.3, S.z + Math.cos(a) * r);
         _fwd.set(S.x - _tip.x + Math.cos(a) * r * 0.4, 0.3, S.z - _tip.z - Math.sin(a) * r * 0.4).normalize();
         this.ctx.fx.sparks(_tip, _fwd, { count: 3, color: 0xbff8ff, speed: 14, spread: 0.2, size: 0.05, life: 0.4, gravity: 0, length: 0.08 });
       }
     }
+    hz.tethersDone(nt);
     if (t0 < BURST_DET && t >= BURST_DET) this.detonateBurst();
     if (t >= BURST_END) {
       this.burstT = -1;
@@ -894,9 +924,14 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     fx.burst(S, { color: 0xffffff, count: 16, speed: 14, size: 0.2, gravity: 0, life: 0.25 });
     fx.burst(S, { color: CYAN, count: 26, speed: 11, size: 0.35, gravity: -1, life: 0.6 });
     fx.sparks(S, null, { count: 30, color: CYAN, speed: 22, size: 0.07, life: 0.35, gravity: 4 });
+    // The shockwave: a fast hot ring with a tall wall and a big flash, a slower wide ring behind it.
+    this.horizon.hide();
+    this.horizon.streaks.clear();
+    const gy = this.snowTop(S.x, S.z, BURST_DET_R, this.burstY);
+    this.shock.spawn(S.x, gy, S.z, BURST_DET_R * 1.7, { dur: 0.6, flashR: 2.6, flashY: S.y - gy, wallH: 3 });
+    this.shock.spawn(S.x, gy, S.z, BURST_DET_R * 1.05, { dur: 0.4 });
     _tip.set(S.x, this.burstY + 0.15, S.z);
-    fx.ring(_tip, BURST_DET_R * 1.6, CYAN);
-    fx.ring(_tip, BURST_DET_R * 0.9, 0xbff8ff);
+    fx.ring(_tip, BURST_DET_R * 2.2, CYAN);
     this.b.audio.play('explosion', { pitch: 0.75, volume: 0.65 });
     this.b.audio.play('zap', { pitch: 0.4, volume: 0.8 });
     this.shake(0.35);
@@ -1090,7 +1125,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.gunPitch = 0;
     this.trigHeld = this.trigPressed = false;
     this.burstT = -1;
-    for (const m of [this.horizon, this.horizonIn, this.burstCore, this.burstGlow]) m.visible = false;
+    this.horizon.clear();
+    this.shock.clear();
+    this.beamHitTint.visible = this.beamMuzzle.visible = false;
     const plow = this.b.plow;
     if (plow) plow.gyroFlat = plow.gyroCharge = 0;
   }
