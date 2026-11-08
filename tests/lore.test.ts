@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ZONES } from '../src/config/zones';
 import { PLOWS, type PlowKind } from '../src/config/plows';
 import { ENEMIES } from '../src/config/enemies';
-import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, PLOW_LORE, PROLOGUE } from '../src/config/lore';
+import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE } from '../src/config/lore';
 
 describe('lore', () => {
   it('every campaign arena has a chapter (opening + ending)', () => {
@@ -28,6 +28,16 @@ describe('lore', () => {
       expect(ENEMIES[b as keyof typeof ENEMIES]).toBeTruthy();
     }
     expect(BOSS_ORDER.map((o) => o.type).sort()).toEqual([...bosses].sort());
+  });
+
+  it('every arena has a Hard-mode (PROTOCOL B) chapter', () => {
+    for (const z of ZONES) {
+      expect(HARD_CHAPTERS[z.id]?.intro, z.id).toBeTruthy();
+      expect(HARD_CHAPTERS[z.id]?.outro, z.id).toBeTruthy();
+    }
+    expect(Object.keys(HARD_CHAPTERS).sort()).toEqual(ZONES.map((z) => z.id).sort());
+    expect(HARD_PROLOGUE.length).toBeGreaterThan(100);
+    expect(HARD_EPILOGUE.length).toBeGreaterThan(100);
   });
 
   it('every plow has a bio', () => {

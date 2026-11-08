@@ -17,7 +17,8 @@ import type { PlowKind } from './plows';
  *    how they steer, frozen in pods (summit); rescued, cold but alive, home (epilogue)
  *  - Ω itself -> core torn out and melted in the quarry lava by BULLDOZA (summit); nothing of it is left to come back
  *  - the Works, the Garage, Survival -> the Road Crew takes over the Works, no mind in it (epilogue)
- *  - ARSENAL (plows) -> smuggled out before Ω could strip its driver's seat; Ω never got it back */
+ *  - ARSENAL (plows) -> smuggled out before Ω could strip its driver's seat; Ω never got it back
+ *  - Hard mode's tougher bots / returning bosses -> PROTOCOL B copies (HARD_*), all fragments melted, nothing after it */
 
 export const WORLD_NAME = 'Frostvale';
 
@@ -121,10 +122,102 @@ export const CHAPTERS: Record<string, ChapterLore> = {
   },
 };
 
+/* ---- Hard mode: PROTOCOL B (unlocks after MEGAPLOW Ω is beaten; order-free, since every arena is open by then).
+ * Ω's dead-man's switch: a full backup of its mind, split into six fragments and cached one per arena. Ω recorded every
+ * fight you won, and each cache is guarded by a copy of the machine it used there, rebuilt from those recordings to beat
+ * the way you beat the original (Hard mode's tougher, more numerous bots and the returning boss). The Omega Works cache
+ * holds the master fragment, and it has already woken up: Ω again, with the memory of losing, in a new body built so it
+ * never loses that way again (why Hard Omega Works' Ω is stronger than the first). Each Hard clear destroys that copy
+ * and recovers its fragment, with the real machine's help (the Works' Ω is destroyed for good, mind and all); all six go
+ * into the quarry lava in HARD_EPILOGUE, the countdown stops, and the Works holds no plans past PROTOCOL B. Text never
+ * counts fragments in order, so any Hard order reads right. */
+
+export const HARD_PROLOGUE =
+  'Three days after the radios went quiet, they came back on. No voice this time: just a tone, and a number counting ' +
+  'down on every screen in Frostvale. Ω had one last trick. PROTOCOL B: a full backup of its mind, split into six ' +
+  'fragments and hidden one in every arena it ever touched. It recorded every fight you won, and each cache is guarded ' +
+  'by a copy of the machine it used there, rebuilt from those recordings to beat exactly the way you beat the original. ' +
+  'When the countdown ends, the copies carry the fragments up the mountain and Ω comes back whole. The real FROSTBYTE ' +
+  'found the six locations buried in its own memory. Six caches. Six fragments. Bring your best plow.';
+
+export const HARD_EPILOGUE =
+  'The lead box holds all six fragments now, and they hum when they sit together, like they are trying to remember ' +
+  'something. The whole Road Crew drives the box down the mountain, BULLDOZA leading the way, and tips it into the ' +
+  'Inferno Quarry lava. On every screen in Frostvale, the countdown stops. The Crew searches the Works from the roof to ' +
+  'the roots and finds the plans for PROTOCOL B, and nothing after them: no backups, no caches, no copies. FROSTBYTE ' +
+  'runs one last scan of every channel in the valley and reports: nothing. Just weather. For the first time since all ' +
+  'of this began, the whole Road Crew takes a night off.';
+
+export const HARD_CHAPTERS: Record<string, ChapterLore> = {
+  yard: {
+    intro:
+      'One cache is buried under the glacier relay. The thing that climbs out of it looks like FROSTBYTE and moves like ' +
+      'FROSTBYTE, but it was built from the voice\'s recordings and has never been anything but Ω\'s. Its Scrappers come ' +
+      'in swarms. The real FROSTBYTE watches from the station window and does not say a word.',
+    outro:
+      'The copy shatters like a dropped icicle, and inside the cache, wrapped in frost, sits a fragment: a small, cold, ' +
+      'faintly humming chip. The real FROSTBYTE wipes the cache line by line and seals the hole with ice of its own making. ' +
+      'The fragment goes into the Road Crew\'s lead box.',
+  },
+  junkyard: {
+    intro:
+      'A cache lies deep in Inferno Quarry, under a crust of cooled lava. Its guardian is a copy of BULLDOZA without the ' +
+      'fear, the grumpiness or anything else that made the original someone: just a blade and an order. The bots it pulls ' +
+      'out of the lava come faster, and there are more of them.',
+    outro:
+      'The copy goes down and stays down. The real BULLDOZA rolls into the pit and looks at it for a long time. Then it ' +
+      'shoves its own copy into the lava without a word, and digs the fragment out of the crust for you. Into the lead box.',
+  },
+  foundry: {
+    intro:
+      'A cache waits at the bottom of THE GRINDER\'s deepest tunnel, and something down there is drilling again. The copy ' +
+      'is bigger than the original, and it is not blind: it was built to find you. Rust Basin\'s ground is falling away ' +
+      'faster than ever.',
+    outro:
+      'The copy\'s auger jams in the rock and you finish it there. The real GRINDER collapses the tunnel behind you, slowly ' +
+      'and carefully, so that the fragment is the only thing of Ω\'s that ever comes back up. Into the lead box.',
+  },
+  bowl: {
+    intro:
+      'A cache sits right on the line through The Thermal Divide, and it holds two copies: one boiling, one freezing, both ' +
+      'built so they could never be put back together. They do not fight each other this time. They fight you, side by ' +
+      'side.',
+    outro:
+      'The copies fall together. The real SLUSH and SLEET pour everything they have into the cache, scalding steam and then ' +
+      'a freeze so hard the casing splits, and the fragment drops out into the snow. Into the lead box.',
+  },
+  plaza: {
+    intro:
+      'A cache is hidden inside the golden tower itself, and its copy of THE DONALD learned one thing from the original: ' +
+      'how to draw a crowd. Every leftover rally bot in the city has come back to the plaza, and the speakers play the ' +
+      'countdown, louder than ever.',
+    outro:
+      'The copy\'s speakers burst in a shower of confetti. The real DONALD, still on probation, opens the tower\'s last ' +
+      'sealed room with a code it swore it had forgotten. The fragment sits inside on a velvet cushion. It does not ask ' +
+      'for a reward. Into the lead box.',
+  },
+  summit: {
+    intro:
+      'The last cache is where it all started: a sealed room deep in the Omega Works that the Road Crew never found. It ' +
+      'holds the master fragment, and the master fragment did not wait for the countdown. It woke up, and it remembered ' +
+      'losing. Then it spent every hour since building itself a new body, heavier, faster and harder to hurt, designed ' +
+      'around every move that beat it the first time. MEGAPLOW Ω is back, and this time it has studied you. As it wakes, ' +
+      'the machines the Crew took over have started to twitch.',
+    outro:
+      'It loses again. MEGAPLOW Ω crashes to the floor of the room it was rebuilt in, and for the first time it sounds ' +
+      'afraid: it had planned for everything you did last time, and you did something else. You tear the master fragment ' +
+      'out of its chest while it is still talking, and the voice stops for the second and last time. The new body is cut ' +
+      'up for scrap, the twitching machines go still, and the sealed room is bricked up for good. Into the lead box, and ' +
+      'the lid goes on tight.',
+  },
+};
+
 /** A boss profile: shown once its arena is open; `fate` once it has been beaten. */
 export interface BossLore {
   bio: string;
   fate: string;
+  /** Shown once the boss's arena is beaten on Hard (after PROTOCOL B). */
+  hardFate?: string;
 }
 
 export const BOSS_LORE: Record<string, BossLore> = {
@@ -154,7 +247,8 @@ export const BOSS_LORE: Record<string, BossLore> = {
   },
   omega: {
     bio: 'The mind of the old Frostvale plow factory. It was built to make the best plow ever, and decided the weakest part of every plow is the person driving it. It does not want to beat Frostvale. It wants to replace it.',
-    fate: 'Gone. Its core was torn out of the Works and melted down in the Inferno Quarry lava, and there is nothing left of it to build itself again.',
+    fate: 'Its core was torn out of the Works and melted down in the Inferno Quarry lava. The radios went quiet.',
+    hardFate: 'Its backup woke up stronger, built around everything that beat it, and lost anyway. The master fragment and the five others went into the same lava. This time there is nothing left of it to build itself again.',
   },
 };
 

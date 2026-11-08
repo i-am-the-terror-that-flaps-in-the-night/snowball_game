@@ -4,7 +4,7 @@ import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES } from '../config/zones';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import { life, lifeBoss } from '../config/achievements';
-import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, PLOW_LORE, PROLOGUE, WORLD_NAME } from '../config/lore';
+import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE, WORLD_NAME } from '../config/lore';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -14,9 +14,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-type TabId = 'story' | 'bosses' | 'plows';
+type TabId = 'story' | 'hard' | 'bosses' | 'plows';
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'story', label: 'Campaign', icon: '📜' },
+  { id: 'hard', label: 'Hard Mode', icon: '☠️' },
   { id: 'bosses', label: 'Bosses', icon: '💀' },
   { id: 'plows', label: 'Plows', icon: '🚜' },
 ];
@@ -53,18 +54,18 @@ export class Story {
     return this.shown;
   }
 
-  /** Open on a tab; `chapter` (an arena save id) scrolls the Campaign tab to that chapter. */
+  /** Open on a tab; `chapter` (an arena save id) scrolls the Campaign (or, with tab 'hard', the Hard Mode) tab to it. */
   open(tab: TabId = this.tab, chapter?: string): void {
     this.returnFocus = this.shown ? this.returnFocus : (document.activeElement as HTMLElement | null);
     this.shown = true;
     this.render();
-    this.setTab(chapter ? 'story' : tab);
+    this.setTab(chapter && tab !== 'hard' ? 'story' : tab);
     this.body.scrollTop = 0;
     this.root.classList.add('show');
     this.root.setAttribute('aria-hidden', 'false');
     setTimeout(() => {
       if (!this.shown) return;
-      const target = chapter ? this.panel.querySelector<HTMLElement>(`[data-nav="ch-${chapter}"]`) : null;
+      const target = chapter ? this.panel.querySelector<HTMLElement>(`[data-nav="${tab === 'hard' ? 'hard' : 'ch'}-${chapter}"]`) : null;
       if (target) {
         target.focus({ preventScroll: true });
         target.scrollIntoView({ block: 'start' });
@@ -181,6 +182,33 @@ export class Story {
     const epi = this.card(sp, 'ch-epilogue', fin ? 'open done' : 'locked', fin ? '🌨️' : '🔒', fin ? 'Snow Day' : '???', 'Epilogue');
     this.para(epi, fin ? EPILOGUE : `Beat ${last.bossName} to read the ending.`, fin ? '' : 'dim');
 
+    // ---- Hard mode: PROTOCOL B (after MEGAPLOW Ω is beaten; a chapter's ending once its arena's Hard mode is beaten).
+    const hp = this.panes.get('hard')!;
+    hp.textContent = '';
+    hp.classList.add('ss-story-pane-story');
+    const hardDone = (id: string) => prog.data.hardCleared?.[id] === true;
+    if (!fin) {
+      const c = this.card(hp, 'hard-locked', 'locked', '🔒', '???', 'Hard Mode');
+      this.para(c, `Beat ${last.bossName} to unlock the Hard-mode story. (Each arena's Hard mode opens once you clear it.)`, 'dim');
+    } else {
+      const hpro = this.card(hp, 'hard-prologue', 'open', '⏳', 'Protocol B', 'Hard Mode');
+      this.para(hpro, HARD_PROLOGUE);
+      ZONES.forEach((z) => {
+        const ch = HARD_CHAPTERS[z.id];
+        if (!ch) return;
+        const done = hardDone(z.id);
+        const c = this.card(hp, `hard-${z.id}`, `open ${done ? 'done' : ''}`, done ? '✔' : '☠️', `${z.name}`, 'Hard Mode cache');
+        this.para(c, ch.intro);
+        if (done) {
+          el('div', 'ss-story-rule', 'CACHE DESTROYED', c);
+          this.para(c, ch.outro);
+        } else this.para(c, `Beat ${z.name} on Hard to destroy this cache.`, 'dim');
+      });
+      const all = ZONES.every((z) => hardDone(z.id));
+      const he = this.card(hp, 'hard-epilogue', all ? 'open done' : 'locked', all ? '🌋' : '🔒', all ? 'Nothing After' : '???', 'Hard Mode epilogue');
+      this.para(he, all ? HARD_EPILOGUE : 'Destroy all six caches (every arena on Hard) to read the ending.', all ? '' : 'dim');
+    }
+
     // ---- Bosses.
     const bp = this.panes.get('bosses')!;
     bp.textContent = '';
@@ -200,6 +228,10 @@ export class Story {
       if (beaten) {
         el('div', 'ss-story-rule', 'WHERE IT IS NOW', c);
         this.para(c, lore.fate);
+        if (lore.hardFate && prog.data.hardCleared?.[zone] === true) {
+          el('div', 'ss-story-rule', 'AFTER PROTOCOL B', c);
+          this.para(c, lore.hardFate);
+        }
       } else this.para(c, 'Beat it to find out what happens to it.', 'dim');
     }
 

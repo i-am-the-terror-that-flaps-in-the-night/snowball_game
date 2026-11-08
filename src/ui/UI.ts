@@ -21,7 +21,7 @@ import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
 import { StyleShop } from './StyleShop';
 import { Trophies } from './Trophies';
 import { Story } from './Story';
-import { CHAPTERS, EPILOGUE } from '../config/lore';
+import { CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE } from '../config/lore';
 import { activeDaily, dailySubLabel } from '../meta/daily';
 import { ICONS, type IconName } from './icons';
 import { renderDailyResult, renderDailyShopTag } from './DailyResult';
@@ -1472,14 +1472,19 @@ export class UI implements UIAPI {
       el('span', '', `+${fmt(sum.clearReward)} ${sum.firstClear ? 'first-clear reward!' : 'clear reward'}`, r);
     }
     if (sum.loot?.length) renderLoot(p, sum.loot);
-    // ---- Story: the chapter's ending after a campaign clear (the final arena adds the epilogue).
+    // ---- Story: the chapter's ending after a campaign clear (the final arena adds the epilogue). A Hard clear after
+    // MEGAPLOW Ω is beaten shows that arena's PROTOCOL B ending instead (all six adds the Hard epilogue).
     const zoneId = this.ctx.zone?.id;
-    const chapter = win && !sum.survival && zoneId ? CHAPTERS[zoneId] : undefined;
+    const prog = this.ctx.progression;
+    const lastId = ZONES[ZONES.length - 1].id;
+    const hardStory = !!sum.hard && prog.zoneRecord(lastId).cleared;
+    const chapter = win && !sum.survival && zoneId ? (hardStory ? HARD_CHAPTERS : CHAPTERS)[zoneId] : undefined;
     if (chapter) {
       const box = el('div', 'ss-result-story', undefined, p);
-      el('div', 'ss-result-story-h', '📜 STORY', box);
+      el('div', 'ss-result-story-h', hardStory ? '☠️ STORY · PROTOCOL B' : '📜 STORY', box);
       el('p', '', chapter.outro, box);
-      if (zoneId === ZONES[ZONES.length - 1].id) el('p', '', EPILOGUE, box).style.marginTop = '8px';
+      const end = hardStory ? (ZONES.every((z) => prog.data.hardCleared?.[z.id] === true) ? HARD_EPILOGUE : '') : zoneId === lastId ? EPILOGUE : '';
+      if (end) el('p', '', end, box).style.marginTop = '8px';
     }
     if (win && sum.unlockedZoneName) {
       const u = el('div', 'ss-unlock', undefined, p);
@@ -1500,7 +1505,7 @@ export class UI implements UIAPI {
     } else {
       this.btn('↻ RETRY', 'ss-primary ss-big', () => this.handlers.onRetry(), btns).dataset.primary = '1';
     }
-    if (chapter && zoneId) this.btn('📜 STORY', 'ss-ice', () => this.story.open('story', zoneId), btns);
+    if (chapter && zoneId) this.btn('📜 STORY', 'ss-ice', () => this.story.open(hardStory ? 'hard' : 'story', zoneId), btns);
     const g = this.btn('🔧 GARAGE', 'ss-ice', () => this.openGarage('quit'), btns);
     const m = this.btn('🏠 MAIN MENU', 'ss-ice', () => this.handlers.onQuitToMenu(), btns);
     if (!btns.querySelector('[data-primary]')) (win ? m : g).dataset.primary = '1';

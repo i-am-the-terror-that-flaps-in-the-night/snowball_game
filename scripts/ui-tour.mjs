@@ -48,8 +48,19 @@ try {
     const u = window.__game.ctx.ui; u.showMainMenu(); u.story.open('story');
   });
   await shot('08b-story');
-  await page.keyboard.press('KeyE'); await shot('08c-story-bosses');
-  await page.keyboard.press('KeyE'); await shot('08d-story-plows');
+  await page.keyboard.press('KeyE'); await shot('08c-story-hard-locked');
+  await page.keyboard.press('KeyE'); await shot('08d-story-bosses');
+  await page.keyboard.press('KeyE'); await shot('08e-story-plows');
+  await page.keyboard.press('Escape');
+  // Hard Mode story after the campaign: every arena cleared, two Hard caches destroyed.
+  await ui(() => {
+    const p = window.__game.ctx.progression;
+    for (const id of ['plaza', 'summit', 'bowl']) p.data.zones[id] = { cleared: true, bestRound: 4 };
+    p.data.unlockedZones = 6;
+    p.data.hardCleared = { yard: true, summit: true };
+    const u = window.__game.ctx.ui; u.showMainMenu(); u.story.open('hard', 'summit');
+  });
+  await shot('08f-story-hard');
   await page.keyboard.press('Escape');
   await ui(() => { window.__game.ctx.ui.showMainMenu(); window.__game.startRun(0); for (let k = 0; k < 240; k++) window.__game.tick(1 / 60); });
   await shot('09-hud');
