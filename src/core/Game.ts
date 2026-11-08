@@ -4,7 +4,7 @@ import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
 import { applyAllSettings, setBrawlPerf, settings, settingsUi } from './settings';
-import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, setArenaHalfSize } from './types';
+import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, DUEL_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, EnemyHandle, GameContext, HudState, RadarState, RunSummary, UIHandlers } from './types';
 import { BIOME_ZONE, BRAWL_ZONE, ZONES, pickBrawlZone } from '../config/zones';
 import { TUTORIAL_ZONE, pickMenuZone } from './modeZones';
@@ -294,7 +294,7 @@ export class Game {
     this.clearArena();
     this.mode = mode;
     setBrawlPerf(ctx, mode === 'brawl');
-    setArenaHalfSize(mode === 'brawl' ? BRAWL_ARENA_HALF : CAMPAIGN_ARENA_HALF);
+    setArenaHalfSize(mode === 'brawl' ? BRAWL_ARENA_HALF : mode === 'duel' ? DUEL_ARENA_HALF : CAMPAIGN_ARENA_HALF);
     this.ultCam.reset();
     this.ultToastT = 0;
     ctx.enemies = mode === 'brawl' ? ctx.brawl : mode === 'duel' ? NO_TARGETS : this.campaignEnemies;

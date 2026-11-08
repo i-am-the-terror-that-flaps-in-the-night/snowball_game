@@ -26,6 +26,8 @@ import type { LootDrop } from '../config/loot';
 
 export const CAMPAIGN_ARENA_HALF = 30;
 export const BRAWL_ARENA_HALF = 90;
+/** The Duel arena: 1.5x the campaign's, so two plows have room to manoeuvre. */
+export const DUEL_ARENA_HALF = 45;
 /** Current playable area. MUTABLE: Game calls setArenaHalfSize() when switching between the campaign
  *  (±30) and Brawl mode (±90). Always read ARENA.* at use time — never cache the numbers. */
 export const ARENA = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
