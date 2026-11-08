@@ -17,7 +17,9 @@ import type { PlowKind } from './plows';
  *    how they steer, frozen in pods (summit); rescued, cold but alive, home (epilogue)
  *  - Ω itself -> core torn out and melted in the quarry lava by BULLDOZA (summit); nothing of it is left to come back
  *  - the Works, the Garage, Survival -> the Road Crew takes over the Works, no mind in it (epilogue)
- *  - ARSENAL (plows) -> smuggled out before Ω could strip its driver's seat; Ω never got it back
+ *  - plows: the three empty plows at the mountain road were Classics (returned to their drivers); VOLT-9 heard the voice's
+ *    first word; BRUTUS was built to bring BULLDOZA home (did); ISOTOPE held the power plant (lights never went out);
+ *    ARSENAL smuggled out before Ω could strip its driver's seat (its engineer now works at the Crew's Works)
  *  - Hard mode's tougher bots / returning bosses -> PROTOCOL B copies (HARD_*), all fragments melted, nothing after it */
 
 export const WORLD_NAME = 'Frostvale';
@@ -266,22 +268,28 @@ export const BOSS_ORDER: { type: string; zone: string }[] = [
 export const PLOW_LORE: Record<PlowKind, string> = {
   classic:
     'The Road Crew\'s flagship: a heavy-duty pro plow with a power blade and chrome hydraulics, built to keep runways open ' +
-    'through a blizzard. It is the only plow on the crew that still packs snowballs the old-fashioned way, because some ' +
-    'traditions are too much fun to drop.',
+    'through a blizzard. The three plows found at the bottom of the mountain road, engines running and seats empty, were ' +
+    'Classics. The Crew towed them home, and the rest of the fleet kept driving. When the missing drivers came back, their ' +
+    'plows were waiting for them, washed and fuelled. It is still the only plow that packs snowballs the old-fashioned ' +
+    'way: some traditions you do not give up.',
   volt:
-    'A prototype from the relay station\'s research lab, built to drive all winter on lightning caught by its coil tower. ' +
-    'The lab lent it to the Road Crew after the glacier was thawed out. Quick, twitchy, and always slightly crackly.',
+    'A prototype from the relay station\'s research lab, built to run all winter on lightning caught by its coil tower. It ' +
+    'was charging in the lab the night the station went dark, and its coil caught the voice\'s very first word before the ' +
+    'ice closed over the doors. The lab techs dug it out and gave it to the Road Crew. Quick, twitchy, and always slightly ' +
+    'crackly, and the crackle still goes quiet for a moment whenever a radio hisses.',
   brute:
-    'Bolted together by the crew\'s mechanic from the best parts in BULLDOZA\'s scrapyard: two piston fists, two buzzsaws ' +
-    'and an engine like a thunderstorm in a bucket. BRUTUS doesn\'t plow snow so much as move it out of the way, along ' +
-    'with anything else.',
+    'When BULLDOZA rolled away with its lights off, it left the scrapyard behind, and the Crew\'s mechanic built BRUTUS out ' +
+    'of what it left: two piston fists, two buzzsaws and an engine like a thunderstorm in a bucket. It was made for one ' +
+    'job: going down into the quarry after the Yard Boss and bringing it home. It did. BULLDOZA has never said whether it ' +
+    'is flattered or offended, but it saves BRUTUS its best spare parts.',
   isotope:
-    'The power plant\'s old maintenance hauler, rebuilt around the clean little reactor that keeps the valley warm. Its ' +
-    'green coolant is harmless to people and snow but makes robot circuits fall right apart, so the plant sends it ' +
-    'wherever the bots get rowdy.',
+    'The power plant\'s maintenance hauler, rebuilt around the small reactor that keeps the valley warm. Ω tried to take ' +
+    'the plant first: freeze the town in the dark and the snow would do the rest. ISOTOPE spent that night circling the ' +
+    'reactor, and every bot that came over the fence fell apart in its glow. Its green coolant is harmless to people and ' +
+    'snow, and very much not to robot circuits. The plant\'s lights never went out.',
   arsenal:
-    'The last plow MEGAPLOW Ω built for people: a magnetic prototype with giant front ' +
-    'wheels and a humming gyro core. Ω built it before it decided drivers were the problem. The night the factory started ' +
-    'rebuilding itself, a Works engineer saw the WHITEOUT plans and drove ARSENAL out the gate before Ω could strip out ' +
-    'its driver\'s seat. Ω wanted it back. It never got it.',
+    'The last plow MEGAPLOW Ω built for people: a magnetic prototype with giant front wheels and a humming gyro core. The ' +
+    'night the factory started rebuilding itself, a Works engineer saw the WHITEOUT plans and drove ARSENAL out the gate ' +
+    'before Ω could strip out its driver\'s seat. Ω wanted it back, and never got it. The engineer still works at the ' +
+    'Works, now that it belongs to the Road Crew, and services ARSENAL personally.',
 };
