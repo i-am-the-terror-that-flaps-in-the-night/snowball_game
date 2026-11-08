@@ -44,8 +44,8 @@ const SHOT_PELLETS = 8;
 const PELLET_MAX = 12;
 const SHOT_HALF = 18 * DEG;
 const SHOT_PELLET_R = 0.4;
-const SHOT_FULL = 5;
-const SHOT_FAR = 0.6;
+const SHOT_FULL = 6;
+const SHOT_FAR = 0.7;
 const SHOT_PB = 3.5;
 const SHOT_PB_KNOCK = 7;
 const SHOT_KNOCK = 1.2;
@@ -534,9 +534,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
           const hit = ter.raycast(ox, oy, oz, hx * cp, sp, hz * cp, reach, _hit);
           if (hit) reach = hit.t;
         }
-      } else {
-        dmgMap.set(best, (dmgMap.get(best) ?? 0) + st.gunDamage * pelletFalloff(bestT, range));
-        nearMap.set(best, Math.min(nearMap.get(best) ?? Infinity, bestT));
       }
       // Streak: its end jitters a touch in height so the fan reads as a spray, not a comb.
       const s = this.pellets[i];
@@ -553,6 +550,28 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         _fwd.set(-hx, 0.4, -hz).normalize();
         ctx.fx.sparks(s.b, _fwd, { count: best ? 3 : 2, color: CYAN, speed: 7, spread: 0.8, size: 0.05, life: 0.16, gravity: 6 });
       }
+    }
+    // Damage is a CONE, not per pellet: every bot whose body is inside the blast cone (in range, in sight, in the
+    // emitter's tilt band) takes the WHOLE blast, falling off with distance — so a blast at a small bot up close is a
+    // near-certain kill and nothing depends on pellet luck. The pellets above are the visual spray.
+    const full = n * st.gunDamage;
+    const fx = Math.sin(plow.heading);
+    const fz = Math.cos(plow.heading);
+    for (let j = 0; j < hits.length; j++) {
+      const e = hits[j];
+      if (!e.alive) continue;
+      const dx = e.position.x - ox;
+      const dz = e.position.z - oz;
+      const d = Math.hypot(dx, dz);
+      const t = Math.max(0, d - e.radius);
+      if (t > range) continue;
+      if (d > e.radius) {
+        const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d)));
+        if (ang > SHOT_HALF + Math.atan2(e.radius + SHOT_PELLET_R, d)) continue;
+      }
+      if (Number.isNaN(this.pitchTo(ox, oy, oz, e)) || !this.canSee(ox, oy, oz, e)) continue;
+      dmgMap.set(e, full * pelletFalloff(t, range));
+      nearMap.set(e, t);
     }
     this.clearTargets();
     for (const [e, dmg] of dmgMap) {

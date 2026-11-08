@@ -197,8 +197,14 @@ describe('MAG SHOTGUN (SPACE)', () => {
     const r2 = shoot([farBot], 0.05);
     const farDmg = sum(r2.log, farBot);
     expect(farDmg).toBeGreaterThan(0);
-    expect(farDmg).toBeLessThan(nearDmg * 0.75); // fewer pellets connect and each does less
+    expect(farDmg).toBeLessThan(nearDmg * 0.95); // the whole blast lands, but falls off with distance
     expect(r2.log[0].kb).toBeLessThan(2);
+  });
+
+  it('every small bot inside the cone takes the whole blast (no pellet luck): one blast kills a pack of 55-HP bots up close', () => {
+    const pack = [bot(-1.2, 4, 55), bot(0, 5, 55), bot(1.2, 4, 55)];
+    shoot(pack, 0.05, { armCannon: 14 });
+    for (const b of pack) expect(b.hp).toBeLessThanOrEqual(0);
   });
 });
 
