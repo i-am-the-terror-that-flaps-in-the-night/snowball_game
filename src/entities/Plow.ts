@@ -1226,7 +1226,7 @@ export class Plow implements PlowAPI {
       this.exhaustTip.set(0.55, 3.1, -1.45);
       this.flame.rotation.set(0, 0, 0);
     } else if (ars) {
-      this.exhaustTip.set(0, 1.25, -3.65); // out of the back of the gyro core
+      this.exhaustTip.set(0, 1.17, -3.65); // out of the back of the gyro core
       this.flame.rotation.set(-Math.PI / 2, 0, 0);
     } else if (iso) {
       this.exhaustTip.set(0.55, 2.38, 0.12);

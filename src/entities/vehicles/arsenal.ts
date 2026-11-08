@@ -40,7 +40,7 @@ const WHEEL_W = 0.6;
 const WHEEL_X = 1.24;
 const WHEEL_Z = 1.2;
 /** Gyro core: centre (model space), tucked under the rear deck with its top just below the deck's underside. */
-const GYRO_Y = 1.22;
+const GYRO_Y = 1.14;
 const GYRO_Z = -2.6;
 /** Gimbal rings, outer to inner: mid radius, radial half-thickness, axial half-width, facet count. Each ring (clamps
  *  and pin bosses included) stays inside the inner face of its parent, so however the three pivots turn, nothing
@@ -65,6 +65,20 @@ const ARCS = 4;
 const ARC_SEG = 6;
 
 const CYAN = 0x38e8ff;
+
+/** Rear deck (engine cover over the gyro bay), tail to front, as loft sections: a low, raked hood with broad
+ *  chamfers, its crest just behind the hull roof and its tail dropping toward the back so the chase camera sees over
+ *  it. Its underside arches over the gimbal's sweep: the outer ring only rocks (OUTER_TILT +- OUTER_SWING), so its
+ *  upper half reaches up and FORWARD (highest, about 0.92 above the core, some 0.3 ahead of it); behind the core
+ *  only the middle ring's 0.73 sphere rises. The keel clears that envelope (plus the hover bob) by 0.04 or more. */
+const DECK: readonly LoftSection[] = [
+  { z: -3.3, y: [1.82, 1.8, 1.9, 1.97], w: [0.6, 1.12, 0.66] },
+  { z: -3.05, y: [1.95, 1.88, 1.99, 2.07], w: [0.76, 1.28, 0.8] },
+  { z: -2.45, y: [2.13, 1.97, 2.12, 2.25], w: [0.8, 1.28, 0.82] },
+  { z: -1.95, y: [2.13, 1.99, 2.14, 2.27], w: [0.8, 1.28, 0.82] },
+  { z: -1.45, y: [2.0, 1.98, 2.12, 2.22], w: [0.6, 0.86, 0.68] },
+  { z: -0.85, y: [1.95, 1.95, 2.03, 2.085], w: [0.6, 0.84, 0.66] },
+];
 
 /** One lofted hull section at z: four heights (keel, foot of the side, top of the side, roof) and three half-widths
  *  (keel, side, roof), mirrored about x = 0: an octagon with chamfered corners. */
@@ -338,45 +352,92 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
    * overhangs the GYRO BAY. The gyro sits under it in a cradle: the hull's rear wall is the bay's back frame (an
    * octagonal socket facing the core), the deck is its roof, armour skirts hang from the deck edges as cheek plates
    * and carry the bearing caps the outer ring pivots in; swept struts, pistons and cables tie the caps to the hull ---- */
-  addMesh(
-    loft([
-      { z: -3.3, y: [2.26, 2.2, 2.28, 2.34], w: [0.7, 1.15, 0.8] },
-      { z: -3.0, y: [2.3, 2.2, 2.36, 2.44], w: [0.8, 1.3, 1.0] },
-      { z: -1.8, y: [2.3, 2.2, 2.36, 2.44], w: [0.8, 1.3, 1.0] },
-      { z: -1.45, y: [2.05, 2.05, 2.2, 2.3], w: [0.6, 0.86, 0.68] },
-      { z: -0.85, y: [1.95, 1.95, 2.03, 2.085], w: [0.6, 0.84, 0.66] },
-    ]),
-    m.paint,
-    0, 0, 0, ap,
-  );
-  // Deck top: an armour plate, twin engine vents (recessed grilles with slats), a cyan spine seam, heat-sink fins at
-  // the tail, chamfer plates on the edges, a cyan line down each flank.
-  box(1.94, 0.035, 1.12, armorMat, 0, 2.455, -2.42);
-  bolts(4, -0.88, 2.48, -1.92, -0.88, 2.48, -2.92);
-  bolts(4, 0.88, 2.48, -1.92, 0.88, 2.48, -2.92);
+  addMesh(loft(DECK), m.paint, 0, 0, 0, ap);
+  /** Vertex k (loft order) of deck section i. */
+  const dv = (i: number, k: number) => {
+    const { z, y, w } = DECK[i];
+    const j = k < 4 ? k : 7 - k;
+    return new THREE.Vector3((k < 4 ? 1 : -1) * [w[0], w[1], w[1], w[2]][j], y[j], z);
+  };
+  /** Roof height and pitch (rad about x, as slopePlate) of the deck at z. */
+  const roofAt = (z: number) => {
+    let i = 0;
+    while (i < DECK.length - 2 && z > DECK[i + 1].z) i++;
+    const s0 = DECK[i];
+    const s1 = DECK[i + 1];
+    const k = (z - s0.z) / (s1.z - s0.z);
+    return { y: s0.y[3] + (s1.y[3] - s0.y[3]) * k, a: Math.atan2(s0.y[3] - s1.y[3], s1.z - s0.z) };
+  };
+  /** A box lying on the deck roof at (x, z), lifted `lift` off it, pitched with the roof (plus `rx`). */
+  const onRoof = (w: number, h: number, d: number, mat: THREE.Material, x: number, z: number, lift = 0, rx = 0, shadow = true) => {
+    const { y, a } = roofAt(z);
+    const n = lift + h / 2;
+    return box(w, h, d, mat, x, y + Math.cos(a) * n, z + Math.sin(a) * n, a + rx, 0, 0, ap, shadow);
+  };
+  /** A plate t thick on the deck facet between sections i and i + 1 and loft vertices ka..kb, covering the
+   *  fraction u0..u1 across it and v0..v1 along it (bilinear), raised off the facet along its outward normal. */
+  const facetPlate = (i: number, ka: number, kb: number, u0: number, u1: number, v0: number, v1: number, t: number, mat: THREE.Material, shadow = true) => {
+    const A = dv(i, ka), B = dv(i, kb), C = dv(i + 1, ka), D = dv(i + 1, kb);
+    const P = (u: number, v: number) => new THREE.Vector3().lerpVectors(A, B, u).lerp(new THREE.Vector3().lerpVectors(C, D, u), v);
+    const base = [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)];
+    const n = new THREE.Vector3().subVectors(base[1], base[0]).cross(new THREE.Vector3().subVectors(base[3], base[0])).normalize();
+    const mid = base.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(0.25);
+    if (n.dot(_v.set(mid.x, mid.y - 1.9, 0)) < 0) n.negate();
+    for (const p of base) p.addScaledVector(n, 0.004);
+    const top = base.map((p) => p.clone().addScaledVector(n, t));
+    const c = mid.clone().addScaledVector(n, 0.004 + t / 2);
+    const pos: number[] = [];
+    const tri = (p: THREE.Vector3, q: THREE.Vector3, r: THREE.Vector3) => {
+      const f = _u.subVectors(q, p).cross(_v.subVectors(r, p)).dot(new THREE.Vector3().subVectors(p, c)) < 0;
+      for (const o of f ? [p, r, q] : [p, q, r]) pos.push(o.x, o.y, o.z);
+    };
+    const quad = (p: THREE.Vector3, q: THREE.Vector3, r: THREE.Vector3, s: THREE.Vector3) => (tri(p, q, r), tri(p, r, s));
+    quad(base[0], base[1], base[2], base[3]);
+    quad(top[0], top[1], top[2], top[3]);
+    for (let k = 0; k < 4; k++) quad(base[k], base[(k + 1) % 4], top[(k + 1) % 4], top[k]);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return addMesh(g, mat, 0, 0, 0, ap, shadow);
+  };
+  // Deck top: an armour plate on the crest and one on the ramp up from the hull, bolted; twin louvred engine vents on
+  // the raked rear facet, a cyan spine seam down the middle, heat-sink fins on the tail; armour plates on the
+  // chamfers, a cyan line down each flank.
+  const crest = [roofAt(-2.45).y, roofAt(-1.95).y];
+  slopePlate(1.5, 0.035, 0, crest[0], -2.45, crest[1], -1.95, armorMat, 0.03);
+  slopePlate(1.2, 0.03, 0, roofAt(-1.95).y, -1.95, roofAt(-1.45).y, -1.45, armorMat, 0.05);
   for (const sx of [-1, 1]) {
-    box(0.56, 0.03, 0.62, m.dark, sx * 0.42, 2.475, -2.3);
-    for (let i = 0; i < 5; i++) box(0.52, 0.025, 0.05, armorMat, sx * 0.42, 2.49, -2.06 - i * 0.12, -0.5, 0, 0, ap, false);
-    box(0.32, 0.03, 1.2, armorMat, sx * 1.15, 2.415, -2.4, 0, 0, -sx * 0.26);
-    box(0.02, 0.03, 1.15, glowMat, sx * 1.305, 2.28, -2.4, 0, 0, 0, ap, false);
+    for (let j = 0; j < 3; j++) onRoof(0.036, 0.036, 0.036, m.chrome, sx * 0.68, -2.02 - j * 0.18, 0.035, 0, false);
+    // Engine vent: a dark recessed grille with five louvre slats, a trim frame bar fore and aft.
+    slopePlate(0.52, 0.025, sx * 0.4, roofAt(-3.05).y, -3.05, roofAt(-2.45).y, -2.45, m.dark, 0.06);
+    for (let j = 0; j < 5; j++) onRoof(0.48, 0.02, 0.06, armorMat, sx * 0.4, -2.56 - j * 0.11, 0.012, -0.3, false);
+    for (const z of [-2.5, -3.0]) onRoof(0.56, 0.035, 0.035, trimMat, sx * 0.4, z, 0.0);
+    // Chamfer plates (crest and rear facet) and the flank line.
+    const [ka, kb] = sx > 0 ? [2, 3] : [5, 4];
+    const [fa, fb] = sx > 0 ? [1, 2] : [6, 5];
+    for (const i of [1, 2]) {
+      facetPlate(i, ka, kb, 0.08, 0.9, 0.04, 0.96, 0.03, armorMat);
+      facetPlate(i, fa, fb, 0.45, 0.6, 0.02, i === 1 ? 0.98 : 1, 0.012, glowMat, false);
+    }
     // Tail light cluster and a cyan marker on the deck's rear face.
-    box(0.26, 0.05, 0.03, tailMat, sx * 0.62, 2.27, -3.31, 0, 0, 0, ap, false);
-    box(0.06, 0.05, 0.03, glowMat, sx * 0.4, 2.27, -3.31, 0, 0, 0, ap, false);
+    box(0.26, 0.05, 0.03, tailMat, sx * 0.62, 1.89, -3.31, 0, 0, 0, ap, false);
+    box(0.06, 0.05, 0.03, glowMat, sx * 0.4, 1.89, -3.31, 0, 0, 0, ap, false);
   }
-  box(0.035, 0.02, 1.0, glowMat, 0, 2.475, -2.42, 0, 0, 0, ap, false);
-  for (let i = 0; i < 5; i++) box(0.025, 0.07, 0.24, trimMat, -0.3 + i * 0.15, 2.5, -2.88);
+  onRoof(0.035, 0.02, 0.46, glowMat, 0, -2.2, 0.035, 0, false);
+  onRoof(0.035, 0.02, 0.58, glowMat, 0, -2.75, 0, 0, false);
+  for (let i = 0; i < 5; i++) onRoof(0.025, 0.07, 0.2, trimMat, -0.3 + i * 0.15, -3.17);
   // Rear bumper under the deck's tail with a tow hook.
-  box(1.86, 0.08, 0.1, trimMat, 0, 2.16, -3.27);
-  bolts(4, -0.7, 2.16, -3.325, 0.7, 2.16, -3.325);
-  for (const dx of [-0.05, 0.05]) box(0.03, 0.12, 0.14, trimMat, dx, 2.07, -3.3);
-  box(0.13, 0.04, 0.04, m.chrome, 0, 2.05, -3.34, 0, 0, 0, ap, false);
+  box(1.7, 0.08, 0.1, trimMat, 0, 1.77, -3.27);
+  bolts(4, -0.65, 1.77, -3.325, 0.65, 1.77, -3.325);
+  for (const dx of [-0.05, 0.05]) box(0.03, 0.12, 0.14, trimMat, dx, 1.68, -3.3);
+  box(0.13, 0.04, 0.04, m.chrome, 0, 1.66, -3.34, 0, 0, 0, ap, false);
   // Hood projector under the deck: a cyan octagon ring over the gyro.
-  const hoodRing = addMesh(band(8, 0.3, 0.34, -0.008, 0.008, Math.PI / 8), glowMat, 0, 2.29, GYRO_Z, ap, false);
+  const hoodRing = addMesh(band(8, 0.3, 0.34, -0.008, 0.008, Math.PI / 8), glowMat, 0, 2.11, -2.2, ap, false);
   hoodRing.rotation.x = Math.PI / 2;
 
   // Bay back frame on the hull's rear wall: an octagonal socket facing the core (armoured frame, dark well, cyan
   // conduit ring, a hex emitter), clamps and bolts; cable sockets either side.
-  const SY = 1.25;
+  const SY = GYRO_Y + 0.03;
   addMesh(band(8, 0.4, 0.52, -0.08, 0.0, Math.PI / 8), trimMat, 0, SY, -1.5, ap);
   addMesh(new THREE.CircleGeometry(0.42, 8), m.dark, 0, SY, -1.515, ap, false).rotation.set(0, Math.PI, Math.PI / 8);
   addMesh(band(8, 0.29, 0.33, -0.035, 0, Math.PI / 8), glowMat, 0, SY, -1.5, ap, false);
@@ -399,12 +460,15 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     const len = Math.hypot(dx, dz);
     const skirtGeo = (() => {
       const sh = new THREE.Shape();
-      sh.moveTo(-3.15, 2.22);
-      sh.lineTo(-1.85, 2.22);
-      sh.lineTo(-1.85, 2.0);
-      sh.lineTo(-2.05, 1.78);
-      sh.lineTo(-3.0, 1.78);
-      sh.lineTo(-3.15, 1.9);
+      // Top edge tucked into the deck's side foot (it falls with the raked tail).
+      sh.moveTo(-3.12, 1.88);
+      sh.lineTo(-3.05, 1.9);
+      sh.lineTo(-2.45, 2.0);
+      sh.lineTo(-1.9, 2.02);
+      sh.lineTo(-1.9, 1.86);
+      sh.lineTo(-2.08, 1.68);
+      sh.lineTo(-2.98, 1.68);
+      sh.lineTo(-3.12, 1.78);
       sh.closePath();
       const g = new THREE.ExtrudeGeometry(sh, { depth: 0.07, bevelEnabled: false });
       g.translate(0, 0, -0.035);
@@ -415,13 +479,13 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
       // Cheek skirt: an armour plate hanging from the deck edge, a trim strip on its lower edge, three cyan slots,
       // bolts; a hanger block carries the bearing cap under it.
       addMesh(skirtGeo, armorMat, sx * 1.3, 0, 0, ap);
-      box(0.09, 0.06, 0.9, trimMat, sx * 1.31, 1.8, -2.55);
-      for (const z of [-2.15, -2.3, -2.9, -3.05]) box(0.02, 0.14, 0.05, glowMat, sx * 1.34, 2.01, z, 0, 0, 0, ap, false);
-      bolts(4, sx * 1.34, 2.16, -2.0, sx * 1.34, 2.16, -3.05);
-      bolts(3, sx * 1.34, 1.87, -2.25, sx * 1.34, 1.87, -2.95);
+      box(0.09, 0.06, 0.9, trimMat, sx * 1.31, 1.7, -2.53);
+      for (const z of [-2.1, -2.25, -2.75, -2.9]) box(0.02, 0.1, 0.05, glowMat, sx * 1.34, 1.81, z, 0, 0, 0, ap, false);
+      bolts(4, sx * 1.34, 1.93, -2.0, sx * 1.34, 1.93, -2.6);
+      bolts(3, sx * 1.34, 1.74, -2.2, sx * 1.34, 1.74, -2.9);
       // Hanger post down to the cap's upper clamp.
-      box(0.16, 0.32, 0.26, trimMat, sx * 1.2, 1.64, GYRO_Z);
-      box(0.2, 0.06, 0.34, armorMat, sx * 1.2, 1.8, GYRO_Z);
+      box(0.16, 0.28, 0.26, trimMat, sx * 1.2, GYRO_Y + 0.43, GYRO_Z);
+      box(0.2, 0.06, 0.34, armorMat, sx * 1.2, GYRO_Y + 0.58, GYRO_Z);
 
       // Swept strut from the hull flank to the cap (ribbed, bolted, cyan seam).
       const ry = sx * Math.atan2(dx, dz);
