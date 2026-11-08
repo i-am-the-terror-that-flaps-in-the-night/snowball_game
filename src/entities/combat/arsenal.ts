@@ -387,6 +387,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       fromX: knock < 0 ? e.position.x + (dx / d) * 2 : fromX,
       fromZ: knock < 0 ? e.position.z + (dz / d) * 2 : fromZ,
       direct,
+      pierce: true,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);

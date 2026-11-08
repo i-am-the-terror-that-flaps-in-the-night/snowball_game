@@ -75,6 +75,9 @@ interface Debris {
   active: boolean;
 }
 
+/** DamageOpts.pierce: share of a magnetic hit a frontal plate lets through. */
+const PLATE_PIERCE = 0.8;
+
 export class EnemyManager implements EnemyManagerAPI, Host {
   readonly ctx: GameContext;
   private list: Bot[] = [];
@@ -252,14 +255,14 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     let deflect = false;
 
     if (e.type === 'brute' && front) {
-      dmg *= 0.3;
+      dmg *= opts?.pierce ? PLATE_PIERCE : 0.3;
       deflect = true;
     } else if (e.type === 'frostbyte' && e.ballR >= 0.5) {
       if (src === 'slam') {
         this.clash(e, opts?.ballRadius ?? 0);
         if (e.stun <= 0) dmg *= 0.3;
       } else if (front) {
-        dmg *= 0.5;
+        dmg *= opts?.pierce ? PLATE_PIERCE : 0.5;
         deflect = true;
       }
     } else if (e.type === 'spinner' && e.state === 'spin' && src === 'ram') {
