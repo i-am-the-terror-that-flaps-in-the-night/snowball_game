@@ -22,7 +22,8 @@ src/meta           Meta progression: challenge stars + Hard mode, achievements +
 src/world          Deformable snow field, arenas / Snowdome environment, destructible props (Props.ts)
 src/fx             Particles, camera rig (incl. the ultimate kill-cam swing), impact feel (hit-stop / slow-mo),
                    kill-cam trigger (ultCam.ts), coin pickups
-src/render         Post-processing, static mesh merging, shadow proxies, reflections
+src/render         Post-processing, static mesh merging, shadow proxies, reflections, shader warm-up (warmup.ts;
+                   ?nowarm turns it off for measuring)
 src/audio          WebAudio synth (SFX + music)
 src/ui             Menus, HUD, Garage (core / gear / plow line), loot reveal cards, Brawl HUD, Duel UI, Settings,
                    Tutorial, Paint Shop, Trophies
@@ -70,6 +71,9 @@ node scripts/terrain-probe.mjs /tmp/terrain  # terrain physics on the dev test t
 node scripts/combat3d-probe.mjs /tmp/combat3d  # 3D combat: air slam kills off the dev ramp, stomp damage, a hopping
                                                # plow dodging BULLDOZA's leap shockwave, the leap telegraph draped
                                                # over Inferno Quarry's pit + landing on it (shots); --noshots
+node scripts/warmup-probe.mjs            # shader warm-up: program counts before / after each first event (kill,
+                                         # Inferno, ARSENAL ultimate, DONALD props, Brawl wreck, quality toggle),
+                                         # warm-up on vs ?nowarm (--only=on|off, --scenarios=...); PROBE_GPU=0 off-GPU
 ```
 
 The realtime lagged-fight session of the duel probe needs a real GPU to keep frame rate; on software rendering it
