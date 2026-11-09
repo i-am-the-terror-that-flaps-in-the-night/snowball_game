@@ -5,6 +5,9 @@ import { Kit, type AbilityDesc, type VehicleKit, Reach, _fwd, _q, waveFloor, typ
 import { MOMENTUM_FIST } from '../../config/upgrades';
 import { ultBlast, type UltScript } from './ultimates';
 
+/** Knockback scratch for per-tick damage (Enemies.damage reads it immediately and never keeps it). */
+const _kb = new THREE.Vector3();
+
 /** EARTHQUAKE (BRUTUS): QUAKE_RINGS shockwaves rolling outward, each hitting the band it sweeps for QUAKE_MULT x
  *  pound damage + stun + knockback. */
 const QUAKE_RINGS = [8, 13, 19] as const;
@@ -399,7 +402,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, st.spikeDps * SPIKE_TICK * st.damageMult * this.hitMult(e), {
         source: 'other',
-        knockback: new THREE.Vector3((dx / d) * SPIKE_KNOCK, 0, (dz / d) * SPIKE_KNOCK),
+        knockback: _kb.set((dx / d) * SPIKE_KNOCK, 0, (dz / d) * SPIKE_KNOCK),
         fromX: px,
         fromZ: pz,
       });

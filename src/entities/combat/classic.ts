@@ -6,6 +6,9 @@ import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, waveFloor, type 
 import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
 
+/** Knockback scratch for per-tick damage (Enemies.damage reads it immediately and never keeps it). */
+const _kb = new THREE.Vector3();
+
 /** Inferno (F): flame duration, cone half-angle (cos), seconds between ignite checks, burn length + tick. */
 const FLAME_SECONDS = 1.4;
 const FLAME_HALF = 0.7;
@@ -141,7 +144,7 @@ export class ClassicKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN * this.lastStandMult(), {
         source: 'other',
-        knockback: new THREE.Vector3((dx / nd) * 3, 0, (dz / nd) * 3),
+        knockback: _kb.set((dx / nd) * 3, 0, (dz / nd) * 3),
         fromX: e.position.x,
         fromZ: e.position.z,
       });

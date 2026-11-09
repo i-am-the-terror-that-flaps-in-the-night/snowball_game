@@ -3,6 +3,9 @@ import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, type AbilityDesc, type VehicleKit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 
+/** Knockback scratch for per-tick damage (Enemies.damage reads it immediately and never keeps it). */
+const _kb = new THREE.Vector3();
+
 /** TESLA ROVER: height of the coil tower's top orb above the plow's floor (arc origin; vehicles/volt.ts). */
 const TOWER_Y = 3.15;
 /** ARC LANCE (SPACE, hold): tick, damage per tick (x damage mult) on the locked bot, chain hops / share / reach,
@@ -443,7 +446,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, st.clapDamage * st.damageMult * this.hitMult(e), {
         source: 'other',
-        knockback: new THREE.Vector3(dx * 14, 0, dz * 14),
+        knockback: _kb.set(dx * 14, 0, dz * 14),
         freezeSeconds: st.clapStun,
         fromX: px,
         fromZ: pz,
