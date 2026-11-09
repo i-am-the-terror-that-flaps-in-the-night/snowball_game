@@ -79,7 +79,8 @@ function sector(ri: number, ro: number, a0: number, a1: number, depth: number, s
  *  long fenders, a slatted cowcatcher, a low head with a viewport slit and work light under the brow, an engine pack
  *  with one stack, a stacked counterweight, two piston fists whose hydraulic rams slide out with the punch, and a
  *  guarded, motor-driven buzzsaw bolted to each front corner. Palette: Paint Shop body / trim on the big plates, a
- *  light gunmetal frame, bare steel on the counterweight / cowcatcher, hazard stripes only on the bumper and
+ *  light gunmetal frame, bare steel on the counterweight / cowcatcher, one accent colour (Paint Shop accent) on the
+ *  brow, pauldron edge bands, saw guards and hubs, plain steel saw blades, hazard stripes only on the bumper and
  *  the fist cuffs. No blade. */
 export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuild<BruteVehicleParts> {
   const bp = new THREE.Group();
@@ -99,6 +100,9 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
   const visorMat = new THREE.MeshStandardMaterial({ color: 0xffc46a, emissive: 0xff8a1e, emissiveIntensity: 1.5, roughness: 0.3 });
   const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3a24, emissive: 0xff1a0a, emissiveIntensity: 1.8, roughness: 0.3 });
   const { paint, trim, dark, chrome, hub, head } = mats;
+  /** The one accent colour (Paint Shop accent, factory industrial orange): the shared hub material, so the brow,
+   *  pauldron edge bands, saw guards and saw / sprocket / shoulder hubs all follow the equipped paint. */
+  const accent = hub;
 
   /* ---- Helpers (all static; merged per material at the end). ---- */
   const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, parent: THREE.Object3D = bp, shadow = true) => {
@@ -142,7 +146,7 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
     add(runGeo, trackMat, x, 0.04 + (LOOP_R - LOOP_IN) / 2, 0.1);
     add(loopGeo, trackMat, x, LOOP_Y, IDLER_Z);
     add(loopGeo, trackMat, x, LOOP_Y, SPROCKET_Z).rotation.y = Math.PI;
-    // Drive sprocket (rear) with a yellow hub; plain front idler.
+    // Drive sprocket (rear) with an accent hub; plain front idler.
     cyl(0.33, 0.33, BELT_W - 0.06, 14, ironMat, x, LOOP_Y, SPROCKET_Z, 'x');
     cyl(0.15, 0.15, 0.06, 10, hub, ox - sx * 0.02, LOOP_Y, SPROCKET_Z, 'x', bp, false);
     cyl(0.31, 0.31, BELT_W - 0.08, 14, ironMat, x, LOOP_Y, IDLER_Z, 'x');
@@ -210,7 +214,7 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
   /* ---- Head: low and forward between the shoulders, brow plate over the viewport slit, work light on the roof. ---- */
   box(0.9, 0.5, 0.68, frameMat, 0, 2.27, 0.68);
   plate(0.98, 0.065, 0.74, 0.015, paint, 0, 2.5525, 0.69); // head roof (top 2.585)
-  plate(1.0, 0.22, 0.1, 0.025, paint, 0, 2.44, 1.04, 0.22); // brow
+  plate(1.0, 0.22, 0.1, 0.025, accent, 0, 2.44, 1.04, 0.22); // brow
   plate(0.96, 0.24, 0.1, 0.025, trim, 0, 2.12, 1.03, -0.28); // jaw
   box(0.74, 0.12, 0.04, visorMat, 0, 2.29, 1.012, 0, 0, 0, bp, false); // viewport glow
   for (const sx of [-1, 1]) plate(0.06, 0.42, 0.5, 0.015, paint, sx * 0.47, 2.29, 0.82); // cheek plates
@@ -247,13 +251,13 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
     const shoulder = new THREE.Group();
     shoulder.position.set(sx * SHOULDER[0], SHOULDER[1], SHOULDER[2]);
     bp.add(shoulder);
-    // Shoulder hub: a fat iron drum with a yellow cap.
+    // Shoulder hub: a fat iron drum with an accent cap.
     cyl(0.3, 0.3, 0.42, 14, ironMat, 0, 0, 0, 'x', shoulder);
     cyl(0.13, 0.13, 0.46, 10, hub, 0, 0, 0, 'x', shoulder, false);
-    // Pauldron: one heavy bent plate in body paint with a trim edge band.
+    // Pauldron: one heavy bent plate in body paint with an accent edge band.
     plate(0.86, 0.16, 1.04, 0.035, paint, sx * 0.1, 0.36, 0, 0, 0, sx * -0.22, shoulder);
     plate(0.14, 0.52, 1.0, 0.03, paint, sx * 0.5, 0.12, 0, 0, 0, sx * -0.08, shoulder);
-    box(0.05, 0.12, 1.02, trim, sx * 0.575, -0.08, 0, 0, 0, sx * -0.08, shoulder, false);
+    box(0.05, 0.12, 1.02, accent, sx * 0.575, -0.08, 0, 0, 0, sx * -0.08, shoulder, false);
     // Upper arm: twin iron straps around a core.
     box(0.3, 0.6, 0.26, frameMat, sx * 0.04, -0.45, 0, 0, 0, 0, shoulder);
     for (const dx of [-0.17, 0.17]) plate(0.07, 0.8, 0.34, 0.015, ironMat, sx * 0.04 + dx, -0.45, 0, 0, 0, 0, shoulder);
@@ -307,7 +311,7 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
   const guardGeo = sector(0.98, 1.24, -1.85, 0.15, 0.04);
   const lipGeo = sector(1.2, 1.25, -1.5, 0.15, 0.16);
   for (const sx of [-1, 1]) {
-    const saw = buildBuzzsaw();
+    const saw = buildBuzzsaw({ finish: 'steel', hub: accent });
     saw.group.position.set(sx * SAW_POS[0], SAW_POS[1], SAW_POS[2]);
     saw.group.scale.set(sx < 0 ? -1 : 1, 1, 1);
     saw.halo.visible = false;
@@ -318,7 +322,7 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
     k.position.set(sx * SAW_POS[0], SAW_POS[1], SAW_POS[2]);
     k.scale.x = sx;
     bp.add(k);
-    add(guardGeo, paint, 0, 0.08, 0, k);
+    add(guardGeo, accent, 0, 0.08, 0, k);
     add(lipGeo, trim, 0, -0.06, 0, k);
     // Drive: motor lying fore-aft on the guard, belt case running in to the saw hub.
     cyl(0.16, 0.16, 0.6, 12, trim, 0.72, 0.3, -0.7, 'z', k);
