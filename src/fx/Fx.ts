@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { FxAPI, GameContext, PowderOpts, SmokeOpts, SmolderOpts, SparkOpts } from '../core/types';
 import { PuffBatch, RingBatch, ScorchBatch, SparkBatch } from './particles';
+import { currentPreset, scaleCount } from '../core/settings';
 
 /* Pooled particle effects. Draw calls: chunks (lit icosahedra) + sparks + puffs + rings + scorch, each ONE
  * instanced batch with a fixed cap that is hidden while empty. Only the live prefix of each buffer is uploaded. */
@@ -197,7 +198,9 @@ export class Fx implements FxAPI {
       return;
     }
 
-    for (let k = 0; k < count; k++) {
+    // Quality preset fxScale (LOW: half): the chunk loop here; smoke() / sparks() scale their own counts.
+    const chunks = scaleCount(count, currentPreset().fxScale);
+    for (let k = 0; k < chunks; k++) {
       // random direction, biased upward
       const u = Math.random() * Math.PI * 2;
       const v = Math.random() * 0.9 + 0.1;
@@ -221,7 +224,7 @@ export class Fx implements FxAPI {
   }
 
   sparks(pos: THREE.Vector3, dir: THREE.Vector3 | null, opts?: SparkOpts): void {
-    const count = Math.min(200, opts?.count ?? 14);
+    const count = scaleCount(Math.min(200, opts?.count ?? 14), currentPreset().fxScale);
     const speed = opts?.speed ?? 12;
     const spread = THREE.MathUtils.clamp(opts?.spread ?? (dir ? 0.55 : 1), 0, 1);
     const width = opts?.size ?? 0.08;
@@ -258,7 +261,7 @@ export class Fx implements FxAPI {
   }
 
   smoke(pos: THREE.Vector3, opts?: SmokeOpts): void {
-    const count = Math.min(120, opts?.count ?? 6);
+    const count = scaleCount(Math.min(120, opts?.count ?? 6), currentPreset().fxScale);
     const size = opts?.size ?? 0.6;
     const grow = opts?.grow ?? 3;
     const life = opts?.life ?? 1.6;
@@ -408,9 +411,10 @@ export class Fx implements FxAPI {
     if (intensity <= 0) return;
     const dt = this.lastDt;
     const it = Math.min(1, intensity);
+    const fxs = currentPreset().fxScale;
     const side = this.side.set(dir.z, 0, -dir.x);
     // Soft powder plume off the blade end.
-    this.sprayPuffAcc += it * 26 * dt;
+    this.sprayPuffAcc += it * 26 * dt * fxs;
     let puffs = Math.min(4, Math.floor(this.sprayPuffAcc));
     this.sprayPuffAcc -= Math.floor(this.sprayPuffAcc);
     while (puffs-- > 0) {
@@ -428,7 +432,7 @@ export class Fx implements FxAPI {
       );
     }
     // Flakes.
-    this.sprayAcc += it * 240 * dt;
+    this.sprayAcc += it * 240 * dt * fxs;
     let count = Math.floor(this.sprayAcc);
     if (count <= 0) return;
     this.sprayAcc -= count;

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
-import { applyAllSettings, renderHooks, setBrawlPerf, settings, settingsUi } from './settings';
+import { AutoSampler, applyAllSettings, commitAutoQuality, renderHooks, reportAutoFrameTime, setBrawlPerf, settings, settingsUi } from './settings';
 import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, DUEL_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, EnemyHandle, GameContext, HudState, RadarState, RunSummary, UIHandlers } from './types';
 import { BIOME_ZONE, BRAWL_ZONE, ZONES, pickBrawlZone } from '../config/zones';
@@ -136,6 +136,8 @@ export class Game {
   /** Off-scene stand-ins for lazily created meshes (debris batches), compiled with every warm-up. */
   private warmExtras: THREE.Object3D[] = [];
   private warmIdleId = 0;
+  /** AUTO quality: frame-time sample of the current arena (settings.ts). */
+  private autoSampler = new AutoSampler();
 
   constructor(container: HTMLElement, uiRoot: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -403,6 +405,12 @@ export class Game {
     else if (id < 0) clearTimeout(-id);
   }
 
+  /** Every arena start (before the arena is built): apply a pending AUTO quality decision, start a new sample. */
+  private arenaStart(): void {
+    commitAutoQuality(this.ctx);
+    this.autoSampler.reset();
+  }
+
   private clearArena(): void {
     const { ctx } = this;
     this.campaignEnemies.clear();
@@ -431,6 +439,7 @@ export class Game {
     const { ctx } = this;
     if (!ctx.progression.isZoneUnlocked(zoneIndex)) return;
     if (hard && !hardUnlocked(ctx.progression, zoneIndex)) return;
+    this.arenaStart();
     this.setMode('campaign');
     this.zoneIndex = zoneIndex;
     this.hard = hard;
@@ -462,6 +471,7 @@ export class Game {
     const { ctx } = this;
     this.brawlDifficulty = difficulty;
     this.brawlZone = pickBrawlZone(Math.random());
+    this.arenaStart();
     this.setMode('brawl');
     if (ctx.zone !== this.brawlZone) {
       // rematch (already in Brawl mode): re-dress the dome for the new venue
@@ -491,6 +501,7 @@ export class Game {
   /** Guided onboarding in arena 1 with training bots (see Tutorial). Replayable from the main menu. */
   startTutorial(): void {
     const { ctx } = this;
+    this.arenaStart();
     this.setMode('campaign');
     this.zoneIndex = 0;
     this.hard = false;
@@ -525,6 +536,7 @@ export class Game {
   startSurvival(daily = false): void {
     const { ctx } = this;
     if (!survivalUnlocked(ctx.progression)) return;
+    this.arenaStart();
     this.setMode('survival');
     this.daily = daily;
     this.roundIndex = 0;
@@ -899,7 +911,8 @@ export class Game {
 
   private frame(t: number): void {
     this.timer.update(t);
-    const dt = Math.min(this.timer.getDelta(), 0.05);
+    const rawDt = this.timer.getDelta();
+    const dt = Math.min(rawDt, 0.05);
     // Gamepad: menus get synthetic arrow/Enter/Esc keys; Start toggles pause (not under the settings overlay).
     const input = this.ctx.input;
     input.menuNav = MENU_STATES.has(this.state) || settingsUi.open || this.ui.duel.lobbyOpen || (this.state === 'duel' && this.duelMenuUp());
@@ -908,7 +921,13 @@ export class Game {
     this.tick(dt);
     // While a fresh warm-up's programs finish compiling (at most WARM_GATE_MS), keep the last frame on screen instead
     // of blocking on them; the simulation and countdowns above never wait.
-    if (!this.warmup.holdRender(performance.now())) renderFrame(this.renderer, this.ctx.scene, this.ctx.camera);
+    const held = this.warmup.holdRender(performance.now());
+    if (!held) renderFrame(this.renderer, this.ctx.scene, this.ctx.camera);
+    // AUTO quality: sample real frame times of live play (after the countdown, never while paused or warming up).
+    if (settings.quality === 'auto' && !held && (this.state === 'playing' || this.state === 'brawl') && !document.hidden) {
+      const median = this.autoSampler.push(rawDt * 1000);
+      if (median !== null) reportAutoFrameTime(median);
+    }
   }
 
   /** Advance the simulation by dt seconds without rendering (also used by headless playtests). */
@@ -1109,6 +1128,7 @@ export class Game {
     this.ui.duel.closeLobby();
     this.tutorial.stop();
     this.duelZone = duelZoneFor(code);
+    this.arenaStart();
     this.setMode('duel');
     this.run = this.newRun();
     this.combo = 0;

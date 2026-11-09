@@ -4,7 +4,8 @@ import { ARENA } from '../core/types';
 import { StaticBatch } from '../render/mergeStatic';
 import { makeShadowProxy } from '../render/shadowProxy';
 import type { ShadowProxy } from '../render/shadowProxy';
-import { GLINTS, weatherLayers } from './biomes/Weather';
+import { GLINTS, scaleWeatherLayers, weatherLayers } from './biomes/Weather';
+import { currentPreset } from '../core/settings';
 import { GroundDecals, lavaTime } from './biomes/GroundDecals';
 import { OmegaWorks } from './omega/OmegaWorks';
 import { OmegaSet } from './omega/OmegaSet';
@@ -77,15 +78,7 @@ export class Environment extends VenueScenery implements WorldAPI {
     this.sun.color.setHex(zone.sunColor);
     this.sun.intensity = zone.sunIntensity;
     const brawl = zone.theme === 'brawl';
-    // Brawl trades shadow sharpness for frame rate: half-resolution shadow map.
-    const mapSize = brawl ? 1024 : 2048;
-    if (this.sun.shadow.mapSize.x !== mapSize) {
-      this.sun.shadow.mapSize.set(mapSize, mapSize);
-      this.sun.shadow.map?.dispose();
-      this.sun.shadow.map = null;
-      const sc = this.sun.shadow.camera;
-      this.shadowTexel = (sc.right - sc.left) / mapSize;
-    }
+    this.syncShadowMapSize();
     for (let i = 0; i < this.spots.length; i++) {
       const s = this.spots[i];
       const sx = i === 0 ? -1 : 1;
@@ -109,6 +102,21 @@ export class Environment extends VenueScenery implements WorldAPI {
     this.buildDecor(zone);
     this.buildWeather(zone);
     this.ctx.audio?.setAmbience(zone.biome?.ambience ?? (brawl || zone.theme === 'blizzard' ? 'wind' : 'none'));
+  }
+
+  /** Shadow map size from the quality preset. Brawl trades shadow sharpness for frame rate (HIGH: 1024 there,
+   *  2048 elsewhere). */
+  syncShadowMapSize(): void {
+    if (!this.zone) return;
+    const p = currentPreset();
+    const mapSize = this.zone.theme === 'brawl' ? p.brawlShadowMapSize : p.shadowMapSize;
+    if (this.sun.shadow.mapSize.x !== mapSize) {
+      this.sun.shadow.mapSize.set(mapSize, mapSize);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+      const sc = this.sun.shadow.camera;
+      this.shadowTexel = (sc.right - sc.left) / mapSize;
+    }
   }
 
   openGate(index: number): void {
@@ -272,16 +280,18 @@ export class Environment extends VenueScenery implements WorldAPI {
   /** Biome weather (GPU particles, see biomes/Weather.ts); the classic looks get snow (a gale in the Blizzard Bowl). */
   private buildWeather(zone: ZoneDef): void {
     const b = zone.biome;
+    // Quality preset (LOW: half the particles, no haze layers); read at build time, so it applies from the next arena.
+    const p = currentPreset();
     if (b) {
       const layers = weatherLayers(b.particles, zone.snowfall);
       if (b.key === 'glacier') layers.push(GLINTS);
-      this.weather.set(layers);
+      this.weather.set(scaleWeatherLayers(layers, p.weatherScale, p.dropHaze));
       return;
     }
     const blizzard = zone.theme === 'blizzard';
     const snow = weatherLayers('snow', zone.snowfall)[0];
     if (blizzard) Object.assign(snow, { wind: [16, 5], fall: 5, sway: 1.5, size: 0.18, opacity: 0.95 });
-    this.weather.set([snow]);
+    this.weather.set(scaleWeatherLayers([snow], p.weatherScale, p.dropHaze));
   }
 
   /* ------------------------------------------------------------------ update */

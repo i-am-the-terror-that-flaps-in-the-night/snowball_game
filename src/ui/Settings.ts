@@ -2,7 +2,7 @@ import { PLOWS, type PlowKind } from '../config/plows';
 import './settings.css';
 import type { GameContext } from '../core/types';
 import { ACTIONS, DEFAULT_KEYS, RESERVED_KEYS, keyLabel, type Action } from '../core/input';
-import { applyAudio, applyBindings, applyQuality, saveSettings, settings, settingsUi, type Quality } from '../core/settings';
+import { applyAudio, applyBindings, applyQuality, qualityLabel, saveSettings, settings, settingsUi, type Quality } from '../core/settings';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -156,7 +156,7 @@ export class SettingsMenu {
     const qRow = el('div', 'ss-set-row', undefined, vid);
     el('span', 'ss-set-label', 'Quality', qRow);
     const seg = el('div', 'ss-set-seg', undefined, qRow);
-    for (const [q, label] of [['low', 'LOW · fast'], ['high', 'HIGH · shadows']] as [Quality, string][]) {
+    for (const [q, label] of [['low', 'LOW · fast'], ['medium', 'MEDIUM'], ['high', 'HIGH · shadows'], ['auto', 'AUTO']] as [Quality, string][]) {
       this.qualityBtns.set(q, this.btn(label, 'ss-ice ss-small', () => {
         settings.quality = q;
         applyQuality(this.ctx);
@@ -164,6 +164,7 @@ export class SettingsMenu {
         this.refresh();
       }, seg));
     }
+    el('div', 'ss-set-note', 'MEDIUM: smaller shadows, no bloom. LOW also trims particles, lights and the black-hole lens. Weather and crowd changes apply from the next arena. AUTO starts from your GPU and adjusts to your frame rate between arenas.', vid);
     const bRow = el('div', 'ss-set-row', undefined, vid);
     el('span', 'ss-set-label', 'Bloom', bRow);
     const bSeg = el('div', 'ss-set-seg', undefined, bRow);
@@ -258,6 +259,7 @@ export class SettingsMenu {
       s.val.textContent = `${v}%`;
     }
     for (const [q, b] of this.qualityBtns) b.classList.toggle('ss-set-on', settings.quality === q);
+    this.qualityBtns.get('auto')!.textContent = settings.quality === 'auto' ? qualityLabel() : 'AUTO';
     for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
     for (const [on, b] of this.bloomBtns) b.classList.toggle('ss-set-on', settings.bloom === on);
     for (const [on, b] of this.ultCamBtns) b.classList.toggle('ss-set-on', settings.ultCam === on);

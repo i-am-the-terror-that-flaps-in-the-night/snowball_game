@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { currentPreset } from '../core/settings';
 
 /* ARSENAL ultimate SINGULARITY: a black hole that opens mid-fight, holds ~3 s, then collapses and detonates.
  *
@@ -884,7 +885,8 @@ export class SingularityFx {
   private grab(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, mesh: THREE.Mesh, mat: THREE.ShaderMaterial): void {
     const u = mat.uniforms;
     u.uGrab.value = 0;
-    if (this.grabbing || !this.lensingOn) return;
+    // LOW quality skips the second scene render: the lens keeps its undistorted fallback (darkening ring + rings).
+    if (this.grabbing || !this.lensingOn || !currentPreset().lensGrab) return;
     if (this.grabOk === null) this.grabOk = renderer.extensions.has('EXT_color_buffer_float');
     if (!this.grabOk) return;
     const cam = camera as THREE.PerspectiveCamera;

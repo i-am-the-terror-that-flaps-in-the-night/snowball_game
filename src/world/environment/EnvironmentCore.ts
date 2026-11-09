@@ -12,7 +12,8 @@ import { OmegaSet } from '../omega/OmegaSet';
 import type { Item, GateState, Puff, Pulse } from './types';
 import type { Style } from './styles';
 import { STYLES } from './styles';
-import { TOWER_OFF, brawlMode, colored, merge } from './layout';
+import { TOWER_OFF, brawlMode, colored, crowdKeep, merge } from './layout';
+import { currentPreset } from '../../core/settings';
 import { getGlowTex } from './textures';
 
 /** Fields, lights / sky setup and the shared build helpers of the arena builder (see world/Environment.ts). */
@@ -356,11 +357,16 @@ export class EnvironmentCore {
       phase.set(p, o);
       o += p.length;
     }
-    const attr = new THREE.InstancedBufferAttribute(phase, 1);
+    // Quality preset (LOW): keep a deterministic share of the crowd. The full list, its bob phases and the rally cap
+    // colours are all drawn first, exactly as on HIGH, so this.rnd's stream (and everything built after) is unchanged.
+    const keep = crowdKeep(items.length, currentPreset().crowdFraction);
+    const pick = <T,>(list: T[]): T[] => (keep ? keep.map((i) => list[i]) : list);
+    const shown = pick(items);
+    const attr = new THREE.InstancedBufferAttribute(keep ? Float32Array.from(keep, (i) => phase[i]) : phase, 1);
     body.setAttribute('aPhase', attr);
     eyes.setAttribute('aPhase', attr);
-    this.inst(body, bodyMat, items);
-    this.inst(eyes, eyeMat, items.map((i) => ({ ...i, color: undefined })));
+    this.inst(body, bodyMat, shown);
+    this.inst(eyes, eyeMat, shown.map((i) => ({ ...i, color: undefined })));
     if (rally) {
       // red rally caps (crown + brim) on most heads, a few white / navy
       const cap = merge([
@@ -370,10 +376,10 @@ export class EnvironmentCore {
       cap.setAttribute('aPhase', attr);
       const capMat = this.bobify(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.65, flatShading: true }));
       const rnd = this.rnd;
-      this.inst(cap, capMat, items.map((i) => {
+      this.inst(cap, capMat, pick(items.map((i) => {
         const r = rnd();
         return { ...i, color: r < 0.86 ? 0xc8102e : r < 0.95 ? 0xffffff : 0x1f3b8c };
-      }));
+      })));
     }
   }
 

@@ -73,6 +73,18 @@ export const GLINTS: WeatherLayerDef = {
   count: 500, colors: [0xd8fbff, 0x7dffc4, 0xb89cff, 0x8ff0ff], size: 0.08, fall: 0.25, wind: [0.6, 0.2], sway: 0.8, opacity: 1, shape: 'spark', additive: true, flicker: 0.85,
 };
 
+/** Layers at least this big (m) are the soft haze sheets (dust haze, steam clouds): big overdraw for little detail. */
+export const HAZE_SIZE = 2;
+
+/** Quality preset applied to a zone's layers (pure): counts times `scale` (never below 1), haze layers dropped with
+ *  `dropHaze`. Returns `layers` itself when nothing changes (HIGH), else fresh copies (GLINTS is shared). */
+export function scaleWeatherLayers(layers: WeatherLayerDef[], scale: number, dropHaze: boolean): WeatherLayerDef[] {
+  if (scale === 1 && !dropHaze) return layers;
+  return layers
+    .filter((l) => !(dropHaze && l.size >= HAZE_SIZE))
+    .map((l) => ({ ...l, count: Math.max(1, Math.round(l.count * scale)) }));
+}
+
 const VERT = /* glsl */ `
 attribute vec4 aSeed;
 attribute vec3 aColor;

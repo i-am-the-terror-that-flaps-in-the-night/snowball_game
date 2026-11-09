@@ -62,6 +62,16 @@ export interface Side {
 /** Snowdome mode: no gates, uniform wall height. Set by buildDecor. */
 export let brawlMode = false;
 /** The only writer of `brawlMode` (an imported binding is read-only in other modules). */
+/** Quality preset crowd subsample (pure, deterministic, no RNG): the indices of `n` crowd figures kept at `fraction`,
+ *  spread evenly along the build order; null = keep all (fraction >= 1). */
+export function crowdKeep(n: number, fraction: number): number[] | null {
+  if (fraction >= 1) return null;
+  const f = Math.max(0, fraction);
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) if (Math.floor((i + 1) * f) > Math.floor(i * f)) out.push(i);
+  return out;
+}
+
 export function setBrawlMode(on: boolean): void {
   brawlMode = on;
 }

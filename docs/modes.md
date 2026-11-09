@@ -82,8 +82,31 @@ per prop type and a circle collider each, with no physics. There are none in the
 
 ## Settings and save
 
-**⚙ Settings** (main menu or pause menu) has master / music / SFX volume, screen-shake strength, LOW / HIGH graphics
-(LOW = 1× pixel ratio, no shadows; Brawl on HIGH caps the pixel ratio at 1.5×, halves the shadow map and uses a
-cheaper snow shader), bloom, reduced flashes, the **Ultimate kill-cam** toggle, key rebinding and save management:
+**⚙ Settings** (main menu or pause menu) has master / music / SFX volume, screen-shake strength, graphics quality
+(below), bloom, reduced flashes, the **Ultimate kill-cam** toggle, key rebinding and save management:
 **EXPORT** (an `SPS1:` code, copied to the clipboard), **IMPORT** (validated; a bad code leaves your save untouched)
 and **RESET PROGRESS** (click twice). Settings live in localStorage separately from progress.
+
+**Graphics quality.** Every lever of a tier is in one table, `preset()` in `src/core/settings.ts`:
+
+| | HIGH (default) | MEDIUM | LOW |
+|---|---|---|---|
+| Pixel ratio cap (Brawl / Omega Works) | 2× (1.5×) | 1.5× (1.5×) | 1× |
+| Sun shadows (map size, Brawl dome) | on, 2048 (1024) | on, 1024 (1024) | off |
+| Bloom (with the Bloom setting on) | on | off | off |
+| Impact flash lights | on | on | hidden |
+| Particle bursts / sparks / smoke / spray | 100% | 100% | 50% |
+| Black-hole lens screen grab | on | on | off (undistorted fallback) |
+| Weather particles | 100% | 100% | 50%, no dust / steam haze |
+| Stadium crowd | 100% | 100% | 50% |
+
+Brawl also uses a cheaper snow shader and bloom chain on every tier. Pixel ratio, shadows, bloom, lights,
+particles and the lens change at once; weather and crowd are built with the arena, so they change from the next
+arena. The crowd is thinned only after the full list is built, so the rest of the venue (flags etc., which share
+its seeded random stream) stays where it is. **AUTO** (opt-in, never the default) starts from the GPU's renderer
+string (software renderers and weak integrated GPUs start on LOW, mid-range integrated graphics on MEDIUM) and then
+measures the median frame time of each arena after the countdown: slower than 25 ms steps one tier down, faster than
+18 ms one tier up, but never back up to a tier that was too slow. A decision waits for the next arena start, and the
+UI shows the tier in use (`AUTO · MEDIUM`). The resolved tier is never written to the saved settings. Unknown saved
+values load as HIGH; an older build that only knows LOW / HIGH reads MEDIUM / AUTO as HIGH and writes HIGH back the
+next time any setting changes there.

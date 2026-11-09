@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { GameContext, ImpactAPI, ImpactKind, ImpactOpts } from '../core/types';
-import { settings } from '../core/settings';
+import { currentPreset, settings } from '../core/settings';
 
 /* Impact feel: game-wide hit-stop + slow-mo (a sim time scale read by Game.tick), directional camera punches,
  * a fixed pool of impact lights and a DOM flash / damage-vignette overlay. */
@@ -80,6 +80,7 @@ export class Impact implements ImpactAPI {
       ctx.scene.add(light);
       this.flashes.push({ light, peak: 0, t: 0 });
     }
+    if (currentPreset().hideFlashLights) this.setFlashLightsHidden(true);
     this.overlay = document.createElement('div');
     this.overlay.className = 'impact-overlay';
     this.vigEl = document.createElement('div');
@@ -94,6 +95,12 @@ export class Impact implements ImpactAPI {
       if (enemy.isBoss && enemy.alive && damage >= 10) this.stop(KINDS.bossHit.stop);
     });
     ctx.events.on('bossDefeated', () => this.screenFlash(0.75, 0.45));
+  }
+
+  /** Quality preset (LOW): hide the pooled flash lights. Changes the scene's light count, so every lit program
+   *  rebuilds: settings.applyQuality calls this on a settings change only and then warms the shaders up. */
+  setFlashLightsHidden(hidden: boolean): void {
+    for (const f of this.flashes) f.light.visible = !hidden;
   }
 
   /** True while a hit-stop or slow-mo is playing (Game holds the round-clear until it ends). */

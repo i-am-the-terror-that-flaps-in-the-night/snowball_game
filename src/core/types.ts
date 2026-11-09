@@ -235,6 +235,8 @@ export interface SnowFieldAPI {
 export interface WorldAPI {
   /** Apply sky, fog, lights, arena walls/gates and themed decoration for the zone. */
   setZone(zone: ZoneDef): void;
+  /** Resize the sun's shadow map to the current quality preset (settings.applyQuality; setZone does it too). */
+  syncShadowMapSize?(): void;
   /** Falling snow particles, subtle ambient animation, gate lights. */
   update(dt: number): void;
   /** Flash/open the gate with this index (0..2) — call when a bot drives in through it. No-op in Brawl. */
@@ -580,6 +582,8 @@ export interface ImpactAPI {
   enabled: boolean;
   /** True while a hit-stop or slow-mo plays (the round-clear waits for it). */
   readonly holding: boolean;
+  /** Hide / show the impact flash point lights (quality preset; a light-count change, so settings changes only). */
+  setFlashLightsHidden?(hidden: boolean): void;
   hit(kind: ImpactKind, pos: THREE.Vector3, strength?: number, opts?: ImpactOpts): void;
   /** The player lost `damage` HP to an attacker at (fromX, fromZ). */
   playerHit(damage: number, fromX: number, fromZ: number): void;
