@@ -7,7 +7,6 @@ import {
   type PlowAPI,
   type SoundName,
 } from '../core/types';
-import type { Combat } from './Combat';
 import { ctxPilot, type PilotBinding } from './pilot';
 import { NP } from '../net/protocol';
 import { AIR_SLAM_MIN_HEIGHT } from './combat/air';

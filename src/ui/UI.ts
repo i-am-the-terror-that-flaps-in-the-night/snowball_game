@@ -7,7 +7,6 @@ import { SHOP_UPGRADES, type UpgradeCategory } from '../config/upgrades';
 import type { GearSlot } from '../config/gear';
 import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES } from '../config/zones';
-import { RadarHud } from './RadarHud';
 import { SettingsMenu } from './Settings';
 import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
 import { StyleShop } from './StyleShop';
@@ -120,7 +119,6 @@ export class UI implements UIAPI {
   private bresultScreen!: HTMLElement;
   private bresultPanel!: HTMLElement;
   /** Campaign / Survival minimap + lost-bot arrows (the HUD's; kept here too for scripts/hud-probe.mjs). */
-  private radar!: RadarHud;
 
   // hud + fx
   private gameHud!: GameHud;
@@ -133,7 +131,6 @@ export class UI implements UIAPI {
     this.rootEl = el('div', 'ss-root', undefined, root);
 
     this.gameHud = new GameHud(ctx, this.rootEl, () => this.toastBox, () => this.refreshKeys());
-    this.radar = this.gameHud.radar;
     this.buildMenu();
     this.buildHowTo();
     this.buildZones();

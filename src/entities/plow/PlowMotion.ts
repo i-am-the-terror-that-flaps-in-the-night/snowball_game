@@ -20,7 +20,6 @@ export abstract class PlowMotion extends PlowVisuals {
   /* ------------------------------------------------------------------ abilities */
 
   protected slamImpact(): void {
-    const ctx = this.ctx;
     this.slamHit = true;
     this.slamCd = cooldown(SLAM_COOLDOWN, this.b.stats.cooldownMult);
     const r = this.heldBallRadius;
@@ -48,7 +47,6 @@ export abstract class PlowMotion extends PlowVisuals {
   }
 
   protected tryDash(): void {
-    const ctx = this.ctx;
     if (this.dashCharge < 1 || this.dashT > 0) {
       if (this.dashT <= 0) this.b.audio.play('error', { volume: 0.4 });
       return;
@@ -87,7 +85,6 @@ export abstract class PlowMotion extends PlowVisuals {
 
   /** Dash safety net: anything the blade plows into while dashing gets a DASH STRIKE (Combat dedupes per bot). */
   protected dashHits(): void {
-    const ctx = this.ctx;
     const enemies = this.b.enemies;
     if (!enemies || this.speed < 3) return;
     const tx = this.position.x + _fwd.x * (TIP_Z - 0.4);
@@ -106,7 +103,6 @@ export abstract class PlowMotion extends PlowVisuals {
   }
 
   protected tryWhirl(): void {
-    const ctx = this.ctx;
     if (this.whirlT >= 0) return;
     if (this.whirlCharge < 1) {
       this.b.audio.play('error', { volume: 0.4 });

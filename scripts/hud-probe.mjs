@@ -293,7 +293,7 @@ try {
           const r = evalArrows();
           shown += r.n;
           // no room clear of the bars too (568 x 320, twin bars): RadarHud lets arrows run over the bars, nothing else
-          const crowded = c.ui.radar.crowded;
+          const crowded = c.ui.gameHud.radar.crowded;
           if (crowded) crowdedN++;
           if (r.pair > 0 || (r.hud > 0 && !(crowded && r.worstPart === 'bosses' && r.hudNoBars === 0))) bad.push({ k, crowded, ...r });
         }

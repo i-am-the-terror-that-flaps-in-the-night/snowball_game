@@ -53,6 +53,8 @@ node scripts/donald-probe.mjs          # arena 5 + THE DONALD: every attack, pha
 node scripts/legend-probe.mjs legend 12   # balance: autopilot player at upgrade level 12 vs a Legend lobby
 node scripts/render-probe.mjs baseline    # deterministic render metrics + pixel-diff gate (then: compare); the
                                           # level overhaul renamed a5-* to a6-* (The Omega Works): re-record
+                                          # no GPU (cloud container): PW_EXE=/opt/pw-browsers/chromium PROBE_GPU=0
+                                          # PROBE_DPR=1 PROBE_LOOPS=3 (pixel diff only, minutes not hours)
 node scripts/duel-probe.mjs /tmp/duel-probe  # Duel: two pages over BroadcastChannel (lobby, catch-up garage,
                                              # best of 3, rematch, NUKE / Inferno, ARSENAL, pause, leave, lag)
 node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real PeerJS cloud server (needs internet)

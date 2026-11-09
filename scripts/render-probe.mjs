@@ -7,7 +7,10 @@
 //   self-time functions of each scene's measurement loop from the V8 CPU profiler).
 //   Env: PROBE_GPU=0 -> SwiftShader instead of the Metal GPU, PROBE_DPR (default 2), PROBE_DEBUG=1 (raw timing samples
 //   in metrics.json), PORT -> Vite port, PROBE_UUID_RNG=1 -> three's UUIDs use their own RNG stream (see probeInit;
-//   baseline and compare must use the same setting).
+//   baseline and compare must use the same setting), PW_EXE -> a Chromium binary instead of installed Chrome (e.g.
+//   /opt/pw-browsers/chromium in cloud containers), PROBE_LOOPS=N -> N renders per timing loop instead of 60 / 30 / 60
+//   (images and fingerprints don't depend on it; on SwiftShader at DPR 2 the full loops take ~30 min per scene, so
+//   use e.g. PROBE_LOOPS=3 PROBE_DPR=1 PROBE_GPU=0 for a pixel-diff-only run).
 //
 // Vite serves process.cwd(), so run it from the worktree you want to measure. Headless Chrome at 1920x1080 @ DPR 2
 // (canvas 3840x2160), shadows on (fresh save = HIGH quality), ?debug save (all arenas unlocked).
@@ -47,7 +50,7 @@
 // machine: use --runs=3.
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { execSync } from 'node:child_process';
 
@@ -180,6 +183,17 @@ function probeInit(opts = {}) {
 
   const SCENES = {
     menu: () => run(90),
+    // Arenas / venues the other scenes never build: Rust Basin (Mars), Golden Tower Plaza, and every Brawl venue
+    // (the venue is picked at random, so Math.random is pinned for the pick).
+    'a3-mars': () => { startCampaign(2, 1); run(countdownFrames() + 120, pilot()); },
+    'a5-plaza': () => { startCampaign(4, 1); run(countdownFrames() + 120, pilot()); },
+    ...Object.fromEntries(['snowdome', 'glacier', 'quarry', 'mars', 'divide', 'plaza'].map((k, i) => [`brawl-${k}`, () => {
+      const mr = Math.random;
+      Math.random = () => (i + 0.5) / 6;
+      g().startBrawl('pro');
+      Math.random = mr;
+      run(countdownFrames() + 60, pilot({ chase: 200 }));
+    }])),
     'a1-r2': () => {
       startCampaign(0, 1);
       run(countdownFrames() + 300, pilot());
@@ -312,7 +326,8 @@ function probeInit(opts = {}) {
       SCENES[name]();
       return fingerprint();
     },
-    measure(debug) {
+    measure({ debug, loops }) {
+      const N = (n) => loops || n;
       const game = g(), ctx = game.ctx, r = game.renderer, sm = r.shadowMap, gl = r.getContext(), info = r.info;
       const render = () => r.render(ctx.scene, ctx.camera);
       for (let i = 0; i < 4; i++) render();
@@ -333,7 +348,7 @@ function probeInit(opts = {}) {
       const sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
       const cpu = [], fin = [], cpuMain = [];
       sync();
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < N(60); i++) {
         const t0 = realNow();
         render();
         const t1 = realNow();
@@ -342,7 +357,7 @@ function probeInit(opts = {}) {
         cpu.push(t1 - t0);
       }
       sm.autoUpdate = false;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < N(30); i++) {
         const t0 = realNow();
         render();
         cpuMain.push(realNow() - t0);
@@ -352,9 +367,9 @@ function probeInit(opts = {}) {
       // Throughput: 60 back-to-back renders (no sync in between, so GPU back-pressure counts), wall time per frame.
       sync();
       const tp0 = realNow();
-      for (let i = 0; i < 60; i++) render();
+      for (let i = 0; i < N(60); i++) render();
       sync();
-      const throughput = (realNow() - tp0) / 60;
+      const throughput = (realNow() - tp0) / N(60);
       // One instrumented render: count WebGL calls by name (program / state switches are what cost CPU per draw).
       const glCount = {};
       const proto = Object.getPrototypeOf(gl);
@@ -476,10 +491,13 @@ mkdirSync(outDir, { recursive: true });
 const port = Number(process.env.PORT) || 5700 + Math.floor(Math.random() * 1500);
 // Cross-origin isolation gives performance.now() 5 us resolution instead of 100 us (the page loads nothing external).
 const isolation = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp' };
-const server = await createServer({ root: process.cwd(), server: { port, strictPort: true, headers: isolation }, logLevel: 'error' });
+// A worktree may link node_modules from the main checkout: let Vite serve the real folder too (fonts live there).
+const nodeModules = existsSync(join(process.cwd(), 'node_modules')) ? realpathSync(join(process.cwd(), 'node_modules')) : null;
+const fsAllow = nodeModules ? { fs: { allow: [process.cwd(), nodeModules] } } : {};
+const server = await createServer({ root: process.cwd(), server: { port, strictPort: true, headers: isolation, ...fsAllow }, logLevel: 'error' });
 await server.listen();
 const gpuArgs = gpu ? ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: gpuArgs });
+const browser = await chromium.launch({ ...(process.env.PW_EXE ? { executablePath: process.env.PW_EXE } : { channel: 'chrome' }), headless: true, args: gpuArgs });
 
 const sceneFilter = opt('scenes', '') ? String(opt('scenes')).split(',') : null;
 const results = [];
@@ -534,7 +552,7 @@ async function runScene(name) {
       await cdp.send('Profiler.setSamplingInterval', { interval: 50 });
       await cdp.send('Profiler.start');
     }
-    const metrics = await page.evaluate((d) => window.__probe.measure(d), !!process.env.PROBE_DEBUG);
+    const metrics = await page.evaluate((o) => window.__probe.measure(o), { debug: !!process.env.PROBE_DEBUG, loops: Number(process.env.PROBE_LOOPS) || 0 });
     if (cdp) printProfile(name, (await cdp.send('Profiler.stop')).profile);
     const dataUrl = await page.evaluate(() => window.__probe.shot());
     const png = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');

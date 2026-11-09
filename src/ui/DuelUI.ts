@@ -54,7 +54,6 @@ interface HudSideEls {
 }
 
 export class DuelUI {
-  private parent: HTMLElement;
   // Lobby.
   private lobby: HTMLElement;
   private lobbyChoose: HTMLElement;
@@ -85,7 +84,6 @@ export class DuelUI {
   private hudTimer: HTMLElement;
   private hudRound: HTMLElement;
   private hudPing: HTMLElement;
-  private roundsToWin = 2;
   private last = { timer: '', round: -1, ping: '', me: '', opp: '' };
   // Banner + result.
   private bannerEl: HTMLElement;
@@ -98,7 +96,6 @@ export class DuelUI {
   private rematchNote: HTMLElement | null = null;
 
   constructor(parent: HTMLElement) {
-    this.parent = parent;
 
     // ---- Lobby
     this.lobby = el('div', 'ss-screen ss-center ss-dim ss-duel-lobby', undefined, parent);
@@ -372,7 +369,6 @@ export class DuelUI {
   /* ------------------------------------------------------------------ HUD */
 
   showHud(roundsToWin: number): void {
-    this.roundsToWin = roundsToWin;
     for (const s of [this.hudMe, this.hudOpp]) {
       const wrap = s.pips[0];
       wrap.textContent = '';
