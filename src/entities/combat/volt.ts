@@ -22,7 +22,7 @@ const ARC_TICK = 0.15;
 export const ARC_DAMAGE = 2.1;
 // Design from the user: the ARC LANCE is the chain weapon — it chains a ton and can paralyse.
 const ARC_HOPS = 6;
-const ARC_CHAIN_FRAC = 0.5;
+const ARC_CHAIN_FRAC = 0.6;
 /** Each hop past the first keeps this share of the hop before it (a long chain thins out but still bites). */
 const ARC_HOP_DECAY = 0.9;
 const ARC_CHAIN_R = 8;
@@ -46,7 +46,7 @@ export const arcRange = (ballR: number) => 9 + 2.5 * Math.max(0, ballR - 1.2);
  *  radius (+ Tesla Field reach above its 4.5 m base). The first pulse is a bigger burst (STATIC_FIRST x). */
 // Design from the user: Static Field stays a lingering, pulsing stun field; balance it through STATIC_DAMAGE / stun
 // numbers, not by turning it back into a single ring.
-export const STATIC_DAMAGE = 14;
+export const STATIC_DAMAGE = 18;
 /** STATIC FIELD leans only lightly on the coil (coilBoost to this power): an area stun, kept flat late. */
 const STATIC_COIL_EXP = 0.2;
 const STATIC_STUN = 0.7;

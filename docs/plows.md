@@ -23,11 +23,11 @@ ground.
 In the Duel its attacks hit 1.8x as hard (its kit is built for crowds).
 
 No blade: a low, wide rover under a crackling coil tower. It doesn't plow snow or carry a snowball, though deep
-snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% damage, but -15% HP.
+snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% damage, but -5% HP.
 
 - **SPACE (hold): Arc Lance.** Every 0.15 s an arc jumps from the tower to the nearest bot within 60° of the nose and
   9 m (Mega Hopper adds reach), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
-  nearest unhit bot within 8 m, the first hop at half damage and each one after keeping 90% of the one before. Every
+  nearest unhit bot within 8 m, the first hop at 60% damage and each one after keeping 90% of the one before. Every
   arc hit (any hop) has a 7% chance to **PARALYSE** the bot for 1.2 s (a stun; bosses half); a paralysed bot can't be
   paralysed again for 2.5 s after. **GROUNDED ARC:** when the locked bot is a boss, or has nothing within 8 m to chain to
   (a straggler), the arc grounds into it for 1.75x damage (2.6x on a boss) and faces only half its armour; on a boss the

@@ -320,6 +320,16 @@ noise, but VOLT-9 was the slowest in every run, its boss fights about twice as l
 The Arc Lance only locks a boss inside a 60° cone within 9 m, and THE DONALD and Ω charge, leap and climb, so
 VOLT-9 got a BOSS LOCK (wide cone and a 3 m hold on bosses; see [plows.md](plows.md)).
 
+## Follow-up: VOLT-9 buff
+
+VOLT-9 had the lowest HP (0.85x) and the lowest crowd damage at fresh / mid of the five, and on Hard Plaza (mid) it
+lost the most HP and died twice. Buff: HP 0.85x -> 0.95x, Arc Lance chain hops 50% -> 60% of the arc, Static Field
+pulse 14 -> 18 damage (the field is most of VOLT's early crowd damage and barely scales with upgrades, so this helps
+fresh / mid most). Sim: HP 102 / 247 / 380, cluster DPS 272 -> 304 (fresh), 1482 -> 1637 (mid), 7430 -> 8114
+(high, now the best crowd plow); single target about unchanged; fastest Duel kill 4.7 -> 4.4 s (floor 4 s). Hard Plaza
+/ Omega Works (mid, 3 runs each): 75-80 s / 70-83 s, bosses ~24 / ~22 s, against 89 / 86 s and 30 / 31 s before:
+inside the other plows' 69-92 s.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more
