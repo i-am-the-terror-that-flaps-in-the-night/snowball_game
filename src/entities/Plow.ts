@@ -97,6 +97,16 @@ export class Plow extends PlowMotion implements PlowAPI {
     return this.look.horn.sound;
   }
 
+  /** Warm-up (render/warmup.ts): flip the body's visibility until the returned undo runs. The beacon light rides on
+   *  the body, so this is the light count of the spawn-protection blink (or of its end). */
+  flipBodyForWarmup(): () => void {
+    const was = this.body.visible;
+    this.body.visible = !was;
+    return () => {
+      this.body.visible = was;
+    };
+  }
+
   /** Show / hide the whole plow and its world-space parts (the duel's second plow sits out single-player modes). */
   setInWorld(on: boolean): void {
     this.object.visible = on;

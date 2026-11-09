@@ -195,7 +195,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private horizon!: Horizon;
   private streakT = 0;
   private burstStreakT = 0;
-  /** Singularity: centre and FX (built on first use, only with a camera: headless sims have none). */
+  /** Singularity: centre and FX (built by prewarm() at game load or on first use, only with a camera: headless sims
+   *  have none). */
   private singAt = new THREE.Vector3();
   private singY = 0;
   private singFx: SingularityFx | null = null;
@@ -978,6 +979,12 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return out;
   }
 
+  /** Build the SINGULARITY FX now (hidden) instead of at the first ult, so a warm-up can compile it (render/warmup.ts).
+   *  Only with a camera: headless sims have none. */
+  prewarm(): void {
+    if (this.ctx.camera) this.singFx ??= new SingularityFx(this.ctx.scene, { reduceFlash: settings.reduceFlash });
+  }
+
   /** SINGULARITY: a black hole opens over the fight. */
   ultStart(x: number, z: number): number {
     const plow = this.b.plow;
@@ -989,8 +996,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.singTickT = SING_TICK;
     this.singCollapsed = this.singBlown = false;
     if (this.ctx.camera) {
-      this.singFx ??= new SingularityFx(this.ctx.scene, { reduceFlash: settings.reduceFlash });
-      this.singFx.open(this.singAt, SING_VIS_R);
+      this.prewarm();
+      this.singFx!.reduceFlash = settings.reduceFlash;
+      this.singFx!.open(this.singAt, SING_VIS_R);
     }
     if (plow) plow.gyroCharge = 1;
     this.b.audio.play('charge', { pitch: 0.35, volume: 1 });

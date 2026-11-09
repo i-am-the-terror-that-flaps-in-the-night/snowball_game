@@ -2,7 +2,11 @@ import * as THREE from 'three';
 
 /* Inferno (F) visuals: two nested additive flame cones with scrolling-noise shaders (hot white-yellow core,
  * orange-red outer), a flickering orange point light, and a heat-glow disc on the ground. Apex sits at the
- * plow's blade; the cone opens along the plow's forward. */
+ * plow's blade; the cone opens along the plow's forward.
+ *
+ * The point light is a scene child that stays visible (intensity 0 while the flame is off), not a child of the
+ * hidden cone group: the number of visible point lights is part of every lit material's shader program, so a light
+ * that appeared with the first flame would recompile every lit material mid-fight (same reason as impact.ts's pool). */
 
 const VERT = /* glsl */ `
 varying vec2 vUv;
@@ -73,6 +77,7 @@ export class FlameCone {
   private glowMat = new THREE.MeshBasicMaterial({ color: 0xff6a1a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
   private time = 0;
   private level = 0;
+  private static readonly lightLocal = new THREE.Vector3();
 
   constructor(scene: THREE.Scene) {
     const geo = coneGeometry();
@@ -83,9 +88,12 @@ export class FlameCone {
     const glowGeo = new THREE.CircleGeometry(1, 32);
     glowGeo.rotateX(-Math.PI / 2);
     this.glow = new THREE.Mesh(glowGeo, this.glowMat);
-    this.group.add(this.outer, this.inner, this.light);
+    this.group.add(this.outer, this.inner);
     this.group.visible = false;
     scene.add(this.group);
+    // Parked out of the way until the first flame (intensity 0: it lights nothing, but always counts).
+    this.light.position.set(0, -50, 0);
+    scene.add(this.light);
     scene.add(this.glow);
     this.glow.visible = false;
   }
@@ -112,7 +120,10 @@ export class FlameCone {
     this.innerMat.uniforms.uTime.value = this.time;
     this.outerMat.uniforms.uAlpha.value = 0.85 * k * flick;
     this.innerMat.uniforms.uAlpha.value = 1.0 * k * flick;
-    this.light.position.set(0, 0.6, range * 0.45);
+    // Where the light sat as the group's child (0, 0.6, 0.45 range): the group's matrix applied to that point gives
+    // the same world position bit for bit (the group is a direct scene child).
+    this.group.updateMatrix();
+    this.light.position.copy(FlameCone.lightLocal.set(0, 0.6, range * 0.45)).applyMatrix4(this.group.matrix);
     this.light.intensity = 60 * k * flick;
     this.light.distance = range * 2.4;
     // Heat glow on the ground under the cone.

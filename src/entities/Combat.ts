@@ -91,6 +91,11 @@ export class Combat implements CombatAPI {
     this.ult = new Ultimates(host, { volt: this.volt, brute: this.brute, arsenal: this.arsenal });
   }
 
+  /** Build the lazily created effects now (hidden), so the game-load warm-up compiles them (render/warmup.ts). */
+  prewarm(): void {
+    this.arsenal.prewarm();
+  }
+
   private makeHost(): CombatHost {
     const c = this;
     return {

@@ -1,6 +1,7 @@
 import { ARENA, type BrawlAPI, type BrawlDifficulty, type BrawlEntry, type BrawlHud, type BrawlResult, type DamageOpts, type EnemyHandle, type EnemyType } from '../core/types';
 import { BRAWL_BOTS, BRAWL_BOT_NAMES, BRAWL_CLAN_TAGS, BRAWL_COLORS, BRAWL_DIFFICULTIES, BRAWL_KILL_TARGET, BRAWL_PERSONALITIES, BRAWL_PLACEMENT_BONUS, BRAWL_TIME, PLAYER_BRAWL_COLOR, streakMult } from '../config/brawl';
-import { RIVAL_KINDS } from './models';
+import * as THREE from 'three';
+import { RIVAL_KINDS, getDebrisGeometry } from './models';
 import { launchVert } from '../world/terrainMotion';
 import { _cam, EMPTY, pick, shuffle, type Method } from './shared';
 import { Rival } from './rival';
@@ -24,6 +25,16 @@ export class BrawlManager extends BrawlAI implements BrawlAPI {
   }
   get bosses(): readonly EnemyHandle[] {
     return EMPTY;
+  }
+
+  /** Warm-up set (render/warmup.ts): an off-scene stand-in for a rival wreck's debris batch (BrawlCombat's wreck
+   *  FX). The real batches use a clone of the rival's paint and a dark-metal clone, both plain flat-shaded
+   *  MeshStandardMaterials, so one fresh look-alike covers their program; it is never added to the scene. */
+  warmSet(): THREE.Object3D[] {
+    const mesh = new THREE.InstancedMesh(getDebrisGeometry(), new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.2, flatShading: true }), 1);
+    mesh.castShadow = true;
+    mesh.count = 0;
+    return [mesh];
   }
 
   start(difficulty: BrawlDifficulty): void {

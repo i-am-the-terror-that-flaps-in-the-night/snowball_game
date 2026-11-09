@@ -218,6 +218,14 @@ void main() {
   });
 }
 
+/** Geometry like FullScreenQuad's (position + uv only), for compiling the chain's materials (warm-up). */
+function quadGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 2, 0, 0, 2, 0], 2));
+  return g;
+}
+
 class Post {
   private scene: THREE.WebGLRenderTarget;
   private readonly bloom: Bloom;
@@ -227,6 +235,12 @@ class Post {
   private readonly antialias: boolean;
   private bw = 0;
   private bh = 0;
+  /** Warm-up stand-ins (never drawn): the chain's offscreen materials and the canvas output, built here so a warm-up
+   *  creates no objects (three's UUIDs draw Math.random). */
+  private readonly warmCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private readonly warmGeo = quadGeometry();
+  private readonly warmChain = new THREE.Group();
+  private readonly warmOut: THREE.Mesh;
   brawl = false;
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {
@@ -237,6 +251,42 @@ class Post {
     this.bloom = new Bloom(b.w, b.h);
     this.bw = b.w;
     this.bh = b.h;
+    const bl = this.bloom;
+    for (const m of [bl.materialHighPassFilter, ...bl.separableBlurMaterials, bl.compositeMaterial]) this.warmChain.add(new THREE.Mesh(this.warmGeo, m));
+    this.warmOut = new THREE.Mesh(this.warmGeo, this.out);
+  }
+
+  /** Run `fn` under the scene pass's render state (tone mapping + target, see render()), restored before returning.
+   *  Uses the target as it is: no sync(), so nothing is resized or re-created outside a frame. */
+  withScenePass<T>(fn: () => T): T {
+    const r = this.renderer;
+    const tone = r.toneMapping;
+    const prev = r.getRenderTarget();
+    r.toneMapping = tone === THREE.NoToneMapping ? tone : THREE.CustomToneMapping;
+    r.setRenderTarget(this.scene);
+    try {
+      return fn();
+    } finally {
+      r.toneMapping = tone;
+      r.setRenderTarget(prev);
+    }
+  }
+
+  /** Compile the chain's programs under the state each pass draws with: bright / blur / composite into an offscreen
+   *  (non-XR, linear) bloom target, the output quad onto the canvas. */
+  compileChain(compile: (obj: THREE.Object3D, camera: THREE.Camera) => Promise<unknown>): Promise<unknown>[] {
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    const jobs: Promise<unknown>[] = [];
+    try {
+      r.setRenderTarget(this.bloom.renderTargetBright);
+      jobs.push(compile(this.warmChain, this.warmCam));
+      r.setRenderTarget(null);
+      jobs.push(compile(this.warmOut, this.warmCam));
+    } finally {
+      r.setRenderTarget(prev);
+    }
+    return jobs;
   }
 
   private sceneTarget(w: number, h: number): THREE.WebGLRenderTarget {
@@ -304,6 +354,7 @@ class Post {
     this.bloom.dispose();
     this.out.dispose();
     this.quad.dispose();
+    this.warmGeo.dispose();
   }
 }
 
@@ -334,4 +385,17 @@ export function renderFrame(renderer: THREE.WebGLRenderer, scene: THREE.Scene, c
   const p = active.has(renderer) ? posts.get(renderer) : undefined;
   if (p) p.render(scene, camera);
   else renderer.render(scene, camera);
+}
+
+/** Warm-up (render/warmup.ts): run `fn` under the frame's scene-pass state, the bloom target + tone mapping when bloom
+ *  is on, else the plain canvas state. `fn` must be synchronous; the state is restored before this returns. */
+export function withScenePass<T>(renderer: THREE.WebGLRenderer, fn: () => T): T {
+  const p = active.has(renderer) ? posts.get(renderer) : undefined;
+  return p ? p.withScenePass(fn) : fn();
+}
+
+/** Warm-up: compile jobs for the bloom chain's own programs (they are outside the scene); none when bloom is off. */
+export function compileBloomChain(renderer: THREE.WebGLRenderer, compile: (obj: THREE.Object3D, camera: THREE.Camera) => Promise<unknown>): Promise<unknown>[] {
+  const p = active.has(renderer) ? posts.get(renderer) : undefined;
+  return p ? p.compileChain(compile) : [];
 }

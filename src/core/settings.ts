@@ -98,6 +98,10 @@ export function applyBindings(ctx: GameContext): void {
   ctx.input.setBindings(settings.keys);
 }
 
+/** Called after every applyQuality (quality / Bloom changes rebuild shader programs): Game re-runs its shader warm-up
+ *  (render/warmup.ts) here. */
+export const renderHooks: { afterQuality: ((ctx: GameContext) => void) | null } = { afterQuality: null };
+
 let appliedQuality: Quality | null = null;
 let brawlPerf = false;
 
@@ -135,6 +139,7 @@ export function applyQuality(ctx: GameContext): void {
   r.shadowMap.needsUpdate = true;
   appliedQuality = settings.quality;
   syncBloom(ctx);
+  renderHooks.afterQuality?.(ctx);
 }
 
 export function applyAllSettings(ctx: GameContext): void {

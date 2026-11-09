@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
-import { applyAllSettings, setBrawlPerf, settings, settingsUi } from './settings';
+import { applyAllSettings, renderHooks, setBrawlPerf, settings, settingsUi } from './settings';
 import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, DUEL_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, EnemyHandle, GameContext, HudState, RadarState, RunSummary, UIHandlers } from './types';
 import { BIOME_ZONE, BRAWL_ZONE, ZONES, pickBrawlZone } from '../config/zones';
@@ -30,6 +30,8 @@ import { ChallengeTracker, hardCleared, hardPower, hardUnlocked, hardZone, recor
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
 import { renderFrame } from '../render/post';
+import { Warmup, webglBackend } from '../render/warmup';
+import { donaldProps } from '../entities/enemies/donaldProps';
 import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
@@ -129,6 +131,11 @@ export class Game {
   /** ?duel=local -> BroadcastChannel (same browser); otherwise PeerJS. &lag= / &jitter= / &loss= simulate a network. */
   private duelKind: TransportKind = 'peer';
   private duelLink: LocalLinkOpts = {};
+  /** Shader warm-up (render/warmup.ts); ?nowarm turns it (and the load-time warm set) off, for measuring. */
+  private warmup: Warmup;
+  /** Off-scene stand-ins for lazily created meshes (debris batches), compiled with every warm-up. */
+  private warmExtras: THREE.Object3D[] = [];
+  private warmIdleId = 0;
 
   constructor(container: HTMLElement, uiRoot: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -138,10 +145,14 @@ export class Game {
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    // Shader compile / link errors are checked (a blocking driver query at a program's first use) in dev only.
+    renderer.debug.checkShaderErrors = !import.meta.env.PROD;
     container.appendChild(renderer.domElement);
     // Shadow-only proxy casters (render/shadowProxy.ts) need their stand-in visible during the shadow pass only.
     installShadowProxies(renderer);
     this.renderer = renderer;
+    this.warmup = new Warmup(webglBackend(renderer));
+    this.warmup.enabled = !new URLSearchParams(location.search).has('nowarm');
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -172,13 +183,23 @@ export class Game {
     ctx.world = new Environment(ctx);
     ctx.snow = new SnowField(ctx);
     ctx.plow = new Plow(ctx);
-    ctx.combat = new Combat(ctx);
+    const combat = new Combat(ctx);
+    ctx.combat = combat;
     this.campaignEnemies = new EnemyManager(ctx);
     ctx.enemies = this.campaignEnemies;
-    ctx.brawl = new BrawlManager(ctx);
+    const brawl = new BrawlManager(ctx);
+    ctx.brawl = brawl;
     ctx.waves = new WaveDirector(ctx);
     this.survival = new SurvivalManager(ctx);
     ctx.pickups = new Pickups(ctx);
+    if (this.warmup.enabled) {
+      // Warm set: effects otherwise built on first use (mid-fight) are built now, hidden or off-scene, so every
+      // warm-up compiles their shaders: the ARSENAL black hole, THE DONALD's props, enemy and Brawl wreck debris.
+      // Built before any scene setup draws gameplay RNG; only three's UUIDs draw Math.random here.
+      combat.prewarm();
+      donaldProps.prewarm(scene);
+      this.warmExtras = [...this.campaignEnemies.warmSet(), ...brawl.warmSet()];
+    }
 
     const handlers: UIHandlers = {
       onStartZone: (i, hard) => this.startRun(i, hard),
@@ -271,6 +292,8 @@ export class Game {
     // Handy for automated playtesting / debugging in the console.
     (window as unknown as { __game: Game }).__game = this;
 
+    // Quality / Bloom changes rebuild shader programs: warm them again (and the new bloom chain).
+    renderHooks.afterQuality = () => this.warmNow();
     this.toMenu();
     if (Tutorial.shouldAutoStart(progression)) this.startTutorial();
     this.timer.connect(document);
@@ -333,6 +356,51 @@ export class Game {
     ctx.audio.setEngine(0, 0);
     ctx.audio.setPlowing(0);
     ctx.audio.setMusic(true);
+    this.warmIdle();
+  }
+
+  /* ------------------------------------------------------------------ shader warm-up (render/warmup.ts) */
+
+  /** Compile everything the current scene (plus the warm set) needs, now: called at the end of every arena build.
+   *  compile() runs here, synchronously; Game.frame holds its render back (never tick()) while programs finish. */
+  private warmNow(): void {
+    this.cancelWarmIdle();
+    void this.warmup.warm(this.ctx.scene, this.ctx.camera, this.warmExtras, this.lightStates());
+  }
+
+  /** Light-count states the warm-up also compiles: a plow's spawn-protection blink hides its body and so its beacon
+   *  light. Only where spawn protection happens (Brawl and Duel respawns, the Training Yard, arenas that spawn the
+   *  plow on a set point): every combination of the player's and the Duel opponent's beacon. */
+  private lightStates(): (() => () => void)[] {
+    const me = this.ctx.plow as Plow;
+    const opp = this.duel.active ? this.duel.opponent : null;
+    const flip = (p: Plow) => () => p.flipBodyForWarmup();
+    const blinks = this.mode === 'brawl' || this.mode === 'duel' || this.state === 'tutorial' || !!this.ctx.zone.spawn;
+    if (!blinks) return [];
+    if (!opp) return [flip(me)];
+    return [flip(me), flip(opp), () => {
+      const a = me.flipBodyForWarmup();
+      const b = opp.flipBodyForWarmup();
+      return () => (b(), a());
+    }];
+  }
+
+  /** Menu: warm the backdrop when the browser is idle. */
+  private warmIdle(): void {
+    if (!this.warmup.enabled) return;
+    this.cancelWarmIdle();
+    const run = (): void => {
+      this.warmIdleId = 0;
+      if (this.state === 'menu') this.warmNow();
+    };
+    this.warmIdleId = typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 1000 }) : -window.setTimeout(run, 200);
+  }
+
+  private cancelWarmIdle(): void {
+    const id = this.warmIdleId;
+    this.warmIdleId = 0;
+    if (id > 0) cancelIdleCallback(id);
+    else if (id < 0) clearTimeout(-id);
   }
 
   private clearArena(): void {
@@ -387,6 +455,7 @@ export class Game {
     ctx.cameraRig.setMode('follow');
     ctx.cameraRig.snap();
     this.beginCountdown();
+    this.warmNow();
   }
 
   startBrawl(difficulty: BrawlDifficulty): void {
@@ -416,6 +485,7 @@ export class Game {
     this.countdown = COUNTDOWN_SECONDS + 1;
     this.lastCountdownInt = -1;
     ctx.ui.toast('Everyone hunts everyone. Streaks multiply your coins!', 'info');
+    this.warmNow();
   }
 
   /** Guided onboarding in arena 1 with training bots (see Tutorial). Replayable from the main menu. */
@@ -447,6 +517,7 @@ export class Game {
     ctx.input.clear();
     this.state = 'tutorial';
     this.tutorial.start();
+    this.warmNow();
   }
 
   /** Endless Survival: campaign bots in one arena, scaling waves, a boss every 5 (see SurvivalManager).
@@ -471,6 +542,7 @@ export class Game {
     ctx.cameraRig.setMode('follow');
     ctx.cameraRig.snap();
     this.beginCountdown();
+    this.warmNow();
   }
 
   /** Survival wave cleared: bonus + patch-up, then a short breather into the next wave. */
@@ -495,6 +567,8 @@ export class Game {
     const sv = this.survival;
     const wave = sv.wave;
     const repairCost = fullRepairCost(wave);
+    // The wave clear may have moved the run to its next biome (SurvivalManager.switchBiome): a new arena.
+    this.warmNow();
     this.state = 'shop';
     ctx.audio.setEngine(0, 0);
     ctx.audio.setPlowing(0);
@@ -832,7 +906,9 @@ export class Game {
     input.poll();
     if (input.padPause && !settingsUi.open) this.togglePause();
     this.tick(dt);
-    renderFrame(this.renderer, this.ctx.scene, this.ctx.camera);
+    // While a fresh warm-up's programs finish compiling (at most WARM_GATE_MS), keep the last frame on screen instead
+    // of blocking on them; the simulation and countdowns above never wait.
+    if (!this.warmup.holdRender(performance.now())) renderFrame(this.renderer, this.ctx.scene, this.ctx.camera);
   }
 
   /** Advance the simulation by dt seconds without rendering (also used by headless playtests). */
@@ -1044,6 +1120,8 @@ export class Game {
     ctx.audio.setMusic(true);
     ctx.input.clear();
     this.duel.begin(t, role, code);
+    // Duel arena + the opponent's plow (and its beacon light) are in the scene now.
+    this.warmNow();
     // No toast: it would sit on the duel garage strip's READY button. The garage itself says we're connected.
     ctx.audio.play('buy');
   }

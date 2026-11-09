@@ -367,7 +367,8 @@ type MoteKind = 0 | 1 | 2; // snow, spark, scrap
 
 export class SingularityFx {
   private readonly group = new THREE.Group();
-  private readonly reduceFlash: boolean;
+  /** Photosensitivity setting, read at every open() (the FX may be built long before its first use). */
+  reduceFlash: boolean;
   private readonly lensingOn: boolean;
 
   private readonly lens: THREE.Mesh;

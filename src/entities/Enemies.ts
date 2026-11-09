@@ -4,7 +4,7 @@ import { ARENA, ENEMY_GATES, GATE_WIDTH, PLOW_MASS } from '../core/types';
 import { bodyBand, heightOk } from './combat/shared';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import { Bot, Vuln, type Host } from './enemies/Bot';
-import { HpBars, createRig, debrisGeometry, debrisMaterials, disposeRig, rollWheels } from './enemies/models';
+import { HpBars, createRig, debrisGeometry, debrisMaterials, debrisWarmMaterials, disposeRig, rollWheels } from './enemies/models';
 import { DecalPool } from './enemies/decals';
 import { MINION_AI, aroundAngle, clamp, initAI, orbit, resetAI, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
@@ -1332,6 +1332,17 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       }
     }
     this.syncDebris();
+  }
+
+  /** Warm-up set (render/warmup.ts): off-scene stand-ins for the debris batches the first kill creates, one
+   *  InstancedMesh per debris material kind (configured like debrisBatch), never added to the scene. */
+  warmSet(): THREE.Object3D[] {
+    return debrisWarmMaterials().map((m, i) => {
+      const b = new THREE.InstancedMesh(debrisGeometry(i), m, 1);
+      b.castShadow = true;
+      b.count = 0;
+      return b;
+    });
   }
 
   /** Write every active chunk's transform into its batch; empty batches are hidden, the rest get a fresh bounding

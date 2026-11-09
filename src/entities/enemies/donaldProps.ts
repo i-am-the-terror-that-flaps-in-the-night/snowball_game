@@ -148,10 +148,25 @@ class DonaldProps {
 
   private depth = (x: number, z: number): number => (this.ctx?.snow ? this.ctx.snow.getDepth(x, z) : 0);
 
+  /** Scene the GPU objects were built into (build() / prewarm()); `ctx` stays null until the boss first uses a prop. */
+  private builtFor: THREE.Scene | null = null;
+
   private init(ctx: GameContext): void {
     if (this.ctx === ctx) return;
     this.ctx = ctx;
-    const scene = ctx.scene;
+    this.build(ctx.scene);
+    ctx.events.on('slam', (e) => this.slamQ.push({ x: e.position.x, z: e.position.z, r: e.radius }));
+  }
+
+  /** Build the props' meshes / materials now (hidden) so a warm-up can compile them before the fight
+   *  (render/warmup.ts). Only builds: no event subscription and no per-frame work starts until the boss uses a prop. */
+  prewarm(scene: THREE.Scene): void {
+    this.build(scene);
+  }
+
+  private build(scene: THREE.Scene): void {
+    if (this.builtFor === scene) return;
+    this.builtFor = scene;
     this.decals = new DecalPool(scene);
     const blockGeo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
     const blockMat = new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 0.85, color: 0xffffff });
@@ -177,7 +192,10 @@ class DonaldProps {
     this.podium = buildPodium();
     this.podium.visible = false;
     scene.add(this.podium);
-    ctx.events.on('slam', (e) => this.slamQ.push({ x: e.position.x, z: e.position.z, r: e.radius }));
+    // One of each decal kind the props use (wall stripe, beam ring + fill), released straight away: the pool hands
+    // them out again, so the fight builds no new decal meshes.
+    const d = this.decals;
+    for (const x of [d.stripe(), d.ring(false), d.ring(true)]) d.release(x);
   }
 
   /* ------------------------------------------------------------------ API for the boss AI */

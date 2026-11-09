@@ -18,11 +18,14 @@ export type InstRole = 'paint' | 'eye' | 'glow' | 'ball';
 /* ------------------------------------------------------------------ materials */
 
 const MATS = new Map<string, THREE.MeshStandardMaterial>();
+/** debrisWarmMaterials(): build fresh copies instead of the cached shared materials. */
+let uncached = false;
 function mat(key: string, color: number, o: THREE.MeshStandardMaterialParameters = {}, inst?: InstRole): THREE.MeshStandardMaterial {
-  let m = MATS.get(key);
+  let m = uncached ? undefined : MATS.get(key);
   if (!m) {
     m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1, flatShading: true, ...o });
     if (inst) m.userData.inst = inst;
+    if (uncached) return m;
     MATS.set(key, m);
   }
   return m;
@@ -112,6 +115,18 @@ const ballMat = () => mat('ball', 0xf6faff, { roughness: 0.85, emissive: 0x40e0f
 /** Shared material for debris chunks of a type (non-instanced). */
 export function debrisMaterials(t: EnemyType): THREE.Material[] {
   return [paint(t), paint(t), accent(t), M.dark(), M.steel(), M.rubber()];
+}
+
+/** Warm-up stand-ins (render/warmup.ts): one fresh, uncached copy of each debris material kind (paint, accent, dark,
+ *  steel, rubber), same settings and so the same shader programs, without creating the real shared materials early
+ *  (a material's id orders the opaque draws). */
+export function debrisWarmMaterials(): THREE.Material[] {
+  uncached = true;
+  try {
+    return [paint('scrapper'), accent('scrapper'), M.dark(), M.steel(), M.rubber()];
+  } finally {
+    uncached = false;
+  }
 }
 
 /* ------------------------------------------------------------------ geometry */
