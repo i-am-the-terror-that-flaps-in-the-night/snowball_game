@@ -30,8 +30,8 @@ snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% dama
   nearest unhit bot within 8 m, the first hop at half damage and each one after keeping 90% of the one before. Every
   arc hit (any hop) has a 7% chance to **PARALYSE** the bot for 1.2 s (a stun; bosses half); a paralysed bot can't be
   paralysed again for 2.5 s after. **GROUNDED ARC:** when the locked bot is a boss, or has nothing within 8 m to chain to
-  (a straggler), the arc grounds into it for 1.75x damage and faces only half its armour; on a boss the chain still
-  runs on to its adds. Bots only (the Duel is unchanged). It stays locked onto its target
+  (a straggler), the arc grounds into it for 1.75x damage (2.6x on a boss) and faces only half its armour; on a boss the
+  chain still runs on to its adds. Bots only (the Duel is unchanged). It stays locked onto its target
   while that bot stays in reach. Overclock speeds the arc up.
 - **E: Static Field.** An electrified field rides with the rover for 2.5 s (6.5 m, wider with Tesla Field). It pulses
   every 0.5 s, the first pulse a bigger burst: each pulse damages and stuns every bot inside for 0.7 s, so bots caught in

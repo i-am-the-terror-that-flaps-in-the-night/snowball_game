@@ -46,7 +46,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'VOLT-9',
     icon: '⚡',
     tagline: 'A quick, twitchy rover under a crackling coil tower. No blade, all voltage.',
-    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (overcharged coils), -15% HP', 'SPACE (hold): Arc Lance chains lightning through up to 7 bots, can PARALYSE, and grounds into bosses and lone bots for 1.75x · E: Static Field, a pulsing stun field that rides with you for 2.5 s', 'F: Thunderclap storm (free, costs HP) · damage builds SUPERCELL: 3 waves of sky lightning'],
+    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (overcharged coils), -15% HP', 'SPACE (hold): Arc Lance chains lightning through up to 7 bots, can PARALYSE, and grounds into lone bots for 1.75x, bosses for 2.6x · E: Static Field, a pulsing stun field that rides with you for 2.5 s', 'F: Thunderclap storm (free, costs HP) · damage builds SUPERCELL: 3 waves of sky lightning'],
     hpMult: 0.85,
     speedMult: 1.12,
     accelMult: 1.25,
