@@ -106,7 +106,10 @@ arena. The crowd is thinned only after the full list is built, so the rest of th
 its seeded random stream) stays where it is. **AUTO** (opt-in, never the default) starts from the GPU's renderer
 string (software renderers and weak integrated GPUs start on LOW, mid-range integrated graphics on MEDIUM) and then
 measures the median frame time of each arena after the countdown: slower than 25 ms steps one tier down, faster than
-18 ms one tier up, but never back up to a tier that was too slow. A decision waits for the next arena start, and the
-UI shows the tier in use (`AUTO · MEDIUM`). The resolved tier is never written to the saved settings. Unknown saved
+18 ms one tier up, but never back up to a tier that was too slow. It also measures the frame interval in the menu (a
+light scene), which is the display's or the browser's frame cap: on a 30 Hz screen or a laptop in power-saver mode
+(~33 ms whatever the work) a frame only counts as slow when it is 25% over that cap. Switching away from AUTO drops
+its state, so coming back starts from a fresh guess. A decision waits for the next arena start, and the UI shows the
+tier in use (`AUTO · MEDIUM`). The resolved tier is never written to the saved settings. Unknown saved
 values load as HIGH; an older build that only knows LOW / HIGH reads MEDIUM / AUTO as HIGH and writes HIGH back the
 next time any setting changes there.

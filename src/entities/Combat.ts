@@ -96,6 +96,11 @@ export class Combat implements CombatAPI {
     this.arsenal.prewarm();
   }
 
+  /** Shader warm-up: the Inferno light as if burning (see FlameCone.flipLightForWarmup); returns the undo. */
+  flipFlameLightForWarmup(): () => void {
+    return this.classic.flameCone.flipLightForWarmup();
+  }
+
   private makeHost(): CombatHost {
     const c = this;
     return {

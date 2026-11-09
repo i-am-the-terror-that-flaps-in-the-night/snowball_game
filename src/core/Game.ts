@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
-import { AutoSampler, applyAllSettings, commitAutoQuality, renderHooks, reportAutoFrameTime, setBrawlPerf, settings, settingsUi } from './settings';
+import { AutoSampler, applyAllSettings, commitAutoQuality, renderHooks, reportAutoFrameTime, reportFrameCapMs, setBrawlPerf, settings, settingsUi } from './settings';
 import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, DUEL_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, EnemyHandle, GameContext, HudState, RadarState, RunSummary, UIHandlers } from './types';
 import { BIOME_ZONE, BRAWL_ZONE, ZONES, pickBrawlZone } from '../config/zones';
@@ -138,6 +138,8 @@ export class Game {
   private warmIdleId = 0;
   /** AUTO quality: frame-time sample of the current arena (settings.ts). */
   private autoSampler = new AutoSampler();
+  /** AUTO: the browser's frame cap, sampled once in the menu (never reset). */
+  private capSampler = new AutoSampler();
 
   constructor(container: HTMLElement, uiRoot: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -370,21 +372,34 @@ export class Game {
     void this.warmup.warm(this.ctx.scene, this.ctx.camera, this.warmExtras, this.lightStates());
   }
 
-  /** Light-count states the warm-up also compiles: a plow's spawn-protection blink hides its body and so its beacon
-   *  light. Only where spawn protection happens (Brawl and Duel respawns, the Training Yard, arenas that spawn the
-   *  plow on a set point): every combination of the player's and the Duel opponent's beacon. */
+  /** Light-count states the warm-up also compiles. Lit programs depend only on HOW MANY point lights are visible, so
+   *  one state per reachable count is enough:
+   *  - an Inferno flame shows its light (+1; the player's, and the Duel opponent's);
+   *  - a plow's spawn-protection blink hides its body and so its beacon light (-1), only where spawn protection
+   *    happens (Brawl and Duel respawns, the Training Yard, arenas that spawn the plow on a set point). */
   private lightStates(): (() => () => void)[] {
     const me = this.ctx.plow as Plow;
     const opp = this.duel.active ? this.duel.opponent : null;
-    const flip = (p: Plow) => () => p.flipBodyForWarmup();
+    const oppCombat = this.duel.active ? this.duel.opponentCombat : null;
     const blinks = this.mode === 'brawl' || this.mode === 'duel' || this.state === 'tutorial' || !!this.ctx.zone.spawn;
-    if (!blinks) return [];
-    if (!opp) return [flip(me)];
-    return [flip(me), flip(opp), () => {
-      const a = me.flipBodyForWarmup();
-      const b = opp.flipBodyForWarmup();
-      return () => (b(), a());
-    }];
+    const ups: (() => () => void)[] = [() => (this.ctx.combat as Combat).flipFlameLightForWarmup()];
+    if (oppCombat) ups.push(() => oppCombat.flipFlameLightForWarmup());
+    const downs: (() => () => void)[] = [];
+    if (blinks) {
+      downs.push(() => me.flipBodyForWarmup());
+      if (opp) downs.push(() => opp.flipBodyForWarmup());
+    }
+    // Every net change from -downs to +ups (0 is the base pass): apply the first k ups or the first k downs.
+    const states: (() => () => void)[] = [];
+    const combo = (flips: (() => () => void)[]) => () => {
+      const undo = flips.map((f) => f());
+      return () => {
+        for (let i = undo.length - 1; i >= 0; i--) undo[i]();
+      };
+    };
+    for (let k = 1; k <= ups.length; k++) states.push(combo(ups.slice(0, k)));
+    for (let k = 1; k <= downs.length; k++) states.push(combo(downs.slice(0, k)));
+    return states;
   }
 
   /** Menu: warm the backdrop when the browser is idle. */
@@ -927,6 +942,11 @@ export class Game {
     if (settings.quality === 'auto' && !held && (this.state === 'playing' || this.state === 'brawl') && !document.hidden) {
       const median = this.autoSampler.push(rawDt * 1000);
       if (median !== null) reportAutoFrameTime(median);
+    }
+    // ...measured against the browser's frame cap, sampled while the menu (a light scene) is up.
+    if (settings.quality === 'auto' && !held && this.state === 'menu' && !document.hidden) {
+      const cap = this.capSampler.push(rawDt * 1000);
+      if (cap !== null) reportFrameCapMs(cap);
     }
   }
 

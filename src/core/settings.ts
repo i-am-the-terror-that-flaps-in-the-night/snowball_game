@@ -173,6 +173,8 @@ export const AUTO_DOWN_MS = 25;
 export const AUTO_UP_MS = 18;
 /** Frames skipped after an arena starts (shader warm-up, first-frame hitches), then frames sampled. */
 export const AUTO_SKIP_FRAMES = 60;
+/** A frame interval this much above the display / browser frame cap counts as slow (see autoStep's capMs). */
+export const AUTO_CAP_SLACK = 1.25;
 export const AUTO_SAMPLE_FRAMES = 240;
 
 /** AUTO's resolved tier, plus a ceiling: a tier that ran too slow is never climbed back to (no ping-pong). */
@@ -192,10 +194,12 @@ export function guessTier(renderer: string): QualityTier {
 }
 
 /** One AUTO refinement from a median frame time (pure). Slow -> one tier down and lower the ceiling; fast -> one tier
- *  up, never past the ceiling; in between -> hold. */
-export function autoStep(s: AutoState, medianMs: number): AutoState {
+ *  up, never past the ceiling; in between -> hold. `capMs`: the frame interval the browser delivers when the scene is
+ *  light (measured in the menu): a display or power-saver mode capped at 30 fps gives ~33 ms however cheap the frame
+ *  is, so only frames clearly slower than that cap count as slow. */
+export function autoStep(s: AutoState, medianMs: number, capMs = 0): AutoState {
   const i = QUALITY_TIERS.indexOf(s.tier);
-  if (medianMs > AUTO_DOWN_MS && i > 0) {
+  if (medianMs > Math.max(AUTO_DOWN_MS, capMs * AUTO_CAP_SLACK) && i > 0) {
     const t = QUALITY_TIERS[i - 1];
     return { tier: t, ceiling: t };
   }
@@ -234,6 +238,13 @@ export class AutoSampler {
 
 let autoState: AutoState | null = null;
 let autoPending: AutoState | null = null;
+/** The browser's frame cap (ms), measured in the menu (0 = not measured yet). */
+let autoCapMs = 0;
+
+/** Game.frame: the median frame interval in the (light) menu scene: the display / browser frame cap. */
+export function reportFrameCapMs(ms: number): void {
+  autoCapMs = ms;
+}
 
 /** The tier the game renders at now ('auto' resolved). */
 export function effectiveTier(): QualityTier {
@@ -263,7 +274,7 @@ function rendererString(r: THREE.WebGLRenderer): string {
 /** Game.frame: a finished AUTO frame-time sample (median, ms). The decision waits for the next arena start. */
 export function reportAutoFrameTime(medianMs: number): void {
   if (settings.quality !== 'auto' || !autoState) return;
-  autoPending = autoStep(autoPending ?? autoState, medianMs);
+  autoPending = autoStep(autoPending ?? autoState, medianMs, autoCapMs);
 }
 
 /** Arena start: apply a pending AUTO decision (before the arena is built, so weather / crowd follow it). No warm-up
@@ -308,6 +319,8 @@ export function applyQuality(ctx: GameContext): void {
 
 function applyQualityNow(ctx: GameContext, warm: boolean): void {
   const r = ctx.renderer;
+  // Leaving AUTO drops its state: coming back re-guesses instead of applying a decision measured under another tier.
+  if (settings.quality !== 'auto') autoState = autoPending = null;
   if (settings.quality === 'auto' && !autoState) {
     const t = guessTier(rendererString(r));
     autoState = { tier: t, ceiling: 'high' };

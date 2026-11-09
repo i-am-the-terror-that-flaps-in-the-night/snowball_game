@@ -164,6 +164,15 @@ describe('quality presets', () => {
     expect(autoStep(g, hold)).toBe(g);
   });
 
+  it('AUTO: a 30 fps display / power-saver cap is not "slow"; frames clearly slower than the cap still are', async () => {
+    const { autoStep, AUTO_CAP_SLACK } = await import('../src/core/settings');
+    const s = { tier: 'high' as const, ceiling: 'high' as const } as Parameters<typeof autoStep>[0];
+    expect(autoStep(s, 33.3, 33.3)).toBe(s); // locked at a 30 Hz cap: hold
+    expect(autoStep(s, 33.3, 33.3 * AUTO_CAP_SLACK - 0.5)).toBe(s);
+    expect(autoStep(s, 50, 33.3).tier).toBe('medium'); // missing the cap: step down
+    expect(autoStep(s, 30, 16.7).tier).toBe('medium'); // 60 Hz display, 30 ms frames: step down as before
+  });
+
   it('AUTO sampler skips the first frames and reports one median per arena', async () => {
     const { AutoSampler, AUTO_SKIP_FRAMES, AUTO_SAMPLE_FRAMES } = await import('../src/core/settings');
     const a = new AutoSampler();

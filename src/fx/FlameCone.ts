@@ -4,9 +4,10 @@ import * as THREE from 'three';
  * orange-red outer), a flickering orange point light, and a heat-glow disc on the ground. Apex sits at the
  * plow's blade; the cone opens along the plow's forward.
  *
- * The point light is a scene child that stays visible (intensity 0 while the flame is off), not a child of the
- * hidden cone group: the number of visible point lights is part of every lit material's shader program, so a light
- * that appeared with the first flame would recompile every lit material mid-fight (same reason as impact.ts's pool). */
+ * The point light is a scene child that is visible only while the flame burns. The number of visible point lights
+ * is part of every lit material's shader program, so the first flame would recompile every lit material mid-fight;
+ * the shader warm-up compiles that light count ahead of time instead (flipLightForWarmup, Game.lightStates). A
+ * permanently visible zero-intensity light would avoid the recompile too, but costs one light per pixel all game. */
 
 const VERT = /* glsl */ `
 varying vec2 vUv;
@@ -91,8 +92,7 @@ export class FlameCone {
     this.group.add(this.outer, this.inner);
     this.group.visible = false;
     scene.add(this.group);
-    // Parked out of the way until the first flame (intensity 0: it lights nothing, but always counts).
-    this.light.position.set(0, -50, 0);
+    this.light.visible = false;
     scene.add(this.light);
     scene.add(this.glow);
     this.glow.visible = false;
@@ -105,6 +105,7 @@ export class FlameCone {
     const on = this.level > 0.02;
     this.group.visible = on;
     this.glow.visible = on;
+    this.light.visible = on;
     if (!on) {
       this.light.intensity = 0;
       return;
@@ -138,6 +139,16 @@ export class FlameCone {
     this.level = 0;
     this.group.visible = false;
     this.glow.visible = false;
+    this.light.visible = false;
     this.light.intensity = 0;
+  }
+
+  /** Shader warm-up only: show the light as if the flame burned (one more visible point light); returns the undo. */
+  flipLightForWarmup(): () => void {
+    const was = this.light.visible;
+    this.light.visible = true;
+    return () => {
+      this.light.visible = was;
+    };
   }
 }
