@@ -21,8 +21,6 @@ export interface VoltVehicleParts {
   update(dt: number, s: VoltRigState): void;
 }
 
-/** Top of the tower halo ring above the ground (combat/volt.ts TOWER_Y arcs from here, 0.3 m behind the centre). */
-export const TESLA_TOWER_TOP = 3.15;
 /** Tower axis (model z) and the halo ring: centre height, major radius, tube radius. */
 const TZ = -0.3;
 const TOR_Y = 3.03;

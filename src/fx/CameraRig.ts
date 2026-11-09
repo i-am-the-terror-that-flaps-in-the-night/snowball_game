@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ARENA } from '../core/types';
 import type { CameraRigAPI, GameContext } from '../core/types';
-import { settings, shakeScale } from '../core/settings';
+import { shakeScale } from '../core/settings';
 import type { RayHit } from '../world/Terrain';
 
 /* Close-quarters follow: high and a bit back so the bots around the plow stay in view. */

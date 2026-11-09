@@ -329,10 +329,6 @@ export function configureBloom(renderer: THREE.WebGLRenderer, on: boolean, brawl
   active.add(renderer);
 }
 
-export function bloomActive(renderer: THREE.WebGLRenderer): boolean {
-  return active.has(renderer);
-}
-
 /** The frame's render call: the bloom pipeline when configured, else a plain renderer.render() to the canvas. */
 export function renderFrame(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
   const p = active.has(renderer) ? posts.get(renderer) : undefined;

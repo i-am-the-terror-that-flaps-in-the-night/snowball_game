@@ -7,7 +7,7 @@ import type { CosmeticSlot } from '../config/cosmetics';
 import type { UpgradeId } from '../config/upgrades';
 import {
   DUEL_BETWEEN_ROUNDS, DUEL_COUNTDOWN, DUEL_DRAW_EPS, DUEL_GARAGE_SECONDS, DUEL_MAX_ROUNDS, DUEL_REMATCH_GARAGE_SECONDS,
-  DUEL_ROUND_END_DELAY, DUEL_ROUND_SECONDS, DUEL_ROUNDS_TO_WIN, DUEL_SNOW_REGEN, DUEL_SPAWNS, catchUp, cleanLevels,
+  DUEL_ROUND_END_DELAY, DUEL_ROUND_SECONDS, DUEL_ROUNDS_TO_WIN, DUEL_SNOW_REGEN, DUEL_SPAWNS, cleanLevels,
   duelPower, duelBonus, duelSpent, cleanDuelGear, type DuelGear } from '../config/duel';
 import { Plow } from '../entities/Plow';
 import { Combat } from '../entities/Combat';
@@ -173,7 +173,6 @@ export class DuelManager {
   counters = freshCounters();
   private garageClosing = -1;
   private endDelay = -1;
-  private lastWinner = -1;
   /** Reused every frame (no per-frame allocations for the HUD / garage strip). */
   private hudView = {
     me: { name: '', plow: 'classic' as PlowKind, hpFrac: 1, wins: 0 },
@@ -206,7 +205,6 @@ export class DuelManager {
   private inputAcc = 0;
   private inputSeq = 0;
   private presses: [number, number, number, number] = [0, 0, 0, 0];
-  private epoch = 0;
   /** Duel clock: SIM seconds since connecting. Snapshot stamps, interpolation and prediction windows run on it (in
    *  live play it tracks real time); heartbeats and ping stay on real time. */
   private clock = 0;
@@ -307,7 +305,6 @@ export class DuelManager {
     this.offsetSet = false;
     this.minSnapTime = -Infinity;
     this.rtt = 0;
-    this.epoch = nowSec();
     this.clock = 0;
     this.lastHeard = nowSec();
     this.pingT = 0;
@@ -587,7 +584,6 @@ export class DuelManager {
     this.phase = 'roundEnd';
     this.timer = this.cfg.betweenRounds;
     if (winner >= 0) this.score[winner]++;
-    this.lastWinner = winner;
     this.counters.rounds.push({ winner, reason, secs: Math.round((this.cfg.roundSeconds - this.timerAtEnd) * 10) / 10 });
     if (this.targetOpp) this.targetOpp.enabled = false;
     if (this.targetMe) this.targetMe.enabled = false;
@@ -856,7 +852,6 @@ export class DuelManager {
         this.phase = 'roundEnd';
         this.timer = DUEL_BETWEEN_ROUNDS;
         const w = Number(m.winner);
-        this.lastWinner = w;
         this.showRoundResult(w, String(m.reason) as 'wreck' | 'time' | 'draw');
         return;
       }

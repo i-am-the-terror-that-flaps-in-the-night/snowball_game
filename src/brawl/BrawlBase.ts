@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ARENA, ballVolume, type BrawlEntry, type BrawlHud, type BrawlResult, type EnemyHandle, type GameContext, type SoundName } from '../core/types';
-import { BRAWL_DIFFICULTIES, BRAWL_KILL_TARGET, BRAWL_SPAWN_PROTECT, BRAWL_TIME, STREAK_TIERS, streakMult, type BrawlDifficultyDef } from '../config/brawl';
+import { BRAWL_DIFFICULTIES, BRAWL_KILL_TARGET, BRAWL_SPAWN_PROTECT, BRAWL_TIME, STREAK_TIERS, type BrawlDifficultyDef } from '../config/brawl';
 import { FX, UPGRADES, type UpgradeId } from '../config/upgrades';
 import { BLADE_W } from './models';
 import { PLOWS } from '../config/plows';

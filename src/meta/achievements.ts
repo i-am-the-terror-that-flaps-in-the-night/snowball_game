@@ -9,9 +9,6 @@ import { bumpLifetime, maxLifetime } from './progress';
  * p.commit() on unlock / run end), and every check re-evaluates ACHIEVEMENTS against the save. Rewards are
  * paid exactly once: an id is marked in SaveData.achievements before its coins are added. */
 
-/** Lifetime counter: longest single flight (centiseconds). */
-export const AIRTIME_BEST_CS = LIFE.airtimeBestCs;
-
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** Make sure the save's lifetime / achievements maps are plain objects (an old or hand-edited localStorage

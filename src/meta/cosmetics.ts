@@ -143,15 +143,3 @@ export function resolveLook(equipped: Partial<Record<CosmeticSlot, string>>): Eq
 export function equippedLook(p: Progression): EquippedLook {
   return resolveLook(cosmeticsState(p).equipped);
 }
-
-/** Owned / total items in a slot (Paint Shop tab badges). */
-export function slotProgress(p: Progression, slot: CosmeticSlot): { owned: number; total: number } {
-  let owned = 0;
-  let total = 0;
-  for (const def of COSMETIC_BY_ID.values()) {
-    if (def.slot !== slot) continue;
-    total++;
-    if (isOwned(p, def.id)) owned++;
-  }
-  return { owned, total };
-}

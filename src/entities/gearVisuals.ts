@@ -197,7 +197,7 @@ export class GearVisuals {
   flame: number | null = null;
 
   constructor(
-    private body: THREE.Object3D,
+    body: THREE.Object3D,
     private blade: THREE.Object3D,
   ) {
     body.add(this.bodyLayer, this.nose);

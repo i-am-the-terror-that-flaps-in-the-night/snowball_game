@@ -19,7 +19,6 @@ export class MinimapCanvas {
   private bg: HTMLCanvasElement;
   private key = { obs: null as readonly Obstacle[] | null, n: -1, shapes: null as unknown, patches: null as unknown, decks: null as unknown, half: 0, sc: 0, dpr: 0 };
   private view: MapView = { cx: 0, cz: 0, half: 1 };
-  private dpr = 1;
   private pt: MapPoint = { x: 0, y: 0, clamped: false };
 
   constructor(parent: HTMLElement, cls: string, size: number, pad: number, private gridStep: number) {
@@ -44,7 +43,6 @@ export class MinimapCanvas {
    */
   begin(view: MapView, arenaHalf: number, obstacles: readonly Obstacle[], terrain: Terrain | null): CanvasRenderingContext2D {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.dpr = dpr;
     const px = Math.round(this.size * dpr);
     const cv = this.canvas;
     if (cv.width !== px) {

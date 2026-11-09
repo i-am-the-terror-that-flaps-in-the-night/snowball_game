@@ -44,9 +44,6 @@ const untouchable = (hp: number, name = 'Untouchable'): ChallengeDef => ({
 const slamKills = (n: number, name = 'Slam Dunk'): ChallengeDef => ({
   id: 'slam', icon: '💥', name, goal: `${n} slam kills`, test: (r) => r.killsBy.slam >= n,
 });
-const ramKills = (n: number, name = 'Battering Ram'): ChallengeDef => ({
-  id: 'ram', icon: '🐏', name, goal: `${n} ram / dash kills`, test: (r) => r.killsBy.ram >= n,
-});
 const whirlKills = (n: number, name = 'Eye of the Storm'): ChallengeDef => ({
   id: 'whirl', icon: '🌪', name, goal: `${n} whirlwind kills`, test: (r) => r.killsBy.whirl >= n,
 });

@@ -1,4 +1,4 @@
-import { GEAR, GEAR_MAX_LEVEL, RARITY_COLOR, type GearDef, type Rarity } from './gear';
+import { GEAR, GEAR_MAX_LEVEL, type GearDef, type Rarity } from './gear';
 
 /* ------------------------------------------------------------------------------------------------
  * Gear loot: bosses, Hard clears, Survival boss waves and Brawl placements can drop gear. A drop rolls a rarity
@@ -82,5 +82,3 @@ export function resolveDrop(source: LootSource, def: GearDef, owned: number): Lo
   if (owned < GEAR_MAX_LEVEL) return { source, item: def.id, outcome: 'level', level: owned + 1, coins: 0 };
   return { source, item: def.id, outcome: 'coins', level: owned, coins: Math.round(def.cost * MAXED_LOOT_COIN_FRAC) };
 }
-
-export const rarityColor = (r: Rarity) => RARITY_COLOR[r];

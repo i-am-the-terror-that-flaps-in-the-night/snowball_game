@@ -351,7 +351,6 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
 
   /** Tesla Field: passive shock aura around the plow. */
   updateField(dt: number): void {
-    const ctx = this.ctx;
     const st = this.b.stats;
     const plow = this.b.plow;
     if (st.fieldDps <= 0 || !plow || plow.dead) return;

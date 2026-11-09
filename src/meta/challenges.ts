@@ -83,11 +83,6 @@ export function recordHardClear(p: Progression, zoneIndex: number): number {
   return reward;
 }
 
-/** Arenas whose Hard mode is beaten. */
-export function hardClearCount(p: Progression): number {
-  return ZONES.filter((_, i) => hardCleared(p, i)).length;
-}
-
 /* ------------------------------------------------------------------ stars */
 
 /** The arena's three challenges (empty for unknown indices). */

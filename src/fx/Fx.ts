@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { FxAPI, GameContext, PowderOpts, SmokeOpts, SmolderOpts, SparkOpts } from '../core/types';
-import { MAX_PUFFS, MAX_RINGS, MAX_SCORCH, MAX_SPARKS, PuffBatch, RingBatch, ScorchBatch, SparkBatch } from './particles';
+import { PuffBatch, RingBatch, ScorchBatch, SparkBatch } from './particles';
 
 /* Pooled particle effects. Draw calls: chunks (lit icosahedra) + sparks + puffs + rings + scorch, each ONE
  * instanced batch with a fixed cap that is hidden while empty. Only the live prefix of each buffer is uploaded. */
@@ -14,9 +14,6 @@ const TEXT_LIFE = 0.9;
 /** Gentle constant breeze so smoke columns lean instead of rising dead straight. */
 const WIND_X = 0.55;
 const WIND_Z = 0.3;
-
-/** Effect pool sizes (reported by probes). */
-export const FX_POOLS = { chunks: MAX_P, sparks: MAX_SPARKS, puffs: MAX_PUFFS, rings: MAX_RINGS, scorch: MAX_SCORCH, smolder: MAX_SMOLDER };
 
 interface FloatLabel {
   el: HTMLDivElement;
@@ -62,7 +59,6 @@ export class Fx implements FxAPI {
   private sprayAcc = 0;
   private sprayPuffAcc = 0;
   private labels: FloatLabel[] = [];
-  private overlay: HTMLDivElement;
 
   private dummy = new THREE.Object3D();
   private tmpColor = new THREE.Color();
@@ -109,7 +105,6 @@ export class Fx implements FxAPI {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:20;overflow:hidden;';
     document.body.appendChild(ov);
-    this.overlay = ov;
     for (let i = 0; i < MAX_TEXT; i++) {
       const el = document.createElement('div');
       el.style.cssText =

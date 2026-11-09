@@ -85,6 +85,3 @@ export function ctxPilot(ctx: GameContext): PilotBinding {
     look: null,
   };
 }
-
-/** No input at all (parked plows, an open pause menu in an online duel). */
-export const NO_INPUT: InputSource = { throttle: 0, steer: 0, wasPressed: () => false };

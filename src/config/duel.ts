@@ -86,8 +86,6 @@ export const DUEL_SPAWNS = [
   { x: 0, z: 15, heading: Math.PI },
   { x: 0, z: -15, heading: 0 },
 ] as const;
-/** Coins a duel pays: none. Duels are for bragging rights (and the catch-up keeps them fair, not grindy). */
-export const DUEL_COIN_REWARD = 0;
 
 /** Sanity cap on any one upgrade level that comes over the wire. */
 export const MAX_NET_LEVEL = 999;
