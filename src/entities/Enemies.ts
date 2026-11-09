@@ -9,7 +9,7 @@ import { DecalPool } from './enemies/decals';
 import { MINION_AI, aroundAngle, clamp, initAI, orbit, resetAI, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
 import { donaldProps } from './enemies/donaldProps';
-import type { KillSource } from '../core/events';
+import type { KillSource, KillWeapon } from '../core/events';
 import type { BotNav } from '../core/types';
 import { makeSurface } from '../world/Terrain';
 import {
@@ -333,7 +333,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     ctx.events.emit('enemyHit', { enemy: e, damage: dmg });
     if (e.hp <= 0) {
       e.hp = 0;
-      this.kill(e, src);
+      this.kill(e, src, opts?.weapon);
       return true;
     }
     return false;
@@ -1027,7 +1027,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.ballR = 0;
   }
 
-  private kill(e: Bot, source: KillSource = 'other'): void {
+  private kill(e: Bot, source: KillSource = 'other', weapon?: KillWeapon): void {
     const ctx = this.ctx;
     const def = e.def;
     e.alive = false;
@@ -1079,7 +1079,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const coins = Math.round(def.coins * ctx.zone.coinMult);
     // Standing in lava when it died (lava burn, or a hit that finished it in the lava): a "kill in lava".
     const inLava = e.mat === 'lava' && !e.vert.airborne;
-    ctx.events.emit('enemyKilled', { enemy: e, coins, source, inLava: inLava || source === 'lava' || undefined });
+    ctx.events.emit('enemyKilled', { enemy: e, coins, source, inLava: inLava || source === 'lava' || undefined, weapon });
     if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: def.name });
     ctx.pickups?.spawnCoins(p.clone(), coins);
   }

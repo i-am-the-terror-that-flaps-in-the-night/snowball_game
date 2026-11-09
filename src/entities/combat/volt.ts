@@ -190,6 +190,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       const share = hop === 0 ? (grounded ? ARC_BOSS : solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
       const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), {
         source: 'other',
+        weapon: 'arcLance',
         fromX: px,
         fromZ: pz,
         stunSeconds: para || undefined,

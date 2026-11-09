@@ -70,6 +70,8 @@ interface RunTally {
   bossDefeated: boolean;
   killsBy: Record<KillSource, number>;
   damage: number;
+  /** Campaign: HP lost since the boss round's FIGHT! (null until the boss round starts). */
+  bossDamage: number | null;
   /** Longest single flight this run (s). */
   airtime: number;
   /** Kills on bots standing in lava (any finishing blow). */
@@ -442,7 +444,7 @@ export class Game {
     this.ultToastT = 0;
     return {
       kills: 0, coins: 0, biggestBall: 0, bestCombo: 0, bossDefeated: false,
-      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 0 }, damage: 0, airtime: 0, lavaKills: 0, start: this.ctx?.time ?? 0, loot: [],
+      killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 0 }, damage: 0, bossDamage: null, airtime: 0, lavaKills: 0, start: this.ctx?.time ?? 0, loot: [],
     };
   }
 
@@ -717,6 +719,7 @@ export class Game {
     this.state = 'playing';
     ctx.waves.start(ctx.zone, this.roundIndex);
     this.ultCam.reset();
+    if (this.mode === 'campaign' && this.isBossRound) this.run.bossDamage = 0;
     ctx.events.emit('roundStarted', { round: this.roundIndex + 1, total: ctx.zone.rounds.length, boss: this.isBossRound });
     ctx.audio.play('roundStart');
     const label = this.mode === 'survival' ? `WAVE ${this.survival.wave}` : `ROUND ${this.roundIndex + 1}`;
@@ -813,6 +816,7 @@ export class Game {
       lavaKills: run.lavaKills,
       duration: Math.max(0, ctx.time - run.start),
       damageTaken: run.damage,
+      bossDamage: run.bossDamage ?? undefined,
       ...extra,
     });
   }
@@ -901,7 +905,10 @@ export class Game {
         this.ultToastMin = shot.kills;
       }
     });
-    events.on('plowDamaged', ({ amount }) => (this.run.damage += amount));
+    events.on('plowDamaged', ({ amount }) => {
+      this.run.damage += amount;
+      if (this.run.bossDamage !== null) this.run.bossDamage += amount;
+    });
     events.on('plowLanded', ({ airTime }) => (this.run.airtime = Math.max(this.run.airtime, airTime)));
     events.on('coinCollected', ({ amount }) => (this.run.coins += amount));
     events.on('enemyHit', () => {

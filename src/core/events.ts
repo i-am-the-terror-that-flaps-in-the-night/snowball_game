@@ -5,12 +5,15 @@ import type { PlowKind } from '../config/plows';
 /** How the player landed a killing blow (campaign / survival / tutorial; Brawl kills omit it).
  *  'stomp' = landing on a bot, 'airSlam' = the slam-while-airborne shockwave, 'lava' = a bot burned in lava. */
 export type KillSource = 'slam' | 'ram' | 'whirl' | 'other' | 'stomp' | 'airSlam' | 'lava';
+/** The weapon behind a hit, where trophies need more than its KillSource ('arcLance' = VOLT-9's ARC LANCE, any hop). */
+export type KillWeapon = 'arcLance';
 
 /** Cross-cutting game events. Modules call ctx.audio / ctx.fx directly for their own feedback;
  *  events exist so Game/UI can track stats and show toasts without modules knowing about each other. */
 export interface GameEvents {
-  /** inLava: the bot was standing in lava when it died, whatever finished it (lava kills, see LIFE.killsLava). */
-  enemyKilled: { enemy: EnemyHandle; coins: number; source?: KillSource; inLava?: boolean };
+  /** inLava: the bot was standing in lava when it died, whatever finished it (lava kills, see LIFE.killsLava).
+   *  weapon: the finishing blow's DamageOpts.weapon (campaign / survival bots only; Brawl and the Duel never set it). */
+  enemyKilled: { enemy: EnemyHandle; coins: number; source?: KillSource; inLava?: boolean; weapon?: KillWeapon };
   enemyHit: { enemy: EnemyHandle; damage: number };
   /** The player slammed their snowball. */
   slam: { hits: number; radius: number; position: THREE.Vector3 };
@@ -57,6 +60,8 @@ export interface GameEvents {
     zoneIndex?: number;
     roundsCleared?: number;
     hard?: boolean;
+    /** Campaign: HP lost during the boss round (after armor / shields); undefined if the boss round never started. */
+    bossDamage?: number;
     /** Survival: wave reached, and whether this was the Daily run. */
     wave?: number;
     daily?: boolean;

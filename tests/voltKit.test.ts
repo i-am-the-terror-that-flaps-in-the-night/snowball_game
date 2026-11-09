@@ -18,6 +18,7 @@ function rig(bots: Bot[]) {
   const press = new Set<string>();
   const held = new Set<string>();
   const stuns: number[] = [];
+  const weapons: (string | undefined)[] = [];
   const plow = {
     position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, turretAim: 0, turretHeading: 0, whirlCharge: 1, surfaceY: 0,
     get eCharge() {
@@ -41,9 +42,10 @@ function rig(bots: Bot[]) {
       for (const b of bots) if (b.alive && Math.hypot(b.position.x - x, b.position.z - z) <= r + b.radius) o.push(b);
       return o;
     },
-    damage: (e: EnemyHandle, n: number, opts?: { freezeSeconds?: number; stunSeconds?: number }) => {
+    damage: (e: EnemyHandle, n: number, opts?: { freezeSeconds?: number; stunSeconds?: number; weapon?: string }) => {
       const b = e as Bot;
       stuns.push(opts?.stunSeconds ?? 0);
+      weapons.push(opts?.weapon);
       b.dealt += n;
       b.hp -= n;
       b.frozen = Math.max(b.frozen, opts?.freezeSeconds ?? 0);
@@ -65,7 +67,7 @@ function rig(bots: Bot[]) {
       press.clear();
     }
   };
-  return { c, plow, press, held, run, stuns };
+  return { c, plow, press, held, run, stuns, weapons };
 }
 
 describe('VOLT-9 Tesla Rover', () => {
@@ -133,6 +135,21 @@ describe('VOLT-9 Tesla Rover', () => {
     r2.run(1);
     expect(boss.dealt / plain.dealt).toBeCloseTo(ARC_BOSS, 1);
     expect(add.dealt).toBeGreaterThan(0);
+  });
+
+  it('ARC LANCE hits carry the arcLance weapon tag (the "Grounded" trophy); STATIC FIELD hits do not', () => {
+    const boss = Object.assign(bot(0, 5), { isBoss: true });
+    const add = bot(3, 6);
+    const r1 = rig([boss, add]);
+    r1.held.add('Space');
+    r1.run(0.5);
+    expect(r1.weapons.length).toBeGreaterThan(0);
+    expect(r1.weapons.every((w) => w === 'arcLance')).toBe(true);
+    const r2 = rig([bot(2, 0)]);
+    r2.press.add('KeyE');
+    r2.run(0.2);
+    expect(r2.weapons.length).toBeGreaterThan(0);
+    expect(r2.weapons).not.toContain('arcLance');
   });
 
   it('ARC LANCE reach grows with Mega Hopper', () => {

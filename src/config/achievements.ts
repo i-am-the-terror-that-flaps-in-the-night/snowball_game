@@ -60,6 +60,10 @@ export const LIFE = {
   brawlLast: 'brawlLast',
   dailyRuns: 'dailyRuns',
   dailyBestWave: 'dailyBestWave',
+  /** Bosses finished off by VOLT-9's Arc Lance (enemyKilled with weapon 'arcLance'; campaign / Survival only). */
+  lanceBossKills: 'lanceBossKills',
+  /** MEGAPLOW Ω beaten on Hard without losing any HP in the boss round (runFinished.bossDamage === 0). */
+  omegaHardFlawless: 'omegaHardFlawless',
   /** Coins paid out by achievement rewards. */
   achievementCoins: 'achievementCoins',
 } as const;
@@ -164,6 +168,8 @@ const seconds = (cs: number) => `${(cs / 100).toFixed(2)} s`;
 const bossName = (type: EnemyType) => ENEMIES[type].name;
 /** THE DONALD's arena, found by save id (its slot moved in the level overhaul). */
 const PLAZA = ZONES.find((z) => z.id === 'plaza')!;
+/** MEGAPLOW Ω's arena (The Omega Works), found by save id. */
+export const OMEGA_WORKS = ZONES.find((z) => z.id === 'summit')!;
 
 /* Boss trophies run in campaign order (docs/level-overhaul.md "Arenas"): FROSTBYTE, BULLDOZA, THE GRINDER, then the
  * twins, THE DONALD and the finale MEGAPLOW below. Rewards rise with the arena, so the finale pays the most. */
@@ -207,6 +213,9 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'boss_donald', name: "You're Fired!", desc: `Scrap ${bossName('donald')} at ${PLAZA.name}.`, icon: '🍊', category: 'bosses', goal: 1, reward: 250, value: (p) => life(p, lifeBoss('donald')) },
   { id: 'hard_donald', name: 'Hard Deal', desc: `Clear ${PLAZA.name} on Hard.`, icon: '🏛️', category: 'campaign', goal: 1, reward: 400, value: (p) => (p.data.hardCleared?.[PLAZA.id] === true ? 1 : 0) },
   { id: 'boss_omega', name: 'Ω-mega Ouch', desc: `Scrap ${bossName('omega')}, the final machine.`, icon: '💀', category: 'bosses', goal: 1, reward: 300, value: (p) => life(p, lifeBoss('omega')) },
+  // PROTOCOL B (lore.ts): Ω's backup, six fragments cached one per arena; each Hard clear recovers one.
+  { id: 'protocol_b', name: 'Exciting Opportunity', desc: `Recover all ${ZONES.length} PROTOCOL B fragments (clear every arena on Hard). Ω would like to circle back.`, icon: '📊', category: 'bosses', goal: ZONES.length, reward: 300, value: hardClears },
+  { id: 'omega_flawless', name: 'Q4: Total Defeat', desc: `Scrap ${bossName('omega')} on Hard without losing a single HP in the boss fight. Please update the slide.`, icon: '📉', category: 'bosses', goal: 1, reward: 500, value: (p) => life(p, LIFE.omegaHardFlawless) },
   { id: 'boss_25', name: 'Boss Rush', desc: 'Scrap 25 bosses.', icon: '👑', category: 'bosses', goal: 25, reward: 300, value: (p) => life(p, LIFE.bossKills) },
 
   // ---- Brawl
@@ -233,6 +242,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'win_isotope', name: 'Critical Mass', desc: 'Clear an arena with ISOTOPE.', icon: '☢️', category: 'plows', goal: 1, reward: 75, value: (p) => life(p, lifeWinsPlow('isotope')) },
   { id: 'win_arsenal', name: 'Shock and Awe', desc: 'Clear an arena with ARSENAL.', icon: '🎯', category: 'plows', goal: 1, reward: 75, value: (p) => life(p, lifeWinsPlow('arsenal')) },
   { id: 'zap_10', name: 'Shocking Behavior', desc: 'Scrap 10 Brawl rivals with lightning.', icon: '🌩️', category: 'plows', goal: 10, reward: 100, value: (p) => life(p, LIFE.brawlKillsZap) },
+  { id: 'lance_boss', name: 'Grounded', desc: "Finish off a boss with VOLT-9's Arc Lance. Go to your room.", icon: '🔌', category: 'plows', goal: 1, reward: 150, value: (p) => life(p, LIFE.lanceBossKills) },
   { id: 'pound_10', name: 'Ground Control', desc: 'Scrap 10 Brawl rivals with Ground Pound.', icon: '🔨', category: 'plows', goal: 10, reward: 100, value: (p) => life(p, LIFE.brawlKillsPound) },
 
   // ---- Garage & loot

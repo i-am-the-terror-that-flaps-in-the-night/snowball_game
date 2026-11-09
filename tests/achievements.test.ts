@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Progression } from '../src/core/Progression';
 import { EventBus, type GameEvents } from '../src/core/events';
 import type { EnemyHandle, GameContext } from '../src/core/types';
-import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, LIFE, killsBySource, life, lifeBoss, lifeWinsPlow } from '../src/config/achievements';
+import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, LIFE, OMEGA_WORKS, killsBySource, life, lifeBoss, lifeWinsPlow } from '../src/config/achievements';
 import { Achievements, achievementProgress, achievementValue, isUnlocked, recordRunLifetime, unlockNew } from '../src/meta/achievements';
 import { ZONES } from '../src/config/zones';
 import { fmtPlayTime } from '../src/ui/Trophies';
@@ -259,6 +259,77 @@ describe('Achievements (event wiring)', () => {
     vi.advanceTimersByTime(1500);
     expect(toast).toHaveBeenCalledTimes(1);
     expect(toast.mock.calls[0][0]).toMatch(/achievements unlocked/);
+  });
+});
+
+describe('recent-work trophies', () => {
+  const OMEGA_I = ZONES.indexOf(OMEGA_WORKS);
+  const omegaRun = (extra: Partial<GameEvents['runFinished']> = {}) =>
+    run({ won: true, plow: 'volt', zoneIndex: OMEGA_I, hard: true, bossDamage: 0, damageTaken: 180, ...extra });
+
+  it('Grounded: a boss finished by the Arc Lance, nothing else', () => {
+    const { ctx, p } = fakeCtx();
+    // Near misses: a boss scrapped by something else, a plain bot by the lance, a Brawl rival (Brawl never tags a weapon).
+    ctx.events.emit('enemyKilled', { enemy: bot('omega', true), coins: 5, source: 'slam' });
+    ctx.events.emit('enemyKilled', { enemy: bot('omega', true), coins: 5, source: 'other' });
+    ctx.events.emit('enemyKilled', { enemy: bot('grunt'), coins: 5, source: 'other', weapon: 'arcLance' });
+    ctx.events.emit('enemyKilled', { enemy: bot('rival'), coins: 5 });
+    expect(life(p, LIFE.lanceBossKills)).toBe(0);
+    expect(isUnlocked(p, 'lance_boss')).toBe(false);
+    ctx.events.emit('enemyKilled', { enemy: bot('frostbyte', true), coins: 5, source: 'other', weapon: 'arcLance' });
+    expect(life(p, LIFE.lanceBossKills)).toBe(1);
+    expect(isUnlocked(p, 'lance_boss')).toBe(true);
+  });
+
+  it('Grounded: Tutorial kills do not count', () => {
+    const { ctx, p } = fakeCtx();
+    ctx.zone = { ...ZONES[0], coinMult: 0 };
+    ctx.events.emit('enemyKilled', { enemy: bot('frostbyte', true), coins: 0, source: 'other', weapon: 'arcLance' });
+    expect(life(p, LIFE.lanceBossKills)).toBe(0);
+  });
+
+  it('Exciting Opportunity: every arena on Hard, with progress; five of six is not enough', () => {
+    const p = new Progression();
+    const def = ACHIEVEMENT_BY_ID.protocol_b;
+    expect(def.goal).toBe(ZONES.length);
+    p.data.hardCleared = Object.fromEntries(ZONES.slice(0, -1).map((z) => [z.id, true]));
+    expect(achievementValue(p, def)).toBe(ZONES.length - 1);
+    expect(achievementProgress(p, def)).toBeCloseTo((ZONES.length - 1) / ZONES.length);
+    expect(unlockNew(p).map((a) => a.id)).not.toContain('protocol_b');
+    // An old save that already cleared everything on Hard gets it on the next check.
+    p.data.hardCleared[ZONES[ZONES.length - 1].id] = true;
+    expect(unlockNew(p).map((a) => a.id)).toContain('protocol_b');
+  });
+
+  it('Q4: Total Defeat: Hard Omega Works with a spotless boss round only', () => {
+    const p = new Progression();
+    // Near misses: 1 HP lost to the boss, normal mode, another Hard arena, a loss, no boss round recorded.
+    recordRunLifetime(p, omegaRun({ bossDamage: 1 }));
+    recordRunLifetime(p, omegaRun({ bossDamage: 0.2 }));
+    recordRunLifetime(p, omegaRun({ hard: false }));
+    recordRunLifetime(p, omegaRun({ zoneIndex: OMEGA_I - 1 }));
+    recordRunLifetime(p, omegaRun({ won: false }));
+    recordRunLifetime(p, omegaRun({ bossDamage: undefined }));
+    recordRunLifetime(p, omegaRun({ mode: 'survival' }));
+    expect(life(p, LIFE.omegaHardFlawless)).toBe(0);
+    expect(unlockNew(p).map((a) => a.id)).not.toContain('omega_flawless');
+    // Damage taken before the boss round doesn't matter.
+    recordRunLifetime(p, omegaRun({ damageTaken: 240, bossDamage: 0 }));
+    expect(life(p, LIFE.omegaHardFlawless)).toBe(1);
+    expect(unlockNew(p).map((a) => a.id)).toContain('omega_flawless');
+  });
+
+  it('Q4: Total Defeat unlocks from the runFinished event', () => {
+    const { ctx, p } = fakeCtx();
+    ctx.events.emit('runFinished', omegaRun());
+    expect(isUnlocked(p, 'omega_flawless')).toBe(true);
+  });
+
+  it('old saves without the new counters read 0', () => {
+    const p = new Progression();
+    p.data.lifetime = { [LIFE.kills]: 40 };
+    expect(achievementValue(p, ACHIEVEMENT_BY_ID.lance_boss)).toBe(0);
+    expect(achievementValue(p, ACHIEVEMENT_BY_ID.omega_flawless)).toBe(0);
   });
 });
 

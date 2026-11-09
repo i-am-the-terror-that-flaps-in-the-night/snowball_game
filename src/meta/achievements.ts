@@ -1,8 +1,9 @@
 import type { GameContext } from '../core/types';
 import type { Progression } from '../core/Progression';
 import type { GameEvents } from '../core/events';
-import { ACHIEVEMENTS, CLEAN_CLEAR_HP, LIFE, lifeBoss, lifeRunsMode, lifeRunsPlow, lifeWinsPlow, type AchievementDef } from '../config/achievements';
+import { ACHIEVEMENTS, CLEAN_CLEAR_HP, LIFE, OMEGA_WORKS, lifeBoss, lifeRunsMode, lifeRunsPlow, lifeWinsPlow, type AchievementDef } from '../config/achievements';
 import { BRAWL_BOTS } from '../config/brawl';
+import { ZONES } from '../config/zones';
 import { bumpLifetime, maxLifetime } from './progress';
 
 /* Achievements: event handlers bump lifetime counters in the save (mutated live, saved in batches by
@@ -80,6 +81,9 @@ export function recordRunLifetime(p: Progression, r: GameEvents['runFinished']):
     bumpLifetime(p, LIFE.campaignWins);
     bumpLifetime(p, lifeWinsPlow(r.plow));
     if (n(r.damageTaken) < CLEAN_CLEAR_HP) bumpLifetime(p, LIFE.cleanClears);
+    // "Q4: Total Defeat": Hard Omega Works with a spotless boss round (bossDamage is only set once the round started).
+    const zone = r.zoneIndex === undefined ? undefined : ZONES[r.zoneIndex];
+    if (r.hard && zone?.id === OMEGA_WORKS.id && typeof r.bossDamage === 'number' && r.bossDamage <= 0) bumpLifetime(p, LIFE.omegaHardFlawless);
   }
   if (r.mode === 'brawl') {
     if (r.won && r.brawlDifficulty === 'legend') bumpLifetime(p, LIFE.brawlWinsLegend);
@@ -102,12 +106,14 @@ export class Achievements {
     const { events } = ctx;
     const p = () => ctx.progression;
 
-    events.on('enemyKilled', ({ source, inLava }) => {
+    events.on('enemyKilled', ({ enemy, source, inLava, weapon }) => {
       if (this.tutorial()) return;
       bumpLifetime(p(), LIFE.kills);
       bumpLifetime(p(), SOURCE_KEY[source ?? 'other'] ?? LIFE.killsOther);
       // Kills in lava are counted on top of the finishing blow's own counter (knock it in, finish it however).
       if (inLava || source === 'lava') bumpLifetime(p(), LIFE.killsLava);
+      // Only campaign / Survival bots carry a weapon (Brawl and the Duel never set it).
+      if (weapon === 'arcLance' && enemy.isBoss) bumpLifetime(p(), LIFE.lanceBossKills);
       this.check();
     });
     events.on('slam', ({ hits }) => {

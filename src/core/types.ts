@@ -1,6 +1,6 @@
 import type { Terrain } from '../world/Terrain';
 import type * as THREE from 'three';
-import type { EventBus, KillSource } from './events';
+import type { EventBus, KillSource, KillWeapon } from './events';
 import type { Input } from './input';
 import type { ZoneDef } from '../config/zones';
 import type { EnemyType } from '../config/enemies';
@@ -394,6 +394,8 @@ export interface DamageOpts {
   stunSeconds?: number;
   /** Kill credit (core/events.ts KillSource). */
   source?: KillSource;
+  /** Weapon credit passed on to 'enemyKilled' (core/events.ts KillWeapon), for trophies. */
+  weapon?: KillWeapon;
   /** Attacker position — used for directional armor (Brute front plate, Frostbyte ball block). */
   fromX?: number;
   fromZ?: number;
