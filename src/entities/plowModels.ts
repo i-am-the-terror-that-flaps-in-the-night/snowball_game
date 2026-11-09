@@ -417,7 +417,64 @@ function haloTexture(): THREE.CanvasTexture {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-export function buildBuzzsaw(): Buzzsaw {
+/** BRUTUS's own (mech) saws: the quiet steel finish. Disc / face / teeth / spin-blur materials, cached. */
+let steelSawKit: { disc: THREE.MeshStandardMaterial; face: THREE.MeshStandardMaterial; tooth: THREE.MeshStandardMaterial; blur: THREE.MeshBasicMaterial } | null = null;
+
+/** Brushed-steel saw face: fine concentric grain, a darker clamp ring round the arbor and five dark expansion slots
+ *  (so the spin still reads from the chase camera without the hazard stripes). */
+function steelSawTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  const m = S / 2;
+  g.fillStyle = '#b4bbc3';
+  g.fillRect(0, 0, S, S);
+  // Brushed grain: thin concentric rings of slightly varying tone.
+  const rnd = mulberry(4211);
+  for (let r = 4; r < m; r += 2) {
+    const v = 168 + Math.floor(rnd() * 34);
+    g.strokeStyle = `rgb(${v},${v + 6},${v + 13})`;
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc(m, m, r, 0, Math.PI * 2);
+    g.stroke();
+  }
+  // Clamp ring (the circle face spans r 0..1, mapped to the 0..S canvas).
+  g.strokeStyle = '#6c737c';
+  g.lineWidth = 10;
+  g.beginPath();
+  g.arc(m, m, m * 0.36, 0, Math.PI * 2);
+  g.stroke();
+  // Expansion slots: short dark curved cuts running in from the rim.
+  g.strokeStyle = '#3a3f46';
+  g.lineCap = 'round';
+  g.lineWidth = 5;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    g.beginPath();
+    g.arc(m, m, m * 0.8, a, a + 0.32);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(m + Math.cos(a) * m * 0.8, m + Math.sin(a) * m * 0.8);
+    g.lineTo(m + Math.cos(a) * m * 0.98, m + Math.sin(a) * m * 0.98);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+export interface BuzzsawOpts {
+  /** 'hazard' (default): yellow / black striped faces, glowing teeth, warm spin blur. 'steel': a plain brushed-steel
+   *  blade with darker teeth and a faint pale blur (BRUTUS's own mech saws). The halo is the same either way. */
+  finish?: 'hazard' | 'steel';
+  /** Material for the arbor hub (default: the dark mount steel). */
+  hub?: THREE.Material;
+}
+
+export function buildBuzzsaw(opts: BuzzsawOpts = {}): Buzzsaw {
   if (!sawKit) {
     const faceTex = hazardTexture();
     faceTex.repeat.set(3, 3);
@@ -441,14 +498,24 @@ export function buildBuzzsaw(): Buzzsaw {
       haloGeo: new THREE.CircleGeometry(1, 48),
     };
   }
-  const k = sawKit;
+  const steel = opts.finish === 'steel';
+  if (steel && !steelSawKit) {
+    steelSawKit = {
+      disc: new THREE.MeshStandardMaterial({ color: 0xaeb5bd, metalness: 0.6, roughness: 0.32 }),
+      face: new THREE.MeshStandardMaterial({ map: steelSawTexture(), metalness: 0.55, roughness: 0.38 }),
+      tooth: new THREE.MeshStandardMaterial({ color: 0x4c525a, metalness: 0.6, roughness: 0.4 }),
+      blur: new THREE.MeshBasicMaterial({ color: 0xdfe6ee, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }),
+    };
+  }
+  const k = steel ? { ...sawKit, ...steelSawKit! } : sawKit;
+  const hubMat = opts.hub ?? k.hub;
   const R = SAW_R;
   const group = new THREE.Group();
   const rotor = new THREE.Group();
   const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.07, 40), k.disc);
   disc.castShadow = true;
   rotor.add(disc);
-  // Hazard-striped inner faces (top and bottom) so the spin reads from the chase camera.
+  // Hazard-striped (or slotted steel) inner faces, top and bottom, so the spin reads from the chase camera.
   for (const y of [0.037, -0.037]) {
     const face = new THREE.Mesh(new THREE.CircleGeometry(R * 0.72, 32), k.face);
     face.rotation.x = y > 0 ? -Math.PI / 2 : Math.PI / 2;
@@ -481,7 +548,7 @@ export function buildBuzzsaw(): Buzzsaw {
   halo.scale.setScalar(R * 1.3);
   halo.renderOrder = 2;
   group.add(halo);
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.22, 14), k.hub);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.22, 14), hubMat);
   group.add(hub);
   // Mounting arm bolting the saw back to the blade end.
   const arm = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 0.22), k.hub);
