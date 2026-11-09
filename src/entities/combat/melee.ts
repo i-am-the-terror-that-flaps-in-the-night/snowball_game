@@ -3,6 +3,15 @@ import { SLAM_DAMAGE_K, type EnemyHandle } from '../../core/types';
 import { COMBO_MAX, COMBO_WINDOW } from '../../config/upgrades';
 import { Kit, Reach, _fwd, _p, _q, floorTop } from './shared';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const PLAYER_RAM_BURST = { color: 0x9aa4b0, count: 4, speed: 4, size: 0.16, gravity: 20, life: 0.6 };
+const PLAYER_RAM_BURST_2 = { color: 0xffffff, count: 6, speed: 3.5, size: 0.18, gravity: 14, life: 0.6 };
+const WHIRL_TICK_BURST = { color: 0xffffff, count: 6, speed: 4, size: 0.2, gravity: 12, life: 0.5 };
+
+/** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
+ *  Duel victim path), so it stays valid across the nested victim hit. */
+const _kb = new THREE.Vector3();
+
 /** Momentum (BRUTUS) only counts closing speed up to this many m/s. */
 const MOMENTUM_SPEED_CAP = 20;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
@@ -51,12 +60,11 @@ export class MeleeKit extends Kit {
     dz = dz / d + _fwd.z;
     const n = Math.hypot(dx, dz) || 1;
     const k = 4 + Math.max(0, closingSpeed) * 0.9;
-    const knock = new THREE.Vector3((dx / n) * k, 0, (dz / n) * k);
 
     const hp0 = enemy.hp;
     const killed = this.b.enemies.damage(enemy, dmg * this.hitMult(enemy), {
       source: 'ram',
-      knockback: knock,
+      knockback: _kb.set((dx / n) * k, 0, (dz / n) * k),
       fromX: plow.position.x,
       fromZ: plow.position.z,
       ballRadius: r,
@@ -76,8 +84,8 @@ export class MeleeKit extends Kit {
       (plow.position.z + _fwd.z * 2.4 + enemy.position.z) * 0.5,
     );
     fx.sparks(_p, _fwd, { color: 0xffc04a, count: 10 + Math.round(Math.min(18, closingSpeed)), speed: 8 + closingSpeed * 0.35, spread: 0.85, gravity: 22, life: 0.35 });
-    fx.burst(_p, { color: 0x9aa4b0, count: 4, speed: 4, size: 0.16, gravity: 20, life: 0.6 });
-    if (r > 0) fx.burst(_p, { color: 0xffffff, count: 6, speed: 3.5, size: 0.18, gravity: 14, life: 0.6 });
+    fx.burst(_p, PLAYER_RAM_BURST);
+    if (r > 0) fx.burst(_p, PLAYER_RAM_BURST_2);
     this.shake(Math.min(0.4, 0.1 + closingSpeed * 0.015));
     this.b.audio.play('ram', { volume: Math.min(1, 0.45 + closingSpeed * 0.04) });
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1, enemy.position.z);
@@ -104,12 +112,11 @@ export class MeleeKit extends Kit {
     dx = dx / d + _fwd.x * 1.5;
     dz = dz / d + _fwd.z * 1.5;
     const n = Math.hypot(dx, dz) || 1;
-    const knock = new THREE.Vector3((dx / n) * DASH_KNOCK, 0, (dz / n) * DASH_KNOCK);
 
     const hp0 = enemy.hp;
     const killed = this.b.enemies.damage(enemy, dmg * this.hitMult(enemy), {
       source: 'ram',
-      knockback: knock,
+      knockback: _kb.set((dx / n) * DASH_KNOCK, 0, (dz / n) * DASH_KNOCK),
       fromX: plow.position.x,
       fromZ: plow.position.z,
       ballRadius: r,
@@ -178,7 +185,7 @@ export class MeleeKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * this.hitMult(e), {
         source: 'slam',
-        knockback: new THREE.Vector3(dx * knockMag, 0, dz * knockMag),
+        knockback: _kb.set(dx * knockMag, 0, dz * knockMag),
         freezeSeconds: freeze,
         fromX: plow.position.x,
         fromZ: plow.position.z,
@@ -252,7 +259,7 @@ export class MeleeKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * stats.shardFrac * this.hitMult(e), {
         source: 'other',
-        knockback: new THREE.Vector3((dx / d) * 8, 0, (dz / d) * 8),
+        knockback: _kb.set((dx / d) * 8, 0, (dz / d) * 8),
         fromX: x,
         fromZ: z,
       });
@@ -304,7 +311,7 @@ export class MeleeKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * this.hitMult(e), {
         source: 'whirl',
-        knockback: new THREE.Vector3(kx, 0, kz),
+        knockback: _kb.set(kx, 0, kz),
         fromX: x,
         fromZ: z,
         ballRadius: ballR,
@@ -312,7 +319,7 @@ export class MeleeKit extends Kit {
       count++;
       _q.set(e.position.x - dx * e.radius, e.position.y + 1, e.position.z - dz * e.radius);
       fx.burst(_q, { color: final ? 0xbfeaff : 0xffc04a, count: final ? 16 : 9, speed: final ? 11 : 7, size: 0.08, gravity: 22, life: 0.35 });
-      fx.burst(_q, { color: 0xffffff, count: 6, speed: 4, size: 0.2, gravity: 12, life: 0.5 });
+      fx.burst(_q, WHIRL_TICK_BURST);
       _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e);

@@ -7,6 +7,10 @@ import type { Lightning } from './Lightning';
  * Built only from the pooled Fx particles / rings / float text and the Combat lightning pool, so a kill never
  * creates meshes. */
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const EMIT_KILL_FX_BURST = { color: 0xffffff, count: 8, speed: 4, size: 0.12, gravity: 0, life: 0.5 };
+const EMIT_KILL_FX_BURST_2 = { color: 0x9fe8ff, count: 26, speed: 10, size: 0.14, gravity: 10, life: 0.5 };
+
 const _p = new THREE.Vector3();
 const _q = new THREE.Vector3();
 const pick = (c: number[]) => c[(Math.random() * c.length) | 0];
@@ -28,7 +32,7 @@ export function emitKillFx(ctx: GameContext, kill: KillDef, at: THREE.Vector3, p
       break;
     case 'coins':
       for (let i = 0; i < 3; i++) fx.burst(_p, { color: pick(c), count: 12, speed: 10, size: 0.2, gravity: 20, life: 1.3 });
-      fx.burst(_p, { color: 0xffffff, count: 8, speed: 4, size: 0.12, gravity: 0, life: 0.5 });
+      fx.burst(_p, EMIT_KILL_FX_BURST);
       fx.floatText(_p, '$$$', '#ffd23a', 1.1);
       ctx.audio.play('coin', { pitch: 1.3 });
       break;
@@ -51,7 +55,7 @@ export function emitKillFx(ctx: GameContext, kill: KillDef, at: THREE.Vector3, p
         }
       }
       _p.set(at.x, at.y + 1, at.z);
-      fx.burst(_p, { color: 0x9fe8ff, count: 26, speed: 10, size: 0.14, gravity: 10, life: 0.5 });
+      fx.burst(_p, EMIT_KILL_FX_BURST_2);
       _q.y = 0.05;
       fx.ring(_q, 5, 0x9fe8ff);
       ctx.audio.play('zap', { volume: 0.8 });

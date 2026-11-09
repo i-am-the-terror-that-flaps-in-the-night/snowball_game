@@ -3,6 +3,14 @@ import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, type AbilityDesc, type VehicleKit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const PRIMARY_SPARKS = { color: 0x9fe8ff, count: 4, speed: 5, size: 0.06, length: 0.04, gravity: 10, life: 0.25 };
+const PRIMARY_BURST = { color: 0x9fe8ff, count: 4, speed: 5, size: 0.08, gravity: 8, life: 0.25 };
+const PRIMARY_SPARKS_2 = { color: 0xdff6ff, count: 14, speed: 7, size: 0.07, length: 0.06, gravity: 4, life: 0.4 };
+const STATIC_PULSE_BURST = { color: 0xbff0ff, count: 6, speed: 6, size: 0.1, gravity: 8, life: 0.3 };
+const CHAIN_LIGHTNING_BURST = { color: 0x9fe8ff, count: 8, speed: 6, size: 0.08, gravity: 10, life: 0.3 };
+const UPDATE_STORM_BURST = { color: 0xbff0ff, count: 18, speed: 9, size: 0.1, gravity: 10, life: 0.4 };
+
 /** Knockback scratch for per-tick damage (Enemies.damage reads it immediately and never keeps it). */
 const _kb = new THREE.Vector3();
 
@@ -145,7 +153,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       const fz = Math.cos(a) * _f.z - Math.sin(a) * _f.x;
       _q.set(px + fx * r, (plow.surfaceY || 0) + 0.1, pz + fz * r);
       this.lightning.bolt(_p, _q, { life: tick * 0.8, width: 0.16, jag: 0.9, color: 0x6fc8ff });
-      ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 4, speed: 5, size: 0.06, length: 0.04, gravity: 10, life: 0.25 });
+      ctx.fx.sparks(_q, null, PRIMARY_SPARKS);
       if (this.arcN % 3 === 0) this.b.audio.play('zap', { volume: 0.18, pitch: 1.6 + Math.random() * 0.3 });
       return;
     }
@@ -170,7 +178,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         _r.set(src.position.x, src.position.y + src.radius * 0.9, src.position.z);
         this.lightning.bolt(_r, _q, { life: tick * 1.1, width: 0.26, jag: 0.8, color: 0x9fe8ff });
       }
-      ctx.fx.burst(_q, { color: 0x9fe8ff, count: 4, speed: 5, size: 0.08, gravity: 8, life: 0.25 });
+      ctx.fx.burst(_q, PRIMARY_BURST);
       const hp0 = hit.hp;
       // PARALYSIS roll (not on a bot still immune from its last one).
       let para = 0;
@@ -189,7 +197,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       });
       if (para && !killed) {
         ctx.fx.floatText(_q, 'PARALYZED', '#bff0ff', 0.85);
-        ctx.fx.sparks(_q, null, { color: 0xdff6ff, count: 14, speed: 7, size: 0.07, length: 0.06, gravity: 4, life: 0.4 });
+        ctx.fx.sparks(_q, null, PRIMARY_SPARKS_2);
         this.lightning.bolt(_q, _r.set(_q.x, _q.y + 2.2, _q.z), { life: 0.3, width: 0.2, jag: 1.4, color: 0xdff6ff });
       }
       const dealt = Math.max(0, hp0 - Math.max(0, hit.hp));
@@ -257,6 +265,11 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
   private staticPulseT = 0;
   private staticFirst = false;
 
+  /** Kit-owned scratch for values that must survive a damage() call: onPlayerHit can run chainLightning (writes the
+   *  shared _p / _q), and in a Duel the victim's Combat.hitPlow writes the shared scratch too. */
+  private readonly boltFrom = new THREE.Vector3();
+  private readonly hitAt = new THREE.Vector3();
+
   /** One Static Field pulse round the rover: ring + bolts to the edge, damage and a stun to every bot inside. */
   private staticPulse(px: number, pz: number, floor: number, first: boolean): void {
     const ctx = this.ctx;
@@ -268,13 +281,13 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       ctx.fx.ring(_q, R * 0.55, 0xffffff);
       ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 26, speed: 13, size: 0.07, length: 0.05, gravity: 8, life: 0.4 });
     }
-    _p.set(px, floor + TOWER_Y, pz);
+    const from = this.boltFrom.set(px, floor + TOWER_Y, pz);
     for (let i = 0; i < (first ? 8 : 4); i++) {
       const a = (i / (first ? 8 : 4)) * Math.PI * 2 + Math.random() * 0.8;
       const bx = px + Math.sin(a) * R;
       const bz = pz + Math.cos(a) * R;
       _q.set(bx, waveFloor(ctx.terrain, floor, bx, bz) + 0.15, bz);
-      this.lightning.bolt(_p, _q, { life: 0.2, width: 0.2, jag: 1.0, color: 0x6fc8ff });
+      this.lightning.bolt(from, _q, { life: 0.2, width: 0.2, jag: 1.0, color: 0x6fc8ff });
     }
     if (!first) this.b.audio.play('zap', { pitch: 1.1 + Math.random() * 0.2, volume: 0.4 });
     const dmg = STATIC_DAMAGE * (first ? STATIC_FIRST : 1) * st.damageMult * coilBoost(st.clapDamage) ** STATIC_COIL_EXP;
@@ -282,14 +295,14 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive) continue;
-      _q.set(e.position.x, e.position.y + e.radius, e.position.z);
-      this.lightning.bolt(_p, _q, { life: 0.24, width: 0.28, jag: 1.2, color: 0xbff0ff });
-      ctx.fx.burst(_q, { color: 0xbff0ff, count: 6, speed: 6, size: 0.1, gravity: 8, life: 0.3 });
+      const at = this.hitAt.set(e.position.x, e.position.y + e.radius, e.position.z);
+      this.lightning.bolt(from, at, { life: 0.24, width: 0.28, jag: 1.2, color: 0xbff0ff });
+      ctx.fx.burst(at, STATIC_PULSE_BURST);
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * this.hitMult(e), { source: 'other', freezeSeconds: STATIC_STUN, fromX: px, fromZ: pz });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e, true, true);
-      if (dealt > 0) ctx.fx.floatText(_q, `💫${Math.round(dealt)}`, '#bff0ff', 0.8);
+      if (dealt > 0) ctx.fx.floatText(at, `💫${Math.round(dealt)}`, '#bff0ff', 0.8);
     }
     this.clearTargets();
   }
@@ -350,7 +363,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       const d2 = Math.max(0, hp0 - Math.max(0, best.hp));
       this.onPlayerHit(d2, killed, best, false, heal);
       if (d2 > 0) ctx.fx.floatText(_q, `⚡${Math.round(d2)}`, '#7fdcff', 0.8);
-      ctx.fx.burst(_q, { color: 0x9fe8ff, count: 8, speed: 6, size: 0.08, gravity: 10, life: 0.3 });
+      ctx.fx.burst(_q, CHAIN_LIGHTNING_BURST);
       src = best;
     }
     if (this.chainHit.size > 1) this.b.audio.play('zap', { pitch: 1.1 });
@@ -445,8 +458,8 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       dx /= d;
       dz /= d;
       _p.set(px, top + 2, pz);
-      _q.set(e.position.x, e.position.y + e.radius, e.position.z);
-      this.lightning.bolt(_p, _q, { life: 0.3, width: 0.35 });
+      const at = this.hitAt.set(e.position.x, e.position.y + e.radius, e.position.z);
+      this.lightning.bolt(_p, at, { life: 0.3, width: 0.35 });
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, st.clapDamage * st.damageMult * this.hitMult(e), {
         source: 'other',
@@ -457,7 +470,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e, true, false);
-      if (dealt > 0) ctx.fx.floatText(_q, `⚡${Math.round(dealt)}`, '#bff0ff', 1.15);
+      if (dealt > 0) ctx.fx.floatText(at, `⚡${Math.round(dealt)}`, '#bff0ff', 1.15);
     }
     this.clearTargets();
     // The storm: a volley of extra sky strikes across the area, then an electrified field.
@@ -529,7 +542,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       _q.set(sx, sy + 0.2, sz);
       this.lightning.bolt(_p, _q, { life: 0.3, width: 0.55, jag: 1.8, color: 0x9fe8ff });
       ctx.fx.ring(_q, 3.5, 0x7fdcff);
-      ctx.fx.burst(_q, { color: 0xbff0ff, count: 18, speed: 9, size: 0.1, gravity: 10, life: 0.4 });
+      ctx.fx.burst(_q, UPDATE_STORM_BURST);
       this.b.audio.play('zap', { pitch: 0.7 + Math.random() * 0.3 });
       const hits = this.b.enemies.query(sx, sz, 3.5, this.chainBuf);
       for (let i = 0; i < hits.length; i++) {

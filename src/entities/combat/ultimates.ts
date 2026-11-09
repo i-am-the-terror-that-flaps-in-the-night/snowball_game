@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import type { PlayerStats, PlowAPI } from '../../core/types';
 import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type UltKind } from './shared';
 
+/** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
+ *  Duel victim path), so it stays valid across the nested victim hit. */
+const _kb = new THREE.Vector3();
+
 /** Ultimates for VOLT-9 / BRUTUS / ARSENAL (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
  *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
  *  nothing refills it. */
@@ -116,7 +120,7 @@ export function ultBlast(
     const hp0 = e.hp;
     const killed = h.b.enemies.damage(e, dmg * h.b.stats.damageMult * h.hitMult(e), {
       source: 'other',
-      knockback: new THREE.Vector3((dx / nd) * o.knock, 0, (dz / nd) * o.knock),
+      knockback: _kb.set((dx / nd) * o.knock, 0, (dz / nd) * o.knock),
       stunSeconds: o.stun,
       freezeSeconds: o.freeze,
       fromX: x,

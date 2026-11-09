@@ -4,6 +4,18 @@ import { Kit, type AbilityDesc, type VehicleKit, Reach, WAVE_BAND, _p, _q, castO
 import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const UPDATE_PUDDLES_BURST = { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.18, gravity: -3, life: 0.6 };
+const UPDATE_POOLS_BURST = { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gravity: -3, life: 0.7 };
+const UPDATE_AURA_BURST = { color: 0x5dff3a, count: 1, speed: 0.6, size: 0.18, gravity: -2.5, life: 0.6 };
+const UPDATE_RADS_BURST = { color: 0xb8ff6a, count: 2, speed: 1.6, size: 0.12, gravity: -1.5, life: 0.55 };
+const UPDATE_RADS_BURST_2 = { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.16, gravity: -3, life: 0.5 };
+const UPDATE_RADS_BURST_3 = { color: 0x9dff5a, count: 22, speed: 9, size: 0.26, gravity: 2, life: 0.55 };
+
+/** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
+ *  Duel victim path), so it stays valid across the nested victim hit. */
+const _kb = new THREE.Vector3();
+
 /** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
  *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
 // Design floor from the user (stronger irradiation): balance ISOTOPE through damage numbers, not by lowering RAD_VULN
@@ -223,7 +235,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       if (!tick) continue;
       if (Math.random() < 0.4) {
         _q.set(pd.x + (Math.random() - 0.5) * pd.r, pd.from.y + 0.25, pd.z + (Math.random() - 0.5) * pd.r);
-        ctx.fx.burst(_q, { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.18, gravity: -3, life: 0.6 });
+        ctx.fx.burst(_q, UPDATE_PUDDLES_BURST);
       }
       const hits = this.b.enemies.query(pd.x, pd.z, pd.r, this.buf);
       for (let i = 0; i < hits.length; i++) {
@@ -422,7 +434,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, st.meltDamage * NUKE_DMG_MULT * fall * st.damageMult * this.hitMult(e), {
         source: 'other',
-        knockback: new THREE.Vector3(dx * NUKE_KNOCK * fall, 0, dz * NUKE_KNOCK * fall),
+        knockback: _kb.set(dx * NUKE_KNOCK * fall, 0, dz * NUKE_KNOCK * fall),
         fromX: px,
         fromZ: pz,
       });
@@ -462,7 +474,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       // No bubbles past a deck edge (floor far below the cast level), where the pool doesn't reach.
       if (Math.abs(by - pl.from.y) <= 2 * WAVE_BAND) {
         _q.set(bx, by + 0.3, bz);
-        ctx.fx.burst(_q, { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gravity: -3, life: 0.7 });
+        ctx.fx.burst(_q, UPDATE_POOLS_BURST);
       }
       if (st.poolDps <= 0 || st.meltDamage <= 0) continue;
       const hits = this.b.enemies.query(pl.x, pl.z, pl.r, this.buf);
@@ -494,7 +506,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       const a = Math.random() * Math.PI * 2;
       const rr = R * (0.4 + Math.random() * 0.6);
       _q.set(plow.position.x + Math.sin(a) * rr, (plow.surfaceY || 0) + 0.4, plow.position.z + Math.cos(a) * rr);
-      ctx.fx.burst(_q, { color: 0x5dff3a, count: 1, speed: 0.6, size: 0.18, gravity: -2.5, life: 0.6 });
+      ctx.fx.burst(_q, UPDATE_AURA_BURST);
     }
     const hits = this.b.enemies.query(plow.position.x, plow.position.z, R, this.buf);
     for (let i = 0; i < hits.length; i++) if (this.reaches(hits[i], Reach.Body)) this.radHit(hits[i], st.auraDps * TICK);
@@ -554,18 +566,20 @@ export class IsotopeKit extends Kit implements VehicleKit {
         // A heavy dose glows hotter: a sickly halo of extra motes.
         if (this.doses.has(e)) {
           _q.set(e.position.x, e.position.y + e.radius * 0.6, e.position.z);
-          ctx.fx.burst(_q, { color: 0xb8ff6a, count: 2, speed: 1.6, size: 0.12, gravity: -1.5, life: 0.55 });
+          ctx.fx.burst(_q, UPDATE_RADS_BURST);
         }
         _q.set(e.position.x + (Math.random() - 0.5) * e.radius, e.position.y + e.radius * 1.3, e.position.z + (Math.random() - 0.5) * e.radius);
-        ctx.fx.burst(_q, { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.16, gravity: -3, life: 0.5 });
+        ctx.fx.burst(_q, UPDATE_RADS_BURST_2);
       }
     }
+    if (this.chainQueue.length === 0) return;
     const st = this.b.stats;
+    // Detach the queue first: blasts queued while these are processed (chain kills) run next frame.
     const queued = this.chainQueue.splice(0, this.chainQueue.length);
     for (const c of queued) {
       _q.set(c.x, c.y + 0.6, c.z);
       ctx.fx.ring(_q, CHAIN_RADIUS, 0x7dff4a);
-      ctx.fx.burst(_q, { color: 0x9dff5a, count: 22, speed: 9, size: 0.26, gravity: 2, life: 0.55 });
+      ctx.fx.burst(_q, UPDATE_RADS_BURST_3);
       this.b.audio.play('thud', { volume: 0.5, pitch: 1.3 });
       if (st.chainBlast <= 0) continue;
       const hits = this.b.enemies.query(c.x, c.z, CHAIN_RADIUS, this.buf);

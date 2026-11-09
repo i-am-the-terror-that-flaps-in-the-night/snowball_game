@@ -26,6 +26,10 @@ import {
  *    freeze, knockback / mass, hit flash, minion HP bars, death explosions with flying debris
  *  - telegraph ground decals (charge stripes, warning rings) */
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const WEAK_SPOT_BURST = { color: 0xffe14a, count: 10, speed: 6, size: 0.12, gravity: 10, life: 0.5 };
+const HOT_STEAM_BURST = { color: 0xdfe6ee, count: 3, speed: 1.5, size: 0.3, gravity: -3, life: 0.8 };
+
 /** Knockback speed (m/s) above which a flying bot smashes a destructible prop (cf. Plow's PROP_SMASH_SPEED). */
 const BOT_PROP_SMASH_SPEED = 6;
 /** Speed (m/s) above which a bot mid-attack (a heavy / boss charge) ploughs through props. */
@@ -60,6 +64,8 @@ interface Debris {
   obj: THREE.Object3D;
   geo: THREE.BufferGeometry;
   mat: THREE.Material;
+  /** The batch for geo + mat, resolved at spawn so the per-frame sync needs no lookup. */
+  batch: THREE.InstancedMesh | null;
   vx: number;
   vy: number;
   vz: number;
@@ -90,6 +96,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private debris: Debris[] = [];
   /** One pooled InstancedMesh per debris geometry + material, refilled from the active chunks (syncDebris). */
   private debrisBatches = new Map<string, THREE.InstancedMesh>();
+  /** The same batches in creation order, iterated by syncDebris. */
+  private debrisBatchList: THREE.InstancedMesh[] = [];
   private bars: HpBars;
   /** Camera orientation the HP bars were last billboarded to. */
   private barQ = new THREE.Quaternion();
@@ -313,7 +321,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       }
     } else if (vm > 1 && fx) {
       _v.set(e.position.x, e.groundY + e.rig.height * 0.7, e.position.z);
-      fx.burst(_v, { color: 0xffe14a, count: 10, speed: 6, size: 0.12, gravity: 10, life: 0.5 });
+      fx.burst(_v, WEAK_SPOT_BURST);
     }
 
     // Big hits stagger minions (cancels their wind-up).
@@ -1228,7 +1236,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       }
       if (e.vuln === Vuln.Overheat || e.vuln === Vuln.Exposed) {
         _v.set(p.x, e.groundY + rig.height * 0.9, p.z);
-        fx.burst(_v, { color: 0xdfe6ee, count: 3, speed: 1.5, size: 0.3, gravity: -3, life: 0.8 });
+        fx.burst(_v, HOT_STEAM_BURST);
       }
     }
     if (dizzy && e.sparkT <= 0) {
@@ -1250,6 +1258,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       if (!d) break;
       d.geo = debrisGeometry(i);
       d.mat = mats[i % mats.length];
+      d.batch = this.debrisBatch(d.geo, d.mat);
       const s = e.radius * (0.16 + Math.random() * 0.22);
       d.sx = s * (0.6 + Math.random());
       d.sy = s * (0.4 + Math.random() * 0.6);
@@ -1275,7 +1284,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private acquireDebris(): Debris | null {
     for (const d of this.debris) if (!d.active) return d;
     if (this.debris.length >= MAX_DEBRIS) return null;
-    const d: Debris = { obj: new THREE.Object3D(), geo: debrisGeometry(0), mat: debrisMaterials('scrapper')[0], vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, life: 0, sx: 1, sy: 1, sz: 1, smoke: false, active: false };
+    const d: Debris = { obj: new THREE.Object3D(), geo: debrisGeometry(0), mat: debrisMaterials('scrapper')[0], batch: null, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, life: 0, sx: 1, sy: 1, sz: 1, smoke: false, active: false };
     this.debris.push(d);
     return d;
   }
@@ -1327,21 +1336,32 @@ export class EnemyManager implements EnemyManagerAPI, Host {
 
   /** Write every active chunk's transform into its batch; empty batches are hidden, the rest get a fresh bounding
    *  sphere so both passes still frustum-cull them. */
+  /** The pooled batch for a geometry + material, created (and added to the scene) on first use. */
+  private debrisBatch(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.InstancedMesh {
+    const key = geo.uuid + mat.uuid;
+    let b = this.debrisBatches.get(key);
+    if (!b) {
+      b = new THREE.InstancedMesh(geo, mat, MAX_DEBRIS);
+      b.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      b.castShadow = true;
+      b.count = 0;
+      b.visible = false;
+      this.ctx.scene.add(b);
+      this.debrisBatches.set(key, b);
+      this.debrisBatchList.push(b);
+    }
+    return b;
+  }
+
   private syncDebris(): void {
-    for (const b of this.debrisBatches.values()) b.count = 0;
+    const batches = this.debrisBatchList;
+    for (let i = 0; i < batches.length; i++) batches[i].count = 0;
     const cam = this.ctx.camera?.position;
-    for (const d of this.debris) {
+    const debris = this.debris;
+    for (let i = 0; i < debris.length; i++) {
+      const d = debris[i];
       if (!d.active) continue;
-      const key = d.geo.uuid + d.mat.uuid;
-      let b = this.debrisBatches.get(key);
-      if (!b) {
-        b = new THREE.InstancedMesh(d.geo, d.mat, MAX_DEBRIS);
-        b.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        b.castShadow = true;
-        b.count = 0;
-        this.ctx.scene.add(b);
-        this.debrisBatches.set(key, b);
-      }
+      const b = d.batch!;
       d.obj.updateMatrix();
       // A wreck piece flung past the camera (black tyres, treads) would cover the screen: shrink it to nothing
       // within DEBRIS_CAM_CLEAR m of the lens.
@@ -1351,7 +1371,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         b.setMatrixAt(b.count++, _dm);
       } else b.setMatrixAt(b.count++, d.obj.matrix);
     }
-    for (const b of this.debrisBatches.values()) {
+    for (let i = 0; i < batches.length; i++) {
+      const b = batches[i];
       b.visible = b.count > 0;
       if (!b.visible) continue;
       b.instanceMatrix.needsUpdate = true;

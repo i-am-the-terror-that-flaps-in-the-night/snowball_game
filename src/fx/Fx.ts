@@ -20,6 +20,21 @@ interface FloatLabel {
   pos: THREE.Vector3;
   age: number;
   active: boolean;
+  /** Last written style state: writes are skipped while the rounded value is unchanged. Reset on recycle. */
+  shown: boolean;
+  kx: number; // Math.round(x * 10)
+  ky: number; // Math.round(y * 10)
+  kPop: number; // Math.round(pop * 1000)
+  kOp: number; // Math.round(opacity * 1000); -1 = off-screen '0'
+  text: string;
+  color: string;
+  fontPx: number;
+}
+
+/** `${n}px` strings for label font sizes, built once per size. */
+const fontPxCache: string[] = [];
+function fontPx(n: number): string {
+  return fontPxCache[n] ?? (fontPxCache[n] = `${n}px`);
 }
 
 interface Smolder {
@@ -112,7 +127,10 @@ export class Fx implements FxAPI {
         'font-weight:900;color:#fff;-webkit-text-stroke:1.5px #1b2340;paint-order:stroke fill;' +
         'text-shadow:0 3px 0 #1b2340,0 0 6px rgba(0,0,0,.35);will-change:transform,opacity;';
       ov.appendChild(el);
-      this.labels.push({ el, pos: new THREE.Vector3(), age: 0, active: false });
+      this.labels.push({
+        el, pos: new THREE.Vector3(), age: 0, active: false,
+        shown: false, kx: NaN, ky: NaN, kPop: NaN, kOp: NaN, text: '', color: '', fontPx: -1,
+      });
     }
   }
 
@@ -432,21 +450,44 @@ export class Fx implements FxAPI {
   }
 
   floatText(pos: THREE.Vector3, text: string, color = '#ffffff', size = 1): void {
-    let lab = this.labels.find((l) => !l.active);
+    const labels = this.labels;
+    let lab: FloatLabel | undefined;
+    for (let i = 0; i < labels.length; i++) {
+      if (!labels[i].active) {
+        lab = labels[i];
+        break;
+      }
+    }
     if (!lab) {
       // recycle oldest
-      lab = this.labels[0];
-      for (const l of this.labels) if (l.age > lab.age) lab = l;
+      lab = labels[0];
+      for (let i = 0; i < labels.length; i++) if (labels[i].age > lab.age) lab = labels[i];
     }
     lab.active = true;
     lab.age = 0;
     lab.pos.copy(pos);
     lab.pos.x += (Math.random() - 0.5) * 0.6;
     lab.pos.y += 1.2;
-    lab.el.textContent = text;
-    lab.el.style.color = color;
-    lab.el.style.fontSize = `${Math.round(22 * size)}px`;
-    lab.el.style.display = 'block';
+    // Force the next update to write transform and opacity for the new label.
+    lab.kx = NaN; lab.ky = NaN; lab.kPop = NaN; lab.kOp = NaN;
+    const st = lab.el.style;
+    if (lab.text !== text) {
+      lab.el.textContent = text;
+      lab.text = text;
+    }
+    if (lab.color !== color) {
+      st.color = color;
+      lab.color = color;
+    }
+    const px = Math.round(22 * size);
+    if (lab.fontPx !== px) {
+      st.fontSize = fontPx(px);
+      lab.fontPx = px;
+    }
+    if (!lab.shown) {
+      st.display = 'block';
+      lab.shown = true;
+    }
   }
 
   ring(pos: THREE.Vector3, radius: number, color = 0xffffff): void {
@@ -466,9 +507,13 @@ export class Fx implements FxAPI {
     this.ringBatch.clear();
     this.scorchBatch.clear();
     for (const s of this.smolders) s.active = false;
-    for (const l of this.labels) {
+    for (let i = 0; i < this.labels.length; i++) {
+      const l = this.labels[i];
       l.active = false;
-      l.el.style.display = 'none';
+      if (l.shown) {
+        l.el.style.display = 'none';
+        l.shown = false;
+      }
     }
   }
 
@@ -551,26 +596,46 @@ export class Fx implements FxAPI {
     const cam = this.ctx.camera;
     const w = window.innerWidth;
     const h = window.innerHeight;
-    for (const l of this.labels) {
+    const labels = this.labels;
+    for (let i = 0; i < labels.length; i++) {
+      const l = labels[i];
       if (!l.active) continue;
       l.age += dt;
       if (l.age >= TEXT_LIFE) {
         l.active = false;
-        l.el.style.display = 'none';
+        if (l.shown) {
+          l.el.style.display = 'none';
+          l.shown = false;
+        }
         continue;
       }
       l.pos.y += dt * 1.8;
       const v = this.tmpV.copy(l.pos).project(cam);
       if (v.z > 1 || v.z < -1) {
-        l.el.style.opacity = '0';
+        if (l.kOp !== -1) {
+          l.el.style.opacity = '0';
+          l.kOp = -1;
+        }
         continue;
       }
       const t = l.age / TEXT_LIFE;
       const x = (v.x * 0.5 + 0.5) * w;
       const y = (-v.y * 0.5 + 0.5) * h;
       const pop = t < 0.15 ? 0.6 + (t / 0.15) * 0.6 : 1.2 - Math.min(0.2, (t - 0.15) * 0.6);
-      l.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%) scale(${pop.toFixed(3)})`;
-      l.el.style.opacity = t < 0.6 ? '1' : (1 - (t - 0.6) / 0.4).toFixed(3);
+      // Write only when the value at the written precision changed (style writes force a style recalc).
+      const kx = Math.round(x * 10);
+      const ky = Math.round(y * 10);
+      const kPop = Math.round(pop * 1000);
+      if (kx !== l.kx || ky !== l.ky || kPop !== l.kPop) {
+        l.kx = kx; l.ky = ky; l.kPop = kPop;
+        l.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%) scale(${pop.toFixed(3)})`;
+      }
+      const op = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+      const kOp = t < 0.6 ? 1000 : Math.round(op * 1000);
+      if (kOp !== l.kOp) {
+        l.kOp = kOp;
+        l.el.style.opacity = t < 0.6 ? '1' : op.toFixed(3);
+      }
     }
   }
 

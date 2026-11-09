@@ -14,6 +14,9 @@ import { ArsenalKit } from './combat/arsenal';
 import { MeleeKit } from './combat/melee';
 import { AirKit } from './combat/air';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const HIT_PLOW_BURST = { color: 0xbfe6ff, count: 6, speed: 3, size: 0.14, gravity: 8, life: 0.5 };
+
 /** Seconds of damage i-frames after the plow is hit (overlapping hits only add their excess). */
 const IFRAME_SECONDS = 0.15;
 const SECOND_WIND_GUARD = 1.5;
@@ -442,7 +445,7 @@ export class Combat implements CombatAPI {
       const br = Math.max(r, 0.3);
       _q.set(_tip.x + _fwd.x * br, _tip.y + br + (this.b.snow ? this.b.snow.getDepth(_tip.x, _tip.z) : 0), _tip.z + _fwd.z * br);
       fx.burst(_q, { color: 0xffffff, count: 10 + Math.round(blocked * 0.6), speed: 5, size: 0.22, gravity: 16, life: 0.6 });
-      fx.burst(_q, { color: 0xbfe6ff, count: 6, speed: 3, size: 0.14, gravity: 8, life: 0.5 });
+      fx.burst(_q, HIT_PLOW_BURST);
       if (ctx.time - this.lastBlockSound > 0.08) {
         this.lastBlockSound = ctx.time;
         audio.play('block', { volume: Math.min(1, 0.5 + blocked * 0.03) });

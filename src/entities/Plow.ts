@@ -23,6 +23,10 @@ import { _fwd, _right, _a, _b, _dir } from './plow/scratch';
 /* The player / pilot plow. The class is layered over ./plow/ (PlowBase -> PlowVisuals -> PlowMotion -> Plow; see
  * plow/PlowBase.ts); this top layer holds the public API, the duel netcode, reset and the per-frame update. */
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const DASH_WAKE_BURST = { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 };
+const DASH_WAKE_SMOKE = { count: 1, color: 0xe2ecf8, size: 0.45, grow: 3.4, life: 0.8, speed: 2.5, up: 1.5, rise: -1, drag: 2.4, spread: 0.3, opacity: 0.5 };
+
 export class Plow extends PlowMotion implements PlowAPI {
   /* ------------------------------------------------------------------ API */
 
@@ -661,11 +665,11 @@ export class Plow extends PlowMotion implements PlowAPI {
           // Thick wake: snow blasted off both blade ends.
           _a.y = this.vert.surfaceY + 0.6;
           _b.y = this.vert.surfaceY + 0.6;
-          ctx.fx.burst(_a, { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 });
-          ctx.fx.burst(_b, { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 });
+          ctx.fx.burst(_a, DASH_WAKE_BURST);
+          ctx.fx.burst(_b, DASH_WAKE_BURST);
           if (Math.random() < dt * 30) {
-            ctx.fx.smoke(_a, { count: 1, color: 0xe2ecf8, size: 0.45, grow: 3.4, life: 0.8, speed: 2.5, up: 1.5, rise: -1, drag: 2.4, spread: 0.3, opacity: 0.5 });
-            ctx.fx.smoke(_b, { count: 1, color: 0xe2ecf8, size: 0.45, grow: 3.4, life: 0.8, speed: 2.5, up: 1.5, rise: -1, drag: 2.4, spread: 0.3, opacity: 0.5 });
+            ctx.fx.smoke(_a, DASH_WAKE_SMOKE);
+            ctx.fx.smoke(_b, DASH_WAKE_SMOKE);
           }
         }
         if (plowIntensity > 0.02) {

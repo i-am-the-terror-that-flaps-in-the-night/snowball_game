@@ -6,6 +6,11 @@ import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, waveFloor, type 
 import { GroundDisc } from './groundDisc';
 import { ultCharge } from './ultimates';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const UPDATE_FLAME_BURST = { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 };
+const UPDATE_FLAME_BURST_2 = { color: 0x2c2628, count: 2, speed: 1.5, size: 0.7, gravity: -3, life: 1.1 };
+const UPDATE_BURNS_BURST = { color: 0x2c2628, count: 1, speed: 1, size: 0.6, gravity: -2.5, life: 1 };
+
 /** Knockback scratch for per-tick damage (Enemies.damage reads it immediately and never keeps it). */
 const _kb = new THREE.Vector3();
 
@@ -116,10 +121,10 @@ export class ClassicKit extends Kit {
       fx.burst(_p, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 3, speed: 3, size: 0.3 + k * 0.3, gravity: -7, life: 0.4 });
     }
     _p.set(_tip.x + _fwd.x * range * 0.3, _tip.y + 1, _tip.z + _fwd.z * range * 0.3);
-    fx.burst(_p, { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 });
+    fx.burst(_p, UPDATE_FLAME_BURST);
     if (Math.random() < 0.45) {
       _p.set(_tip.x + _fwd.x * range * 0.9, _tip.y + 2.2, _tip.z + _fwd.z * range * 0.9);
-      fx.burst(_p, { color: 0x2c2628, count: 2, speed: 1.5, size: 0.7, gravity: -3, life: 1.1 });
+      fx.burst(_p, UPDATE_FLAME_BURST_2);
     }
     if (Math.random() < dt * 10) this.shake(0.06);
     if (this.b.snow) {
@@ -194,7 +199,7 @@ export class ClassicKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * fall * this.b.stats.damageMult * this.hitMult(e), {
         source: 'other',
-        knockback: new THREE.Vector3((dx / nd) * knock, 0, (dz / nd) * knock),
+        knockback: _kb.set((dx / nd) * knock, 0, (dz / nd) * knock),
         fromX: x,
         fromZ: z,
       });
@@ -334,7 +339,7 @@ export class ClassicKit extends Kit {
       }
       if (Math.random() < dt * 6) {
         _p.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
-        ctx.fx.burst(_p, { color: 0x2c2628, count: 1, speed: 1, size: 0.6, gravity: -2.5, life: 1 });
+        ctx.fx.burst(_p, UPDATE_BURNS_BURST);
       }
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;

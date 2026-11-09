@@ -1,4 +1,4 @@
-import { ARENA, type BrawlAPI, type BrawlDifficulty, type BrawlHud, type BrawlResult, type DamageOpts, type EnemyHandle, type EnemyType } from '../core/types';
+import { ARENA, type BrawlAPI, type BrawlDifficulty, type BrawlEntry, type BrawlHud, type BrawlResult, type DamageOpts, type EnemyHandle, type EnemyType } from '../core/types';
 import { BRAWL_BOTS, BRAWL_BOT_NAMES, BRAWL_CLAN_TAGS, BRAWL_COLORS, BRAWL_DIFFICULTIES, BRAWL_KILL_TARGET, BRAWL_PERSONALITIES, BRAWL_PLACEMENT_BONUS, BRAWL_TIME, PLAYER_BRAWL_COLOR, streakMult } from '../config/brawl';
 import { RIVAL_KINDS } from './models';
 import { launchVert } from '../world/terrainMotion';
@@ -9,6 +9,9 @@ import { BrawlAI } from './BrawlAI';
 /* Snowdome Brawl: the player + BRAWL_BOTS rival AI plows in a huge arena, everyone hunting everyone.
  * Rivals carry the player's kit (plow a ball, slam, ram, dash strike, whirlwind). Implements
  * EnemyManagerAPI, so every external damage() call is the PLAYER attacking. */
+
+/** Board order: most kills, then fewest deaths, then the player first (hoisted: sorted every frame). */
+const byStanding = (a: BrawlEntry, b: BrawlEntry): number => b.kills - a.kills || a.deaths - b.deaths || (a.isPlayer ? -1 : b.isPlayer ? 1 : 0);
 
 export class BrawlManager extends BrawlAI implements BrawlAPI {
   /* ================================================================== BrawlAPI */
@@ -252,7 +255,7 @@ export class BrawlManager extends BrawlAI implements BrawlAPI {
   /* ================================================================== match end */
 
   private sortBoard(): void {
-    this.board.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || (a.isPlayer ? -1 : b.isPlayer ? 1 : 0));
+    this.board.sort(byStanding);
   }
 
   protected endMatch(): void {

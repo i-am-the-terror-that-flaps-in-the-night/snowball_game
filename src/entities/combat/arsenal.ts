@@ -6,6 +6,16 @@ import { ArcWaves, Horizon, Shockwaves, addMat, aimBeam, beamGeometry, paintMat 
 import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
 import type { UltScript } from './ultimates';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const UPDATE_SCRAP_BURST = { color: 0x8fb4c6, count: 1, speed: 0.5, size: 0.12, gravity: -1, life: 0.6 };
+const UPDATE_SCRAP_BURST_2 = { color: 0xd8f4ff, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 };
+const BLAST_BURST = { color: 0xbff6ff, count: 4, speed: 5, size: 0.12, gravity: 0, life: 0.14 };
+const TICK_BURST_SPARKS = { count: 3, color: 0xbff8ff, speed: 14, spread: 0.2, size: 0.05, life: 0.4, gravity: 0, length: 0.08 };
+
+/** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
+ *  Duel victim path), so it stays valid across the nested victim hit. */
+const _kb = new THREE.Vector3();
+
 /* ARSENAL: a magnetic vehicle (two huge front wheels, a hovering gyro core at the back). Like every plow, it fights
  * up close and aims by steering: both main weapons fire straight off the nose.
  *   SPACE  MAG SHOTGUN   held: a fixed forward emitter fires a blast every 1/gunRate s: SHOT_PELLETS pellets in a
@@ -302,7 +312,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       this.scrapFxT = 0.18;
       const a = Math.random() * Math.PI * 2;
       _q.set(px + Math.sin(a) * R, y0 - 0.6, pz + Math.cos(a) * R);
-      ctx.fx.burst(_q, { color: 0x8fb4c6, count: 1, speed: 0.5, size: 0.12, gravity: -1, life: 0.6 });
+      ctx.fx.burst(_q, UPDATE_SCRAP_BURST);
     }
     if ((this.scrapT -= dt) <= 0) {
       this.scrapT = SCRAP_TICK;
@@ -340,7 +350,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const en = hits[i];
         if (!en.alive || ctx.time - (s.hitAt.get(en) ?? -1e9) < SCRAP_HIT_CD) continue;
         s.hitAt.set(en, ctx.time);
-        if (this.weaponHit(en, st.scrapHit, px, pz, 2, undefined, SHED_SELF) > 0) ctx.fx.burst(s.mesh.position, { color: 0xd8f4ff, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 });
+        if (this.weaponHit(en, st.scrapHit, px, pz, 2, undefined, SHED_SELF) > 0) ctx.fx.burst(s.mesh.position, UPDATE_SCRAP_BURST_2);
       }
     }
   }
@@ -416,7 +426,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const hp0 = e.hp;
     const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.pveMult * this.hitMult(e), {
       source: 'other',
-      knockback: new THREE.Vector3((dx / d) * knock, 0, (dz / d) * knock),
+      knockback: _kb.set((dx / d) * knock, 0, (dz / d) * knock),
       fromX: knock < 0 ? e.position.x + (dx / d) * 2 : fromX,
       fromZ: knock < 0 ? e.position.z + (dz / d) * 2 : fromZ,
       direct,
@@ -616,7 +626,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     dmgMap.clear();
     nearMap.clear();
     this.flashK = 1;
-    ctx.fx.burst(_p.set(ox + Math.sin(plow.heading) * 0.4, oy, oz + Math.cos(plow.heading) * 0.4), { color: 0xbff6ff, count: 4, speed: 5, size: 0.12, gravity: 0, life: 0.14 });
+    ctx.fx.burst(_p.set(ox + Math.sin(plow.heading) * 0.4, oy, oz + Math.cos(plow.heading) * 0.4), BLAST_BURST);
     this.b.audio.play('pulse', { volume: 0.32, pitch: 0.55 + Math.random() * 0.08 });
     this.b.audio.play('zap', { volume: 0.2, pitch: 1.6 + Math.random() * 0.2 });
     if (this.b.local) ctx.fx.shake(0.05);
@@ -879,7 +889,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const a = Math.random() * Math.PI * 2;
         _tip.set(S.x + Math.sin(a) * r, this.burstY + 0.3, S.z + Math.cos(a) * r);
         _fwd.set(S.x - _tip.x + Math.cos(a) * r * 0.4, 0.3, S.z - _tip.z - Math.sin(a) * r * 0.4).normalize();
-        this.ctx.fx.sparks(_tip, _fwd, { count: 3, color: 0xbff8ff, speed: 14, spread: 0.2, size: 0.05, life: 0.4, gravity: 0, length: 0.08 });
+        this.ctx.fx.sparks(_tip, _fwd, TICK_BURST_SPARKS);
       }
     }
     hz.tethersDone(nt);

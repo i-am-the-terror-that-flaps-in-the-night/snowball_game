@@ -21,6 +21,10 @@ import type { Streak } from './assets';
 /* Layer 2 of the Plow class (see PlowBase.ts): kind swap, Paint Shop look, blade / wheels / cleats, and every
  * per-frame visual (model animation, saws, beacon, flame, held ball, trails, streaks, ghosts, tornado). */
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const DASH_EXHAUST_BURST = { color: 0xff9a2a, count: 3, speed: 2, size: 0.22, gravity: -3, life: 0.35 };
+const LOW_HP_SMOKE_BURST = { color: 0x2e2e34, count: 1, speed: 0.8, size: 0.4, gravity: -2.5, life: 1.1 };
+
 export abstract class PlowVisuals extends PlowBase {
   /** Swap the paint job + parts for the selected starter plow. */
   private setKind(kind: PlowKind, snowKit = false): void {
@@ -655,10 +659,10 @@ export abstract class PlowVisuals extends PlowBase {
       } else {
         const brute = this.kind === 'brute';
         ctx.fx.burst(_c, dashing
-          ? { color: 0xff9a2a, count: 3, speed: 2, size: 0.22, gravity: -3, life: 0.35 }
+          ? DASH_EXHAUST_BURST
           : { color: brute ? 0x3a3b40 : 0x9aa0aa, count: 1, speed: 0.6, size: (brute ? 0.4 : 0.25) + 0.1 * Math.abs(throttle), gravity: -2, life: brute ? 1.1 : 0.8 });
       }
-      if (lowHp && !dashing) ctx.fx.burst(this.engineWorld(_c), { color: 0x2e2e34, count: 1, speed: 0.8, size: 0.4, gravity: -2.5, life: 1.1 });
+      if (lowHp && !dashing) ctx.fx.burst(this.engineWorld(_c), LOW_HP_SMOKE_BURST);
     }
 
     // Held ball (weapon + shield).

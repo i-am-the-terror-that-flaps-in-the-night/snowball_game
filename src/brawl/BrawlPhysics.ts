@@ -8,6 +8,9 @@ import { RIVAL_PROP_SMASH_SPEED, RIVAL_R, SLAM_WIND, WHIRL_T, WHIRL_TICKS, KILL_
 import type { Rival } from './rival';
 import { BrawlCombat } from './BrawlCombat';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const BURN_EMBER_BURST = { color: 0xff6a1a, count: 4, speed: 2.5, size: 0.12, gravity: -4, life: 0.45 };
+
 const _conv = { x: 0, z: 0 };
 const _lavaOut = { h: 0, v: 0 };
 const _wall = { x: 0, z: 0 };
@@ -100,7 +103,7 @@ export abstract class BrawlPhysics extends BrawlCombat {
         r.flashT = 0.06;
         if (this.near(r.position.x, r.position.z, 40)) {
           _v.set(r.position.x, r.position.y + 0.4, r.position.z);
-          ctx.fx.burst(_v, { color: 0xff6a1a, count: 4, speed: 2.5, size: 0.12, gravity: -4, life: 0.45 });
+          ctx.fx.burst(_v, BURN_EMBER_BURST);
         }
       }
       if (r.hp <= 0) {

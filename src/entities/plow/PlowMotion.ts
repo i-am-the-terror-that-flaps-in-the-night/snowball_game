@@ -14,6 +14,13 @@ import { deckById } from './assets';
 /* Layer 3 of the Plow class (see PlowBase.ts): slam / dash / whirl, terrain step and hazards, arena / obstacle /
  * deck collisions, death and the wreck. */
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const TERRAIN_STEP_BURST = { color: 0xff6a1a, count: 6, speed: 3, size: 0.14, gravity: -4, life: 0.5 };
+const TERRAIN_STEP_BURST_2 = { color: 0x2a2a2e, count: 2, speed: 1, size: 0.45, gravity: -3, life: 0.9 };
+const UPDATE_WRECK_BURST = { color: 0x1d1d22, count: 3, speed: 1.4, size: 0.55, gravity: -3, life: 1.6 };
+const UPDATE_WRECK_BURST_2 = { color: 0xff6a1a, count: 2, speed: 1.6, size: 0.25, gravity: -5, life: 0.4 };
+const UPDATE_WRECK_BURST_3 = { color: 0x3a3a40, count: 2, speed: 0.8, size: 0.7, gravity: -2, life: 1.8 };
+
 export abstract class PlowMotion extends PlowVisuals {
   abstract damage(amount: number): void;
 
@@ -240,8 +247,8 @@ export abstract class PlowMotion extends PlowVisuals {
         this.lavaSfxT = LAVA_SFX_GAP;
         this.b.audio.play('lavaBurn', { volume: 0.7 });
         _c.set(p.x + (Math.random() - 0.5) * 2, v.surfaceY + 0.4, p.z + (Math.random() - 0.5) * 2);
-        ctx.fx.burst(_c, { color: 0xff6a1a, count: 6, speed: 3, size: 0.14, gravity: -4, life: 0.5 });
-        ctx.fx.burst(_c, { color: 0x2a2a2e, count: 2, speed: 1, size: 0.45, gravity: -3, life: 0.9 });
+        ctx.fx.burst(_c, TERRAIN_STEP_BURST);
+        ctx.fx.burst(_c, TERRAIN_STEP_BURST_2);
       }
     } else {
       this.lavaSfxT = 0;
@@ -600,10 +607,10 @@ export abstract class PlowMotion extends PlowVisuals {
     if (this.puffT <= 0) {
       this.puffT = 0.05;
       this.engineWorld(_c);
-      ctx.fx.burst(_c, { color: 0x1d1d22, count: 3, speed: 1.4, size: 0.55, gravity: -3, life: 1.6 });
-      ctx.fx.burst(_c, { color: 0xff6a1a, count: 2, speed: 1.6, size: 0.25, gravity: -5, life: 0.4 });
+      ctx.fx.burst(_c, UPDATE_WRECK_BURST);
+      ctx.fx.burst(_c, UPDATE_WRECK_BURST_2);
       _c.set(this.position.x + (Math.random() - 0.5) * 1.6, this.vert.surfaceY + 1.4, this.position.z + (Math.random() - 0.5) * 1.6);
-      ctx.fx.burst(_c, { color: 0x3a3a40, count: 2, speed: 0.8, size: 0.7, gravity: -2, life: 1.8 });
+      ctx.fx.burst(_c, UPDATE_WRECK_BURST_3);
     }
 
     // Debris physics.

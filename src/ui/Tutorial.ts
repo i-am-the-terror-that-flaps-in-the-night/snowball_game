@@ -136,6 +136,8 @@ export class Tutorial {
   private hintEl: HTMLElement;
   private barEl: HTMLElement;
   private fillEl: HTMLElement;
+  /** Last width written to fillEl (the per-frame write is skipped while it is unchanged). */
+  private fillW = '';
   private btnsEl: HTMLElement;
 
   /** Auto-run on a fresh save, unless it was done before or a test harness / ?debug is driving the game. */
@@ -303,8 +305,13 @@ export class Tutorial {
       return;
     }
     const p = Math.max(0, Math.min(1, step.progress(dt)));
-    this.fillEl.style.width = `${(p * 100).toFixed(1)}%`;
-    this.hintEl.textContent = step.hint?.() ?? '';
+    const w = `${(p * 100).toFixed(1)}%`;
+    if (w !== this.fillW) {
+      this.fillW = w;
+      this.fillEl.style.width = w;
+    }
+    const hint = step.hint?.() ?? '';
+    if (hint !== this.hintEl.textContent) this.hintEl.textContent = hint;
     if (p >= 1) {
       this.card.classList.add('done');
       this.titleEl.textContent = `✓ ${step.title}`;
@@ -325,6 +332,7 @@ export class Tutorial {
     this.stepEl.textContent = `Training ${i + 1} / ${this.steps.length}`;
     this.render(step.title, step.keys, step.text);
     this.fillEl.style.width = '0%';
+    this.fillW = '0%';
     this.barEl.classList.remove('hidden');
     this.btnsEl.classList.add('hidden');
     step.enter?.();

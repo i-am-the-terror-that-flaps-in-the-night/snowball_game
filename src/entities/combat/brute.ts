@@ -5,6 +5,12 @@ import { Kit, type AbilityDesc, type VehicleKit, Reach, _fwd, _q, waveFloor, typ
 import { MOMENTUM_FIST } from '../../config/upgrades';
 import { ultBlast, type UltScript } from './ultimates';
 
+/* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
+const SAW_TICK_BURST = { color: 0xffffff, count: 4, speed: 6, size: 0.14, gravity: 12, life: 0.35 };
+const SAW_TICK_BURST_2 = { color: 0xffb030, count: 3, speed: 8, size: 0.05, gravity: 10, life: 0.25 };
+const UPDATE_SPIKES_BURST = { color: 0xffb347, count: 2, speed: 3, size: 0.12, gravity: 6, life: 0.25 };
+const UPDATE_SPIKES_BURST_2 = { color: 0xffd27a, count: 4, speed: 5, size: 0.14, gravity: 8, life: 0.25 };
+
 /** Knockback scratch for per-tick damage (Enemies.damage reads it immediately and never keeps it). */
 const _kb = new THREE.Vector3();
 
@@ -181,9 +187,12 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
     if (fin) this.armT[0] = this.armT[1] = 0;
     else this.armT[step] = 0;
     plow.getForward(_fwd);
+    // Kept in locals: a hit on a Duel opponent runs the victim's Combat.hitPlow, which rewrites the shared _fwd.
+    const fwx = _fwd.x;
+    const fwz = _fwd.z;
     const reach = FIST_REACH * fistSize(st) + (st.fistReach || 0);
-    const cx = plow.position.x + _fwd.x * (plow.radius + reach * 0.5);
-    const cz = plow.position.z + _fwd.z * (plow.radius + reach * 0.5);
+    const cx = plow.position.x + fwx * (plow.radius + reach * 0.5);
+    const cz = plow.position.z + fwz * (plow.radius + reach * 0.5);
     const R = reach * (fin ? 0.9 : 0.8);
     const dmg = fistDamage(st) * (fin ? FIST_FINISH : 1);
     const hits = this.collect(cx, cz, R, Reach.Body);
@@ -208,7 +217,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * share * st.damageMult * this.hitMult(e), {
         source: 'ram',
-        knockback: new THREE.Vector3(_fwd.x * knock * share, 0, _fwd.z * knock * share),
+        knockback: _kb.set(fwx * knock * share, 0, fwz * knock * share),
         stunSeconds: fin ? FIST_FINISH_STUN : e === best ? FIST_STAGGER : undefined,
         pierce: true,
         // Rapid jabs crack armour: half the flat armour, like ARSENAL's rounds (a full-armour jab did ~1-2 to a dozer).
@@ -221,8 +230,8 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       landed = true;
       if (e === best) {
         // Contact point: the face of the bot the fist hits.
-        _q.set(e.position.x - _fwd.x * e.radius * 0.8, e.position.y + e.radius * 0.7, e.position.z - _fwd.z * e.radius * 0.8);
-        this.fistImpact(_q, fin);
+        _q.set(e.position.x - fwx * e.radius * 0.8, e.position.y + e.radius * 0.7, e.position.z - fwz * e.radius * 0.8);
+        this.fistImpact(_q, fin, fwx, fwz);
         this.impactHit('punch', _q, fin ? 1.4 : 1);
       }
       if (dealt > 0) {
@@ -231,7 +240,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       }
     }
     this.clearTargets();
-    if (fin) this.shockwave(plow, cx, cz, reach, dmg / FIST_FINISH);
+    if (fin) this.shockwave(plow, cx, cz, reach, dmg / FIST_FINISH, fwx, fwz);
     // Fist FX: a whiff is just a dusty air-punch; a landed jab already threw sparks + grit at the contact point (see
     // fistImpact). The finisher slams a shock ring into the ground. No white puffs: nothing that reads as snowballs.
     _q.set(cx, (plow.surfaceY || 0) + 1, cz);
@@ -254,9 +263,9 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
   }
 
   /** Where a fist lands: hot metal sparks spraying back off the hull, dark grit and a dust puff, a warm flash. */
-  private fistImpact(at: THREE.Vector3, fin: boolean): void {
+  private fistImpact(at: THREE.Vector3, fin: boolean, fwx: number, fwz: number): void {
     const fx = this.ctx.fx;
-    _back.set(-_fwd.x, 0.35, -_fwd.z);
+    _back.set(-fwx, 0.35, -fwz);
     fx.sparks(at, _back, { color: 0xffb040, count: fin ? 22 : 12, speed: fin ? 13 : 9, spread: 0.9, size: 0.07, length: 0.08, gravity: 14, life: 0.32 });
     fx.sparks(at, _back, { color: 0xfff0c0, count: fin ? 8 : 4, speed: fin ? 16 : 11, spread: 0.5, size: 0.05, length: 0.1, gravity: 10, life: 0.2 });
     fx.burst(at, { color: 0x3a3632, count: fin ? 10 : 5, speed: fin ? 8 : 5, size: 0.12, gravity: 20, life: 0.45 });
@@ -264,11 +273,10 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
   }
 
   /** Finisher SHOCKWAVE: rolls on SHOCK_LEN m past the fist, hitting each bot in the lane once. */
-  private shockwave(plow: PlowAPI, cx: number, cz: number, reach: number, jab: number): void {
+  /** (fx, fz): the punch's forward, captured before its hits (see punch). */
+  private shockwave(plow: PlowAPI, cx: number, cz: number, reach: number, jab: number, fx: number, fz: number): void {
     const ctx = this.ctx;
     const st = this.b.stats;
-    const fx = _fwd.x;
-    const fz = _fwd.z;
     const ex = cx + fx * SHOCK_LEN * 0.5;
     const ez = cz + fz * SHOCK_LEN * 0.5;
     const hits = this.collect(ex, ez, SHOCK_LEN * 0.5 + SHOCK_W, Reach.Body);
@@ -285,7 +293,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, jab * SHOCK_MULT * st.damageMult * this.hitMult(e), {
         source: 'ram',
-        knockback: new THREE.Vector3(fx * 12, 0, fz * 12),
+        knockback: _kb.set(fx * 12, 0, fz * 12),
         fromX: plow.position.x,
         fromZ: plow.position.z,
       });
@@ -322,7 +330,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * st.damageMult * this.hitMult(e), {
         source: 'other',
-        knockback: new THREE.Vector3(_fwd.z * side * CHARGE_FLING + _fwd.x * 3, 0, -_fwd.x * side * CHARGE_FLING + _fwd.z * 3),
+        knockback: _kb.set(_fwd.z * side * CHARGE_FLING + _fwd.x * 3, 0, -_fwd.x * side * CHARGE_FLING + _fwd.z * 3),
         fromX: plow.position.x,
         fromZ: plow.position.z,
       });
@@ -340,8 +348,8 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
     // Sparks + snow thrown off both saws while charging.
     for (const sx of [-1, 1]) {
       _q.set(plow.position.x + _fwd.x * 1.5 + _fwd.z * sx * 1.45, (plow.surfaceY || 0) + 1, plow.position.z + _fwd.z * 1.5 - _fwd.x * sx * 1.45);
-      ctx.fx.burst(_q, { color: 0xffffff, count: 4, speed: 6, size: 0.14, gravity: 12, life: 0.35 });
-      ctx.fx.burst(_q, { color: 0xffb030, count: 3, speed: 8, size: 0.05, gravity: 10, life: 0.25 });
+      ctx.fx.burst(_q, SAW_TICK_BURST);
+      ctx.fx.burst(_q, SAW_TICK_BURST_2);
     }
     this.b.audio.play('whirlTick', { volume: any ? 0.5 : 0.3, pitch: 1.8 });
   }
@@ -386,7 +394,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       this.spikeFxT = 0.15;
       const a = Math.random() * Math.PI * 2;
       _q.set(px + Math.sin(a) * plow.radius * 1.1, y, pz + Math.cos(a) * plow.radius * 1.1);
-      ctx.fx.burst(_q, { color: 0xffb347, count: 2, speed: 3, size: 0.12, gravity: 6, life: 0.25 });
+      ctx.fx.burst(_q, UPDATE_SPIKES_BURST);
     }
     if ((this.spikeT -= dt) > 0) return;
     this.spikeT = SPIKE_TICK;
@@ -408,7 +416,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       });
       this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
       _q.set(px + (dx / d) * plow.radius, y, pz + (dz / d) * plow.radius);
-      ctx.fx.burst(_q, { color: 0xffd27a, count: 4, speed: 5, size: 0.14, gravity: 8, life: 0.25 });
+      ctx.fx.burst(_q, UPDATE_SPIKES_BURST_2);
       any = true;
     }
     if (any) this.b.audio.play('whirlTick', { volume: 0.25, pitch: 1.5 });
@@ -517,7 +525,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, st.poundDamage * POUND_LEAP_DMG * dMult * st.damageMult * fall * this.hitMult(e), {
         source,
-        knockback: new THREE.Vector3(dx * st.poundKnock * fall, 0, dz * st.poundKnock * fall),
+        knockback: _kb.set(dx * st.poundKnock * fall, 0, dz * st.poundKnock * fall),
         stunSeconds: st.poundStun,
         fromX: px,
         fromZ: pz,

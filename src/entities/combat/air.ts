@@ -6,6 +6,10 @@ import { MIN_AIR } from '../../world/terrainMotion';
 import { Kit, Reach, _fwd, _p, _q, type CombatHost } from './shared';
 import type { BruteKit } from './brute';
 
+/** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
+ *  Duel victim path), so it stays valid across the nested victim hit. */
+const _kb = new THREE.Vector3();
+
 /* ------------------------------------------------------------------ landing attacks (level overhaul, 3D combat)
  * STOMP: touching down at speed next to / on a bot on your level hurts it, scaled by the touchdown speed.
  * AIR SLAM: SPACE while airborne (every plow but ARSENAL, whose SPACE is the Mag Shotgun; ball or not) dives at
@@ -187,7 +191,7 @@ export class AirKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg0 * this.hitMult(e), {
         source: 'stomp',
-        knockback: new THREE.Vector3(dx * STOMP_KNOCK, 0, dz * STOMP_KNOCK),
+        knockback: _kb.set(dx * STOMP_KNOCK, 0, dz * STOMP_KNOCK),
         fromX: px,
         fromZ: pz,
       });
@@ -244,7 +248,7 @@ export class AirKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, dmg * fallK * this.hitMult(e), {
         source: 'airSlam',
-        knockback: new THREE.Vector3(dx * knockMag * fallK, 0, dz * knockMag * fallK),
+        knockback: _kb.set(dx * knockMag * fallK, 0, dz * knockMag * fallK),
         freezeSeconds: freeze,
         fromX: x,
         fromZ: z,
