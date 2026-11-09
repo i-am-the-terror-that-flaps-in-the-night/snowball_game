@@ -419,6 +419,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.body.visible = true;
     this.paintMat.color.copy(this.paintBase);
     this.bedMat.color.copy(this.bedBase);
+    this.hubMat.color.copy(this.hubBase);
     this.decalMat.color.setRGB(1, 1, 1);
     this.bladeSkinMat.color.setRGB(1, 1, 1);
     this.bladeSkinMat.emissiveIntensity = 0;

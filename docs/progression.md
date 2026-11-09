@@ -97,8 +97,8 @@ There's no loot in the Tutorial or the Duel. Tables live in `src/config/loot.ts`
 - **🏆 Trophies**: 56 achievements (Campaign, Combat, Bosses, Brawl, Survival, Plows, Collection) paying 25–500
   coins each, plus a lifetime STATS page. Unlocks are re-checked from the save, so old saves and imports get credit
   for what they've already done. Tutorial fights don't count. Newer ones: **Grounded** (finish a boss with VOLT-9's
-  Arc Lance: kills tagged `weapon: 'arcLance'`), **Exciting Opportunity** (all PROTOCOL B fragments = every arena on
-  Hard, with progress) and **Q4: Total Defeat** (Hard Omega Works with 0 HP lost in the boss round,
+  Arc Lance: kills tagged `weapon: 'arcLance'`), **Exciting Opportunity** (The Omega Works on Hard: the PROTOCOL B
+  finale; "every arena on Hard" is Glutton for Punishment) and **Q4: Total Defeat** (Hard Omega Works with 0 HP lost in the boss round,
   `runFinished.bossDamage`).
 - **🎨 Paint Shop**: 8 paints, 5 decals, 5 exhaust trails, 6 blade skins, 5 slam horns and 5 kill effects, 150–2000
   coins. Purely visual; five premium items also need challenge stars or achievements. Hover or focus an item to

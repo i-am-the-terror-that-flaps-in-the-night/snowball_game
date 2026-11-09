@@ -134,6 +134,8 @@ export abstract class PlowBase {
   protected paintBase = new THREE.Color(0xffc814);
   protected bedBase = new THREE.Color(0x23272e);
   protected charColor = new THREE.Color(0x2a211c);
+  /** The accent (hub) colour before any wreck char (BRUTUS's large accent plates char with the hull). */
+  protected hubBase = new THREE.Color(0xffd23a);
   protected beaconMat: THREE.MeshStandardMaterial;
   protected beaconLight: THREE.PointLight;
   private beacon!: THREE.Mesh;

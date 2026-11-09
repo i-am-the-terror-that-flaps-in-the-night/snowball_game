@@ -62,7 +62,7 @@ export const LIFE = {
   dailyBestWave: 'dailyBestWave',
   /** Bosses finished off by VOLT-9's Arc Lance (enemyKilled with weapon 'arcLance'; campaign / Survival only). */
   lanceBossKills: 'lanceBossKills',
-  /** MEGAPLOW Ω beaten on Hard without losing any HP in the boss round (runFinished.bossDamage === 0). */
+  /** MEGAPLOW Ω beaten on Hard without losing any HP in the boss round (runFinished.bossDamage <= 0: no HP lost). */
   omegaHardFlawless: 'omegaHardFlawless',
   /** Coins paid out by achievement rewards. */
   achievementCoins: 'achievementCoins',
@@ -214,7 +214,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'hard_donald', name: 'Hard Deal', desc: `Clear ${PLAZA.name} on Hard.`, icon: '🏛️', category: 'campaign', goal: 1, reward: 400, value: (p) => (p.data.hardCleared?.[PLAZA.id] === true ? 1 : 0) },
   { id: 'boss_omega', name: 'Ω-mega Ouch', desc: `Scrap ${bossName('omega')}, the final machine.`, icon: '💀', category: 'bosses', goal: 1, reward: 300, value: (p) => life(p, lifeBoss('omega')) },
   // PROTOCOL B (lore.ts): Ω's backup, six fragments cached one per arena; each Hard clear recovers one.
-  { id: 'protocol_b', name: 'Exciting Opportunity', desc: `Recover all ${ZONES.length} PROTOCOL B fragments (clear every arena on Hard). Ω would like to circle back.`, icon: '📊', category: 'bosses', goal: ZONES.length, reward: 300, value: hardClears },
+  // Not 'every arena on Hard' (that is Glutton for Punishment): the PROTOCOL B finale, Ω's new and improved body.
+  { id: 'protocol_b', name: 'Exciting Opportunity', desc: `Clear ${OMEGA_WORKS.name} on Hard: scrap Ω's new and improved body and recover the master fragment. Ω would like to circle back.`, icon: '📊', category: 'bosses', goal: 1, reward: 400, value: (p) => (p.data.hardCleared?.[OMEGA_WORKS.id] === true ? 1 : 0) },
   { id: 'omega_flawless', name: 'Q4: Total Defeat', desc: `Scrap ${bossName('omega')} on Hard without losing a single HP in the boss fight. Please update the slide.`, icon: '📉', category: 'bosses', goal: 1, reward: 500, value: (p) => life(p, LIFE.omegaHardFlawless) },
   { id: 'boss_25', name: 'Boss Rush', desc: 'Scrap 25 bosses.', icon: '👑', category: 'bosses', goal: 25, reward: 300, value: (p) => life(p, LIFE.bossKills) },
 

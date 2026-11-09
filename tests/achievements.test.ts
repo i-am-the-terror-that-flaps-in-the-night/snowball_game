@@ -288,16 +288,15 @@ describe('recent-work trophies', () => {
     expect(life(p, LIFE.lanceBossKills)).toBe(0);
   });
 
-  it('Exciting Opportunity: every arena on Hard, with progress; five of six is not enough', () => {
+  it('Exciting Opportunity: The Omega Works on Hard (the PROTOCOL B finale), not just any five Hard clears', () => {
     const p = new Progression();
     const def = ACHIEVEMENT_BY_ID.protocol_b;
-    expect(def.goal).toBe(ZONES.length);
-    p.data.hardCleared = Object.fromEntries(ZONES.slice(0, -1).map((z) => [z.id, true]));
-    expect(achievementValue(p, def)).toBe(ZONES.length - 1);
-    expect(achievementProgress(p, def)).toBeCloseTo((ZONES.length - 1) / ZONES.length);
+    expect(def.goal).toBe(1);
+    p.data.hardCleared = Object.fromEntries(ZONES.filter((z) => z.id !== 'summit').map((z) => [z.id, true]));
+    expect(achievementValue(p, def)).toBe(0);
     expect(unlockNew(p).map((a) => a.id)).not.toContain('protocol_b');
-    // An old save that already cleared everything on Hard gets it on the next check.
-    p.data.hardCleared[ZONES[ZONES.length - 1].id] = true;
+    // An old save that already beat it on Hard gets it on the next check.
+    p.data.hardCleared.summit = true;
     expect(unlockNew(p).map((a) => a.id)).toContain('protocol_b');
   });
 

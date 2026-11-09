@@ -592,6 +592,9 @@ export abstract class PlowMotion extends PlowVisuals {
     const ch = Math.min(1, this.wreckT * 2.5) * 0.8;
     this.paintMat.color.lerpColors(this.paintBase, this.charColor, ch);
     this.bedMat.color.lerpColors(this.bedBase, this.charColor, ch * 0.85);
+    // BRUTUS's accent covers large plates (brow, pauldron bands, saw guards): they char with the hull. Other plows'
+    // accent is only small hubs, left as they were.
+    if (this.kind === 'brute') this.hubMat.color.lerpColors(this.hubBase, this.charColor, ch * 0.85);
     this.decalMat.color.setScalar(1 - ch * 0.85);
     this.decalMat.emissiveIntensity = 0.3 * (1 - ch);
     this.bladeSkinMat.color.setScalar(1 - ch * 0.75);

@@ -130,8 +130,9 @@ export abstract class PlowVisuals extends PlowBase {
       }
     }
     const fh = this.kind === 'volt' ? 0x2f9be0 : this.kind === 'brute' ? 0xd8611f : this.kind === 'isotope' ? 0x7dff4a : 0xffd23a;
-    this.hubMat.color.setHex(p.accent ?? (this.kind === 'classic' ? 0xc9d2dc : fh)); // Classic: polished alloy hubs
+    this.hubBase.setHex(p.accent ?? (this.kind === 'classic' ? 0xc9d2dc : fh)); // Classic: polished alloy hubs
     if (!this._dead) {
+      this.hubMat.color.copy(this.hubBase);
       this.paintMat.color.copy(this.paintBase);
       this.bedMat.color.copy(this.bedBase);
     }
