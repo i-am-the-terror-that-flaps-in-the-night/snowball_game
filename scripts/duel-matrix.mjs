@@ -8,6 +8,7 @@
 // scripts/balance/sim.ts levelsFor (LINE / TIER_DEF / the core four are read out of sim.ts, as omega-probe does).
 // Catch-up coins are zeroed: each side is handed unspent coins so both garages are worth the same (coins never
 // change stats), so duelBonus pays nobody. The game's AutoPilot (src/duel/plumbing.ts) drives both plows.
+// Rounds are de-correlated by re-rolling each AutoPilot's wander / F-timer phase every round (the sim is deterministic).
 // The duel clock is sim time: both pages are ticked in lockstep from here (4-frame slices, render loops off).
 // Countdown / between-round / garage timings are shortened; the round timer stays at DUEL_ROUND_SECONDS (90 s)
 // unless --round-secs says otherwise. A fresh Chrome per pairing (the sandbox kills long-lived headless Chrome);
@@ -110,7 +111,26 @@ function report() {
     lines.push('|---|---|---|---|---|---|---|---|');
     rank.forEach((x, i) => lines.push(`| ${i + 1} | ${x.p} | ${pct(x.wr)} | ${x.w}-${x.l}-${x.d} | ${r1(x.wt)} | ${pct(x.hp)} | ${Math.round(x.dmg)} / ${Math.round(x.taken)} | ${x.to}/${x.n} |`));
     lines.push('');
-    const hostW = duels.filter((r) => r.winnerSide === 'host').length, guestW = duels.filter((r) => r.winnerSide === 'guest').length;
+    // (c) what each plow actually did per round (audit: does every kit fire its F / ultimate, land hits, from what).
+    const acted = duels.filter((r) => r.act);
+    if (acted.length) {
+      lines.push('Per round, as attacker (all rounds incl. mirrors; F = F abilities fired, ult = ultimates fired; hits by source slam / ram / whirl / other):', '');
+      lines.push('| plow | as host: F / ult / slams / hits | as guest: F / ult / slams / hits | hits by source |', '|---|---|---|---|');
+      for (const p of plows) {
+        const fmt = (side) => {
+          const a = rs.filter((r) => r.act && r[side] === p).map((r) => r.act[side]);
+          if (!a.length) return { s: '-', src: null };
+          const m = (k) => r1(mean(a.map((x) => x[k])));
+          return { s: `${m('abil')} / ${m('nukes')} / ${m('slams')} / ${m('hits')} (${a.length})`, src: a.map((x) => x.src) };
+        };
+        const H = fmt('host'), G = fmt('guest');
+        const all = [...(H.src ?? []), ...(G.src ?? [])];
+        const src = all.length ? [0, 1, 2, 3].map((j) => r1(mean(all.map((x) => x[j])))).join(' / ') : '-';
+        lines.push(`| ${p} | ${H.s} | ${G.s} | ${src} |`);
+      }
+      lines.push('');
+    }
+    const hostW =duels.filter((r) => r.winnerSide === 'host').length, guestW = duels.filter((r) => r.winnerSide === 'guest').length;
     const to = rs.filter((r) => r.timeout).length;
     const pairs = new Set(duels.map((r) => [r.host, r.guest].sort().join('|'))).size;
     lines.push(`Sample: ${rs.length} rounds (${duels.length} non-mirror over ${pairs} pairings, ~${duels.length ? Math.round(duels.length / Math.max(1, pairs)) : 0} per pairing). Time-outs: ${to}. Side bias: host won ${hostW}, guest won ${guestW} (sides are swapped half the time, so this cancels in the matrix). Venues: ${[...new Set(rs.map((r) => r.venue))].join(', ')}.`);
@@ -119,6 +139,10 @@ function report() {
     lines.push('');
   }
   const errs = runs.filter((r) => r.errors?.length);
+  // Independence check: an exact repeat (same plows, sides, time to wreck and damage both ways) is a replayed round.
+  const seen = new Set();
+  const dup = runs.filter((r) => { const k = JSON.stringify([r.tier, r.host, r.guest, r.ttk, r.secs, r.dmg]); if (seen.has(k)) return true; seen.add(k); return false; }).length;
+  lines.push(`Repeated rounds (identical to an earlier one): ${dup} of ${runs.length}${dup ? ' - WARNING: those are replays, not independent samples' : ''}.`, '');
   if (errs.length) lines.push(`Rounds with page errors: ${errs.length} (first: ${errs[0].errors[0].slice(0, 160)})`, '');
   lines.push('Autopilot: src/duel/plumbing.ts AutoPilot on both sides. It wanders to gather snow while its ball is small and the foe is 9 m+ away, otherwise steers straight at the foe; slams (SPACE) when facing within 6.5 m, holds SPACE within 9 m, dashes when facing at 6-15 m, whirls (E) within 5.5 m, presses its ability (F) every 2.5 s within 9 m. It never kites, retreats, dodges or keeps range on purpose and never saves or times its ability, so plows built for range or burst timing are under-played and brawlers flattered.');
   writeFileSync(`${OUT}/summary.md`, lines.join('\n') + '\n');
@@ -169,11 +193,24 @@ function pageSlice(n) {
   const g = window.__game;
   for (let i = 0; i < n; i++) g.tick(1 / 60);
   const d = g.duel;
+  // The duel sim is deterministic (gameplay never rolls dice; Math.random only feeds effects), so two AutoPilots
+  // replay the very same round from the same start: a re-run leg, a mirror's second leg or a retry repeats rounds
+  // exactly and "n rounds" would not be n samples. Each round (entering the countdown) re-rolls this side's AutoPilot
+  // phase: its wander clock (sin(t * 0.7), period ~9 s) and its F timer (every 2.5 s). Pilot-side only; the
+  // game rules, stats and spawns are untouched.
+  if (d.phase === 'countdown' && window.__dmPrev !== 'countdown') {
+    const a = d.auto;
+    if (!a || typeof a.t !== 'number' || typeof a.fT !== 'number') throw new Error('duel-matrix: AutoPilot fields t / fT not found');
+    a.t = Math.random() * ((2 * Math.PI) / 0.7);
+    a.fT = Math.random() * 2.5;
+  }
+  window.__dmPrev = d.phase;
   if (d.role !== 'host') return { phase: d.phase };
   const me = g.ctx.plow, op = d.opponent;
   return {
     phase: d.phase, round: d.round, score: [...d.score], nRounds: d.counters.rounds.length, last: d.counters.rounds.at(-1) ?? null,
     hp: [me.hp, op?.hp ?? 0], maxHp: [me.maxHp, op?.maxHp ?? 1], dead: [!!me.dead, !!op?.dead], dmg: [...d.counters.damage], hits: [...d.counters.hits],
+    slams: [...d.counters.slams], abil: [...d.counters.abilities], nukes: [...d.counters.nukes], src: d.counters.bySource.map((x) => [...x]),
     ready: [...d.ready], bonus: [...d.bonus], venue: g.ctx.zone?.name,
   };
 }
@@ -236,7 +273,7 @@ async function playLeg(browser, tier, leg, onRound) {
     const joined = await guest.evaluate(async (c) => { window.__game.openDuelLobby(); return window.__game.joinDuel(c); }, code);
     if (!joined) throw new Error('joinDuel failed');
 
-    let fightStart = 0, wreckAt = null, dmg0 = [0, 0], simT = 0, lastProgress = 0, nRounds = 0, readied = '', asked = false, h;
+    let fightStart = 0, wreckAt = null, base = null, simT = 0, lastProgress = 0, nRounds = 0, readied = '', asked = false, h;
     const t0 = Date.now();
     // onRound decrements leg.need (so a retry only plays what's still missing).
     while (leg.need > 0) {
@@ -259,22 +296,31 @@ async function playLeg(browser, tier, leg, onRound) {
         readied = '';
       }
       if (h.phase === 'fight') {
-        if (fightStart === 0) { fightStart = simT; wreckAt = null; dmg0 = h.dmg; }
+        if (fightStart === 0) { fightStart = simT; wreckAt = null; }
         if (wreckAt === null && (h.dead[0] || h.dead[1])) wreckAt = simT - fightStart;
       }
       if (h.nRounds > nRounds) {
         nRounds = h.nRounds;
         const L = h.last;
+        // Per-round deltas of the host's cumulative counters (index 0 host, 1 guest; by attacker). The baseline is the
+        // previous round's end (counters only reset on connect), so nothing landing in the fight's first slice is lost.
+        const b0 = base ?? { dmg: [0, 0], hits: [0, 0], slams: [0, 0], abil: [0, 0], nukes: [0, 0], src: [[0, 0, 0, 0], [0, 0, 0, 0]] };
+        const dlt = (k, i) => Math.round(h[k][i] - b0[k][i]);
+        const side = (i) => ({ dmg: dlt('dmg', i), hits: dlt('hits', i), slams: dlt('slams', i), abil: dlt('abil', i), nukes: dlt('nukes', i), src: h.src[i].map((v, j) => v - b0.src[i][j]) });
+        base = { dmg: h.dmg, hits: h.hits, slams: h.slams, abil: h.abil, nukes: h.nukes, src: h.src };
+        const sh = side(0), sg = side(1);
         const winSide = L.winner === 0 ? 'host' : L.winner === 1 ? 'guest' : null;
         const wi = L.winner;
         const rec = {
           tier, host: leg.host, guest: leg.guest, round: h.round, reason: L.reason,
           winnerSide: winSide, winner: winSide ? leg[winSide] : null,
           secs: L.secs, ttk: wreckAt === null ? null : Math.round(wreckAt * 10) / 10,
-          timeout: wreckAt === null,
+          timeout: L.reason === 'time' || (L.reason === 'draw' && wreckAt === null),
           winnerHpFrac: wi >= 0 ? Math.max(0, Math.round((h.hp[wi] / h.maxHp[wi]) * 1000) / 1000) : null,
           hpFrac: [0, 1].map((i) => Math.max(0, Math.round((h.hp[i] / h.maxHp[i]) * 1000) / 1000)), maxHp: h.maxHp.map(Math.round),
-          dmg: { host: Math.round(h.dmg[0] - dmg0[0]), guest: Math.round(h.dmg[1] - dmg0[1]) },
+          dmg: { host: sh.dmg, guest: sg.dmg },
+          // F presses that fired (abil; nukes = ISOTOPE NUKE), slams, hits landed and hits by source [slam, ram, whirl, other].
+          act: { host: { hits: sh.hits, slams: sh.slams, abil: sh.abil, nukes: sh.nukes, src: sh.src }, guest: { hits: sg.hits, slams: sg.slams, abil: sg.abil, nukes: sg.nukes, src: sg.src } },
           venue: h.venue, code, wall: Math.round((Date.now() - t0) / 1000), errors: errors.splice(0, 5),
         };
         fightStart = 0;
