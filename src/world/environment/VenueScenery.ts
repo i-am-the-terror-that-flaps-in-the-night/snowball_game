@@ -4,7 +4,7 @@ import { ARENA } from '../../core/types';
 import { StaticBatch } from '../../render/mergeStatic';
 import { getBackdropTex, getBuntingTex, getCarpetTex, getUsFlagTex } from '../rallyTextures';
 import type { Item } from './types';
-import { BRAWL_SKIN, CONFETTI } from './styles';
+import { BRAWL_SKIN, CONFETTI, type BrawlSkin } from './styles';
 import { WALL_IN, WALL_C, GATE_HALF, PILLAR_W, DOME_TOWER_OFF, DOME_TOWER_K, DOME_N0, DOME_ROWS, DOME_ROW_D, DOME_RISE, DOME_CROWD_CAP, SPONSORS, CORE_X, CORE_Z, STAGE_HALF, STAGE_Y, STAGE_Z0, STAGE_Z1, GOLD_TOWER_X, GOLD_TOWER_Z, SIDES, domeK, DOME_COVER, domeCoverSite, gapsFor, subtract, mulberry32, colored, merge } from './layout';
 import { canvas, toTex, hexCss, wavyFlag } from './textures';
 import { ThemeScenery } from './ThemeScenery';
@@ -753,22 +753,28 @@ export class VenueScenery extends ThemeScenery {
     return t;
   }
 
-  /** Frozen fountain / ice sculpture centerpiece (obstacle r = 4 at the origin). */
+  /** Frozen fountain / ice sculpture centerpiece (obstacle r = 4 at the origin). In the Duel's shrunk dome (domeK < 1)
+   *  only the low frozen basin (~1.2 m) is built: the fountain sits exactly between the two spawns (0, +-25), and its
+   *  column, upper bowl and 8 m spinning crystal hid the opponent from the follow camera at every round start. The
+   *  collider (r = 4) is the same in both. */
   protected buildFountain(G: number): void {
     const st = this.style;
     const skin = BRAWL_SKIN[this.biome ?? 'snowdome'] ?? BRAWL_SKIN.snowdome!;
     const stone = skin.stone;
     const ice = skin.water;
+    const lowOnly = domeK < 1;
     const parts: THREE.BufferGeometry[] = [
       colored(new THREE.CylinderGeometry(4, 4.15, 1.0, 24).translate(0, 0.5, 0), stone),
       colored(new THREE.TorusGeometry(3.75, 0.32, 6, 28).rotateX(Math.PI / 2).translate(0, 1.0, 0), 0xa8b1c4),
       colored(new THREE.CylinderGeometry(3.45, 3.45, 0.2, 24).translate(0, 0.95, 0), ice),
+    ];
+    if (!lowOnly) parts.push(
       colored(new THREE.CylinderGeometry(0.8, 1.1, 3.2, 10).translate(0, 2.5, 0), stone),
       colored(new THREE.CylinderGeometry(2.1, 1.0, 0.6, 16).translate(0, 4.2, 0), stone),
       colored(new THREE.CylinderGeometry(0.5, 0.7, 1.6, 8).translate(0, 5.2, 0), stone),
-    ];
+    );
     // frozen water curtains dripping off the upper bowl
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < (lowOnly ? 0 : 10); i++) {
       const a = (i / 10) * Math.PI * 2;
       const r = 1.85;
       parts.push(colored(new THREE.ConeGeometry(0.28, 2.6, 5).rotateX(Math.PI).translate(Math.cos(a) * r, 2.75, Math.sin(a) * r), ice));
@@ -778,6 +784,19 @@ export class VenueScenery extends ThemeScenery {
     base.castShadow = true;
     base.receiveShadow = true;
     this.add(base);
+    if (!lowOnly) this.buildFountainCrystal(G, skin);
+    // accent ring on the ground
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(5.2, 5.6, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: st.accents[1], transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    ring.position.y = G + 0.05;
+    ring.renderOrder = 2;
+    this.add(ring);
+  }
+
+  /** The fountain's spinning ice sculpture (Brawl only, see buildFountain). */
+  protected buildFountainCrystal(G: number, skin: BrawlSkin): void {
     // spinning ice sculpture on top (crystal elongated along local Z; the holder turns Z up so rotation.z spins about world Y)
     const holder = new THREE.Group();
     holder.position.set(0, G * 0.3 + 8.2, 0);
@@ -800,14 +819,6 @@ export class VenueScenery extends ThemeScenery {
     this.add(holder);
     this.spinners.push({ obj: crystal, speed: 0.6 });
     this.glowSprite(skin.crystal, 0.55, 12, 0, G * 0.3 + 8.2, 0, 1.4);
-    // accent ring on the ground
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(5.2, 5.6, 48).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: st.accents[1], transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }),
-    );
-    ring.position.y = G + 0.05;
-    ring.renderOrder = 2;
-    this.add(ring);
   }
 
 }
