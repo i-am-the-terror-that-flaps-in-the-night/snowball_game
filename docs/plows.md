@@ -28,7 +28,7 @@ No blade: a low, wide rover under a crackling coil tower. It doesn't plow snow o
 snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% damage, but -5% HP.
 
 - **SPACE (hold): Arc Lance.** Every 0.15 s an arc jumps from the tower to the nearest bot within 60° of the nose and
-  9 m (Mega Hopper adds reach), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
+  14 m (Mega Hopper adds reach, ~20 m late: the longest weapon in the game; VOLT-9 is the true-ranged vehicle), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
   nearest unhit bot within 8 m, the first hop at 60% damage and each one after keeping 90% of the one before. Every
   arc hit (any hop) has a 7% chance to **PARALYSE** the bot for 1.2 s (a stun; bosses half); a paralysed bot can't be
   paralysed again for 2.5 s after. **GROUNDED ARC:** when the locked bot is a boss, or has nothing within 8 m to chain to
@@ -37,7 +37,9 @@ snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% dama
   that forks down through the bot into the floor, a lower buzz, and a **GROUNDED** pop (GROUNDED ×2.6 on a boss) with a
   deep zap when it first grounds, repeated at most every 1.6 s. A paralysed bot crackles with a blue-white outline of
   short arcs for as long as the lock lasts, so frozen bots read at a glance. It stays locked onto its target
-  while that bot stays in reach. Overclock speeds the arc up.
+  while that bot stays in reach. Overclock speeds the arc up. **True ranged:** while the lance is held VOLT-9 reverses
+  at 80% of its top speed (others 45%), so it can back off a diver with the arc on it; in the Duel the arc is weak up
+  close (x0.6 within 3 m surface to surface, back to x1 at 5 m). Bots are unaffected by the close-range penalty.
 - **E: Static Field.** An electrified field rides with the rover for 2.5 s (6.5 m, wider with Tesla Field). It pulses
   every 0.5 s, the first pulse a bigger burst: each pulse damages and stuns every bot inside for 0.7 s, so bots caught in
   it stay locked down while you drive through a pack. It recharges on the E timer (Whirlwind Turbine and Overclock
@@ -57,6 +59,8 @@ no Overload backlash.
 
 A wrecking mech: tracks, a hunched armoured torso, two piston fists and a flat buzzsaw on each front corner.
 No blade, no snowball (snow still drags on the tracks). +35% HP and +20% damage, but -8% acceleration and -10% dash.
+**Heavy:** it takes only half of any knockback or pull (the Classic takes 80%, ISOTOPE 85%, VOLT-9 / ARSENAL all of
+it; `knockTaken` in `src/config/plows.ts`, applied in `Combat.hitPlow`).
 
 - **SPACE (hold): Wrecking Fist.** Punch, punch, finisher, one every 0.26 s with **no cooldown**: the combo loops for
   as long as you hold SPACE. The bot nearest the fist line takes the full hit, the rest of the fist's arc 35%. The
@@ -88,7 +92,9 @@ bobbing out of it, twin cooling stacks, a spinning vent fan and a sprayer nozzle
 (deep snow still slows it). +5% speed and +20% HP; bots it irradiates glow green, take +30% damage from you
 and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose, or for as long as a RAD DOSE is
 still soaking in). **Lead lining:** a bot it has irradiated hits ISOTOPE 20% softer (bots only; Duel and Brawl
-unchanged), so dosing a pack before wading into it pays off.
+unchanged), so dosing a pack before wading into it pays off. **Tank-buster:** an irradiated target also
+burns 1.5% of its max HP a second (bots count at most 400 max HP, so bosses and the campaign barely change; Duel plows
+count in full, so BRUTUS's big pool burns fastest). In the Duel this share skips the garage-power damping.
 
 - **SPACE (hold): Rad Sprayer.** Every 0.12 s (faster with Overclock) the nozzle hoses a glowing cone (about 100°
   wide, 8.5 m + Mega Hopper reach). The nearest bot in it takes the full dose, every other bot in the cone 65%; all

@@ -132,7 +132,8 @@ export class OpponentTarget implements EnemyManagerAPI {
     const a = this.attackerStats();
     const v = this.victimStats();
     const kind = duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, a.plowKind, a.ultPower) * duelKindFactor(DUEL_KIND_TAKEN, DUEL_KIND_TAKEN_FRESH, v.plowKind, v.ultPower);
-    let scaled = (amount * kind * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
+    // Max-HP damage (ISOTOPE's tank-buster) is already sized to the victim: no garage-power damping.
+    let scaled = (amount * kind * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / (opts?.maxHpShare ? 1 : power ** DUEL_POWER_DAMP);
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';

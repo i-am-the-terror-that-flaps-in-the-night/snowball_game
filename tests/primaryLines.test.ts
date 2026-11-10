@@ -13,10 +13,10 @@ import { SCRAP_LIFE, SCRAP_ORBIT, type ArsenalKit } from '../src/entities/combat
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
 type Bot = EnemyHandle & { hp: number; dealt: number };
 
-function rig(kind: PlowKind, levels: Partial<Record<UpgradeId, number>>, botAt: [number, number][], hp = 1e9) {
+function rig(kind: PlowKind, levels: Partial<Record<UpgradeId, number>>, botAt: [number, number][], hp = 1e9, maxHp = hp) {
   const held = new Set<string>();
   const bots = botAt.map(
-    ([x, z], i) => ({ id: i + 1, position: new THREE.Vector3(x, 0, z), radius: 1, hp, maxHp: hp, alive: true, dealt: 0, type: 'grunt', mass: 1, isBoss: false }) as unknown as Bot,
+    ([x, z], i) => ({ id: i + 1, position: new THREE.Vector3(x, 0, z), radius: 1, hp, maxHp, alive: true, dealt: 0, type: 'grunt', mass: 1, isBoss: false }) as unknown as Bot,
   );
   const plow = {
     position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, radius: 1.6, speed: 0, turretAim: 0, turretHeading: 0, whirlCharge: 1, surfaceY: 0,
@@ -71,7 +71,8 @@ function rig(kind: PlowKind, levels: Partial<Record<UpgradeId, number>>, botAt: 
 
 /** Damage a single bot `z` m ahead takes from 3 s of held SPACE with the given line level. */
 function primaryDamage(kind: PlowKind, id: UpgradeId, level: number, z = 4): number {
-  const r = rig(kind, { [id]: level }, [[0, z]]);
+  // maxHp 1: the rig runs as pvp, and ISOTOPE's level-independent max-HP burn would swamp a 1e9-HP target's curve.
+  const r = rig(kind, { [id]: level }, [[0, z]], 1e9, 1);
   r.held.add('Space');
   r.run(3);
   return r.bots[0].dealt;

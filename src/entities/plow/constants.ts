@@ -60,3 +60,6 @@ export const ICE_LINGER = 0.35;
 /** Lava: seconds between 'lavaBurn' sounds, and between batched plowDamaged events. */
 export const LAVA_SFX_GAP = 0.45;
 export const LAVA_EVENT_GAP = 0.5;
+
+/** VOLT-9's reverse top speed (x maxSpeed) while the Arc Lance is held (others: 0.45). */
+export const VOLT_KITE_REVERSE = 0.8;

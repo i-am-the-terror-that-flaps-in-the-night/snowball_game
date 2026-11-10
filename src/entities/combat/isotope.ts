@@ -28,6 +28,12 @@ const RAD_SECONDS = 3;
 /** Radiation burns too: every RAD_TICK s an irradiated bot takes RAD_DPS x RAD_TICK (x damage mult x reactorBoost). */
 const RAD_TICK = 0.5;
 export const RAD_DPS = 5.5;
+/** TANK-BUSTER (role rework: ISOTOPE the specialist): an irradiated target also burns RAD_MAXHP_FRAC of its max HP per
+ *  second, so big HP pools suffer most. Bots count their max HP only up to RAD_MAXHP_BOT_CAP (a heavy bot: bosses
+ *  and the campaign barely change);
+ *  Duel plows count it in full (BRUTUS's 540 hurts most). Not scaled by damage upgrades. */
+export const RAD_MAXHP_FRAC = 0.015;
+export const RAD_MAXHP_BOT_CAP = 400;
 const POOL_TICK = 0.3;
 const MAX_POOLS = 4;
 const CHAIN_RADIUS = 4;
@@ -553,8 +559,17 @@ export class IsotopeKit extends Kit implements VehicleKit {
         }
         const hp0 = e.hp;
         const killed = this.b.enemies.damage(e, (amt + soak) * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' });
-        const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+        let dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(dealt, killed, e, false, soak > 0, soak > 0 ? (DOSE_HEAL * soak) / (amt + soak) : 0);
+        // Tank-buster: a slice of max HP on top (no lifesteal, no vulnerability: it is already sized to the target).
+        if (!killed && e.alive) {
+          const hpBase = this.b.pvp ? e.maxHp : Math.min(e.maxHp, RAD_MAXHP_BOT_CAP);
+          const hp1 = e.hp;
+          const k2 = this.b.enemies.damage(e, RAD_MAXHP_FRAC * RAD_TICK * hpBase, { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam', maxHpShare: true });
+          const d2 = Math.max(0, hp1 - Math.max(0, e.hp));
+          this.onPlayerHit(d2, k2, e, false, false);
+          dealt += d2;
+        }
         if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultMeter(this.b, NUKE_CHARGE_DMG));
         if (soak > 0 && dealt > 0 && glow) {
           _q.set(e.position.x, e.position.y + e.radius + 0.9, e.position.z);

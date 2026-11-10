@@ -18,11 +18,20 @@ export interface PlowDef {
   /** Packed Ice levels past ICE_GROWTH_KNEE add this much to this plow's damage mult (the whole kit: slam, fire,
    *  whirl) and its ult power, eased by soft(): see Progression.computeStatsFor. */
   iceGrowth?: number;
+  /** Heaviness (role rework): the share of knockback / pull this plow actually takes (1 = full, default). BRUTUS shrugs
+   *  most of it off; see knockScale. */
+  knockTaken?: number;
   /** What F does with this plow. */
   fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
   /** Not a snowplow (every kind but the Classic): no blade, never plows snow or holds a ball, and SPACE / E are the
    *  vehicle's own abilities (combat/shared.ts VehicleKit.primary / secondary) instead of slam / whirlwind. */
   noBall?: boolean;
+}
+
+/** Share of a shove / pull a plow of `kind` actually takes (heavy plows resist; applied in Combat.hitPlow and to
+ *  pulls such as ARSENAL's discs). */
+export function knockScale(kind: PlowKind | undefined): number {
+  return (kind && PLOWS[kind]?.knockTaken) ?? 1;
 }
 
 /** SPACE / E are the vehicle's own kit (not slam / whirlwind): a non-Classic kind not switched to the snowball kit. */
@@ -46,6 +55,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     // toward x1.66 at very high levels (soft(), never past +12 levels).
     // Sim high-tier 1-target 1259 -> 1663, cluster 5188 -> 6880; fresh / mid unchanged (docs/balance.md).
     iceGrowth: 0.055,
+    knockTaken: 0.8,
     fAbility: 'fire',
   },
   volt: {
@@ -53,7 +63,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'VOLT-9',
     icon: '⚡',
     tagline: 'A quick, twitchy rover under a crackling coil tower. No blade, all voltage.',
-    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (overcharged coils), -5% HP', 'SPACE (hold): Arc Lance chains lightning through up to 7 bots, can PARALYSE, and grounds into lone bots for 1.75x, bosses for 2.6x · E: Static Field, a pulsing stun field that rides with you for 2.5 s', 'F: Thunderclap storm (free, costs HP) · damage builds SUPERCELL: 3 waves of sky lightning'],
+    traits: ['+12% speed, +25% acceleration, +20% dash, backs off fast while firing (kiting)', '+15% damage (overcharged coils), -5% HP, weak up close in the Duel', 'SPACE (hold): Arc Lance, the longest reach in the game (14 m, ~20 m late), chains lightning through up to 7 bots, can PARALYSE, and grounds into lone bots for 1.75x, bosses for 2.6x · E: Static Field, a pulsing stun field that rides with you for 2.5 s', 'F: Thunderclap storm (free, costs HP) · damage builds SUPERCELL: 3 waves of sky lightning'],
     hpMult: 0.95,
     speedMult: 1.12,
     accelMult: 1.25,
@@ -67,12 +77,13 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'BRUTUS',
     icon: '🦏',
     tagline: 'Tracked wrecking mech. Two piston fists, two buzzsaws, no patience.',
-    traits: ['+35% HP, +20% damage', '-8% acceleration, -10% dash', 'SPACE (hold): rapid Wrecking Fist combo, no cooldown: every landed jab staggers and cracks armour; E: Saw Charge', 'F: Ground Pound shockwave (free)', 'Damage builds EARTHQUAKE: full = 3 rolling shockwaves'],
+    traits: ['+35% HP, +20% damage, shrugs off half of any knockback', '-8% acceleration, -10% dash', 'SPACE (hold): rapid Wrecking Fist combo, no cooldown: every landed jab staggers and cracks armour; E: Saw Charge', 'F: Ground Pound shockwave (free)', 'Damage builds EARTHQUAKE: full = 3 rolling shockwaves'],
     hpMult: 1.35,
     speedMult: 1,
     accelMult: 0.92,
     dashPowerMult: 0.9,
     slamMult: 1.2,
+    knockTaken: 0.5,
     fAbility: 'pound',
     noBall: true,
   },
@@ -81,12 +92,13 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'ISOTOPE',
     icon: '☢️',
     tagline: 'A nuclear flatbed with a glowing reactor on its back. No blade; everything it hoses glows, then falls apart.',
-    traits: ['Irradiated bots take +30% damage, burn, and hit you 20% softer (lead lining)', '+5% speed, +20% HP', 'SPACE (hold): Rad Sprayer soaks bots in a RAD DOSE that burns for 8-15 s and spreads · E: Fallout Trail of gripping toxic puddles for 4 s', 'F: Meltdown blast + fallout pool (free) · radiation builds Critical Mass: full = NUKE on F'],
+    traits: ['Irradiated bots take +30% damage, burn (plus 1.5% of max HP a second: the tank-buster), and hit you 20% softer (lead lining)', '+5% speed, +20% HP', 'SPACE (hold): Rad Sprayer soaks bots in a RAD DOSE that burns for 8-15 s and spreads · E: Fallout Trail of gripping toxic puddles for 4 s', 'F: Meltdown blast + fallout pool (free) · radiation builds Critical Mass: full = NUKE on F'],
     hpMult: 1.2, // ISOTOPE buff by request (secondary to the Rad Sprayer): 1.1 -> 1.2
     speedMult: 1.05,
     accelMult: 1,
     dashPowerMult: 1,
     slamMult: 1,
+    knockTaken: 0.85,
     fAbility: 'meltdown',
     noBall: true,
   },
