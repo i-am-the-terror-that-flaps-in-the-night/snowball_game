@@ -489,6 +489,91 @@ soaks most of it once upgraded); before the cap they took 50-90%.
 two-way sim only models one line (start distance, walls), so it cannot show what cover and room to strafe give the
 ranged plows.
 
+## Follow-up: Duel balance at high
+
+**Problem.** In the real online Duel at a high garage the win rates were far apart (request: VOLT-9, ARSENAL and
+ISOTOPE too low). Measured with `scripts/duel-matrix.mjs` (real duels in the browser over the BroadcastChannel
+transport, both sides driven by the game's AutoPilot, the same tier on both sides, sides swapped half the time, six
+venues of the shrunk Snowdome after the fountain fix): ARSENAL won 10% at high, the Classic 70%; the gap was 60-71
+points at every tier. Duel only: campaign, Survival and Brawl balance is unchanged.
+
+**Levers** (`src/config/duel.ts`, applied in `OpponentTarget.damage`, `src/duel/opponent.ts`, before the hit caps; a
+missing entry is x1; they do not depend on the garage tier):
+
+| vehicle | `DUEL_KIND_DAMAGE` (hits it deals) | `DUEL_KIND_TAKEN` (hits it takes) | why |
+|---|---|---|---|
+| Classic | 0.92 (was 1) | 1 | topped every tier; its `DUEL_ULT_KIND_CHARGE` is the same 0.92, so FIRESTORM does not come later |
+| VOLT-9 | 1.8 (unchanged) | 0.77 (was 1) | ~75% of the others' HP; won its trades only when they were short |
+| BRUTUS | 0.62 (was 0.7) | 1.15 (was 1) | the most HP, won most trades up close even after the damage trim |
+| ISOTOPE | 1 | 0.9 (was 1) | fell furthest once the others were evened out (it wants range the fight never gives it) |
+| ARSENAL | 0.85 (was 0.78) | 0.62 (was 1) | ~70% of the others' HP; 0.85 is the most damage that keeps the minigun alone under a fifth of a same-tier Classic in 2 s (tests/balance.test.ts), so the rest is toughness |
+
+`DUEL_KIND_TAKEN` is an effective-HP lever: the HP bar, the 60% hit cap and the ultimate cap stay on the real max HP,
+and the attacker's Duel ultimate meter is sized in the victim's max HP x its `DUEL_KIND_TAKEN`
+(`OpponentTarget.duelFoeMaxHp`), so a tougher skin does not also delay the opponent's ultimate. A test pins that both
+tables change Duel damage but not one PvE stat, DPS or meter (tests/balance.test.ts, "Duel-only balance levers").
+
+**AutoPilot** (`src/duel/plumbing.ts`, used by the matrix and the probes, not by players): it held SPACE within 9 m for
+every plow, so the ranged primaries (Arc Lance, Rad Sprayer, Mag Shotgun: 12-17 m late) never fired at their reach.
+It now holds SPACE within each kit's real reach (`autoHoldRange`: `arcRange`, `sprayRange` + Spray Reach,
+`tankGunRange`, the Wrecking Fist's reach; the Classic keeps 9 m), keeps hunting instead of wandering for snow while
+the foe is within that reach, and fires ARSENAL's Mag Repulsor (E) when facing within 90% of its wave's reach instead
+of as a 5.5 m whirl. Both runs below are the shipped change set (levers + AutoPilot) against the old build.
+
+**Results** (win % with draws as half, W-L-D over all non-mirror rounds; baseline = 9491eea, the old constants and
+AutoPilot; high 12 rounds per pairing = 48 rounds per plow, fresh / mid 8 = 32):
+
+| plow | fresh: before | fresh: after | mid: before | mid: after | high: before | high: after |
+|---|---|---|---|---|---|---|
+| Classic | 84% (27-5-0) | 48% (14-15-3) | 88% (28-4-0) | 70% (19-6-7) | 70% (30-11-7) | 45% (15-20-13) |
+| VOLT-9 | 55% (17-14-1) | 61% (19-12-1) | 39% (12-19-1) | 47% (14-16-2) | 42% (16-24-8) | 38% (11-23-14) |
+| BRUTUS | 41% (13-19-0) | 34% (11-21-0) | 53% (16-14-2) | 30% (9-22-1) | 63% (27-15-6) | 63% (27-15-6) |
+| ISOTOPE | 58% (18-13-1) | 55% (16-13-3) | 44% (13-17-2) | 39% (11-18-3) | 66% (24-9-15) | 59% (18-9-21) |
+| ARSENAL | 13% (4-28-0) | 52% (16-15-1) | 27% (7-22-3) | 64% (18-9-5) | 10% (3-41-4) | 46% (17-21-10) |
+| spread | 71 points | 27 points | 61 points | 40 points | 60 points | 25 points |
+
+High, final matrix (row vs column win %):
+
+| | Classic | VOLT-9 | BRUTUS | ISOTOPE | ARSENAL |
+|---|---|---|---|---|---|
+| **Classic** | - | 63% | 21% | 46% | 50% |
+| **VOLT-9** | 38% | - | 29% | 33% | 50% |
+| **BRUTUS** | 79% | 71% | - | 42% | 58% |
+| **ISOTOPE** | 54% | 67% | 58% | - | 58% |
+| **ARSENAL** | 50% | 50% | 42% | 42% | - |
+
+How it got there (high, 12 rounds per pairing, overall win %; every run is the new AutoPilot except the baseline):
+
+| run | Classic dmg | VOLT-9 taken | BRUTUS dmg / taken | ISOTOPE taken | ARSENAL dmg / taken | Classic | VOLT-9 | BRUTUS | ISOTOPE | ARSENAL |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | 1 | 1 | 0.7 / 1 | 1 | 0.78 / 1 | 70 | 42 | 63 | 66 | 10 |
+| 1 | 0.85 | 0.85 | 0.7 / 1 | 1 | 0.78 / 0.7 | 31 | 42 | 71 | 61 | 45 |
+| 2 | 0.92 | 0.75 | 0.62 / 1 | 1 | 0.78 / 0.7 | 48 | 52 | 66 | 56 | 28 |
+| 3 | 0.92 | 0.8 | 0.62 / 1.1 | 1 | 0.85 / 0.62 | 43 | 44 | 60 | 52 | 51 |
+| 4 | 0.92 | 0.8 | 0.62 / 1.1 | 0.9 | 0.85 / 0.62 | 38 | 42 | 68 | 58 | 45 |
+| 5 (final) | 0.92 | 0.77 | 0.62 / 1.15 | 0.9 | 0.85 / 0.62 | 45 | 38 | 63 | 59 | 46 |
+
+Run 3 had ISOTOPE at 30% at mid (8 rounds), hence its x0.9 in run 4 (mid: 50%).
+
+**Reading it.** One overall rate over 48 rounds is good to about +-14 points (95%), one cell to about +-28, so runs 3-5
+differ mostly by noise. Pooled over those three high runs (360 rounds): Classic 42%, VOLT-9 41%, BRUTUS 64%, ISOTOPE
+57%, ARSENAL 47%. So at high every vehicle is within 35-65% and the spread fell from 60 to 25 points; ARSENAL went
+from 10% to ~47%; ISOTOPE is lower than its 66% baseline (expected while ARSENAL and the rest came up) but above 50%;
+VOLT-9 is about where it was (~41% vs 42%). VOLT-9 now loses few rounds outright but draws many (14 of 48 at high):
+its rounds run long (25 s on average) because the tougher skin does not speed its kills, and a time-out at even HP
+counts half. The next lever if VOLT-9 should rise further is its damage (1.8 -> ~1.9), not its toughness. BRUTUS is
+the one still above the band's centre at high and below it at mid / fresh: its strength grows with the tier
+(fist size, saws), which a tier-independent factor cannot follow. The Classic stays strongest at mid (70%) for the
+same reason in reverse. Rounds at high now last ~20-25 s (were ~11-16 s); 12 of 120 high rounds timed out at 90 s.
+
+**PvE unchanged.** The `npm run balance` tables show the same HP, 1-target, cluster, ult fill and ult damage columns
+except VOLT-9's, which move by up to 2% (cluster DPS 292 -> 289 fresh, 1637 -> 1665 mid, 8772 -> 8846 high; ult fill
+within 0.5 s; "with a bot near" 71 -> 71, 295 -> 290, 1505 -> 1522): the report draws every Thunderclap roll from one
+seeded `Math.random` stream, and the duel TTK column is computed first in each row, so a Duel constant shifts which
+rolls VOLT-9's storm gets. With the old Duel constants restored the report prints the old build's tables exactly, and the
+new test computes the PvE numbers with the levers at extreme values and requires them unchanged. The duel TTK column
+moved as intended.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

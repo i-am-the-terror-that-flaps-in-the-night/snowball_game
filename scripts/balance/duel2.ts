@@ -186,7 +186,7 @@ export function fight(ka: PlowKind, kb: PlowKind, tier: Tier, opts: FightOpts): 
     for (let i = 0; i < 2; i++) {
       const me = sides[i];
       const foe = sides[1 - i];
-      const t = new OpponentTarget(foe.handle, () => foe.p.c, () => me.st, () => me.plow as unknown as Plow);
+      const t = new OpponentTarget(foe.handle, () => foe.p.c, () => me.st, () => me.plow as unknown as Plow, () => foe.st);
       t.enabled = true;
       targets.push(t);
       me.p = pilot(ctx, me.st, me.plow, t as EnemyManagerAPI, true);
@@ -354,7 +354,7 @@ export function ultShare(atk: PlowKind, def: PlowKind, tier: Tier, dist: number,
     const pa = fakePlow(sa, 0, 0, 0);
     const pd = fakePlow(sd, 0, dist, Math.PI);
     let cd: Pilot | null = null;
-    const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow);
+    const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow, () => sd);
     target.enabled = true;
     const A = pilot(ctx, sa, pa, target as EnemyManagerAPI, true);
     cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);

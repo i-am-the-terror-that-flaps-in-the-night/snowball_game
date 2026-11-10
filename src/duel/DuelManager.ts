@@ -320,8 +320,8 @@ export class DuelManager {
     me.combat = ctx.combat as Combat;
     // Host: each side's attacks hit the other's plow. Guest: nothing is hit locally (the host decides).
     if (host) {
-      this.targetOpp = new OpponentTarget(new PlowHandle(2, oppPlow), () => oppCombat, () => me.stats, () => me.plow);
-      this.targetMe = new OpponentTarget(new PlowHandle(1, me.plow), () => me.combat, () => opp.stats, () => oppPlow);
+      this.targetOpp = new OpponentTarget(new PlowHandle(2, oppPlow), () => oppCombat, () => me.stats, () => me.plow, () => opp.stats);
+      this.targetMe = new OpponentTarget(new PlowHandle(1, me.plow), () => me.combat, () => opp.stats, () => oppPlow, () => me.stats);
       this.targetOpp.onHit = (h) => this.onHit(1, h, me.plow.dashing);
       this.targetMe.onHit = (h) => this.onHit(0, h, oppPlow.dashing);
       me.enemies = this.targetOpp;

@@ -381,7 +381,7 @@ export function duelTtk(atk: PlowKind, def: PlowKind, tier: Tier, cap = 60, only
   const pa = fakePlow(sa, 0, 0, 0);
   const pd = fakePlow(sd, 0, NEAR + 0.6, Math.PI);
   let cd: Pilot | null = null;
-  const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow);
+  const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow, () => sd);
   target.enabled = true;
   const A = pilot(ctx, sa, pa, target, true);
   cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);
@@ -412,7 +412,7 @@ export function duelGunDamage(tier: Tier, seconds = 2, def: PlowKind = 'classic'
   const pd = fakePlow(sd, 0, NEAR + 0.6, Math.PI);
   pd.hp = 1e6;
   let cd: Pilot | null = null;
-  const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow);
+  const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow, () => sd);
   target.enabled = true;
   const A = pilot(ctx, sa, pa, target, true);
   cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);

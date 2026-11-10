@@ -6,6 +6,10 @@ import type { Combat } from '../entities/Combat';
 import type { EventSink, InputSource, PilotAudio, PilotBinding } from '../entities/pilot';
 import { HELD_BIT, NET_PLOW_LEN, NP, NP_ANGLE, NP_DISCRETE, PRESS_ACTIONS, PRESS_CODES, type PressAction, PressTracker } from '../net/protocol';
 import type { SnowField } from '../world/SnowField';
+import { arcRange } from '../entities/combat/volt';
+import { sprayRange } from '../entities/combat/isotope';
+import { tankGunRange } from '../entities/combat/arsenal';
+import { FIST_REACH, fistSize } from '../entities/combat/brute';
 
 /** Code -> press-action index (0 slam, 1 dash, 2 whirl, 3 ability). */
 const CODE_ACTION = new Map<string, number>();
@@ -100,9 +104,30 @@ export class PuppetInput implements InputSource {
   }
 }
 
+/** Hull half-length (m) the AutoPilot adds to a fist's reach past the hull (as scripts/balance/duel2.ts HULL). */
+const AUTO_HULL = 1.6;
+/** Centre distance (m) within which the AutoPilot holds SPACE: the plow's real held-primary reach from its kit (VOLT-9
+ *  Arc Lance, ISOTOPE Rad Sprayer, ARSENAL Mag Shotgun, all with Mega Hopper; BRUTUS Wrecking Fist), and the old 9 m
+ *  for the Classic (its snowball ignores the hold). Before, every plow held at 9 m, so the three ranged primaries
+ *  (12-17 m late) never fired at their reach. AutoPilot only: probes / testing, not gameplay. */
+export function autoHoldRange(st: PlayerStats): number {
+  switch (st.plowKind) {
+    case 'volt':
+      return arcRange(st.maxBallRadius);
+    case 'isotope':
+      return sprayRange(st.maxBallRadius) + (st.sprayReach || 0);
+    case 'arsenal':
+      return tankGunRange(st);
+    case 'brute':
+      return AUTO_HULL + FIST_REACH * fistSize(st) + (st.fistReach || 0);
+    default:
+      return 9;
+  }
+}
+
 /** A dumb but aggressive autopilot (probes, idle testing): drive at the opponent, slam / dash / whirl / F, and hold
- *  SPACE when close and facing (the vehicles' held primaries: Arc Lance, Wrecking Fist, Rad Sprayer, Mag Shotgun;
- *  snowball plows ignore the hold). */
+ *  SPACE when facing within the held primary's real reach (autoHoldRange: Arc Lance, Wrecking Fist, Rad Sprayer, Mag
+ *  Shotgun; snowball plows ignore the hold). ARSENAL fires its Mag Repulsor (E) when facing within its wave's reach. */
 export class AutoPilot implements InputSource {
   throttle = 0;
   steer = 0;
@@ -123,14 +148,16 @@ export class AutoPilot implements InputSource {
       this.holdSpace = false;
       return;
     }
+    const st = me.pilot.stats;
+    const reach = autoHoldRange(st);
     const dx = op.position.x - me.position.x;
     const dz = op.position.z - me.position.z;
     const d = Math.hypot(dx, dz);
     const want = Math.atan2(dx, dz);
     let err = want - me.heading;
     err = Math.atan2(Math.sin(err), Math.cos(err));
-    // Gather snow while the ball is small and the opponent is far; otherwise go for them.
-    const hunting = me.heldBallRadius > 0.75 || d < 9;
+    // Gather snow while the ball is small and the opponent is out of reach; otherwise go for them.
+    const hunting = me.heldBallRadius > 0.75 || d < Math.max(9, reach);
     if (!hunting) {
       const wander = Math.sin(this.t * 0.7) * 1.1;
       err = Math.atan2(Math.sin(err + wander), Math.cos(err + wander));
@@ -139,9 +166,10 @@ export class AutoPilot implements InputSource {
     this.throttle = Math.abs(err) > 2.2 ? -0.4 : 1;
     const facing = Math.abs(err) < 0.35;
     if (facing && d < 6.5 && me.heldBallRadius > 0.5) this.pressed.add('Space');
-    this.holdSpace = Math.abs(err) < 0.6 && d < 9;
+    this.holdSpace = Math.abs(err) < 0.6 && d < reach;
     if (facing && d > 6 && d < 15 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
-    if (d < 5.5 && me.whirlReady >= 1) this.pressed.add('KeyE');
+    const arsenal = st.plowKind === 'arsenal';
+    if (d < (arsenal ? st.laserRange * 0.9 : 5.5) && (!arsenal || facing) && me.whirlReady >= 1) this.pressed.add('KeyE');
     this.fT -= dt;
     if (this.fT <= 0 && d < 9) {
       this.fT = 2.5;

@@ -59,6 +59,9 @@ node scripts/render-probe.mjs baseline    # deterministic render metrics + pixel
 node scripts/duel-probe.mjs /tmp/duel-probe  # Duel: two pages over BroadcastChannel (lobby, catch-up garage,
                                              # best of 3, rematch, NUKE / Inferno, ARSENAL, pause, leave, lag)
 node scripts/duel-probe.mjs /tmp/duel-probe --only=peer   # same over the real PeerJS cloud server (needs internet)
+node scripts/duel-matrix.mjs --tiers high --rounds 12 --out /tmp/dm  # Duel balance: every pairing of plows in
+                                             # real autopiloted online duels (both sides fight back); win-rate matrix
+                                             # in /tmp/dm/summary.md (--resume continues a run; ~25 min at high)
 node scripts/biome-probe.mjs /tmp/biomes   # biome looks: menu / follow / sky / top-down shots of arenas 1-5 and
                                           # the six Brawl venues (--only=0,2 --menu --game --sky --top --brawl;
                                           # --audio plays every ambience loop + the jump / land / slam / lava sounds)

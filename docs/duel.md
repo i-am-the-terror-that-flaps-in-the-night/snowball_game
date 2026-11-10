@@ -19,7 +19,11 @@ no loot.
 Each player brings their **own garage**: core upgrades, plow line, equipped gear and Paint Shop look. Your opponent
 sees your gear on your plow. Player-vs-player hits are scaled well below PvE damage (45%, minigun
 rounds further, and damped by the attacker's garage power so late-game duels don't end in seconds), then take the
-same 60% max-HP hit cap as Brawl, so nothing one-shots. See [balance.md](balance.md).
+same 60% max-HP hit cap as Brawl, so nothing one-shots. On top of that each vehicle has a Duel-only factor on the
+damage it deals and on the damage it takes (`DUEL_KIND_DAMAGE` / `DUEL_KIND_TAKEN` in `src/config/duel.ts`: VOLT-9
+deals x1.8 and takes x0.77, ARSENAL deals x0.85 and takes x0.62, ISOTOPE takes x0.9, BRUTUS deals x0.62 and takes
+x1.15, the Classic deals x0.92), measured on real autopiloted duels so that no vehicle wins far more than half its
+matchups; campaign, Survival and Brawl never see them. See [balance.md](balance.md) ("Duel balance at high").
 
 **Ultimates** (FIRESTORM, SUPERCELL, EARTHQUAKE, NUKE, SINGULARITY) fire in the Duel too. There the meter is sized in
 the opponent's HP instead of in damage: it fills once the damage that counts toward it adds up to `DUEL_ULT_CHARGE`

@@ -1,6 +1,6 @@
 import { PLOW_MASS, type DamageOpts, type EnemyHandle, type EnemyManagerAPI, type EnemyType, type PlayerStats } from '../core/types';
 import { BRAWL_HIT_CAP, brawlHit } from '../config/brawl';
-import { DUEL_DAMAGE_SCALE, DUEL_POWER_DAMP, DUEL_ROUND_SCALE, DUEL_ULT_CAP_SECONDS, DUEL_ULT_HP_CAP } from '../config/duel';
+import { DUEL_DAMAGE_SCALE, DUEL_KIND_DAMAGE, DUEL_KIND_TAKEN, DUEL_POWER_DAMP, DUEL_ROUND_SCALE, DUEL_ULT_CAP_SECONDS, DUEL_ULT_HP_CAP } from '../config/duel';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
 
@@ -72,15 +72,12 @@ const KNOCK_SCALE = 0.7;
 
 /**
  * The "enemy manager" a duel pilot's Combat attacks: just the opponent's plow. Damage is scaled by DUEL_DAMAGE_SCALE
- * (minigun rounds also by DUEL_ROUND_SCALE) and damped by the attacker's power (DUEL_POWER_DAMP), then takes the
+ * (minigun rounds also by DUEL_ROUND_SCALE), by the attacker's DUEL_KIND_DAMAGE and the victim's DUEL_KIND_TAKEN, and
+ * damped by the attacker's power (DUEL_POWER_DAMP), then takes the
  * Brawl hit cap (BRAWL_HIT_CAP, the same for both pilots) so nothing one-shots, then goes through
  * the VICTIM's Combat.hitPlow, which applies their ball shield, dash / whirl reductions, armour, Iron Hide, Last Stand,
  * Battery Shield, Second Wind and i-frames — the same path bots use against the player.
  */
-/** Per-vehicle Duel damage multiplier (applied before the caps): VOLT-9's kit is tuned for crowds and lagged the
- *  field plow-vs-plow. */
-export const DUEL_KIND_MULT: Partial<Record<string, number>> = { volt: 1.8, brute: 0.7, arsenal: 0.78 };
-
 export class OpponentTarget implements EnemyManagerAPI {
   readonly bosses: readonly EnemyHandle[] = [];
   /** Off during countdowns / between rounds. */
@@ -99,11 +96,14 @@ export class OpponentTarget implements EnemyManagerAPI {
     private victimCombat: () => Combat,
     private attackerStats: () => PlayerStats,
     private attackerPlow: () => Plow,
+    /** The victim's stats (its plowKind picks DUEL_KIND_TAKEN). */
+    private victimStats: () => PlayerStats,
   ) {}
 
-  /** The victim's max HP: the attacker's Duel ultimate meter is sized in it (combat/ultimates.ts ultMeter). */
+  /** The victim's effective max HP (max HP x its DUEL_KIND_TAKEN): the attacker's Duel ultimate meter is sized in it
+   *  (combat/ultimates.ts ultMeter), so a tougher-skinned victim does not delay the attacker's ultimate. */
   get duelFoeMaxHp(): number {
-    return this.handle.plow.maxHp;
+    return this.handle.plow.maxHp * (DUEL_KIND_TAKEN[this.victimStats().plowKind] ?? 1);
   }
 
   spawn(): EnemyHandle {
@@ -128,7 +128,8 @@ export class OpponentTarget implements EnemyManagerAPI {
     const victim = this.handle.plow;
     if (!this.enabled || enemy !== this.handle || victim.dead || !(amount > 0)) return false;
     const power = Math.max(1, this.attackerStats().ultPower || 1);
-    let scaled = (amount * (DUEL_KIND_MULT[this.attackerStats().plowKind] ?? 1) * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
+    const kind = (DUEL_KIND_DAMAGE[this.attackerStats().plowKind] ?? 1) * (DUEL_KIND_TAKEN[this.victimStats().plowKind] ?? 1);
+    let scaled = (amount * kind * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';

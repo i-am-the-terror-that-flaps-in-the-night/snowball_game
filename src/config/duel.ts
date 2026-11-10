@@ -1,4 +1,5 @@
 import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from './upgrades';
+import type { PlowKind } from './plows';
 import { BIOME_ZONE, BRAWL_BIOMES, BRAWL_ZONE, brawlZone, zoneLook, type BiomeKey, type ZoneDef } from './zones';
 import { DUEL_DOME_TERRAIN } from '../world/biomes/terrains';
 import type { TerrainDef } from '../world/Terrain';
@@ -78,6 +79,22 @@ export const DUEL_ROUND_SCALE = 0.7;
  *  also divided by the attacker's ultPower (PlayerStats) ^ DUEL_POWER_DAMP: late-game duels last nearly as long as
  *  fresh ones. */
 export const DUEL_POWER_DAMP = 0.4;
+/** Per-vehicle Duel balance, keyed by PlowKind (missing = 1). Both are Duel-only (applied in duel/opponent.ts
+ *  OpponentTarget.damage, before the hit caps): campaign / Survival / Brawl never see them (tests/balance.test.ts
+ *  "Duel-only balance levers"), and they do not depend on the garage tier, so they scale the same fresh, mid and late.
+ *  Tuned on the real browser matrix (scripts/duel-matrix.mjs, docs/balance.md "Duel balance at high").
+ *  DUEL_KIND_DAMAGE scales every hit the vehicle DEALS to a human plow: VOLT-9's kit is tuned for crowds (its grounded
+ *  arc is off against a lone human), BRUTUS's fists and saws out-trade everything up close, the Classic's slams / rams
+ *  topped every tier of the matrix. ARSENAL stays below 1 because its minigun ('round' hits) already skips i-frames and
+ *  ability diminishing returns: 0.85 is the most that keeps the minigun alone under a fifth of a same-tier Classic in
+ *  2 s of held fire (tests/balance.test.ts), so the rest of its help comes from DUEL_KIND_TAKEN. */
+export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 1.8, brute: 0.62, arsenal: 0.85, classic: 0.92 };
+/** DUEL_KIND_TAKEN scales every hit the vehicle TAKES from a human plow (an effective-HP lever: the HP bar, the hit caps
+ *  and the ultimate meter sizes stay on the real max HP). VOLT-9 and ARSENAL carry ~75% of the others' HP at every
+ *  tier (light, fast vehicles) and lost most even trades; ISOTOPE fell furthest once the others were evened out (its
+ *  spray range and radiation want kiting the fight never gives it); BRUTUS (the most HP) still won most of its trades
+ *  after its damage trim, so it takes a little more. */
+export const DUEL_KIND_TAKEN: Partial<Record<PlowKind, number>> = { volt: 0.77, arsenal: 0.62, isotope: 0.9, brute: 1.15 };
 /** ULTIMATES IN THE DUEL. Off-line the meter is sized in damage (combat/ultimates.ts ultCharge: a base that grows with
  *  the garage's ultPower and Overclock, ~20x from fresh to late), but Duel damage is scaled down and power-damped
  *  (above) and capped against HP that only grows ~3x, so a round used to fill only 5-15% of it: ultimates never
@@ -90,8 +107,10 @@ export const DUEL_POWER_DAMP = 0.4;
 export const DUEL_ULT_CHARGE = 2.5;
 /** Per-vehicle factor on DUEL_ULT_CHARGE (others 1), evening the fill out: ISOTOPE's Critical Mass counts only part of
  *  its damage (radiation shares), BRUTUS deals the most plow-vs-plow. Overclock (cooldownMult < 1: abilities more
- *  often, so more damage) grows the meter by 1 / sqrt(cooldownMult), as it grows the off-line one by 1 / cooldownMult. */
-export const DUEL_ULT_KIND_CHARGE: Partial<Record<string, number>> = { isotope: 0.65, brute: 1.25 };
+ *  often, so more damage) grows the meter by 1 / sqrt(cooldownMult), as it grows the off-line one by 1 / cooldownMult.
+ *  The Classic's factor is its DUEL_KIND_DAMAGE, so that Duel damage trim does not also delay FIRESTORM; the
+ *  victim's DUEL_KIND_TAKEN is folded into the HP the meter is sized in (OpponentTarget.duelFoeMaxHp). */
+export const DUEL_ULT_KIND_CHARGE: Partial<Record<string, number>> = { isotope: 0.65, brute: 1.25, classic: DUEL_KIND_DAMAGE.classic };
 /** ...and an ultimate landing on a human is a big swing, never a one-shot: on top of the usual Duel path (scales,
  *  power damp, hit cap, i-frames, shields), ultimate damage (the blast and its aftermath: SUPERCELL strikes,
  *  EARTHQUAKE rings, SINGULARITY pull + detonation, FIRESTORM nova + burning ground, NUKE blast + its fallout pool) is

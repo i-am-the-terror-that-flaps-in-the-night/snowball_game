@@ -5,7 +5,7 @@ import type { PlowKind } from '../src/config/plows';
 import { computeStatsFor } from '../src/core/Progression';
 import { ultCharge, ultMeter } from '../src/entities/combat/ultimates';
 import { fight, ultShare } from '../scripts/balance/duel2';
-import { DUEL_ULT_CHARGE } from '../src/config/duel';
+import { DUEL_KIND_DAMAGE, DUEL_KIND_TAKEN, DUEL_ULT_CHARGE } from '../src/config/duel';
 import type { EnemyManagerAPI } from '../src/core/types';
 
 /* Balance invariants on the headless sim (scripts/balance/sim.ts; the full report is `npm run balance`). Storm strikes
@@ -125,5 +125,37 @@ describe('duel ultimate meter', () => {
     expect(c.critCharge).toBe(0.7);
     p.c.clear();
     expect(c.critCharge).toBe(0);
+  });
+});
+
+describe('Duel-only balance levers', () => {
+  it('DUEL_KIND_DAMAGE / DUEL_KIND_TAKEN change Duel damage but no PvE stat, DPS or meter (campaign / Survival / Brawl)', () => {
+    const pve = () =>
+      KINDS.map((k) => {
+        // Reseed per plow: the numbers must not depend on how many rolls the other measurements used.
+        let s = 777;
+        Math.random = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+        const st = statsFor(k, 'high');
+        return [st.maxHp, st.damageMult, st.maxSpeed, singleDps(k, 'high', 10), clusterDps(k, 'high', 10), ultFill(k, 'fresh', 60)];
+      });
+    const saved = [{ ...DUEL_KIND_DAMAGE }, { ...DUEL_KIND_TAKEN }];
+    const before = pve();
+    const duelBefore = duelTtk('classic', 'brute', 'high', 60);
+    try {
+      for (const k of KINDS) {
+        DUEL_KIND_DAMAGE[k] = 3;
+        DUEL_KIND_TAKEN[k] = 0.2;
+      }
+      expect(pve()).toEqual(before);
+      // ...while the Duel sees them (3 x 0.2: every plow-vs-plow hit at 60%).
+      expect(duelTtk('classic', 'brute', 'high', 60)).toBeGreaterThan(duelBefore * 1.2);
+    } finally {
+      for (const k of KINDS) {
+        delete DUEL_KIND_DAMAGE[k];
+        delete DUEL_KIND_TAKEN[k];
+      }
+      Object.assign(DUEL_KIND_DAMAGE, saved[0]);
+      Object.assign(DUEL_KIND_TAKEN, saved[1]);
+    }
   });
 });
