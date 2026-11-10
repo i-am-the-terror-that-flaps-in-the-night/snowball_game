@@ -84,7 +84,8 @@ A long, low nuclear flatbed: a stubby armoured cab, a big glowing reactor capsul
 bobbing out of it, twin cooling stacks, a spinning vent fan and a sprayer nozzle over the nose. No blade, no snowball
 (deep snow still slows it). +5% speed and +20% HP; bots it irradiates glow green, take +30% damage from you
 and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose, or for as long as a RAD DOSE is
-still soaking in).
+still soaking in). **Lead lining:** a bot it has irradiated hits ISOTOPE 20% softer (bots only; Duel and Brawl
+unchanged), so dosing a pack before wading into it pays off.
 
 - **SPACE (hold): Rad Sprayer.** Every 0.12 s (faster with Overclock) the nozzle hoses a glowing cone (about 100°
   wide, 8.5 m + Mega Hopper reach). The nearest bot in it takes the full dose, every other bot in the cone 65%; all

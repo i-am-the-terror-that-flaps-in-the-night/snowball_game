@@ -459,6 +459,20 @@ dose is ~2% of damage dealt), so the heal adds only a few HP per run. A half-str
 aura / trail heal, or more Salvage at mid; the first two grow with crowd size and would want a per-second heal cap
 (today the only cap is max HP). Dose healing is bounded by the total dose (at most 1.25x the spray, with contagion).
 
+**Lead lining (by request, the structural fix).** Hits from a bot ISOTOPE has irradiated deal 20% less
+(`LEAD_LINING`, applied in `Combat.hitPlow` after the garage damage reduction; bots only, so Duel / Brawl and the sim
+rows are unchanged). Hard sweeps, 3 runs, HP lost before (dose-heal reference) -> after:
+
+| arena | mid | high |
+|---|---|---|
+| Plaza Hard | 771 -> 622 (594 / 629 / 643), still 1 death every run | 264 -> 307 (238 / 275 / 408) |
+| Omega Works Hard | 391 -> 368, 0 deaths | 155 -> 150 |
+
+Mid Plaza, the worst cell, drops about 19%, so nearly all of its damage comes from bots it has dosed; the Plaza mid death
+stays (622 lost is still about two full 312-HP pools). High is noise (one 408 outlier; the other two runs sit
+at or under the reference). Clear times unchanged (Plaza mid 69.4 s, Omega mid 69.6 s, high 45.7 / 52.6 s). If the
+death should go too, 30% is the next step; past that it starts to make ISOTOPE the tank it was never meant to be.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

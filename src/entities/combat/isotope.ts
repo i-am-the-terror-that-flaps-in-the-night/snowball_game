@@ -21,6 +21,9 @@ const _kb = new THREE.Vector3();
 // Design floor from the user (stronger irradiation): balance ISOTOPE through damage numbers, not by lowering RAD_VULN
 // below 1.3 or removing the radiation burn / the trail's grip.
 export const RAD_VULN = 1.3;
+/** Lead lining (ISOTOPE): hits from a bot it has irradiated hurt this much less (Combat.hitPlow; bots only, so never
+ *  in Duel / Brawl). Rewards dosing the pack before wading into it. */
+export const LEAD_LINING = 0.2;
 const RAD_SECONDS = 3;
 /** Radiation burns too: every RAD_TICK s an irradiated bot takes RAD_DPS x RAD_TICK (x damage mult x reactorBoost). */
 const RAD_TICK = 0.5;

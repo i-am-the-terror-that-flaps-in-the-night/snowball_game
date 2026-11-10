@@ -4,7 +4,7 @@ import { Combat } from '../src/entities/Combat';
 import { computeStatsFor } from '../src/core/Progression';
 import type { EnemyHandle, GameContext } from '../src/core/types';
 import type { PilotBinding } from '../src/entities/pilot';
-import { sprayRange, reactorBoost, type IsotopeKit } from '../src/entities/combat/isotope';
+import { sprayRange, reactorBoost, LEAD_LINING, type IsotopeKit } from '../src/entities/combat/isotope';
 
 /* ISOTOPE REACTOR HAULER: RAD SPRAYER (SPACE, hold) and FALLOUT TRAIL (E) through Combat's vehicle routing. */
 
@@ -160,5 +160,24 @@ describe('ISOTOPE Reactor Hauler', () => {
     r3.plow.dead = true;
     r3.run(1);
     expect(r3.plow.hp).toBe(50);
+  });
+
+  it('LEAD LINING: a bot it has irradiated hits softer; a clean bot hits in full', () => {
+    const clean = bot(0, 2);
+    const a = rig([clean]);
+    const full = a.c.hitPlow(20, 0, 2, { attacker: clean });
+    expect(full).toBeGreaterThan(0);
+
+    const hot = bot(0, 2);
+    const b = rig([hot]);
+    iso(b.c).addDose(hot, 50);
+    expect(b.c.hitPlow(20, 0, 2, { attacker: hot })).toBeCloseTo(full * (1 - LEAD_LINING), 5);
+
+    // Only ISOTOPE wears the lining: the same irradiated bot hits VOLT-9 in full.
+    const zapper = bot(0, 2);
+    const v = rig([zapper]);
+    v.binding.stats = computeStatsFor({}, 'volt');
+    iso(v.c).rads.set(zapper, 3);
+    expect(v.c.hitPlow(20, 0, 2, { attacker: zapper })).toBeCloseTo(full * computeStatsFor({}, 'volt').damageTaken / a.binding.stats.damageTaken, 5);
   });
 });

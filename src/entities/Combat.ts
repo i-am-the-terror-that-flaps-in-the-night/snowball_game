@@ -9,7 +9,7 @@ import { Ultimates } from './combat/ultimates';
 import { BURN_VULN, ClassicKit } from './combat/classic';
 import { VoltKit } from './combat/volt';
 import { BruteKit, ironHide } from './combat/brute';
-import { IsotopeKit, RAD_VULN } from './combat/isotope';
+import { IsotopeKit, LEAD_LINING, RAD_VULN } from './combat/isotope';
 import { ArsenalKit } from './combat/arsenal';
 import { MeleeKit } from './combat/melee';
 import { AirKit } from './combat/air';
@@ -399,6 +399,8 @@ export class Combat implements CombatAPI {
     if (plow.dashing) dmg *= 0.5;
     if (plow.whirling) dmg *= 0.7;
     dmg *= stats.damageTaken;
+    // Lead lining (ISOTOPE): a bot it has irradiated hits softer.
+    if (a && stats.plowKind === 'isotope' && this.isotope.rads.has(a)) dmg *= 1 - LEAD_LINING;
     dmg = ironHide(dmg, stats, plow.speed);
     const lastStandBefore = this.lastStandMult() > 1;
     if (lastStandBefore) dmg *= 1 - stats.lastStand * 0.5;
