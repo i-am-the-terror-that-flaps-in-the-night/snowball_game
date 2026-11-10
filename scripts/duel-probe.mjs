@@ -283,9 +283,22 @@ await session('rematch', async (host, guest) => {
   await connect(host, guest);
   await toFight(host, guest);
   // Skip to the result: the host wrecks the guest twice (host authoritative), rounds tick over.
+  // Ultimate meters carry over between rounds (host-owned; the guest reads its own from the snapshots).
+  const meters = () => Promise.all([
+    host.evaluate(() => [window.__game.ctx.combat.critCharge, window.__game.duel.opponentCombat.critCharge]),
+    guest.evaluate(() => window.__game.ctx.combat.critCharge),
+  ]);
   for (let r = 0; r < 2; r++) {
     await until(host, guest, (h) => h.phase === 'fight', 6, 0.25);
-    await host.evaluate(() => { const d = window.__game.duel; d.opponent.spawnProt = 0; d.opponent.damage(99999); });
+    if (r === 1) {
+      const [hm, gm] = await meters();
+      check(Math.abs(hm[0] - 0.6) < 0.05 && Math.abs(hm[1] - 0.4) < 0.05 && Math.abs(gm - hm[1]) < 0.05, 'ultimate meters carry over into round 2 (host both, guest its own)', { hm, gm });
+    }
+    await host.evaluate((r) => {
+      const d = window.__game.duel;
+      if (r === 0) { window.__game.ctx.combat.critCharge = 0.6; d.opponentCombat.critCharge = 0.4; }
+      d.opponent.spawnProt = 0; d.opponent.damage(99999);
+    }, r);
     await run(host, guest, 3.6);
   }
   let [h, g] = await until(host, guest, (h, g) => h.phase === 'results' && g.phase === 'results', 6, 0.25);
@@ -305,6 +318,10 @@ await session('rematch', async (host, guest) => {
   await guest.evaluate(() => window.__game.duel.setReady());
   [h, g] = await until(host, guest, (h, g) => h.phase === 'fight' && g.phase === 'fight', 8, 0.25);
   check(h.stats[0].plowKind === 'classic' && h.stats[1].plowKind === 'isotope' && h.round === 1, 'rematch round 1 with the new plows', h.stats.map((s) => s.plowKind));
+  {
+    const [hm, gm] = await meters();
+    check(hm[0] < 0.05 && hm[1] < 0.05 && gm < 0.05, 'ultimate meters start empty in the rematch', { hm, gm });
+  }
   // Meltdown (guest F, Critical Mass empty) on the host.
   {
     await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 3 + PZ); op.position.set(0, 0, -3 + PZ); window.__game.duel.opponentCombat.critCharge = 0; });
