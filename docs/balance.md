@@ -594,6 +594,12 @@ High uses the same values as the 12-round run above (its 28 vs 20 is sample nois
 ~57, ISOTOPE ~59, VOLT-9 ~49, ARSENAL ~44, Classic ~41). Against the first pass (spreads 27 / 40 / 25) fresh holds, mid
 improves and high is at least as even, with VOLT-9 near 50% at every tier.
 
+**Light pass (by request, not re-measured).** Small nudges from the matchup tables above: the Classic deals x0.97 late
+(was 0.92: it was weakest at high and lost ~80% to BRUTUS) but x0.9 fresh (it led fresh / mid); BRUTUS deals x0.78
+fresh (was 0.75: 34% at mid) and takes x1.18 late (was 1.15); ARSENAL takes x0.6 late (was 0.62) and x0.58 fresh
+(33% at fresh). VOLT-9 and ISOTOPE unchanged. Each step is a few percent of one side's damage, inside the matrix's noise
+for a single run; re-run `scripts/duel-matrix.mjs` when convenient to confirm.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

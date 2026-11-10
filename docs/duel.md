@@ -21,9 +21,9 @@ sees your gear on your plow. Player-vs-player hits are scaled well below PvE dam
 rounds further, and damped by the attacker's garage power so late-game duels don't end in seconds), then take the
 same 60% max-HP hit cap as Brawl, so nothing one-shots. On top of that each vehicle has a Duel-only factor on the
 damage it deals and on the damage it takes (`DUEL_KIND_DAMAGE` / `DUEL_KIND_TAKEN` in `src/config/duel.ts`: VOLT-9
-deals x1.95 and takes x0.77, ARSENAL deals x0.85 and takes x0.62, ISOTOPE takes x0.9, BRUTUS deals x0.56 and takes
-x1.15, the Classic deals x0.92; for BRUTUS and VOLT-9 these are the late-garage values, eased in from fresh ones,
-BRUTUS x0.75 / x1 and VOLT-9 x1.8, as the garage grows), measured on real autopiloted duels so that every vehicle wins roughly a third to two
+deals x1.95 and takes x0.77, ARSENAL deals x0.85 and takes x0.6, ISOTOPE takes x0.9, BRUTUS deals x0.56 and takes
+x1.18, the Classic deals x0.97; these are the late-garage values, eased in from fresh ones as the garage grows:
+BRUTUS x0.78 / x1, VOLT-9 x1.8, the Classic x0.9, ARSENAL takes x0.58), measured on real autopiloted duels so that every vehicle wins roughly a third to two
 thirds of its matchups; campaign, Survival and Brawl never see them. See [balance.md](balance.md) ("Duel balance at high").
 
 **Ultimates** (FIRESTORM, SUPERCELL, EARTHQUAKE, NUKE, SINGULARITY) fire in the Duel too. There the meter is sized in
