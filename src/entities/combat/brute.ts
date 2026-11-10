@@ -38,7 +38,7 @@ const FIST_DROP = 0.9;
 const FIST_RECOVER = 0;
 const FIST_ANIM = 0.3;
 /** Fist reach (m past the hull) and damage per jab (x fistSize, x Momentum line); the finisher hits FIST_FINISH x. */
-const FIST_REACH = 4;
+export const FIST_REACH = 4;
 const FIST_BASE = 4.8;
 const FIST_FINISH = 2.2;
 /** The finisher's SHOCKWAVE: a blast that rolls SHOCK_LEN m on past the fist, SHOCK_W m wide, hitting every bot in
@@ -70,7 +70,7 @@ const SPIKE_TICK = 0.3;
 const SPIKE_KNOCK = 3;
 
 /** Mega Hopper on BRUTUS: heavier fists (bigger reach and damage), from the ball-size stat. */
-function fistSize(st: PlayerStats): number {
+export function fistSize(st: PlayerStats): number {
   return Math.max(1, st.maxBallRadius / 1.2);
 }
 /** One jab's raw damage: base x Mega Hopper x Momentum line (the parked share of its at-speed bonus). */
