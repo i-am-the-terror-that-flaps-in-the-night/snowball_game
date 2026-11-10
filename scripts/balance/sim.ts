@@ -246,11 +246,11 @@ const DT = 1 / 60;
 /** Ahead of the plow: inside every melee / F-ability reach (whirl 4 m + bot radius). */
 const NEAR = 4.5;
 
-function botRig(kind: PlowKind, tier: Tier, bots: Dummy[], ult: 'hold' | 'use' = 'hold') {
+function botRig(kind: PlowKind, tier: Tier, bots: Dummy[], ult: 'hold' | 'use' = 'hold', decoys: Dummy[] = []) {
   const ctx = newCtx();
   const stats = statsFor(kind, tier);
   const plow = fakePlow(stats);
-  const p = pilot(ctx, stats, plow, botManager(bots));
+  const p = pilot(ctx, stats, plow, botManager([...bots, ...decoys]));
   const rot = new Rotation(p, () => bots.find((b) => b.alive) ?? null, ult);
   const dead = new Map<Dummy, number>();
   const run = (s: number) => {
@@ -277,10 +277,13 @@ function botRig(kind: PlowKind, tier: Tier, bots: Dummy[], ult: 'hold' | 'use' =
 
 const total = (bots: Dummy[]) => bots.reduce((s, b) => s + b.dealt, 0);
 
-/** Sustained single-target DPS vs a stationary dummy (ultimate held back), over `seconds` after a warm-up. */
-export function singleDps(kind: PlowKind, tier: Tier, seconds = 60): number {
+/** Sustained single-target DPS vs a stationary dummy (ultimate held back), over `seconds` after a warm-up.
+ *  `grounded` false parks an uncounted decoy 7 m behind the dummy (out of every melee reach, past it for the Arc
+ *  Lance's nearest-bot lock): the dummy is no longer alone, so VOLT-9's GROUNDED ARC (1.75x on a lone bot) stays off,
+ *  as on a typical bot in a wave. Only the dummy's damage counts. */
+export function singleDps(kind: PlowKind, tier: Tier, seconds = 60, grounded = true): number {
   const bots = [dummy(0, NEAR)];
-  const r = botRig(kind, tier, bots);
+  const r = botRig(kind, tier, bots, 'hold', grounded ? [] : [dummy(0, NEAR + 7)]);
   r.run(seconds);
   return total(bots) / seconds;
 }

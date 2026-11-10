@@ -28,6 +28,7 @@ it('balance report', () => {
         `| ${r.k} | ${f0(r.hp)} | ${f0(r.dps)} (${pct(r.dps, dpsMean)}) | ${f0(r.aoe)} | ${f1(r.fill)} / ${f1(r.boss)} | ${f0(r.ult.total)}, ${r.ult.hit} (${pct(r.ult.total, ultMean)}) | ${f1(r.ttk)} (${pct(r.ttk, ttkMean)}) / ${f1(r.ttkMin)} |`,
       );
     }
+    out.push(`\nVOLT-9 1-target DPS with a bot near the dummy (no GROUNDED ARC, as on a typical bot in a wave): ${f0(singleDps('volt', tier, 60, false))}.`);
     out.push(
       `\nDuel minigun alone, 2 s held: ${f0(duelGunDamage(tier))} HP of a ${f0(statsFor('classic', tier).maxHp)}-HP Classic; ${f0(duelGunDamage(tier, 2, 'arsenal'))} of a ${f0(statsFor('arsenal', tier).maxHp)}-HP ARSENAL mirror.`,
     );

@@ -29,7 +29,8 @@ describe('ultimate meters', () => {
 
   it.each(KINDS)('%s: fills in 20-35 s fresh (ARSENAL 15+: its storm charges faster by request), and no faster than 12 s late-game (in a fight or on a boss)', (kind) => {
     const fresh = ultFill(kind, 'fresh', 150);
-    expect(fresh).toBeGreaterThan(kind === 'arsenal' ? 15 : 20);
+    // VOLT-9 19+: its Arc Lance buff (2.1 -> 2.7 per tick, by request) also fills SUPERCELL faster (19.3 s fresh).
+    expect(fresh).toBeGreaterThan(kind === 'arsenal' ? 15 : kind === 'volt' ? 19 : 20);
     expect(fresh).toBeLessThan(35);
     expect(ultFill(kind, 'high', 150)).toBeGreaterThan(12);
     expect(ultFillBoss(kind, 'high', 90)).toBeGreaterThan(kind === 'arsenal' ? 9 : 12); // ARSENAL's faster storm
@@ -44,7 +45,9 @@ describe('sustained damage', () => {
   it.each(['fresh', 'high'] as const)('%s: every plow within 25%% of the mean single-target DPS; VOLT-9 / BRUTUS / ISOTOPE match ARSENAL (within 8%%)', (tier) => {
     const live = KINDS.filter((k) => !PENDING.has(k));
     // ARSENAL hits bots PVE_MULT x harder by design; it is balanced against the others on its duel-equivalent damage.
-    const dps = new Map(live.map((k) => [k, singleDps(k, tier, 30) / (k === 'arsenal' ? PVE_MULT : 1)] as const));
+    // VOLT-9 is measured with a bot near the dummy (grounded false): alone, its GROUNDED ARC (1.75x on a bot with
+    // nothing to chain to) is always on, which inflated its number well past what it does in real runs.
+    const dps = new Map(live.map((k) => [k, singleDps(k, tier, 30, k !== 'volt') / (k === 'arsenal' ? PVE_MULT : 1)] as const));
     const mean = [...dps.values()].reduce((a, b) => a + b, 0) / dps.size;
     for (const d of dps.values()) expect(Math.abs(d / mean - 1)).toBeLessThan(0.25);
     const arsenal = dps.get('arsenal')!;
@@ -52,9 +55,9 @@ describe('sustained damage', () => {
     // BRUTUS's Wrecking Fist was buffed by request (no recovery, faster punches): at least ARSENAL, at most +45%.
     expect(dps.get('brute')! / arsenal).toBeGreaterThan(0.95);
     expect(dps.get('brute')! / arsenal).toBeLessThan(1.45);
-    // 18%: overkill on dying dummies trims ARSENAL's PvE bonus a little. VOLT-9 gets 25%: the sim's dummy stands alone,
-    // so its GROUNDED ARC (1.75x on a target with nothing to chain to, the boss-fight buff) is always on here.
-    for (const k of live) if (k !== 'classic' && k !== 'arsenal' && k !== 'brute') expect(Math.abs(dps.get(k)! / arsenal - 1)).toBeLessThan(k === 'volt' ? 0.25 : 0.18);
+    // 18%: overkill on dying dummies trims ARSENAL's PvE bonus a little. VOLT-9 is measured ungrounded (above), so it
+    // gets the same 18% (it had 25% while the lone dummy granted it the GROUNDED ARC).
+    for (const k of live) if (k !== 'classic' && k !== 'arsenal' && k !== 'brute') expect(Math.abs(dps.get(k)! / arsenal - 1)).toBeLessThan(0.18);
   });
 
   it.each(['fresh', 'high'] as const)('%s: VOLT-9 / BRUTUS / ISOTOPE out-damage ARSENAL on a cluster (before its PvE bonus)', (tier) => {

@@ -322,13 +322,40 @@ VOLT-9 got a BOSS LOCK (wide cone and a 3 m hold on bosses; see [plows.md](plows
 
 ## Follow-up: VOLT-9 buff
 
-VOLT-9 had the lowest HP (0.85x) and the lowest crowd damage at fresh / mid of the five, and on Hard Plaza (mid) it
-lost the most HP and died twice. Buff: HP 0.85x -> 0.95x, Arc Lance chain hops 50% -> 60% of the arc, Static Field
-pulse 14 -> 18 damage (the field is most of VOLT's early crowd damage and barely scales with upgrades, so this helps
-fresh / mid most). Sim: HP 102 / 247 / 380, cluster DPS 272 -> 304 (fresh), 1482 -> 1637 (mid), 7430 -> 8114
-(high, now the best crowd plow); single target about unchanged; fastest Duel kill 4.7 -> 4.4 s (floor 4 s). Hard Plaza
-/ Omega Works (mid, 3 runs each): 75-80 s / 70-83 s, bosses ~24 / ~22 s, against 89 / 86 s and 30 / 31 s before:
-inside the other plows' 69-92 s.
+VOLT-9 had the lowest HP (0.85x) and the lowest crowd damage at fresh / mid of the five, trailed on Plaza / Omega
+Works (normal and Hard), and its boss rounds ran ~30 s on Hard. By request the buff is **mainly primary (Arc Lance)
+damage**, and VOLT is not meant to be the top late-game damage dealer (ARSENAL is). Final buff:
+
+- HP 0.85x -> 0.95x.
+- Arc Lance chain hops at 60% of the arc (was 50%).
+- Arc Lance 2.1 -> 2.7 damage per 0.15 s tick (+29%, chain hops and GROUNDED ARC included).
+- Static Field pulse back to 14 (an interim 18 was reverted: the buff belongs on the primary).
+
+Sim (`npm run balance`, fresh / mid / high; before = Arc 2.1, Static 18): HP 114 / 247 / 380; 1-target 83 -> 87 /
+387 -> 423 / 2034 -> 2337; cluster 304 -> 284 / 1642 -> 1629 / 7999 -> 8789; ult fill (fight) 20.5 -> 19.4 / 19.1 ->
+19.2 / 26.1 -> 26.0 s; fastest Duel kill 4.4 -> 5.3 / 6.0 -> 6.0 / 6.8 -> 6.5 s (floor 4 s; the Static Field was most
+of VOLT's fresh Duel burst). ARSENAL stays the top single-target plow at every tier (114 / 568 / 2472).
+
+The sim's lone dummy always gets the GROUNDED ARC (1.75x), so VOLT's table 1-target figure (+36% at high) overstates
+it. The report now also prints VOLT with a second bot near the dummy (no grounding, as on a typical bot in a wave):
+72 / 287 / 1488 (was 71 / 285 / 1354), at or below ARSENAL's duel-equivalent (76 / 379 / 1648). `tests/balance.test.ts`
+measures VOLT that way, so it is back on the same 18% band against ARSENAL as BRUTUS / ISOTOPE (it had 25% for the
+lone-dummy artifact), and the spread no longer drags Classic out of the 25% band. VOLT's fresh ult floor is 19 s (was
+20): the stronger lance also fills SUPERCELL a little faster (19.4 s).
+
+Sweeps (mid, current autopilot; VOLT 1 run on normal, 2 on Hard; others from the reference sweeps), clear / boss:
+
+| arena | VOLT before | VOLT now | others |
+|---|---|---|---|
+| a3 normal | 41.3 / 6.0 | 39.6 / 3.1 | classic 37.2, arsenal 37.7, isotope 39.8, brute 46.6 |
+| Plaza normal | 64.9 / 19.5 | 59.9 / 16.7 | arsenal ~52, isotope ~54, classic ~57, brute ~58 |
+| Omega Works normal | 70.4 / 21.6 | 53.5 / 12.0 | isotope ~51, brute ~51, arsenal ~53, classic ~54 |
+| Plaza Hard | 88.8 / 30.1 | 72.8 / 19.4 | arsenal 69.3, isotope 70.5, brute 74.4, classic 80.7 |
+| Omega Works Hard | 86.2 / 30.8 | 72.7 / 19.6 | arsenal 70.2, brute 71.1, isotope 81.6, classic 92.0 |
+
+VOLT is now in the pack everywhere, still behind ARSENAL on every clear time and a few seconds back on normal Plaza
+(single runs there swing 5-10 s). Its boss rounds are now the fastest on Hard, by a few seconds, as the boss-fight
+plow. Arc 2.5 left it 6-9 s behind on Omega Works; 2.9 put it ahead of everyone on Hard Plaza.
 
 ## Limits of the model
 

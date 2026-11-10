@@ -19,7 +19,10 @@ const TOWER_Y = 3.15;
 /** ARC LANCE (SPACE, hold): tick, damage per tick (x damage mult) on the locked bot, chain hops / share / reach,
  *  aim cone (cos of the half angle off the nose) and reach (+ Mega Hopper: ball radius above the 1.2 m base). */
 const ARC_TICK = 0.15;
-export const ARC_DAMAGE = 2.1;
+// By request, VOLT-9's buff is mainly primary damage: the Arc Lance went 2.1 -> 2.7 (+29%) while Static Field went
+// back to 14. VOLT trailed on Plaza / Omega Works and Hard, with boss rounds near 30 s; at 2.7 it clears in the pack
+// (behind ARSENAL, still the top damage dealer) with ~19.5 s Hard bosses. 2.9 put it ahead of everyone on Hard Plaza.
+export const ARC_DAMAGE = 2.7;
 // Design from the user: the ARC LANCE is the chain weapon — it chains a ton and can paralyse.
 const ARC_HOPS = 6;
 const ARC_CHAIN_FRAC = 0.6;
@@ -46,7 +49,7 @@ export const arcRange = (ballR: number) => 9 + 2.5 * Math.max(0, ballR - 1.2);
  *  radius (+ Tesla Field reach above its 4.5 m base). The first pulse is a bigger burst (STATIC_FIRST x). */
 // Design from the user: Static Field stays a lingering, pulsing stun field; balance it through STATIC_DAMAGE / stun
 // numbers, not by turning it back into a single ring.
-export const STATIC_DAMAGE = 18;
+export const STATIC_DAMAGE = 14;
 /** STATIC FIELD leans only lightly on the coil (coilBoost to this power): an area stun, kept flat late. */
 const STATIC_COIL_EXP = 0.2;
 const STATIC_STUN = 0.7;
