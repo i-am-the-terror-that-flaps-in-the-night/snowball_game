@@ -81,8 +81,8 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'ISOTOPE',
     icon: '☢️',
     tagline: 'A nuclear flatbed with a glowing reactor on its back. No blade; everything it hoses glows, then falls apart.',
-    traits: ['Irradiated bots take +30% damage and burn', '+5% speed, +10% HP', 'SPACE (hold): Rad Sprayer soaks bots in a RAD DOSE that burns for 8-15 s and spreads · E: Fallout Trail of gripping toxic puddles for 4 s', 'F: Meltdown blast + fallout pool (free) · radiation builds Critical Mass: full = NUKE on F'],
-    hpMult: 1.1,
+    traits: ['Irradiated bots take +30% damage and burn', '+5% speed, +20% HP', 'SPACE (hold): Rad Sprayer soaks bots in a RAD DOSE that burns for 8-15 s and spreads · E: Fallout Trail of gripping toxic puddles for 4 s', 'F: Meltdown blast + fallout pool (free) · radiation builds Critical Mass: full = NUKE on F'],
+    hpMult: 1.2, // ISOTOPE buff by request (secondary to the Rad Sprayer): 1.1 -> 1.2
     speedMult: 1.05,
     accelMult: 1,
     dashPowerMult: 1,

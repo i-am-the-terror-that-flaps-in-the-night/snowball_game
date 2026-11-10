@@ -41,13 +41,13 @@ const NUKE_KNOCK = 26;
  *  share for the others in the cone, cone half angle (cos), reach (+ Mega Hopper: ball radius above the 1.2 m base),
  *  nozzle position on the hauler's nose (vehicles/isotope.ts), and the share of its damage that fills Critical Mass. */
 const SPRAY_TICK = 0.12;
-export const SPRAY_DAMAGE = 1.6;
-const SPRAY_SPLASH = 0.55;
-const SPRAY_COS = Math.cos(0.75);
-/** Avalanche Core on the hauler: a 50% wider spray cone. */
+export const SPRAY_DAMAGE = 2.4; // ISOTOPE buff by request, mainly the Rad Sprayer: 1.6 -> 2.4
+const SPRAY_SPLASH = 0.65; // ISOTOPE buff by request, mainly the Rad Sprayer: 0.55 -> 0.65
+const SPRAY_COS = Math.cos(0.85); // ISOTOPE buff by request, mainly the Rad Sprayer: 0.75 -> 0.85 rad half angle (43 -> 49 deg)
+/** Avalanche Core on the hauler: a wider spray cone (60 deg half angle). */
 const SPRAY_COS_WIDE = Math.cos(1.05);
 /** RAD SPRAYER leans on Meltdown's reactor overheat to this power (its own Rad Sprayer line does the rest). */
-const SPRAY_REACTOR_EXP = 0.8;
+const SPRAY_REACTOR_EXP = 0.6; // ISOTOPE buff by request, mainly the Rad Sprayer: 0.8 -> 0.6 (power moved from high to fresh / mid)
 export const sprayRange = (ballR: number) => 8.5 + 2 * Math.max(0, ballR - 1.2);
 const NOZZLE_Y = 1.25;
 const NOZZLE_Z = 2.3;
@@ -57,7 +57,7 @@ const SPRAY_CRIT = 0.5;
  *  dose/DOSE_TAU of it (plus a small floor so it always runs out), roughly 10-15 s of burn after a good soak. A dosed
  *  bot stays irradiated (vulnerable + the base burn) for as long as it carries a dose, and leaks DOSE_SPREAD of every
  *  burn into the nearest bot within DOSE_SPREAD_R m (contagion: a dense pack keeps cooking). */
-const SPRAY_DIRECT = 0.35;
+const SPRAY_DIRECT = 0.5; // ISOTOPE buff by request, mainly the Rad Sprayer: 0.35 -> 0.5 (more lands on contact)
 const DOSE_BONUS = 1.4;
 const DOSE_TAU = 5;
 const DOSE_FLOOR = 0.6;

@@ -82,13 +82,13 @@ it).
 
 A long, low nuclear flatbed: a stubby armoured cab, a big glowing reactor capsule lying on the bed with control rods
 bobbing out of it, twin cooling stacks, a spinning vent fan and a sprayer nozzle over the nose. No blade, no snowball
-(deep snow still slows it). +5% speed and +10% HP; bots it irradiates glow green, take +30% damage from you
+(deep snow still slows it). +5% speed and +20% HP; bots it irradiates glow green, take +30% damage from you
 and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose, or for as long as a RAD DOSE is
 still soaking in).
 
-- **SPACE (hold): Rad Sprayer.** Every 0.12 s (faster with Overclock) the nozzle hoses a glowing cone (about 70°
-  wide, 8.5 m + Mega Hopper reach). The nearest bot in it takes the full dose, every other bot in the cone 55%; all
-  of them get irradiated. **RAD DOSE (extended radiation):** only 35% of a spray hit lands on contact; the rest soaks
+- **SPACE (hold): Rad Sprayer.** Every 0.12 s (faster with Overclock) the nozzle hoses a glowing cone (about 100°
+  wide, 8.5 m + Mega Hopper reach). The nearest bot in it takes the full dose, every other bot in the cone 65%; all
+  of them get irradiated. **RAD DOSE (extended radiation):** half of a spray hit lands on contact; the rest soaks
   in as a dose (x1.4 for the wait) that keeps burning long after you stop spraying or move on — a slice every 0.5 s
   (a fifth of what's left, plus a small floor), roughly 8-15 s of burn after a good soak — and the bot stays
   irradiated (+30% damage taken, base burn) while it carries a dose. Contagion: every burn leaks 20% into the nearest
@@ -103,10 +103,11 @@ still soaking in).
 Line: Meltdown (also overheats the reactor: Rad Sprayer and Fallout Trail hit harder, steeply at high levels),
 Half-Life (bigger, hotter, longer pools and wider, hotter trail puddles), Rad Aura (passive radiation around you),
 Chain Reaction (irradiated bots explode when wrecked, setting off their neighbours), Rad Sprayer (the primary's own
-line: every level +10% spray dose, splash included, and +0.5 m reach, tapering past level 5).
+line: +25% spray dose per level for 3 levels, then +6% per level, splash included, and +0.5 m reach, tapering past
+level 5).
 
 Upgrade mapping: Packed Ice = all damage; Mega Hopper = Rad Sprayer reach; Whirlwind Turbine = Fallout Trail recharge
-and heat; Snow Compactor = puddles linger longer (up to 2x); Avalanche Core = 50% wider spray cone; Frost Core = the
+and heat; Snow Compactor = puddles linger longer (up to 2x); Avalanche Core = wider spray cone (about 120°); Frost Core = the
 puddle sludge holds bots (0.6 s per tick).
 
 **Ultimate: NUKE.** Radiation damage fills the ☢ Critical Mass bar; when it's full, F fires an instant huge blast

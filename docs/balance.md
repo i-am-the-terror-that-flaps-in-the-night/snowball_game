@@ -398,6 +398,56 @@ are run-to-run noise (~5 s): **Hard mid is not fixed**, the Classic is still the
 about +5% at mid, but mid is already +11% (report) / +19% (honest), so that needs a multi-run Hard-mid probe first. The
 Packed Ice shop label still shows only the shared multiplier, so it understates the Classic past level 4.
 
+## Follow-up: ISOTOPE buff
+
+ISOTOPE had the lowest mid single-target (305, -23%) and cluster DPS (1338) of the five, the slowest mid Duel (9.1 s),
+and in bot sweeps it took the most damage of any plow (Hard Plaza mid 641 HP lost and a death; Hard Omega Works mid
+81.6 s, the slowest bar the Classic). By request the buff is **mainly its primary, the Rad Sprayer** (as for VOLT-9),
+and passing ARSENAL is allowed. Final buff:
+
+- Rad Sprayer damage per 0.12 s tick 1.6 -> 2.4; splash on the other bots in the cone 55% -> 65%.
+- Cone half angle 0.75 -> 0.85 rad (43° -> 49°), so it reaches bots sitting about 45° off the nose.
+- Reactor (Meltdown) scaling exponent 0.8 -> 0.6: less of the sprayer's power comes from high-level Meltdown, more
+  from the base, which shifts it from high toward fresh / mid.
+- Half of each spray hit lands on contact (was 35%; the rest is still the RAD DOSE). Real 200-HP bots die faster (the
+  slow dose was only ~2% of the damage actually dealt in sweeps) and more of the damage feeds lifesteal.
+- Rad Sprayer line (`isoSpray`): `1 + 0.1 * grow(L, 5)` -> `1 + 0.25 * grow(L, 3, 0.25)` (x1.75 at L3, x2.06 at L8;
+  was x1.3 / x1.8).
+- One secondary change: HP 1.1x -> 1.2x (it brawls inside ~6 m with no shield, range or damage reduction).
+
+Sim (`npm run balance`, ISOTOPE, before -> after, both on top of the Classic buff):
+
+| tier | HP | 1-target DPS | cluster DPS | ult fill fight / boss (s) | Duel TTK avg / min (s) |
+|---|---|---|---|---|---|
+| fresh | 132 -> 144 | 71 (-11%) -> 80 (-2%) | 248 -> 320 | 22.5 / 39.9 -> 21.8 / 36.0 | 7.7 / 7.0 -> 7.8 / 7.0 |
+| mid | 286 -> 312 | 305 (-23%) -> 363 (-11%) | 1338 -> 1697 | 15.8 / 30.7 -> 16.0 / 27.3 | 9.1 / 8.3 -> 9.0 / 8.6 |
+| high | 440 -> 480 | 1591 (-12%) -> 1799 (-4%) | 7736 -> 8969 | 26.1 / 30.1 -> 28.7 / 27.8 | 7.4 / 6.6 -> 7.4 / 7.0 |
+
+ISOTOPE is off the bottom of mid single-target (now inside the 25% band) and of cluster DPS at every tier (mid ahead of
+VOLT's 1644; high now the best cluster figure, 8969). It stays below ARSENAL on single-target everywhere (+32..+40%) and
+keeps the slowest mid Duel; its fastest Duel kill is 7.0 s or more (floor 4 s). NUKE is untouched (26451 at high).
+`tests/balance.test.ts` passes without band changes. Smaller variants: spray 2.2 / direct 0.45 / no line or HP change
+left mid at -18% and still last, and cost a little at high (the flatter reactor exponent); adding the line reshape and 65% splash gave -13% but no survivability.
+
+Sweeps (ISOTOPE, 1 run per cell after; before = reference sweeps), clear / boss / HP lost:
+
+| arena | ISOTOPE before | ISOTOPE now | others (clear) |
+|---|---|---|---|
+| a3 normal mid | 39.8 / 7.3 / 77 | 43.8 / 7.3 / 70 | classic 37.2, arsenal 37.7, volt 41.3, brute 46.6 |
+| Plaza normal mid | ~53.7 / - / ~272 | 53.0 / 12.9 / 331 | arsenal ~51.6, classic ~56.6, brute ~59.7, volt ~64 |
+| Omega Works normal mid | ~50.2 / - / ~178 | 46.1 / 12.0 / 181 | brute best 47.3, arsenal ~52.4, classic ~53.2, volt ~67.7 |
+| Plaza Hard mid | 70.5 / 23.6 / 641, 1 death | 69.9 / 25.7 / 725, 1 death | arsenal 69.3, brute 74.4, classic 80.7, volt 88.8 |
+| Plaza Hard high | 47.0 / 10.5 / 249 | 44.0 / 9.0 / 114 | volt 47.4, brute 51.6, arsenal 53.6, classic 54.5 |
+| Omega Works Hard mid | 81.6 / 24.8 / 459 | 75.1 / 27.5 / 525 | arsenal 70.2, brute 71.1, volt 86.2, classic 92.0 |
+| Omega Works Hard high | 54.5 / - / 213 | 46.0 / 8.8 / 125 | brute 49.6, volt 54.8, classic 58.5, arsenal 59.9 |
+
+("others" are pre-buff VOLT / Classic reference runs.) ISOTOPE is now the fastest clear on Omega Works normal mid and on
+both Hard high arenas, ties ARSENAL on Hard Plaza mid and is no longer near last on Hard Omega Works mid. a3 looks like
+noise (single runs swing ~5 s). At high its damage taken roughly halves, since bots die sooner. **Mid survivability is
+not fixed**: it still loses the most HP on every mid run and still dies once on Hard Plaza mid; the +10% HP only makes
+that a smaller share of its pool. Possible follow-ups (code, not numbers): let the dose soak heal too, or teach the bot
+autopilot to hold spray range. If the high tier proves too hot, spray 2.2 gives about -11% at mid and 0% at high.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more
