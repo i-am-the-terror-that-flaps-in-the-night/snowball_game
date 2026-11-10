@@ -72,8 +72,8 @@ export type Dummy = EnemyHandle & { hp: number; dealt: number };
 export const dummy = (x: number, z: number, hp = 1e7): Dummy =>
   ({ id: nextId++, position: new THREE.Vector3(x, 0, z), radius: 1, hp, maxHp: hp, alive: true, dealt: 0, type: 'grunt', mass: 1, isBoss: false }) as unknown as Dummy;
 
-type FakePlow = ReturnType<typeof fakePlow>;
-function fakePlow(stats: PlayerStats, x = 0, z = 0, heading = 0) {
+export type FakePlow = ReturnType<typeof fakePlow>;
+export function fakePlow(stats: PlayerStats, x = 0, z = 0, heading = 0) {
   const p = {
     position: new THREE.Vector3(x, 0, z), heading, hp: stats.maxHp, maxHp: stats.maxHp, dead: false, radius: 1.6,
     turretAim: 0, turretHeading: heading, hop: 0, gunFiring: false, heldBallRadius: 0, sawHalo: 0, speed: 0,
@@ -122,7 +122,7 @@ function botManager(bots: Dummy[]) {
   };
 }
 
-interface Pilot {
+export interface Pilot {
   c: Combat;
   /** Times (s, ctx.time) the ultimate went off. */
   ults: number[];
@@ -132,7 +132,7 @@ interface Pilot {
   held: Set<string>;
 }
 
-function pilot(ctx: GameContext, stats: PlayerStats, plow: FakePlow, enemies: unknown, pvp = false): Pilot {
+export function pilot(ctx: GameContext, stats: PlayerStats, plow: FakePlow, enemies: unknown, pvp = false): Pilot {
   const press = new Set<string>();
   const held = new Set<string>();
   const input = { throttle: 0, steer: 0, wasPressed: (k: string) => press.has(k), isDown: (k: string) => held.has(k) };
@@ -144,14 +144,26 @@ function pilot(ctx: GameContext, stats: PlayerStats, plow: FakePlow, enemies: un
   return { c, stats, plow, press, held, ults };
 }
 
-const newCtx = () => ({ scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop, cameraRig: noop }) as unknown as GameContext;
+export const newCtx = () => ({ scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop, cameraRig: noop }) as unknown as GameContext;
 const crit = (c: Combat) => c as unknown as { critCharge: number };
+
+/** Optional overrides for scripts that model positioning themselves (scripts/balance/duel2.ts). Unset = the MELEE
+ *  engagement model above. */
+export interface RotationHooks {
+  /** Advance ctx.time in step() (default true; a two-pilot sim steps two Rotations on one clock). */
+  clock?: boolean;
+  /** Where a slam with a ball of radius `r` lands, or null to hold it (target out of reach). Default: on the target. */
+  slamPoint?: (r: number) => { x: number; z: number } | null;
+  /** Called every step while the dash is recharged; returns true if the dash was used (the recharge restarts), false
+   *  to keep it ready. Default: every recharge, DASH_CONNECT of them land a dash strike. */
+  dash?: () => boolean;
+}
 
 /** The full rotation: every ability on cooldown, melee per MELEE. `ult`: 'hold' never fires the ultimate (the meter
  *  is emptied and the fill time logged instead), 'use' fires it whenever it is full. */
-class Rotation {
+export class Rotation {
   private slamT = 0;
-  private ball = 0;
+  private ball_ = 0;
   private whirlT = 0;
   private whirlAt = -1;
   private whirlN = 0;
@@ -162,7 +174,16 @@ class Rotation {
   fills: number[] = [];
   private fillStart = 0;
 
-  constructor(private p: Pilot, private target: () => EnemyHandle | null, private ult: 'hold' | 'use') {}
+  constructor(private p: Pilot, private target: () => EnemyHandle | null, private ult: 'hold' | 'use', private hooks: RotationHooks = {}) {}
+
+  /** Snow in the Classic's ball (m^3). */
+  get ball(): number {
+    return this.ball_;
+  }
+  /** Lose a share of the ball (a shield block, as Plow.stealSnow). */
+  stealBall(frac: number): void {
+    this.ball_ *= 1 - Math.min(1, Math.max(0, frac));
+  }
 
   step(dt: number, ctx: GameContext): void {
     const { p } = this;
@@ -170,7 +191,7 @@ class Rotation {
     // Not the Classic: SPACE / E are the vehicle kit's (Combat routes them; VehicleKit in combat/shared.ts).
     const vehicle = p.c.vehicle;
     this.t += dt;
-    (ctx as { time: number }).time += dt;
+    if (this.hooks.clock !== false) (ctx as { time: number }).time += dt;
     p.press.clear();
     this.drain();
     // F whenever the plow's F ability is ready ('hold': not with a full meter, which would fire the ultimate).
@@ -188,14 +209,17 @@ class Rotation {
       if (plow.whirlCharge < 1) plow.whirlCharge = Math.min(1, plow.whirlCharge + (cd > 0 ? dt / cd : 1));
       else p.press.add('KeyE');
     } else {
-      this.ball = Math.min(ballVolume(st.maxBallRadius), this.ball + MELEE.SNOW_INTAKE * st.collectRate * dt);
+      this.ball_ = Math.min(ballVolume(st.maxBallRadius), this.ball_ + MELEE.SNOW_INTAKE * st.collectRate * dt);
       const want = ballVolume(st.maxBallRadius * MELEE.SLAM_BALL);
       this.slamT -= dt;
-      if (this.slamT <= 0 && this.ball >= want && tgt && this.whirlAt < 0) {
+      if (this.slamT <= 0 && this.ball_ >= want && tgt && this.whirlAt < 0) {
         const r = st.maxBallRadius * MELEE.SLAM_BALL;
-        p.c.slamAt(tgt.position.x, tgt.position.z, r, want);
-        this.ball -= want * (1 - st.reserveFrac);
-        this.slamT = MELEE.SLAM_CYCLE;
+        const at = this.hooks.slamPoint ? this.hooks.slamPoint(r) : tgt.position;
+        if (at) {
+          p.c.slamAt(at.x, at.z, r, want);
+          this.ball_ -= want * (1 - st.reserveFrac);
+          this.slamT = MELEE.SLAM_CYCLE;
+        }
       }
       this.whirlT -= dt;
       if (this.whirlAt < 0 && this.whirlT <= 0) {
@@ -218,7 +242,9 @@ class Rotation {
       }
     }
     this.dashT -= dt;
-    if (this.dashT <= 0) {
+    if (this.dashT <= 0 && this.hooks.dash) {
+      if (this.hooks.dash()) this.dashT = st.dashCooldown + 0.5;
+    } else if (this.dashT <= 0) {
       this.dashT = st.dashCooldown + 0.5;
       this.dashN++;
       if (tgt && this.dashN * MELEE.DASH_CONNECT >= 1) {
@@ -242,7 +268,7 @@ class Rotation {
   }
 }
 
-const DT = 1 / 60;
+export const DT = 1 / 60;
 /** Ahead of the plow: inside every melee / F-ability reach (whirl 4 m + bot radius). */
 const NEAR = 4.5;
 

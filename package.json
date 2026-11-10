@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
-    "balance": "vitest run --config scripts/balance.config.ts --root ."
+    "balance": "vitest run --config scripts/balance.config.ts --root .",
+    "duel2": "vitest run --config scripts/duel2.config.ts --root ."
   },
   "dependencies": {
     "@fontsource/big-shoulders-display": "^5.3.0",
