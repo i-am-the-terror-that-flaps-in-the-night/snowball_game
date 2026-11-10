@@ -480,6 +480,12 @@ export class Progression {
   }
 
 
+  /** The secret duel-lobby code: +`n` coins (not counted as earned, so no coin trophies or lifetime stats). */
+  secretGrant(n: number): void {
+    this.data.coins += Math.round(n);
+    this.changed();
+  }
+
   /** Debug helper (?debug in URL): lots of coins and every arena unlocked. */
   debugGrant(): void {
     this.data.coins += 100000;

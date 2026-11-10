@@ -19,10 +19,14 @@ export type RematchState = 'none' | 'asked' | 'oppAsked';
 /** Unambiguous room-code alphabet (no 0/O, 1/I/L). */
 export const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const ROOM_CODE_LEN = 5;
+/** Secret lobby code: typed into JOIN it grants coins instead of joining (Game.openDuelLobby onSecret). */
+export const SECRET_CODE = '$$$$$';
 
 /** Upper-case, drop anything outside the alphabet, clip to the code length. */
 export function cleanRoomCode(raw: string): string {
   let out = '';
+  // The secret code is all '$' (outside the alphabet): keep a run of them as typed.
+  if (/^\$+$/.test(raw)) return raw.slice(0, ROOM_CODE_LEN);
   for (const ch of raw.toUpperCase()) {
     if (ROOM_CODE_CHARS.includes(ch)) out += ch;
     if (out.length >= ROOM_CODE_LEN) break;
@@ -61,7 +65,7 @@ export class DuelUI {
   private codeBig: HTMLElement;
   private codeInput: HTMLInputElement;
   private status: HTMLElement;
-  private lobbyH: { onHost(): void; onJoin(code: string): void; onCancel(): void } | null = null;
+  private lobbyH: { onHost(): void; onJoin(code: string): void; onCancel(): void; onSecret?(): string } | null = null;
   private _lobbyOpen = false;
   private openedAt = 0;
   /** Hub button focused when the lobby opened; BACK / Escape return focus there. */
@@ -198,7 +202,7 @@ export class DuelUI {
     return this._lobbyOpen;
   }
 
-  openLobby(h: { onHost(): void; onJoin(code: string): void; onCancel(): void }): void {
+  openLobby(h: { onHost(): void; onJoin(code: string): void; onCancel(): void; onSecret?(): string }): void {
     this.lobbyH = h;
     if (!this._lobbyOpen) this.returnFocus = document.activeElement as HTMLElement | null;
     this._lobbyOpen = true;
@@ -245,6 +249,12 @@ export class DuelUI {
   }
 
   private submitJoin(): void {
+    if (this.codeInput.value === SECRET_CODE && this.lobbyH?.onSecret) {
+      // Never joins a match: grants the reward and stays in the lobby.
+      this.codeInput.value = '';
+      this.setStatus(this.lobbyH.onSecret(), 'ok');
+      return;
+    }
     const code = cleanRoomCode(this.codeInput.value);
     if (code.length !== ROOM_CODE_LEN) {
       this.setStatus(`Room codes are ${ROOM_CODE_LEN} letters.`, 'error');

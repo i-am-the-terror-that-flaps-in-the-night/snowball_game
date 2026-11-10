@@ -1077,6 +1077,11 @@ export class Game {
     ui.openLobby({
       onHost: () => void this.hostDuel(),
       onJoin: (code) => void this.joinDuel(code),
+      onSecret: () => {
+        this.ctx.progression.secretGrant(100000);
+        this.ctx.audio.play('coin');
+        return '💰 Secret code accepted: +100,000 coins!';
+      },
       onCancel: () => {
         this.ctx.audio.play('click');
         this.closeDuelLobby();
