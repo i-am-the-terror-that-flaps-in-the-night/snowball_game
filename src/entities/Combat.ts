@@ -135,7 +135,7 @@ export class Combat implements CombatAPI {
       },
       hitMult: (e) => this.hitMult(e),
       lastStandMult: () => this.lastStandMult(),
-      onPlayerHit: (dealt, killed, target, canChain, heal) => this.onPlayerHit(dealt, killed, target, canChain, heal),
+      onPlayerHit: (dealt, killed, target, canChain, heal, healMult) => this.onPlayerHit(dealt, killed, target, canChain, heal, healMult),
     };
   }
 
@@ -560,15 +560,16 @@ export class Combat implements CombatAPI {
 
   /** Pilot perks that trigger on the player's own hits: Salvage Rig lifesteal and Adrenaline refunds.
    *  `heal` = false for VOLT-9 area damage (Thunderclap blast + storm, Tesla field ticks) so the storm can't
-   *  out-heal its own Overload backlash. */
-  private onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true, heal = true): void {
+   *  out-heal its own Overload backlash. `healMult` scales the lifesteal of a healing hit (ISOTOPE's RAD DOSE burn
+   *  heals only for the dose's share of each radiation tick). */
+  private onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true, heal = true, healMult = 1): void {
     const plow = this.b.plow;
     const st = this.b.stats;
     if (plow.dead) return;
     if (dealt > 0) plow.feedSawFury(dealt, 0);
     if (dealt > 0) this.ult.feed(dealt);
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.volt.chainLightning(target, dealt, heal);
-    if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal);
+    if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal * healMult);
     if (killed && target && st.chainBlast > 0 && this.isotope.rads.has(target)) this.isotope.chainQueue.push({ x: target.position.x, y: target.position.y, z: target.position.z });
     if (killed && target && st.scrapMax > 0) this.arsenal.scrapFrom(target);
     if (killed && st.killRecharge > 0) {

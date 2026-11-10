@@ -56,13 +56,16 @@ const SPRAY_CRIT = 0.5;
  *  (x DOSE_BONUS for the wait) that keeps burning long after the nozzle moves on: each RAD_TICK the bot loses
  *  dose/DOSE_TAU of it (plus a small floor so it always runs out), roughly 10-15 s of burn after a good soak. A dosed
  *  bot stays irradiated (vulnerable + the base burn) for as long as it carries a dose, and leaks DOSE_SPREAD of every
- *  burn into the nearest bot within DOSE_SPREAD_R m (contagion: a dense pack keeps cooking). */
+ *  burn into the nearest bot within DOSE_SPREAD_R m (contagion: a dense pack keeps cooking). The dose's share of each
+ *  burn repairs the plow through lifesteal (Salvage), x DOSE_HEAL; the base burn does not. */
 const SPRAY_DIRECT = 0.5; // ISOTOPE buff by request, mainly the Rad Sprayer: 0.35 -> 0.5 (more lands on contact)
 const DOSE_BONUS = 1.4;
 const DOSE_TAU = 5;
 const DOSE_FLOOR = 0.6;
 const DOSE_SPREAD = 0.2;
 const DOSE_SPREAD_R = 3.5;
+/** Share of a normal hit's lifesteal the RAD DOSE soak repays (1 = same, 0.5 = half). */
+const DOSE_HEAL = 1;
 /** FALLOUT TRAIL (E): seconds of trail, a puddle every TRAIL_DROP s (TRAIL_N pooled), each PUDDLE_LIFE s; damage tick
  *  and dps (Half-Life pool dps share), radius (Half-Life pool radius share). */
 const TRAIL_SECONDS = 4;
@@ -519,7 +522,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
     const glow = this.radFxT <= 0;
     if (glow) this.radFxT = 0.25;
     // Radiation burn: every RAD_TICK s each irradiated bot takes RAD_DPS (player credit, fills Critical Mass like
-    // every radiation hit, no lifesteal).
+    // every radiation hit; the base burn has no lifesteal, the RAD DOSE soak on top of it does, x DOSE_HEAL).
     this.radBurnT -= dt;
     const burn = this.radBurnT <= 0 && this.rads.size > 0;
     if (this.radBurnT <= 0) this.radBurnT += RAD_TICK;
@@ -546,7 +549,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         const hp0 = e.hp;
         const killed = this.b.enemies.damage(e, (amt + soak) * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-        this.onPlayerHit(dealt, killed, e, false, false);
+        this.onPlayerHit(dealt, killed, e, false, soak > 0, soak > 0 ? (DOSE_HEAL * soak) / (amt + soak) : 0);
         if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultCharge(st, NUKE_CHARGE_DMG));
         if (soak > 0 && dealt > 0 && glow) {
           _q.set(e.position.x, e.position.y + e.radius + 0.9, e.position.z);

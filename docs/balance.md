@@ -448,6 +448,17 @@ not fixed**: it still loses the most HP on every mid run and still dies once on 
 that a smaller share of its pool. Possible follow-ups (code, not numbers): let the dose soak heal too, or teach the bot
 autopilot to hold spray range. If the high tier proves too hot, spray 2.2 gives about -11% at mid and 0% at high.
 
+**Dose lifesteal (by request).** The RAD DOSE now heals through lifesteal: the dose's share of each 0.5 s burn repays
+`DOSE_HEAL` = 1 x lifesteal (same as a normal hit); the base burn, trail, pools and aura still don't heal. In the probe
+tiers only mid has lifesteal (Scrap Recycler 3 = 6%); high has no Scrap Recycler, so high is unchanged by construction.
+`npm run balance` rows and bands are identical (it measures damage, and the duel defender is parked). Hard sweeps, 3 runs:
+Plaza mid 68.9 s / 771 HP lost (725 / 811 / 776), still 1 death every run; Omega Works mid 66.0 s / 391 HP lost, 0 deaths
+(reference ~74 s / ~774 and ~70 s / ~400). That is within noise: real 200-HP bots die before their dose burns off (the
+dose is ~2% of damage dealt), so the heal adds only a few HP per run. A half-strength variant (0.5) measured the same.
+**Mid survivability is still not fixed.** Bigger levers, not swept: heal on the whole burn (base + dose), let pools /
+aura / trail heal, or more Salvage at mid; the first two grow with crowd size and would want a per-second heal cap
+(today the only cap is max HP). Dose healing is bounded by the total dose (at most 1.25x the spray, with contagion).
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

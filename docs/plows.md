@@ -93,6 +93,8 @@ still soaking in).
   (a fifth of what's left, plus a small floor), roughly 8-15 s of burn after a good soak — and the bot stays
   irradiated (+30% damage taken, base burn) while it carries a dose. Contagion: every burn leaks 20% into the nearest
   undosed bot within 3.5 m, so a dense pack keeps cooking. Half of the spray's damage counts toward Critical Mass.
+  With lifesteal (Salvage, from Scrap Recycler) the dose's slice of each burn repairs the plow like a normal hit;
+  the base radiation burn, puddles, pools and the aura still don't heal.
 - **E: Fallout Trail.** For 4 s the reactor dumps coolant: a toxic puddle every 0.3 s behind you (about 2 m wide,
   3.5 s each) that doses and irradiates every bot driving through it and grips it for a moment (once per 0.3 s,
   overlaps don't stack). Recharge = the E

@@ -147,7 +147,7 @@ export interface CombatHost {
   clearTargets(): void;
   hitMult(e: EnemyHandle): number;
   lastStandMult(): number;
-  onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain?: boolean, heal?: boolean): void;
+  onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain?: boolean, heal?: boolean, healMult?: number): void;
 }
 
 /* ------------------------------------------------------------------ vehicle abilities (SPACE / E)
@@ -235,8 +235,8 @@ export abstract class Kit {
   protected lastStandMult(): number {
     return this.h.lastStandMult();
   }
-  protected onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true, heal = true): void {
-    this.h.onPlayerHit(dealt, killed, target, canChain, heal);
+  protected onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true, heal = true, healMult = 1): void {
+    this.h.onPlayerHit(dealt, killed, target, canChain, heal, healMult);
   }
 }
 
