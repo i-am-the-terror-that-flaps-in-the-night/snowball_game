@@ -155,7 +155,8 @@ export const FX = {
   /** Snow Reserve: share of the ball's snow you keep after a slam (capped at 60%). */
   reserveFrac: (L: number) => (L <= 0 ? 0 : Math.min(0.6, 0.15 + 0.05 * soft(L, 5, 4))),
   /** Slam Combo: extra slam damage per combo stack (slams that land within COMBO_WINDOW of the last one). */
-  comboStep: (L: number) => (L <= 0 ? 0 : 0.12 + 0.03 * grow(L, 5)),
+  //  Classic buff (slam-only part): per-level growth 0.03 -> 0.04, so L3 0.21 -> 0.24 and L8 0.32 -> 0.39 per stack.
+  comboStep: (L: number) => (L <= 0 ? 0 : 0.12 + 0.04 * grow(L, 5)),
   // ---- VOLT-9 line (level 0 = not owned)
   /** Chain Lightning: extra bots each of your hits arcs to, and the share of the hit they take. */
   chainCount: (L: number) => (L <= 0 ? 0 : Math.min(6, 1 + Math.floor(soft(L, 5, 4) / 2))),

@@ -15,6 +15,8 @@ export interface PlowDef {
   accelMult: number;
   dashPowerMult: number;
   slamMult: number;
+  /** Packed Ice levels past ICE_GROWTH_KNEE add this much slam damage on this plow. */
+  iceGrowth?: number;
   /** What F does with this plow. */
   fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
   /** Not a snowplow (every kind but the Classic): no blade, never plows snow or holds a ball, and SPACE / E are the
@@ -33,12 +35,15 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     name: 'Classic Plow',
     icon: '🚜',
     tagline: 'The heavy-duty pro plow: power blade, chrome hydraulics, runway-grade muscle.',
-    traits: ['+25% HP', 'Full slam damage', 'F: Inferno fire cone + fireball finisher (free)', 'Fire damage builds FIRESTORM: full = 360° fire nova on F'],
+    traits: ['+25% HP', 'Full slam damage, +5.5% more per Packed Ice level past 4', 'F: Inferno fire cone + fireball finisher (free)', 'Fire damage builds FIRESTORM: full = 360° fire nova on F'],
     hpMult: 1.25,
     speedMult: 1,
     accelMult: 1,
     dashPowerMult: 1,
     slamMult: 1,
+    // Classic buff (by request, mainly slam): +5.5% damage per Packed Ice level past 4 (soft cap, up to ~x1.33).
+    // Sim high-tier 1-target 1259 -> 1663, cluster 5188 -> 6880; fresh / mid unchanged (docs/balance.md).
+    iceGrowth: 0.055,
     fAbility: 'fire',
   },
   volt: {

@@ -356,6 +356,47 @@ Sweeps (mid, current autopilot; VOLT 1 run on normal, 2 on Hard; others from the
 VOLT is now in the pack on Hard and on most normal arenas, still behind ARSENAL on every clear time; on normal Plaza it is last, about 5 s back (single runs there swing 5-10 s). Its boss rounds are now the fastest on Hard, by a few seconds, as the boss-fight
 plow. Arc 2.5 left it 6-9 s behind on Omega Works; 2.9 put it ahead of everyone on Hard Plaza.
 
+## Follow-up: Classic buff
+
+The Classic was the weakest plow late: at high it had the lowest single-target (1259, -27%) and cluster DPS (5188),
+and it was the slowest plow in the Hard sweeps. By request the buff leans on its primary, the **slam**. Pure slam
+multipliers do nothing at high, though: there a full ball takes ~160 s to fill, so the sim lands no slams, and more snow
+supply breaks the 4 s Duel floor at fresh. A flat `slamMult` raise was ruled out too (x1.1 already puts mid at +18%,
+x1.35 breaks the Duel floor). Final buff:
+
+- New `PlowDef.iceGrowth` (Classic 0.055): each Packed Ice level past `ICE_GROWTH_KNEE = 4` adds 5.5% to the Classic's
+  slam-damage stat (`damageMult`, which like Packed Ice and `slamMult` also scales its fire) and its `ultPower`,
+  through `soft(levels past 4, 6)`: linear for 6 levels, capped at +12 (about x1.33). The sim's fresh and mid builds
+  are at or below the knee, so only high changes.
+- Slam Combo per stack: `0.12 + 0.03 * grow(L, 5)` -> `0.12 + 0.04 * grow(L, 5)` (L3 21% -> 24%, L8 32% -> 39%). The
+  sim doesn't model it, but slams and other basic attacks are 25-32% of the Classic's real damage.
+
+Sim (`npm run balance`, Classic, before -> after): fresh and mid rows unchanged (150 HP, 78 (-1%) / 334; 325 HP,
+436 (+11%) / 1716). High: 1-target 1259 (-27%) -> 1663 (-9%; about +3% on the honest VOLT figure the tests use),
+level with BRUTUS 1673 and ahead of ISOTOPE 1591; cluster 5188 -> 6880 (still last, BRUTUS 7323); ult fill (fight /
+boss) 21.6 / 14.5 -> 28.6 / 14.5 s (the meter scales with `ultPower`); FIRESTORM 27603 -> 36712, still under ARSENAL's
+40855; Duel TTK 7.3 / 6.8 -> 6.7 / 6.3 s (floor 4 s). `tests/balance.test.ts` passes without band changes. An
+`iceGrowth` of 0.035 left the Classic last at high (1516); 0.08 made it the top single-target plow at high on the honest
+figures and tied ARSENAL's ult (40852), with no sweep gain over 0.055.
+
+Sweeps (Classic, 1 run per cell; others from the reference sweeps), clear / boss / HP lost:
+
+| arena | Classic before | Classic now | others |
+|---|---|---|---|
+| Plaza Hard high | 54.5 / 10.6 / 271 | 52.1 / 6.1 / 20 | isotope 47.0, volt 47.4 (pre-buff), brute 51.6, arsenal 53.6 |
+| Omega Works Hard high | 58.5 / 10.8 / 197 | 52.3 / 8.8 / 97 | brute 49.6, isotope 54.5, volt 54.8 (pre-buff), arsenal 59.9 |
+| Plaza Hard mid | 80.7 / - / 677 | 80.6 / 24.9 / 733 | arsenal 69.3, isotope 70.5, volt ~72.8, brute 74.4 |
+| Omega Works Hard mid | 92.0 | 88.6 / 28.4 / 390 | arsenal 70.2, brute 71.1, volt ~72.7, isotope 81.6 |
+| a3 normal mid | 37.2 | 42.3 / 3.7 / 32 | arsenal 37.7, volt 39.6, isotope 39.8, brute 46.6 |
+| Plaza normal mid | 54.4-59.3 | 60.1 / 10.4 / 130 | arsenal 50-53, isotope 51.5-55.5, brute 55.8-62.9, volt ~59.9 |
+| Omega Works normal mid | 51.1-56.4 | 53.3 / 13.0 / 87 | isotope ~49, arsenal 50-57.6, brute 47-62, volt ~53.5 |
+
+At high the Classic moves from last to the middle of the pack (2nd on Hard Omega Works, the quickest boss on Hard
+Plaza), fastest at clear time nowhere. The mid rows are unchanged mechanically (apart from Combo), so their differences
+are run-to-run noise (~5 s): **Hard mid is not fixed**, the Classic is still the slowest there. A knee of 3 would add
+about +5% at mid, but mid is already +11% (report) / +19% (honest), so that needs a multi-run Hard-mid probe first. The
+Packed Ice shop label still shows only the shared multiplier, so it understates the Classic past level 4.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

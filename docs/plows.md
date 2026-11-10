@@ -10,10 +10,12 @@ It takes effect on the next run; the Duel always uses SPECIAL.
 
 ## Classic Plow
 
-+25% HP and full slam damage. **F: Inferno**, a free fire cone that burns bots and ends in a fireball.
++25% HP and full slam damage. Past Packed Ice level 4, each further level adds another +5.5% damage on the Classic
+(a soft cap holds it to about +33%), so its slams and fire keep up late game. **F: Inferno**, a free fire cone that
+burns bots and ends in a fireball.
 
 Line: Inferno Exhaust (hotter, faster fire), Shatter Slam (slams throw ice shards at bots around the impact), Snow
-Reserve (keep part of your ball after a slam), Slam Combo (back-to-back slams hit harder, stacking up to 3 times).
+Reserve (keep part of your ball after a slam), Slam Combo (back-to-back slams hit harder, stacking up to 3 times; +24% per stack at level 3, +39% at level 8).
 
 **Ultimate: FIRESTORM.** Fire damage fills the meter; when it's full, F fires a 360° fire nova that leaves burning
 ground.

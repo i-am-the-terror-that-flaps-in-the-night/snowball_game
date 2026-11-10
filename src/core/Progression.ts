@@ -1,4 +1,4 @@
-import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
+import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, soft, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_PRICE_REV, REMOVED_GEAR, REPRICED_GEAR, cleanEquipped, gearCost, gearLevels, gearSpent, type GearDef, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
@@ -509,6 +509,11 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
   const cd = FX.cooldownMult(L('overclock'));
   const fire = plow.fAbility === 'fire';
   const arsenal = plow.id === 'arsenal';
+  // Classic buff (late-game slam damage): Packed Ice levels past the knee add plow.iceGrowth each (soft: linear to +6,
+  // capped at +12). Fresh / mid builds sit at or below the knee, so only high-tier builds change.
+  const ICE_GROWTH_KNEE = 4;
+  const iceL = L('packedIce');
+  const plowIce = 1 + (plow.iceGrowth ?? 0) * soft(Math.max(0, iceL - ICE_GROWTH_KNEE), 6);
   return {
     plowKind: plow.id,
     chainCount: FX.chainCount(L('voltChain')),
@@ -563,7 +568,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     bladeWidth: FX.bladeWidth(L('blade')),
     collectRate: FX.collectRate(L('compactor')),
     maxBallRadius: FX.maxBallRadius(L('hopper')),
-    damageMult: FX.damageMult(L('packedIce')) * plow.slamMult,
+    damageMult: FX.damageMult(iceL) * plow.slamMult * plowIce,
     ramDamage: FX.ramDamage(L('ramSpikes')),
     maxHp: FX.maxHp(L('armor')) * plow.hpMult,
     damageTaken: FX.damageTaken(L('plating')),
@@ -592,7 +597,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.
     flameCooldown: cooldown(FX.flameCooldown(L('inferno')), cd),
     cooldownMult: cd,
-    ultPower: ultPower(L('packedIce'), L(F_UPGRADE[plow.id])),
+    ultPower: ultPower(iceL, L(F_UPGRADE[plow.id])) * plowIce,
     frostCore: L('frostCore') > 0,
     avalancheCore: L('avalancheCore') > 0,
   };
