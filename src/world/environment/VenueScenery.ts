@@ -5,7 +5,7 @@ import { StaticBatch } from '../../render/mergeStatic';
 import { getBackdropTex, getBuntingTex, getCarpetTex, getUsFlagTex } from '../rallyTextures';
 import type { Item } from './types';
 import { BRAWL_SKIN, CONFETTI } from './styles';
-import { WALL_IN, WALL_C, GATE_HALF, PILLAR_W, DOME_TOWER_OFF, DOME_TOWER_K, DOME_N0, DOME_ROWS, DOME_ROW_D, DOME_RISE, DOME_CROWD_CAP, SPONSORS, CORE_X, CORE_Z, STAGE_HALF, STAGE_Y, STAGE_Z0, STAGE_Z1, GOLD_TOWER_X, GOLD_TOWER_Z, SIDES, domeK, DOME_COVER, gapsFor, subtract, mulberry32, colored, merge } from './layout';
+import { WALL_IN, WALL_C, GATE_HALF, PILLAR_W, DOME_TOWER_OFF, DOME_TOWER_K, DOME_N0, DOME_ROWS, DOME_ROW_D, DOME_RISE, DOME_CROWD_CAP, SPONSORS, CORE_X, CORE_Z, STAGE_HALF, STAGE_Y, STAGE_Z0, STAGE_Z1, GOLD_TOWER_X, GOLD_TOWER_Z, SIDES, domeK, DOME_COVER, domeCoverSite, gapsFor, subtract, mulberry32, colored, merge } from './layout';
 import { canvas, toTex, hexCss, wavyFlag } from './textures';
 import { ThemeScenery } from './ThemeScenery';
 
@@ -663,7 +663,8 @@ export class VenueScenery extends ThemeScenery {
       }
       // D) giant snowman statue (faces the center)
       {
-        const [x, z] = P(C.snowman[0] * K + j(2), C.snowman[1] * K + j(2));
+        const [sx, sz] = domeCoverSite('snowman', K);
+        const [x, z] = P(sx + j(2), sz + j(2));
         obs.push({ x, z, r: 2.3 });
         snowmen.push({ x, y: 0, z, ry: Math.atan2(-x, -z) + j(0.3), sx: 1, sy: 1, sz: 1 });
       }

@@ -6,7 +6,7 @@ import type { TerrainDef } from '../src/world/Terrain';
 import { V_LANDED, makeVert, stepVertical } from '../src/world/terrainMotion';
 import { DUEL_SPAWNS, DUEL_VENUES, DUEL_ZONE, duelVenueFor, duelZone, duelZoneFor } from '../src/config/duel';
 import { DUEL_DOME_TERRAIN } from '../src/world/biomes/terrains';
-import { DOME_COVER } from '../src/world/environment/layout';
+import { DOME_COVER, domeCoverSite } from '../src/world/environment/layout';
 import { weatherLayers } from '../src/world/biomes/Weather';
 
 /* Layout rules for the biome terrains (src/world/biomes/terrains.ts, docs/level-overhaul.md "Arenas"). */
@@ -139,7 +139,7 @@ function domeCover(half: number): [number, number, number][] {
     [px, pz, 2], [px + 3.8, pz + 1.2, 2], [px + 1.3, pz + 3.7, 2], // ice pillar cluster
     [C.container[0] * k, C.container[1] * k, 4.5], // container (3 colliders along its length)
     [C.rock[0] * k, C.rock[1] * k, 6], // rock outcrop + satellite
-    [C.snowman[0] * k, C.snowman[1] * k, 2.3], // snowman
+    [...domeCoverSite('snowman', k), 2.3], // snowman (the Duel dome has its own spot)
     [Math.min(C.tires[0] * k, half - 10), C.tires[1] * k, 2], // tire pile (clamped off the wall)
     [C.corner[0] * k, C.corner[1] * k, 4.5], // corner container
   ];

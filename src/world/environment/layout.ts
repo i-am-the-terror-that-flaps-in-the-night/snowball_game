@@ -75,6 +75,16 @@ export const DOME_COVER = {
   tires: [77, 36],
   corner: [62, 64],
 } as const;
+/** The Duel dome's snowman site (its own spot, NOT DOME_COVER.snowman x domeK): scaled, the 7 m statue lands at
+ *  (8, 36), right beside the follow camera behind each Duel spawn (0, +-25), and fills a corner of the screen at every
+ *  round start. Here it stands behind the camera, out toward the stands. */
+export const DUEL_DOME_SNOWMAN = [14, 44] as const;
+/** A Snowdome cover site (base quadrant, before rotation and jitter) at dome scale `k`. */
+export function domeCoverSite(key: keyof typeof DOME_COVER, k = domeK): [number, number] {
+  if (key === 'snowman' && k < 1) return [DUEL_DOME_SNOWMAN[0], DUEL_DOME_SNOWMAN[1]];
+  const s = DOME_COVER[key];
+  return [s[0] * k, s[1] * k];
+}
 /** The only writer of `brawlMode` (an imported binding is read-only in other modules). */
 /** Quality preset crowd subsample (pure, deterministic, no RNG): the indices of `n` crowd figures kept at `fraction`,
  *  spread evenly along the build order; null = keep all (fraction >= 1). */

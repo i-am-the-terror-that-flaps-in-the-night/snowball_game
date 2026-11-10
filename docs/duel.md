@@ -2,7 +2,9 @@
 
 An online best-of-3 against a friend in a **shrunk Snowdome**: Brawl's venue (stands, cover, deep drifts, the six
 biome variants) at Duel size, 120 m across (`DUEL_ARENA_HALF` 60, two thirds of the 180 m dome), with no bots and no
-coins. The cover, stands, floodlights and drifts scale with the arena (`domeK` in `src/world/environment/layout.ts`);
+coins. The cover, stands, floodlights and drifts scale with the arena (`domeK` in `src/world/environment/layout.ts`;
+the giant snowman statues get their own spot, `DUEL_DOME_SNOWMAN`, as scaled they stood beside the follow camera at both
+spawns);
 the ground terrain has its own Duel layout (`DUEL_DOME_TERRAIN` in `src/world/biomes/terrains.ts`). Both peers derive
 the venue from the room code (`duelVenueFor` in `src/config/duel.ts`), so it needs no protocol message.
 
