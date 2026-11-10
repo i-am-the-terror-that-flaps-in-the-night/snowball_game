@@ -9,7 +9,7 @@
  * MOVEMENT MODEL ('move'). The fake plows do not drive, so positioning is modelled on one line (the axis between the
  * two Duel spawns, starting DUEL_SPAWNS apart = 30 m, walls at DUEL_ARENA_HALF):
  *  - Preferred range: each plow wants the centre distance where its main weapon works best, read from the real kit
- *    numbers (preferredRange below): Classic = where its slam lands (BLADE_Z + ball + 0.5), BRUTUS = its fist zone
+ *    numbers (preferredRange below): Classic = where its slam lands (TIP_Z + ball + 0.5), BRUTUS = its fist zone
  *    (FIST_REACH x fistSize + Piston Fists reach), VOLT-9 / ISOTOPE = REACH_MARGIN of arcRange / sprayRange (+ line
  *    reach), ARSENAL = the Mag Shotgun's full-damage distance (pelletFalloff) capped at REACH_MARGIN of tankGunRange.
  *  - Closing: every tick each plow moves toward its preferred range at MANEUVER x its real maxSpeed (backing off,
@@ -17,27 +17,29 @@
  *    faster plow wins the tug and the fight settles near ITS preferred range. Plows cannot overlap (CONTACT), and a
  *    kiter backed into a wall stops there. Knockback (Combat.hitPlow's plow.push) shoves along the line and decays
  *    like Plow's pushVel; hit-stop freezes a plow's movement.
- *  - Dash (the plow's real dash: DASH_SECONDS of plow.dashing = the 50% hitPlow reduction, recharged on the real
- *    dashCooldown via the Rotation): while it is ready and the enemy can reach it, a plow DODGES with a per-tick
+ *  - Dash (the plow's real dash: DASH_SECONDS of plow.dashing = the 50% hitPlow reduction, the first DASH_IFRAMES s
+ *    of it invulnerable as Plow.invulnerable, recharged on the real dashCooldown via the Rotation): while it is ready and the enemy can reach it, a plow DODGES with a per-tick
  *    chance (DODGE_RATE /s): a sidestep dash that also throws both plows' aim off for its length. Otherwise a plow
  *    whose preferred range is within dash reach DASH STRIKES when the enemy is in dash reach (it dashes in and the
  *    real dash strike lands on contact).
  *  - Jukes: a per-tick chance (JUKE_RATE /s) that a plow slips out of the enemy's forward cone: the enemy's heading is
  *    off by JUKE_ANGLE (past every forward cone: shotgun, arc lock, flame, spray, fists, ball shield) until it turns
  *    back at its real turnRate. Radius attacks (whirl, auras, fields, pools, ultimates) still land.
- *  - Both pilots open fire after a seeded reaction delay (0..REACTION s) and the first mover per tick is a seeded
- *    coin flip, so mirrors do not replay one fixed script.
+ *  - Both pilots open fire after a seeded reaction delay (0..REACTION s) and who acts first alternates every tick from a
+ *    seeded coin flip, so mirrors do not replay one fixed script.
  *  Everything random uses a seeded RNG (and Math.random, which some kits roll, is seeded per fight).
  *
  * STAND AND TRADE ('stand'): both parked facing each other at a fixed centre distance (3 m / 6 m), no movement, no
  * dodges or jukes (the reaction delay and first-mover coin flip still apply); dashes are spent as dash strikes whenever the enemy is in dash reach.
  *
  * Known gaps (honest limits): no terrain, snow or props; BRUTUS's Saw Charge and the slam lunge do not move the plow;
- * no strafing geometry beyond the juke; pilots never hold an ability back for a better moment. */
+ * no strafing geometry beyond the juke; pilots never hold an ability back for a better moment. The Classic's ball (its
+ * frontal shield) refills at sim.ts MELEE.SNOW_INTAKE even while it stands still, and the held ball does not slow it.
+ * Ultimate meters fill from Duel damage and start empty, so in rounds this short they rarely (if ever) fill. */
 import * as THREE from 'three';
 import { DUEL_ARENA_HALF, ballRadius, type EnemyHandle, type EnemyManagerAPI } from '../../src/core/types';
-import { DUEL_SPAWNS } from '../../src/config/duel';
-import { BLADE_Z, DASH_SECONDS } from '../../src/entities/plow/constants';
+import { DUEL_DRAW_EPS, DUEL_ROUND_SECONDS, DUEL_SPAWNS } from '../../src/config/duel';
+import { DASH_IFRAMES, DASH_SECONDS, TIP_Z } from '../../src/entities/plow/constants';
 import { arcRange } from '../../src/entities/combat/volt';
 import { sprayRange } from '../../src/entities/combat/isotope';
 import { pelletFalloff, tankGunRange } from '../../src/entities/combat/arsenal';
@@ -69,8 +71,8 @@ const START = Math.abs(DUEL_SPAWNS[0].z - DUEL_SPAWNS[1].z);
 const WALL = DUEL_ARENA_HALF - 3;
 /** Plow.pushVel decay rate (PlowMotion: pushVel *= exp(-5 dt)). */
 const PUSH_DECAY = 5;
-/** Fight cap (s): a time-out is a draw. Shorter than a real round (DUEL_ROUND_SECONDS) to keep the Monte Carlo cheap. */
-export const CAP = 60;
+/** Fight cap (s): a real Duel round. At the time-out the higher HP% wins (a draw within DUEL_DRAW_EPS), as in the game. */
+export const CAP = DUEL_ROUND_SECONDS;
 /** Closing speed handed to a dash strike / ram (as sim.ts Rotation). */
 const RAM_SPEED = 15;
 
@@ -79,7 +81,7 @@ export function preferredRange(st: PlayerStats): number {
   const ball = st.maxBallRadius;
   switch (st.plowKind) {
     case 'classic':
-      return BLADE_Z + ball * MELEE.SLAM_BALL + 0.5;
+      return TIP_Z + ball * MELEE.SLAM_BALL + 0.5;
     case 'brute':
       return HULL + (FIST_REACH * fistSize(st) + (st.fistReach || 0)) * 0.5;
     case 'volt':
@@ -117,12 +119,15 @@ export interface FightOpts {
   /** 'stand': centre distance (m). */
   dist?: number;
   seed: number;
-  /** Fight cap (s); a time-out is a draw. */
+  /** Fight cap (s); at the time-out the higher HP% wins. */
   cap?: number;
 }
 export interface FightResult {
-  /** 0 / 1 = that side won, -1 = draw (time-out or both wrecked on the same tick). */
+  /** 0 / 1 = that side won (wreck, or more HP% at the time-out), -1 = draw (both wrecked on the same tick, or HP% level
+   *  within DUEL_DRAW_EPS at the time-out). */
   winner: -1 | 0 | 1;
+  /** The fight went the full round (CAP). */
+  timeout?: boolean;
   t: number;
   /** HP left as a share of max HP, per side. */
   hp: [number, number];
@@ -200,6 +205,8 @@ export function fight(ka: PlowKind, kb: PlowKind, tier: Tier, opts: FightOpts): 
         me.dashMode = mode;
         me.struck = false;
         plow.dashing = true;
+        // Plow.invulnerable: the first DASH_IFRAMES s of a dash take no damage at all (PlowBase).
+        plow.invulnerable = true;
         if (mode === 'dodge') {
           // A sidestep: this plow drives sideways and the enemy's aim lags for the dash.
           const s = R() < 0.5 ? -1 : 1;
@@ -212,9 +219,9 @@ export function fight(ka: PlowKind, kb: PlowKind, tier: Tier, opts: FightOpts): 
       me.rot = new Rotation(me.p, () => foe.handle, 'use', {
         clock: false,
         slamPoint: (r) => {
-          // Where Plow's slam lands: ahead of the blade tip (PlowMotion), only thrown with the enemy in its zone.
+          // Where Plow's slam lands: r + 0.5 past the blade tip (PlowMotion), only thrown with the enemy in its zone.
           const h = plow.heading;
-          const k = BLADE_Z + r + 0.5;
+          const k = TIP_Z + r + 0.5;
           const x = plow.position.x + Math.sin(h) * k;
           const z = plow.position.z + Math.cos(h) * k;
           return Math.hypot(foe.plow.position.x - x, foe.plow.position.z - z) < r + HULL ? { x, z } : null;
@@ -300,6 +307,7 @@ export function fight(ka: PlowKind, kb: PlowKind, tier: Tier, opts: FightOpts): 
             s.p.c.playerRam(foe.handle as EnemyHandle, RAM_SPEED);
           }
           s.dashT -= DT;
+          s.plow.invulnerable = s.dashT > DASH_SECONDS - DASH_IFRAMES;
           if (s.dashT <= 0) s.plow.dashing = false;
         }
         if (s.aimT > 0) s.aimT -= DT;
@@ -309,7 +317,9 @@ export function fight(ka: PlowKind, kb: PlowKind, tier: Tier, opts: FightOpts): 
       const b = sides[1].plow.dead;
       if (a || b) return { winner: a && b ? -1 : a ? 1 : 0, t: (tick + 1) * DT, hp: [sides[0].plow.hp / sides[0].plow.maxHp, sides[1].plow.hp / sides[1].plow.maxHp] };
     }
-    return { winner: -1, t: cap, hp: [sides[0].plow.hp / sides[0].plow.maxHp, sides[1].plow.hp / sides[1].plow.maxHp] };
+    // Time-out: the higher HP% wins the round, a draw within DUEL_DRAW_EPS (the Duel's rule).
+    const hp: [number, number] = [sides[0].plow.hp / sides[0].plow.maxHp, sides[1].plow.hp / sides[1].plow.maxHp];
+    return { winner: Math.abs(hp[0] - hp[1]) <= DUEL_DRAW_EPS ? -1 : hp[0] > hp[1] ? 0 : 1, t: cap, hp, timeout: true };
   } finally {
     Math.random = mathRandom;
   }
@@ -418,7 +428,7 @@ export function renderVariant(tier: Tier, v: Variant, cells: Cell[][], kinds: Pl
 export function report(N = 40, seed = 1, tiers: Tier[] = TIERS, variants: Variant[] = VARIANTS, log?: (s: string) => void): string {
   const out: string[] = [];
   out.push('# Two-way Duel sim\n');
-  out.push(`Both plows fight back through the real Duel damage path; ${N} fights per pair per tier per variant (sides alternate), seed ${seed}, fights capped at ${CAP} s (time-out = draw). Model: scripts/balance/duel2.ts.\n`);
+  out.push(`Both plows fight back through the real Duel damage path; ${N} fights per pair per tier per variant (sides alternate), seed ${seed}, fights capped at one Duel round, ${CAP} s (time-out: higher HP% wins, as in the game). Model: scripts/balance/duel2.ts.\n`);
   out.push('Preferred ranges (centre distance, m) the movement model steers to:\n');
   out.push(`| tier | ${KINDS.map((k) => NAMES[k]).join(' | ')} |`);
   out.push(`|---|${KINDS.map(() => '---').join('|')}|`);

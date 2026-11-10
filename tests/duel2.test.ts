@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { fight, matrix, preferredRange } from '../scripts/balance/duel2';
+import { CAP, fight, matrix, preferredRange } from '../scripts/balance/duel2';
 import { KINDS, statsFor } from '../scripts/balance/sim';
 
 describe('two-way duel sim', () => {
-  it('a fight ends (someone is wrecked, or it times out as a draw)', () => {
+  it('a fight ends (someone is wrecked, or the round times out)', () => {
     const r = fight('brute', 'classic', 'fresh', { mode: 'stand', dist: 3, seed: 7 });
     expect([-1, 0, 1]).toContain(r.winner);
     expect(r.t).toBeGreaterThan(0);
-    expect(r.t).toBeLessThanOrEqual(60);
-    if (r.winner !== -1) expect(r.hp[1 - r.winner]).toBe(0);
+    expect(r.t).toBeLessThanOrEqual(CAP);
+    if (r.winner !== -1 && !r.timeout) expect(r.hp[1 - r.winner]).toBe(0);
   });
 
   it('is deterministic for a seed', () => {
