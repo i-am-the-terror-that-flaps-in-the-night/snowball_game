@@ -1,5 +1,5 @@
 import type { GameEvents } from '../core/events';
-import type { AudioAPI, EnemyManagerAPI, GameContext, PlayerStats, SnowFieldAPI, SoundName, ZoneDef } from '../core/types';
+import type { AudioAPI, EnemyHandle, EnemyManagerAPI, GameContext, PlayerStats, SnowFieldAPI, SoundName, ZoneDef } from '../core/types';
 import type { CosmeticSlot } from '../config/cosmetics';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
@@ -29,6 +29,8 @@ export class DuelPilot implements PilotBinding {
   /** Equipped gear ids to show on this plow (an opponent's), or null for the save's. */
   gear: string[] | null = null;
   readonly pvp = true;
+  /** Duel guest: the other plow, for visuals only (PilotBinding.visualFoe). */
+  visualFoe: EnemyHandle | null = null;
 
   constructor(
     readonly local: boolean,

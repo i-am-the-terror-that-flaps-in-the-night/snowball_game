@@ -13,10 +13,14 @@ import { SCRAP_LIFE, SCRAP_ORBIT, type ArsenalKit } from '../src/entities/combat
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
 type Bot = EnemyHandle & { hp: number; dealt: number };
 
+/** The rig is a Duel (pvp) target: its max HP is a Duel plow's, not the huge `hp` that keeps it alive (ISOTOPE's
+ *  tank-buster burn takes a share of max HP). */
+const DUEL_MAX_HP = 400;
+
 function rig(kind: PlowKind, levels: Partial<Record<UpgradeId, number>>, botAt: [number, number][], hp = 1e9) {
   const held = new Set<string>();
   const bots = botAt.map(
-    ([x, z], i) => ({ id: i + 1, position: new THREE.Vector3(x, 0, z), radius: 1, hp, maxHp: hp, alive: true, dealt: 0, type: 'grunt', mass: 1, isBoss: false }) as unknown as Bot,
+    ([x, z], i) => ({ id: i + 1, position: new THREE.Vector3(x, 0, z), radius: 1, hp, maxHp: Math.min(hp, DUEL_MAX_HP), alive: true, dealt: 0, type: 'grunt', mass: 1, isBoss: false }) as unknown as Bot,
   );
   const plow = {
     position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, radius: 1.6, speed: 0, turretAim: 0, turretHeading: 0, whirlCharge: 1, surfaceY: 0,

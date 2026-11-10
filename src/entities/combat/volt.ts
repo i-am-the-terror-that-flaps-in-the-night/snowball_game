@@ -47,7 +47,25 @@ const PARA_FX_MAX = 6;
 /** GROUNDED pop text: at most once per this many seconds while the arc stays grounded. */
 const GROUNDED_POP_GAP = 1.6;
 const ARC_CONE = 0.5;
-export const arcRange = (ballR: number) => 9 + 2.5 * Math.max(0, ballR - 1.2);
+/** ARC LANCE reach (role rework: VOLT-9 is the true ranged pilot): 14 m base, + 2.5 m per metre of Mega Hopper ball
+ *  radius above 1.2 m (~20 m late). Was 9 m. Measured centre to centre (plus the target's radius, Reach.Body). */
+export const arcRange = (ballR: number) => 14 + 2.5 * Math.max(0, ballR - 1.2);
+/** CLOSE-RANGE PENALTY (Duel only, this.b.pvp): an arc hit on a target whose gap to the rover is under ARC_CLOSE_NEAR m
+ *  deals ARC_CLOSE_MULT x, ramping linearly back to x1 at ARC_CLOSE_FAR m. The gap is centre to centre minus both
+ *  radii (rover hull 1.6 m + target radius), i.e. bumper to bumper. A diver who reaches VOLT-9 has done the hard part;
+ *  bots are unaffected (the lance is still VOLT's PvE crowd weapon at any range). */
+export const ARC_CLOSE_NEAR = 3;
+export const ARC_CLOSE_FAR = 5;
+export const ARC_CLOSE_MULT = 0.6;
+export const arcCloseMult = (gap: number) =>
+  gap <= ARC_CLOSE_NEAR ? ARC_CLOSE_MULT : gap >= ARC_CLOSE_FAR ? 1 : ARC_CLOSE_MULT + ((1 - ARC_CLOSE_MULT) * (gap - ARC_CLOSE_NEAR)) / (ARC_CLOSE_FAR - ARC_CLOSE_NEAR);
+/** Sideways jitter of the tower bolt: ARC_JAG up to ARC_JAG_NEAR m, growing ARC_JAG_PER_M per metre past it (capped at
+ *  ARC_JAG_MAX), so a 14-20 m bolt still crackles instead of reading as a straight line. */
+const ARC_JAG = 1.0;
+const ARC_JAG_NEAR = 9;
+const ARC_JAG_PER_M = 0.07;
+const ARC_JAG_MAX = 1.8;
+const arcJag = (d: number) => Math.min(ARC_JAG_MAX, ARC_JAG + ARC_JAG_PER_M * Math.max(0, d - ARC_JAG_NEAR));
 /** STATIC FIELD (E): a lingering electrified field that rides with the rover for STATIC_SECONDS, pulsing every
  *  STATIC_PULSE s: each pulse deals STATIC_DAMAGE (x damage mult) and stuns for STATIC_STUN to everything inside the
  *  radius (+ Tesla Field reach above its 4.5 m base). The first pulse is a bigger burst (STATIC_FIRST x). */
@@ -65,6 +83,8 @@ export const staticRadius = (fieldR: number) => 6.5 + Math.max(0, fieldR - 4.5);
 const coilBoost = (clapDamage: number) => Math.max(1, clapDamage / 36);
 /** ARC LANCE leans harder on the coil than the field does: coilBoost to this power (balance: single-target DPS late). */
 const ARC_COIL_EXP = 1.15;
+/** Rover hull radius (Plow.radius) for the close-range gap when the bound plow doesn't say. */
+const HULL_R = 1.6;
 const _f = new THREE.Vector3();
 const _r = new THREE.Vector3();
 
@@ -161,6 +181,19 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     this.arcLock = tgt;
     this.arcN++;
     if (!tgt) {
+      // Duel guest: nothing is hit locally (the host decides), but the bolt should still strike the opponent's hull
+      // when it is in reach and ahead, not fizzle into the snow in front of it (visual only: no damage, no lock).
+      const foe = this.guestFoe(px, pz, range);
+      if (foe) {
+        _q.set(foe.position.x, foe.position.y + foe.radius * 0.9, foe.position.z);
+        const jag = arcJag(Math.hypot(foe.position.x - px, foe.position.z - pz));
+        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: 0.42, jag, color: 0xbff0ff });
+        this.lightning.bolt(_p, _q, { life: tick * 0.7, width: 0.18, jag: jag * 1.6, color: 0x3fa8ff });
+        ctx.fx.burst(_q, PRIMARY_BURST);
+        if (this.arcN % 2 === 0) this.b.audio.play('zap', { volume: 0.3, pitch: 1.25 + Math.random() * 0.25 });
+        this.groundedOn = false;
+        return;
+      }
       // Nothing in reach: the arc fizzles into the snow ahead so the weapon still reads.
       const a = (Math.random() - 0.5) * 0.8;
       const r = range * (0.45 + Math.random() * 0.3);
@@ -187,9 +220,12 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     for (let hop = 0; hop <= hops && hit; hop++) {
       this.arcHit.add(hit.id);
       _q.set(hit.position.x, hit.position.y + hit.radius * 0.9, hit.position.z);
+      // Bumper-to-bumper gap from the rover to this hit (Duel close-range penalty; bolt jitter on long shots).
+      const cd = Math.hypot(hit.position.x - px, hit.position.z - pz);
       if (hop === 0) {
-        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: solo ? (grounded ? 0.95 : 0.75) : 0.42, jag: 1.0, color: solo ? 0xffffff : 0xbff0ff });
-        this.lightning.bolt(_p, _q, { life: tick * 0.7, width: solo ? 0.3 : 0.18, jag: 1.6, color: 0x3fa8ff });
+        const jag = arcJag(cd);
+        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: solo ? (grounded ? 0.95 : 0.75) : 0.42, jag, color: solo ? 0xffffff : 0xbff0ff });
+        this.lightning.bolt(_p, _q, { life: tick * 0.7, width: solo ? 0.3 : 0.18, jag: jag * 1.6, color: 0x3fa8ff });
         if (solo) this.groundCue(hit, tick, grounded);
       } else {
         _r.set(src.position.x, src.position.y + src.radius * 0.9, src.position.z);
@@ -204,7 +240,8 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         this.paraReady.set(hit.id, ctx.time + PARA_SECONDS + PARA_IMMUNE);
         if (this.paraReady.size > 64) for (const [id, t] of this.paraReady) if (t < ctx.time) this.paraReady.delete(id);
       }
-      const share = hop === 0 ? (grounded ? ARC_BOSS : solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
+      let share = hop === 0 ? (grounded ? ARC_BOSS : solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
+      if (this.b.pvp) share *= arcCloseMult(cd - (plow.radius ?? HULL_R) - hit.radius);
       const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), {
         source: 'other',
         weapon: 'arcLance',
@@ -241,6 +278,18 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     if (!solo) this.groundedOn = false;
     // A grounded arc buzzes lower and heavier than a chain.
     if (this.arcN % 2 === 0) this.b.audio.play('zap', solo ? { volume: 0.42, pitch: 0.8 + Math.random() * 0.15 } : { volume: 0.3, pitch: 1.25 + Math.random() * 0.25 });
+  }
+
+  /** Duel guest only (pvp, not authoritative): the opponent's hull when it is within `range` and ARC_CONE of the nose,
+   *  for the bolt visual (the guest's targets are empty; the host deals the damage). Else null. */
+  private guestFoe(px: number, pz: number, range: number): EnemyHandle | null {
+    const foe = this.b.pvp && !this.b.authoritative ? this.b.visualFoe : null;
+    if (!foe || !foe.alive) return null;
+    const dx = foe.position.x - px;
+    const dz = foe.position.z - pz;
+    const d = Math.hypot(dx, dz) || 1e-3;
+    if (d > range + foe.radius) return null;
+    return (dx * _f.x + dz * _f.z) / d > ARC_CONE ? foe : null;
   }
 
   /** GROUNDED ARC cue (hop 0 into a boss or a lone bot, `_q` = the hit point): the arc forks down through the bot into
@@ -755,5 +804,6 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     this.arcLock = null;
     this.arcOn = false;
     this.arcT = 0;
+    if (this.b.plow) this.b.plow.voltArc = false; // KITING reverse speed ends with the lance
   }
 }

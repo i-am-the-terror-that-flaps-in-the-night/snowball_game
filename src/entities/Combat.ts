@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Lightning } from '../fx/Lightning';
 import { ballVolume, type CombatAPI, type EnemyHandle, type GameContext, type ImpactKind, type ImpactOpts } from '../core/types';
 import { LAST_STAND_HP } from '../config/upgrades';
+import { knockScale } from '../config/plows';
 import { ctxPilot, type PilotBinding } from './pilot';
 import { NP } from '../net/protocol';
 import { NET_LATCH, Reach, Threat, _fwd, _p, _q, _tip, bodyBand, heightOk, waveHits, BLAST_BAND, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './combat/shared';
@@ -444,8 +445,8 @@ export class Combat implements CombatAPI {
       }
     }
 
-    // Knockback away from the attacker (shield absorbs some of it).
-    const kb = (opts?.knockback ?? 6) * (blocked > 0 ? 0.75 : 1);
+    // Knockback away from the attacker (shield absorbs some of it; heavy plows take less, PlowDef.knockResist).
+    const kb = (opts?.knockback ?? 6) * (blocked > 0 ? 0.75 : 1) * knockScale(stats.plowKind);
     plow.push(-dx * kb, -dz * kb);
 
     // Feedback.

@@ -28,6 +28,19 @@ const RAD_SECONDS = 3;
 /** Radiation burns too: every RAD_TICK s an irradiated bot takes RAD_DPS x RAD_TICK (x damage mult x reactorBoost). */
 const RAD_TICK = 0.5;
 export const RAD_DPS = 5.5;
+/** TANK-BUSTER (role rework: ISOTOPE is the specialist, zone + damage over time + tank-buster): every burn tick also
+ *  takes TANK_BUSTER x RAD_TICK of the target's max HP (0.5% per second of burn), true damage on top of the burn
+ *  (no damage mult, vulnerability or armour; no lifesteal). Bots count their max HP only up to TANK_BUSTER_BOT_HP:
+ *  1500 sits just above the base campaign bosses (600-1100) and below THE DONALD / MEGAPLOW (2400-2600) and Hard /
+ *  Survival-scaled bosses, so it is a real bite on a fresh run's boss (~7.5 HP/s) but a 1e5-HP late boss doesn't
+ *  melt at 500 HP/s; past the early game, where the kit's own damage has grown, it fades to a few percent. Duel
+ *  plows count in full (360-540 HP: BRUTUS, the biggest tank, loses ~2.7 HP/s of burn, ARSENAL ~1.8) and the
+ *  Duel lands it as dealt (DamageOpts.hpShare). */
+export const TANK_BUSTER = 0.005;
+export const TANK_BUSTER_BOT_HP = 1500;
+/** HP one burn tick of TANK-BUSTER takes off a target with `maxHp` (pvp: a Duel plow, counted in full). */
+export const tankBusterTick = (maxHp: number, pvp: boolean): number =>
+  TANK_BUSTER * RAD_TICK * Math.max(0, pvp ? maxHp : Math.min(maxHp, TANK_BUSTER_BOT_HP));
 const POOL_TICK = 0.3;
 const MAX_POOLS = 4;
 const CHAIN_RADIUS = 4;
@@ -552,9 +565,19 @@ export class IsotopeKit extends Kit implements VehicleKit {
           if (nb && !this.doses.has(nb)) this.addDose(nb, soak * DOSE_SPREAD);
         }
         const hp0 = e.hp;
-        const killed = this.b.enemies.damage(e, (amt + soak) * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' });
+        const mult = st.damageMult * this.hitMult(e);
+        // TANK-BUSTER: a slice of max HP on top. Bots take it inside the burn (one hit, one armour check); the Duel
+        // lands it as its own hpShare hit so the Duel's damage scaling doesn't shrink a %-of-HP hit.
+        const pvp = !!this.b.pvp;
+        const tb = tankBusterTick(e.maxHp, pvp);
+        const total = (amt + soak) * mult + (pvp ? 0 : tb);
+        const burnOpts = { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' } as const;
+        let killed = this.b.enemies.damage(e, total, burnOpts);
+        if (pvp && tb > 0 && !killed && e.alive) killed = this.b.enemies.damage(e, tb, { ...burnOpts, hpShare: true });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-        this.onPlayerHit(dealt, killed, e, false, soak > 0, soak > 0 ? (DOSE_HEAL * soak) / (amt + soak) : 0);
+        // Lifesteal: only the RAD DOSE soak's share of the hit (never the base burn or the tank-buster slice).
+        const healMult = soak > 0 ? (DOSE_HEAL * soak * mult) / ((amt + soak) * mult + tb) : 0;
+        this.onPlayerHit(dealt, killed, e, false, soak > 0, healMult);
         if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultMeter(this.b, NUKE_CHARGE_DMG));
         if (soak > 0 && dealt > 0 && glow) {
           _q.set(e.position.x, e.position.y + e.radius + 0.9, e.position.z);

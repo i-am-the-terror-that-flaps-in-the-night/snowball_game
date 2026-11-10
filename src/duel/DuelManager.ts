@@ -326,11 +326,15 @@ export class DuelManager {
       this.targetMe.onHit = (h) => this.onHit(0, h, oppPlow.dashing);
       me.enemies = this.targetOpp;
       opp.enemies = this.targetMe;
+      me.visualFoe = opp.visualFoe = null;
       me.snow = opp.snow = ctx.snow;
       opp.input = this.netInput;
     } else {
       this.targetOpp = this.targetMe = null;
       me.enemies = opp.enemies = NO_TARGETS;
+      // Nothing is hit here, but VOLT-9's arc bolt still lands on the other hull (visual only).
+      me.visualFoe = new PlowHandle(2, oppPlow);
+      opp.visualFoe = new PlowHandle(1, me.plow);
       me.snow = opp.snow = this.roSnow!;
       opp.input = this.puppetInput;
     }

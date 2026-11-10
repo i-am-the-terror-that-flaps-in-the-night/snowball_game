@@ -600,6 +600,22 @@ fresh (was 0.75: 34% at mid) and takes x1.18 late (was 1.15); ARSENAL takes x0.6
 (33% at fresh). VOLT-9 and ISOTOPE unchanged. Each step is a few percent of one side's damage, inside the matrix's noise
 for a single run; re-run `scripts/duel-matrix.mjs` when convenient to confirm.
 
+## Role rework: VOLT-9 true ranged, ISOTOPE tank-buster
+
+`npm run balance`, before -> after (1-target DPS / cluster DPS / duel TTK avg):
+
+| plow | fresh | mid | high |
+|---|---|---|---|
+| volt | 87 / 293 / 7.0 -> 88 / 286 / 7.2 | 421 / 1650 / 8.3 -> 417 / 1662 / 8.8 | 2327 / 8765 / 7.7 -> 2365 / 8832 / 8.0 |
+| isotope | 80 / 320 / 8.5 -> 87 / 365 / 8.4 | 363 / 1697 / 9.9 -> 371 / 1742 / 9.7 | 1799 / 8969 / 8.2 -> 1806 / 9014 / 8.1 |
+
+- VOLT-9's Arc Lance reach 9 -> 14 m barely moves its PvE numbers (the dummies stand inside 9 m); its Duel TTK rises a
+  little because the parked victim sits inside the new 3-5 m close-range penalty (x0.6-1, Duel only).
+- ISOTOPE's tank-buster (0.5% of max HP per second of burn, bots counted up to 1500 HP) adds ~7 DPS on a big target:
+  +9% fresh, +2% mid, +0.4% high on one target. The cluster gain (+14% fresh) is a dummy artefact: every sim dummy has
+  1e7 HP, so all eight count the full 1500 HP; real pack bots have 30-140 HP and gain under 1 HP/s each. Boss ult fill
+  (fresh) 36.0 -> 33.2 s. Duel: BRUTUS loses ~2.7 HP/s of burn, ARSENAL ~1.8 HP/s.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more
