@@ -141,7 +141,7 @@ export const FX = {
   /** Fraction of the dash + whirl recharge refunded when you wreck something. */
   killRecharge: (L: number) => Math.min(1, 0.2 * soft(L, 4, 2)),
   /** Inferno (F on the Classic Plow, free at level 0): flame cone reach (m), burn damage per second, recharge (s). */
-  flameRange: (L: number) => 8.5 + 0.8 * soft(L, 5),
+  flameRange: (L: number) => 10 + 0.8 * soft(L, 5),
   flameDps: (L: number) => 40 + 30 * grow(L, 5),
   flameCooldown: (L: number) => 3.2 + 2.8 * Math.exp(-L / 8),
   /** Last Stand: below LAST_STAND_HP of max hp, you deal this much more damage and take half of it less. */
@@ -251,14 +251,14 @@ const f1 = (n: number) => n.toFixed(1);
 const ENDLESS = Infinity;
 
 export const UPGRADES: UpgradeDef[] = [
-  { id: 'engine', name: 'V8 Engine', icon: '⚙️', category: 'plow', description: 'Top speed, acceleration and steering.', pips: 5, maxLevel: ENDLESS, baseCost: 40, costGrowth: 1.7, valueLabel: (l) => `${f1(FX.maxSpeed(l))} m/s` },
+  { id: 'engine', name: 'V8 Engine', icon: '⚙️', category: 'plow', description: 'Top speed, acceleration and steering. On the Classic Plow it also charges the PLOW RUSH a little faster.', pips: 5, maxLevel: ENDLESS, baseCost: 40, costGrowth: 1.7, valueLabel: (l) => `${f1(FX.maxSpeed(l))} m/s` },
   { id: 'blade', name: 'Wide Blade', icon: '🔪', category: 'plow', description: 'A wider blade scoops more snow and hits a wider area.', pips: 5, maxLevel: ENDLESS, baseCost: 45, costGrowth: 1.7, valueLabel: (l) => `${f1(FX.bladeWidth(l))} m wide` },
   { id: 'ramSpikes', name: 'Ram Spikes', icon: '🦔', category: 'plow', description: 'Ramming bots at speed hurts them more.', pips: 5, maxLevel: ENDLESS, baseCost: 50, costGrowth: 1.75, valueLabel: (l) => `${Math.round(FX.ramDamage(l))} ram dmg` },
-  { id: 'nitro', name: 'Nitro Dash', icon: '🚀', category: 'plow', description: 'SHIFT dash recharges faster and goes farther.', pips: 3, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.9, valueLabel: (l) => `${FX.dashCooldown(l).toFixed(2)}s recharge, +${f1(FX.dashPower(l))} m/s` },
+  { id: 'nitro', name: 'Nitro Dash', icon: '🚀', category: 'plow', description: 'SHIFT dash recharges faster and goes farther. The Classic Plow\'s PLOW RUSH runs on the same meter, and charges a little faster too.', pips: 3, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.9, valueLabel: (l) => `${FX.dashCooldown(l).toFixed(2)}s recharge, +${f1(FX.dashPower(l))} m/s` },
   { id: 'whirl', name: 'Whirlwind Turbine', icon: '🌀', category: 'plow', description: 'Bigger, harder-hitting E spin that recharges faster.', pips: 3, maxLevel: ENDLESS, baseCost: 80, costGrowth: 1.9, valueLabel: (l) => `${f1(FX.whirlRadius(l))} m, ${Math.round(FX.whirlDamage(l))}x4 dmg, ${f1(FX.whirlCooldown(l))}s` },
   { id: 'compactor', name: 'Snow Compactor', icon: '🧊', category: 'ball', description: 'Packs more plowed snow into your snowball.', pips: 5, maxLevel: ENDLESS, baseCost: 50, costGrowth: 1.75, valueLabel: (l) => `${Math.round(FX.collectRate(l) * 100)}% packing` },
-  { id: 'hopper', name: 'Mega Hopper', icon: '🪣', category: 'ball', description: 'Raises the maximum snowball size.', pips: 5, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.8, valueLabel: (l) => `max ${FX.maxBallRadius(l).toFixed(2)} m radius` },
-  { id: 'packedIce', name: 'Packed Ice', icon: '💎', category: 'ball', description: 'Snowball slams hit much harder.', pips: 5, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.8, valueLabel: (l) => `x${FX.damageMult(l).toFixed(2)} slam damage` },
+  { id: 'hopper', name: 'Mega Hopper', icon: '🪣', category: 'ball', description: 'Raises the maximum snowball size. On the Classic Plow it also charges the PLOW RUSH a little faster (the 20 m reach never grows).', pips: 5, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.8, valueLabel: (l) => `max ${FX.maxBallRadius(l).toFixed(2)} m radius` },
+  { id: 'packedIce', name: 'Packed Ice', icon: '💎', category: 'ball', description: 'Snowball slams hit much harder (and the Classic Plow\'s blade swipes).', pips: 5, maxLevel: ENDLESS, baseCost: 70, costGrowth: 1.8, valueLabel: (l) => `x${FX.damageMult(l).toFixed(2)} slam damage` },
   { id: 'armor', name: 'Armor Plating', icon: '🛡️', category: 'defense', description: 'More plow hit points.', pips: 5, maxLevel: ENDLESS, baseCost: 40, costGrowth: 1.65, valueLabel: (l) => `${Math.round(FX.maxHp(l))} HP` },
   { id: 'plating', name: 'Reinforced Frame', icon: '🔩', category: 'defense', description: 'Take less damage from every hit.', pips: 5, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.8, valueLabel: (l) => `-${f1((1 - FX.damageTaken(l)) * 100)}% damage taken` },
   { id: 'repairKit', name: 'Repair Kit', icon: '🧰', category: 'defense', description: 'Repairs more between rounds and slowly regenerates HP.', pips: 3, maxLevel: ENDLESS, baseCost: 60, costGrowth: 1.9, valueLabel: (l) => `${Math.round(FX.repairFraction(l) * 100)}% repair, ${f1(FX.hpRegen(l))} HP/s` },

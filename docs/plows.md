@@ -5,20 +5,49 @@ ability, a four-upgrade line in the Garage, and an **ultimate**. ARSENAL is the 
 with magnets and lasers.
 
 **⚙ Settings → Main attacks:** each vehicle can be switched from SPECIAL (its own SPACE / E) to SNOWBALL: it gets a
-blade, plows snow into a ball, slams with SPACE and whirls with E like the Classic, and keeps its own F and ultimate.
+blade, plows snow into a ball, slams with a SPACE tap and whirls with E (the Classic's own SPACE is now its swipe /
+rush), and keeps its own F and ultimate.
 It takes effect on the next run; the Duel always uses SPECIAL.
 
 ## Classic Plow
 
-+25% HP and full slam damage. Past Packed Ice level 4, each further level adds another +5.5% damage on the Classic
-(about +33% at Packed Ice 10, easing toward +66% at very high levels), so its slams and fire keep up late game. **F: Inferno**, a free fire cone that
-burns bots and ends in a fireball.
+**The close-range assassin** (Brawl Stars: Nori): chip in with the blade, then commit to a long charged rush that ends
+in your ball slam. +15% HP and full slam damage. Past Packed Ice level 4, each further level adds another +5.5% damage
+on the Classic (about +33% at Packed Ice 10, easing toward +66% at very high levels), so its swipes, slams and fire keep
+up late game. It still plows snow into a ball: the ball grows as you plow and still shields frontal hits while held.
+
+- **SPACE tap (let go within 0.2 s): BLADE SWIPE.** A quick ~100° sweep of the blade out to ~3.5 m ahead (a white snow
+  arc and spray). Every bot (or the other pilot) in it takes a moderate hit (16 x your damage mult, so Packed Ice and
+  the Classic's growth scale it like the slam) and a small nudge, and packs one **❄ SNOW CHUNK** onto the blade (10 at
+  most; ❄ pips under the snowball gauge). 0.35 s between swipes (a tap during it is kept and fires when it ends).
+  **Momentum:** every swipe that lands gives +20% top speed for 1 s (refreshes, doesn't stack).
+- **SPACE hold, then let go: PLOW RUSH.** Holding past the tap window charges the rush over ~1 s (V8 Engine, Nitro
+  Dash and Mega Hopper shorten the charge a little, never below 0.55 s). While charging the plow is slowed to half
+  speed, its blade sparks, a glowing ring sits under it and an icy **line on the ground runs from the blade to the
+  landing point** with a ring the size of the slam (the other pilot sees it too). Let go and the plow rushes there in a
+  straight, committed line (no steering, 28 m/s): **1.5 m** at the smallest charge up to a **hard cap of 20 m** at full
+  charge, at every upgrade level. Bots in the path take a light hit and are shoved aside. It **ends in the ball slam**
+  (the old slam: zone and damage from the held ball, Snow Reserve, Slam Combo, Shatter Slam, Frost / Avalanche Core
+  all apply; with no ball it is a small 0.6 m slam). **Cash-in:** the slam spends every snow chunk: zone x(1 + 0.05 n)
+  and damage x(1 + 0.04 n) for n chunks (x1.5 / x1.4 at 10), shown as a big ❄×n AVALANCHE! from 5. The rush stops
+  early (and slams there) at a wall, a big obstacle, a boss or the other pilot in the way, on the brink of a deck edge,
+  or if it is launched off a ramp lip.
+- **Shared meter.** The rush and the SHIFT dash run on the same meter: a rush costs max(0.25, distance / 20) of a full
+  charge (5 m or less = a quarter, 20 m = all of it), and the telegraph never runs past what the meter can pay for.
+  With less than a quarter, holding SPACE gives one error buzz and no telegraph, and letting go **swipes instead** (so
+  SPACE never does nothing). A dash, a whirl or a jump during the hold drops the charge; while rushing, SHIFT and E
+  wait.
+- In the air SPACE is still the air slam.
+
+**F: Inferno**, a free fire cone (10 m base reach, more with Inferno Exhaust) that burns bots and ends in a fireball.
 
 Line: Inferno Exhaust (hotter, faster fire), Shatter Slam (slams throw ice shards at bots around the impact), Snow
 Reserve (keep part of your ball after a slam), Slam Combo (back-to-back slams hit harder, stacking up to 3 times; +24% per stack at level 3, +39% at level 8).
 
 **Ultimate: FIRESTORM.** Fire damage fills the meter; when it's full, F fires a 360° fire nova that leaves burning
 ground.
+
+Vehicles switched to the SNOWBALL kit (⚙ Settings) keep the old SPACE: a tap slams the held ball.
 
 ## VOLT-9
 

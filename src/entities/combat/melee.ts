@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SLAM_DAMAGE_K, type EnemyHandle } from '../../core/types';
 import { COMBO_MAX, COMBO_WINDOW } from '../../config/upgrades';
 import { Kit, Reach, _fwd, _p, _q, floorTop } from './shared';
+import { RUSH_HIT, RUSH_HIT_KNOCK, RUSH_HIT_RAM } from './classicRush';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const PLAYER_RAM_BURST = { color: 0x9aa4b0, count: 4, speed: 4, size: 0.16, gravity: 20, life: 0.6 };
@@ -16,6 +17,8 @@ const _kb = new THREE.Vector3();
 const MOMENTUM_SPEED_CAP = 20;
 /** Minimum seconds between two rams on the same bot (safety net for per-frame contact calls). */
 const RAM_REPEAT = 0.25;
+/** PLOW RUSH (Classic): one light hit per bot per rush. */
+const RUSH_HIT_REPEAT = 1;
 /** Dash strike: one strike per bot per dash. */
 const DASH_STRIKE_REPEAT = 0.75;
 const DASH_KNOCK = 22;
@@ -42,6 +45,7 @@ export class MeleeKit extends Kit {
     if (!plow || plow.dead || !enemy.alive) return 0;
     const until = this.ramCd.get(enemy.id);
     if (until !== undefined && until > ctx.time) return 0;
+    if ((plow as { rushing?: boolean }).rushing) return this.rushHit(enemy);
     const dashing = plow.dashing;
     if (dashing) return this.dashStrike(enemy);
     this.ramCd.set(enemy.id, ctx.time + RAM_REPEAT);
@@ -90,6 +94,43 @@ export class MeleeKit extends Kit {
     this.b.audio.play('ram', { volume: Math.min(1, 0.45 + closingSpeed * 0.04) });
     _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1, enemy.position.z);
     if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : '#ffffff', 0.8 + Math.min(0.5, dealt * 0.01));
+    return dmg;
+  }
+
+  /** PLOW RUSH (Classic): a bot in the rush's path takes a light hit and is shoved aside; the rush keeps going. */
+  private rushHit(enemy: EnemyHandle): number {
+    const ctx = this.ctx;
+    const plow = this.b.plow;
+    const stats = this.b.stats;
+    this.ramCd.set(enemy.id, ctx.time + RUSH_HIT_REPEAT);
+    const dmg = (RUSH_HIT + stats.ramDamage * RUSH_HIT_RAM) * stats.damageMult;
+    plow.getForward(_fwd);
+    // Shove: mostly sideways off the rush line (whichever side the bot is on), a little forward.
+    const dx = enemy.position.x - plow.position.x;
+    const dz = enemy.position.z - plow.position.z;
+    const side = dx * _fwd.z - dz * _fwd.x >= 0 ? 1 : -1;
+    let kx = _fwd.z * side + _fwd.x * 0.6;
+    let kz = -_fwd.x * side + _fwd.z * 0.6;
+    const n = Math.hypot(kx, kz) || 1;
+    kx = (kx / n) * RUSH_HIT_KNOCK;
+    kz = (kz / n) * RUSH_HIT_KNOCK;
+    const hp0 = enemy.hp;
+    const killed = this.b.enemies.damage(enemy, dmg * this.hitMult(enemy), {
+      source: 'ram',
+      knockback: _kb.set(kx, 0, kz),
+      fromX: plow.position.x,
+      fromZ: plow.position.z,
+    });
+    const dealt = Math.max(0, hp0 - Math.max(0, enemy.hp));
+    this.onPlayerHit(dealt, killed, enemy);
+    const fx = ctx.fx;
+    _p.set((plow.position.x + _fwd.x * 2.4 + enemy.position.x) * 0.5, (plow.surfaceY || 0) + 0.9, (plow.position.z + _fwd.z * 2.4 + enemy.position.z) * 0.5);
+    fx.burst(_p, { color: 0xffffff, count: 12, speed: 6, size: 0.2, gravity: 14, life: 0.5 });
+    fx.sparks(_p, _fwd, { color: 0xbfeaff, count: 10, speed: 9, spread: 0.9, gravity: 22, life: 0.3 });
+    this.shake(0.15);
+    this.b.audio.play('ram', { volume: 0.55, pitch: 1.2 });
+    _q.set(enemy.position.x, enemy.position.y + enemy.radius + 1, enemy.position.z);
+    if (dealt > 0) fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : '#d8f2ff', 0.8);
     return dmg;
   }
 
@@ -149,18 +190,19 @@ export class MeleeKit extends Kit {
   }
 
   /** SPACE slam impact centered at (x, z) with a ball of radius `r` (volume `volume` m^3, already consumed
-   *  by the plow). Damages every bot in the zone, shatters the ball. Returns the number of bots hit. */
-  slamAt(x: number, z: number, r: number, volume: number): number {
+   *  by the plow). Damages every bot in the zone, shatters the ball. Returns the number of bots hit. `zoneMult` /
+   *  `dmgMult` scale the zone radius and the damage (the Classic's PLOW RUSH cashing in SNOW CHUNKS). */
+  slamAt(x: number, z: number, r: number, volume: number, zoneMult = 1, dmgMult = 1): number {
     const ctx = this.ctx;
     const stats = this.b.stats;
     const plow = this.b.plow;
     const fx = ctx.fx;
     const avalanche = stats.avalancheCore;
-    const zone = (r * 1.3 + stats.bladeWidth * 0.35) * (avalanche ? 1.5 : 1);
+    const zone = (r * 1.3 + stats.bladeWidth * 0.35) * (avalanche ? 1.5 : 1) * zoneMult;
     // Slam Combo (Classic Plow): stacks from slams that landed recently.
     if (ctx.time - this.lastSlamHitAt > COMBO_WINDOW) this.comboStacks = 0;
     const combo = stats.comboStep > 0 ? this.comboStacks : 0;
-    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo);
+    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo) * dmgMult;
     const knockMag = (10 + 6 * r) * (avalanche ? 1.6 : 1);
     const freeze = stats.frostCore ? 3 : 0;
 
@@ -235,7 +277,7 @@ export class MeleeKit extends Kit {
     }
 
     const position = new THREE.Vector3(x, ground, z);
-    this.b.events.emit('slam', { hits: count, radius: r, position });
+    this.b.events.emit('slam', zoneMult !== 1 ? { hits: count, radius: r, position, zoneMult } : { hits: count, radius: r, position });
     if (count >= 3) {
       this.b.events.emit('strike', { count, position: position.clone() });
       this.b.audio.play('strike');

@@ -200,7 +200,7 @@ export class SettingsMenu {
     }
 
     const kit = this.section('🚜 Main attacks');
-    el('div', 'ss-set-note', "SPECIAL = each vehicle's own SPACE / E. SNOWBALL = plow snow, slam with SPACE and whirl with E like the Classic (F and the ultimate stay). Takes effect on the next run; the Duel always uses SPECIAL.", kit);
+    el('div', 'ss-set-note', "SPECIAL = each vehicle's own SPACE / E. SNOWBALL = plow snow, slam with a SPACE tap and whirl with E (F and the ultimate stay). Takes effect on the next run; the Duel always uses SPECIAL.", kit);
     for (const k of ['volt', 'brute', 'isotope', 'arsenal'] as const) {
       const row = el('div', 'ss-set-row', undefined, kit);
       el('span', 'ss-set-label', PLOWS[k].name, row);

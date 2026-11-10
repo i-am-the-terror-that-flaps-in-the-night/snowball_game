@@ -43,13 +43,16 @@ export abstract class BrawlAI extends BrawlPhysics {
         // lining up a big held ball on them.
         const smart = r.s.elite || skill >= 0.9;
         const bigBall = smart && (f.rival ? f.rival.ballR >= 0.8 && f.rival.slamCd <= 0 : this.ctx.plow.heldBallRadius >= 0.8);
-        const threat = f.rival ? f.rival.dashing || f.rival.slamT >= 0 || bigBall : this.ctx.plow.dashing || bigBall;
+        // The Classic Plow's PLOW RUSH (and a well-charged rush telegraph) reads like a dash, out to its 20 m reach.
+        const pr = f.rival ? null : (this.ctx.plow as { rushing?: boolean; rushCharge?: number });
+        const rush = !!pr && (!!pr.rushing || (pr.rushCharge ?? -1) >= 0.4);
+        const threat = f.rival ? f.rival.dashing || f.rival.slamT >= 0 || bigBall : this.ctx.plow.dashing || rush || bigBall;
         if (!threat) continue;
         if (bigBall && Math.hypot(r.position.x - this.fx(f), r.position.z - this.fz(f)) > 8) continue;
         const dx = r.position.x - this.fx(f);
         const dz = r.position.z - this.fz(f);
         const d = Math.hypot(dx, dz);
-        if (d > 14) continue;
+        if (d > (rush ? 21 : 14)) continue;
         const h = f.rival ? f.rival.heading : this.ctx.plow.heading;
         const aim = Math.abs(wrap(Math.atan2(dx, dz) - h));
         if (aim < 0.45) {

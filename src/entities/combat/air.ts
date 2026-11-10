@@ -87,6 +87,8 @@ interface SlamState {
   slamPhase?: number;
   slamT?: number;
   slamHit?: boolean;
+  /** Classic Plow SPACE hold (seconds since the press, -1 = none): a hold begun on the dive press is dropped too. */
+  spaceT?: number;
 }
 /** A ground slam younger than this (s, still in its wind-up and before its impact) is replaced by the air slam. */
 const SLAM_JUST_STARTED = 0.05;
@@ -147,6 +149,7 @@ export class AirKit extends Kit {
     // cancel that one. A slam begun before lift-off plays out untouched.
     const s = plow as unknown as SlamState;
     if (s.slamPhase === 1 && !s.slamHit && typeof s.slamT === 'number' && s.slamT <= SLAM_JUST_STARTED) s.slamPhase = 0;
+    if (typeof s.spaceT === 'number' && s.spaceT >= 0 && s.spaceT <= SLAM_JUST_STARTED) s.spaceT = -1;
     this.slamPending = true;
     plow.dive(AIR_SLAM_DIVE);
     this.b.audio.play('airSlam');

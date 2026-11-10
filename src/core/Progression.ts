@@ -4,6 +4,7 @@ import { ZONES } from '../config/zones';
 import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
 import type { PlayerStats } from './types';
 import { PLOWS, type PlowKind } from '../config/plows';
+import { rushChargeTime } from '../entities/combat/classicRush';
 
 const SAVE_KEY = 'snowplow-showdown-save-v2';
 
@@ -598,6 +599,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     shardReach: FX.shardReach(L('classicShatter')),
     reserveFrac: FX.reserveFrac(L('classicReserve')),
     comboStep: FX.comboStep(L('classicCombo')),
+    rushChargeTime: rushChargeTime(L('engine'), L('nitro'), L('hopper'), soft),
     flameRange: FX.flameRange(L('inferno')),
     flameDps: fire ? FX.flameDps(L('inferno')) : 0,
     // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.

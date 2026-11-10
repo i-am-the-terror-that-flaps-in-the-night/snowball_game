@@ -10,6 +10,11 @@ import {
 } from './constants';
 import { _fwd, _a, _c, _dir } from './scratch';
 import { deckById } from './assets';
+import { floorTop, waveFloor } from '../combat/shared';
+import {
+  MOMENTUM_SECONDS, RUSH_DROP, RUSH_MAX, RUSH_MIN_SLAM_R, RUSH_SPEED, SWIPE_COOLDOWN, SWIPE_TAP, rushAffordable, rushCharge,
+  rushPlan,
+} from '../combat/classicRush';
 
 /* Layer 3 of the Plow class (see PlowBase.ts): slam / dash / whirl, terrain step and hazards, arena / obstacle /
  * deck collisions, death and the wreck. */
@@ -122,6 +127,194 @@ export abstract class PlowMotion extends PlowVisuals {
     // Cancel a pending slam (the whirl takes over the blade).
     this.slamPhase = 0;
     this.whirlFx();
+  }
+
+  /* ------------------------------------------------------------------ Classic Plow SPACE: swipe / rush */
+
+  /** The Classic Plow's SPACE (combat/classicRush.ts): a tap swipes, a hold charges a PLOW RUSH released on key-up.
+   *  `high`: airborne clear of the surface (SPACE is the air slam there: AirKit). Runs every non-hit-stop frame. */
+  protected updateClassicSpace(dt: number, high: boolean): void {
+    const input = this.b.input;
+    if (this.swipeCd > 0) this.swipeCd -= dt;
+    if (this.swipeBuffer > 0) {
+      this.swipeBuffer -= dt;
+      if (this.swipeCd <= 0 && this.rushLeft <= 0) {
+        this.swipeBuffer = 0;
+        this.swipe();
+      }
+    }
+    // Mid-rush the plow is committed: presses are ignored (no buffered rush / swipe out of a rush).
+    if (this.rushLeft > 0) {
+      this.spaceT = -1;
+      this.rushChargeK = -1;
+      return;
+    }
+    if (input.wasPressed('Space') && !high && this.whirlT < 0) {
+      this.spaceT = 0;
+      this.rushNoMeter = false;
+    }
+    if (this.spaceT < 0) return;
+    // Whirl, dash or a jump interrupt the hold.
+    if (high || this.whirlT >= 0 || this.dashT > 0) {
+      this.cancelSpace();
+      return;
+    }
+    // Inputs that only know presses (no isDown) tap.
+    const down = !!input.isDown?.('Space');
+    this.spaceT += dt;
+    if (down) {
+      if (this.spaceT >= SWIPE_TAP) {
+        if (rushAffordable(this.dashCharge) <= 0) {
+          // Not enough dash meter for even the shortest rush: buzz once; the release swipes instead.
+          if (!this.rushNoMeter) this.b.audio.play('error', { volume: 0.5 });
+          this.rushNoMeter = true;
+          this.rushChargeK = -1;
+        } else {
+          const was = this.rushChargeK;
+          this.rushChargeK = rushCharge(this.spaceT, this.b.stats.rushChargeTime ?? 1);
+          this.rushDist = rushPlan(this.rushChargeK, this.dashCharge).dist;
+          if (was < 0) this.b.audio.play('charge', { volume: 0.45, pitch: 1.5 });
+          else if (was < 1 && this.rushChargeK >= 1) this.b.audio.play('charge', { volume: 0.55, pitch: 2 });
+        }
+      }
+      return;
+    }
+    // Released.
+    this.spaceT = -1;
+    const k = this.rushChargeK;
+    this.rushChargeK = -1;
+    if (k >= 0) {
+      const plan = rushPlan(k, this.dashCharge);
+      if (plan.dist > 0) {
+        this.dashCharge = Math.max(0, this.dashCharge - plan.cost);
+        this.startRush(plan.dist);
+        return;
+      }
+    }
+    if (this.swipeCd > 0) this.swipeBuffer = 0.2;
+    else this.swipe();
+  }
+
+  /** Drop a SPACE hold / charge (whirl, dash, jump, death, reset). */
+  protected cancelSpace(): void {
+    this.spaceT = -1;
+    this.rushChargeK = -1;
+    this.rushNoMeter = false;
+  }
+
+  /** BLADE SWIPE: the arc and sound here, the hits in ClassicKit (chunks); a landed swipe starts MOMENTUM. */
+  private swipe(): void {
+    this.swipeCd = SWIPE_COOLDOWN;
+    this.swipeN++;
+    this.swipeFx();
+    const hits = this.b.combat.classicSwipe();
+    if (hits > 0) this.momentumT = MOMENTUM_SECONDS;
+  }
+
+  /** Swipe feedback (also replayed for a duel opponent's puppet): the snow arc, spray and a whoosh. */
+  protected swipeFx(): void {
+    const ctx = this.ctx;
+    this.getBladeTip(_c);
+    this.getForward(_fwd);
+    _c.y = floorTop(this.ctx.terrain, this.b.snow, this.vert.y, _c.x, _c.z);
+    const top = _c.y;
+    this.rushFx.startSwipe(_c, this.heading);
+    this.kick = Math.max(this.kick, 0.55);
+    this.b.audio.play('whirlTick', { pitch: 1.7, volume: 0.65 });
+    this.b.audio.play('dash', { pitch: 1.9, volume: 0.3 });
+    // Snow thrown off the blade across the arc, left to right.
+    for (let i = 0; i < 5; i++) {
+      const a = this.heading - 0.8 + i * 0.4;
+      _a.set(_c.x + Math.sin(a) * 2.2, top + 0.6, _c.z + Math.cos(a) * 2.2);
+      _dir.set(Math.sin(a + 0.9), 0.7, Math.cos(a + 0.9)).normalize();
+      ctx.fx.spray(_a, _dir, 0.8);
+    }
+    _a.set(_c.x + _fwd.x * 1.6, top + 0.7, _c.z + _fwd.z * 1.6);
+    ctx.fx.burst(_a, { color: 0xffffff, count: 14, speed: 6, size: 0.2, gravity: 14, life: 0.5 });
+  }
+
+  /** Launch a PLOW RUSH of `dist` m: straight ahead, no steering, ends in the slam (finishRush). */
+  protected startRush(dist: number): void {
+    this.rushLeft = Math.min(RUSH_MAX, dist);
+    this.rushT = 0;
+    this.rushStall = 0;
+    this.rushStop = false;
+    this.speed = RUSH_SPEED;
+    this.pushVel.multiplyScalar(0.3);
+    this.rushLaunchFx();
+  }
+
+  /** Rush launch feedback (also replayed for a duel opponent's puppet). */
+  protected rushLaunchFx(): void {
+    this.ghostT = 0;
+    this.streakT = 0;
+    this.kick = Math.max(this.kick, 0.9);
+    this.dashFx();
+    this.b.audio.play('ram', { volume: 0.6, pitch: 0.7 });
+  }
+
+  /** Is the floor `step` m past the blade a drop (a deck edge) the rush should stop at? */
+  protected rushDropAhead(step: number): boolean {
+    const t = this.ctx.terrain;
+    if (!t.active || this.vert.airborne) return false;
+    this.getForward(_fwd);
+    const x = this.position.x + _fwd.x * (TIP_Z + step);
+    const z = this.position.z + _fwd.z * (TIP_Z + step);
+    return waveFloor(t, this.vert.y, x, z) < this.vert.surfaceY - RUSH_DROP;
+  }
+
+  /** End the rush (distance done, blocked, a wall, a drop or a jump): slow down and slam at the blade. */
+  protected finishRush(): void {
+    this.rushLeft = 0;
+    this.rushStop = false;
+    this.rushStall = 0;
+    this.speed = Math.min(Math.max(0, this.speed), this.b.stats.maxSpeed * 0.45);
+    this.rushSlam();
+  }
+
+  /** The rush's end slam: the held ball (Snow Reserve keeps its share) or a small snow-chunk slam without one; the
+   *  chunks cash in inside Combat.rushSlam. */
+  private rushSlam(): void {
+    const r0 = this.heldBallRadius;
+    let r = RUSH_MIN_SLAM_R;
+    let volume = 0;
+    if (r0 >= 0.2) {
+      r = Math.max(r0, RUSH_MIN_SLAM_R);
+      volume = this.heldVolume * (1 - this.b.stats.reserveFrac);
+      this.heldVolume -= volume;
+      if (this.heldBallRadius < 0.2) {
+        this.heldVolume = 0;
+        this.ballR = 0;
+        this.ball.visible = false;
+        this.glow.visible = false;
+        this.ballWasVisible = false;
+      }
+    }
+    this.getBladeTip(_c);
+    this.getForward(_fwd);
+    const cx = _c.x + _fwd.x * (r + 0.5);
+    const cz = _c.z + _fwd.z * (r + 0.5);
+    this.kick = 1;
+    this.slamPose = 1;
+    this.b.combat.rushSlam(cx, cz, r, volume);
+  }
+
+  /** Rush telegraph / charge aura and the swipe arc (own plow and Duel puppet alike). */
+  protected updateRushVisuals(dt: number): void {
+    this.rushFx.updateSwipe(dt);
+    if (this._dead || this.rushChargeK < 0) {
+      this.rushFx.telegraph(dt, -1, 0, 0, 0, 0, 0, 0, 0, 0, undefined, null);
+      return;
+    }
+    this.getBladeTip(_c);
+    const r = Math.max(this.heldBallRadius, RUSH_MIN_SLAM_R);
+    const ringR = (r * 1.3 + this.bladeWidth * 0.35) * (this.b.stats.avalancheCore ? 1.5 : 1) * this.b.combat.chunkRadiusMult;
+    this.rushFx.telegraph(dt, this.rushChargeK, this.rushDist, ringR, this.heading, this.position.x, this.position.z, _c.x, _c.z, this.vert.y, this.ctx.terrain, this.b.snow);
+    // Icy sparks off the blade while it winds up.
+    if (Math.random() < dt * (6 + 14 * this.rushChargeK)) {
+      _a.set(_c.x + (Math.random() - 0.5) * this.bladeWidth, this.vert.surfaceY + 0.5 + Math.random() * 0.6, _c.z);
+      this.ctx.fx.burst(_a, { color: this.rushChargeK >= 1 ? 0xffffff : 0x9fe6ff, count: 2, speed: 2.5, size: 0.12, gravity: -3, life: 0.35 });
+    }
   }
 
   /** Whirl start feedback (also replayed for a duel opponent's puppet). */
@@ -384,7 +577,7 @@ export abstract class PlowMotion extends PlowVisuals {
     const bladeR = Math.max(0.9, this.bladeWidth * 0.38);
     const bladeOff = TIP_Z - 0.55;
     // Rams at speed and dashes smash straight through destructible props (they stop nothing).
-    const smashes = b.authoritative && (this.dashT > 0 || Math.abs(vf) > PROP_SMASH_SPEED);
+    const smashes = b.authoritative && (this.dashT > 0 || this.rushLeft > 0 || Math.abs(vf) > PROP_SMASH_SPEED);
     for (let i = 0; i < obs.length; i++) {
       const o = obs[i];
       const p = this.position;
@@ -444,9 +637,10 @@ export abstract class PlowMotion extends PlowVisuals {
       this.pushVel.x -= pIn * nx;
       this.pushVel.z -= pIn * nz;
     }
-    const dashing = this.dashT > 0;
+    const dashing = this.dashT > 0 || this.rushLeft > 0;
     if (dashing && fwdInto > 0.45 && into > 4) {
-      // Dash straight into a wall: heavy thud, dash over.
+      // Dash (or PLOW RUSH) straight into a wall: heavy thud, dash over (the rush slams where it stopped).
+      if (this.rushLeft > 0) this.rushStop = true;
       this.dashT = 0;
       this.dashEase = 0;
       this.speed *= 0.2;
@@ -491,6 +685,10 @@ export abstract class PlowMotion extends PlowVisuals {
     this.wreckT = 0;
     this.slamPhase = 0;
     this.dashT = 0;
+    this.rushLeft = 0;
+    this.momentumT = 0;
+    this.cancelSpace();
+    this.rushFx.hide();
     this.dashEase = 0;
     this.hitStopT = 0;
     this.spawnProt = 0;

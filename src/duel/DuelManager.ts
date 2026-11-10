@@ -715,7 +715,7 @@ export class DuelManager {
     if (this.role !== 'host' || !this.active) return;
     this.counters.slams[p]++;
     const r = (v: number) => Math.round(v * 100) / 100;
-    this.events.push(['s', p, r(e.position.x), r(e.position.z), r(e.radius)]);
+    this.events.push(['s', p, r(e.position.x), r(e.position.z), r(e.radius), r(e.zoneMult ?? 1)]);
   }
 
   private onAbility(p: number, e: GameEvents['ability']): void {
@@ -910,7 +910,8 @@ export class DuelManager {
       }
     } else if (kind === 's') {
       this.counters.slams[p]++;
-      if (p !== me) this.oppCombat!.slamAt(Number(e[2]), Number(e[3]), Number(e[4]), 0);
+      // e[5]: the slam zone multiplier (a Classic PLOW RUSH cashing in SNOW CHUNKS; missing = 1).
+      if (p !== me) this.oppCombat!.slamAt(Number(e[2]), Number(e[3]), Number(e[4]), 0, Number(e[5] ?? 1) || 1);
     } else if (kind === 'f') {
       this.counters.abilities[p]++;
       if (Number(e[2]) === 1) this.counters.nukes[p]++;

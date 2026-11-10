@@ -600,6 +600,18 @@ fresh (was 0.75: 34% at mid) and takes x1.18 late (was 1.15); ARSENAL takes x0.6
 (33% at fresh). VOLT-9 and ISOTOPE unchanged. Each step is a few percent of one side's damage, inside the matrix's noise
 for a single run; re-run `scripts/duel-matrix.mjs` when convenient to confirm.
 
+## Follow-up: Classic role rework (close-range assassin)
+
+The Classic's SPACE became a tap BLADE SWIPE (16 x damage mult, ~100° to 3.5 m, packs a snow chunk per hit, max 10,
++20% speed for 1 s) and a held PLOW RUSH (1.5-20 m, shares the dash meter at max(0.25, d / 20), ends in the old ball
+slam, which cashes the chunks in for x(1 + 0.05 n) zone and x(1 + 0.04 n) damage). Its HP went from x1.25 to x1.15
+and Inferno's base reach from 8.5 to 10 m (`src/entities/combat/classicRush.ts`, docs/plows.md). The headless sim
+(`scripts/balance/sim.ts`, `duel2.ts`) still schedules the Classic's damage as timed slams: it does not model the
+swipe, the rush or the chunks yet, so its Classic rows (and the Duel factors tuned on them) predate the rework. The
+minigun invariant in `tests/balance.test.ts` is now measured against the Classic's HP at its old x1.25, the same
+absolute cap as before. Re-tune with the browser matrix (`scripts/duel-matrix.mjs`, whose AutoPilot swipes up close
+and charges / releases rushes) once the other vehicles' reworks land.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more
