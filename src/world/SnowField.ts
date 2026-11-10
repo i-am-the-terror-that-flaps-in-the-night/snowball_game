@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { GameContext, SnowFieldAPI, ZoneDef } from '../core/types';
-import { ARENA, ENEMY_GATES, GATE_WIDTH, snowFieldSize } from '../core/types';
+import { ARENA, BRAWL_ARENA_HALF, ENEMY_GATES, GATE_WIDTH, snowFieldSize } from '../core/types';
+import { DUEL_SPAWNS } from '../config/duel';
 import { dequantDepth, quantDepth, type SnowPatch } from '../net/protocol';
 
 const EDGE = 2; // edits never touch the outermost vertices (keeps the field rim flush with the outer ground)
@@ -297,7 +298,7 @@ export class SnowField implements SnowFieldAPI {
         x: Math.min(ARENA.maxX, Math.max(ARENA.minX, g.x)),
         z: Math.min(ARENA.maxZ, Math.max(ARENA.minZ, g.z)),
       }));
-    const drifts = brawl ? this.planDrifts(seed) : [];
+    const drifts = brawl ? this.planDrifts(seed, zone.id === 'duel') : [];
     const d = this.depth;
     const init = this.initial;
     let total = 0;
@@ -384,12 +385,15 @@ export class SnowField implements SnowFieldAPI {
     this.flush();
   }
 
-  /** Deterministic Brawl drift layout: clear of obstacles, walls, the center and the spawn ring. */
-  private planDrifts(seed: number): { x: number; z: number; c: number; s: number; irA: number; irB: number; peak: number }[] {
+  /** Deterministic Snowdome drift layout: clear of obstacles, walls, the center and the spawn ring (the Duel's shrunk
+   *  dome: fewer drifts, by area, clear of the two Duel spawns instead). */
+  private planDrifts(seed: number, duel: boolean): { x: number; z: number; c: number; s: number; irA: number; irB: number; peak: number }[] {
     const out: { x: number; z: number; c: number; s: number; irA: number; irB: number; peak: number }[] = [];
     const obstacles = this.ctx.world?.obstacles ?? [];
     const lim = ARENA.maxX - 6;
-    for (let tries = 0; tries < 600 && out.length < DRIFT_COUNT; tries++) {
+    const k = ARENA.maxX / BRAWL_ARENA_HALF;
+    const count = Math.round(DRIFT_COUNT * k * k);
+    for (let tries = 0; tries < 600 && out.length < count; tries++) {
       const r1 = hash2(tries, 1, seed + 11);
       const r2 = hash2(tries, 2, seed + 11);
       const r3 = hash2(tries, 3, seed + 11);
@@ -400,7 +404,7 @@ export class SnowField implements SnowFieldAPI {
       if (Math.abs(x) + R * 0.7 > lim || Math.abs(z) + R * 0.7 > lim) continue;
       const dc = Math.hypot(x, z);
       if (dc < 14 + R * 0.5) continue; // keep the centerpiece plaza open
-      if (Math.abs(dc - SPAWN_RING_R) < R * 0.8 + 4) continue; // spawn ring
+      if (duel ? DUEL_SPAWNS.some((p) => Math.hypot(x - p.x, z - p.z) < R + 4) : Math.abs(dc - SPAWN_RING_R) < R * 0.8 + 4) continue; // spawns
       let ok = true;
       for (const o of obstacles) {
         if (Math.hypot(x - o.x, z - o.z) < o.r + R * 0.65) {

@@ -1,9 +1,12 @@
 import { PVE_MULT } from '../src/entities/combat/arsenal';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { KINDS, clusterDps, duelGunDamage, duelTtk, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
+import { KINDS, clusterDps, duelGunDamage, duelTtk, fakePlow, newCtx, pilot, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
 import type { PlowKind } from '../src/config/plows';
 import { computeStatsFor } from '../src/core/Progression';
-import { ultCharge } from '../src/entities/combat/ultimates';
+import { ultCharge, ultMeter } from '../src/entities/combat/ultimates';
+import { fight, ultShare } from '../scripts/balance/duel2';
+import { DUEL_ULT_CHARGE } from '../src/config/duel';
+import type { EnemyManagerAPI } from '../src/core/types';
 
 /* Balance invariants on the headless sim (scripts/balance/sim.ts; the full report is `npm run balance`). Storm strikes
  * and the like roll Math.random, so it is seeded here to keep these deterministic. */
@@ -76,5 +79,51 @@ describe('duel', () => {
 
   it.each(['fresh', 'high'] as const)('%s: no plow kills a parked same-tier plow in under 4 s of sustained fire', (tier) => {
     for (const a of KINDS) for (const d of KINDS) expect(duelTtk(a, d, tier, 12)).toBeGreaterThan(4);
+  }, 60_000);
+  it.each(['fresh', 'mid', 'high'] as const)('%s: an ultimate on a parked same-tier plow is a big swing, never a one-shot (<= 45% of max HP)', (tier) => {
+    for (const a of KINDS) {
+      const shares = KINDS.map((d) => ultShare(a, d, tier, 4)).filter(Number.isFinite);
+      expect(shares.length).toBeGreaterThan(0);
+      for (const sh of shares) expect(sh).toBeLessThanOrEqual(0.45);
+      // ...and still a real swing against a plow without a Battery Shield to soak it
+      expect(ultShare(a, 'classic', tier, 4)).toBeGreaterThan(0.15);
+    }
+  }, 60_000);
+
+  it.each(['fresh', 'high'] as const)('%s: in continuous same-tier fighting every plow fills its meter, first ultimate within 20-60 s', (tier) => {
+    for (const k of KINDS) {
+      const firsts: number[] = [];
+      for (const o of KINDS) {
+        const r = fight(k, o, tier, { mode: 'move', seed: 101 + KINDS.indexOf(o), cap: 90, continuous: true });
+        if (r.ults[0].length) firsts.push(r.ults[0][0]);
+      }
+      expect(firsts.length, k).toBeGreaterThanOrEqual(4);
+      const mean = firsts.reduce((x, y) => x + y, 0) / firsts.length;
+      expect(mean, k).toBeGreaterThan(20);
+      expect(mean, k).toBeLessThan(60);
+    }
+  }, 120_000);
+});
+
+describe('duel ultimate meter', () => {
+  it('is sized in the opponent\'s HP in the Duel (tier-independent), in damage off-line', () => {
+    const st = computeStatsFor({ packedIce: 10, voltClap: 8 }, 'volt');
+    const foe = { duelFoeMaxHp: 400 } as unknown as EnemyManagerAPI;
+    expect(ultMeter({ stats: st, enemies: foe }, 2700)).toBe(ultCharge(st, 2700));
+    expect(ultMeter({ stats: st, enemies: foe, pvp: true }, 2700)).toBeCloseTo(DUEL_ULT_CHARGE * 400);
+    expect(ultMeter({ stats: computeStatsFor({}, 'volt'), enemies: foe, pvp: true }, 2700)).toBeCloseTo(DUEL_ULT_CHARGE * 400);
+    // a guest's Combat hits nothing (NO_TARGETS): it never charges, and falls back to the off-line size
+    expect(ultMeter({ stats: st, enemies: {} as EnemyManagerAPI, pvp: true }, 2700)).toBe(ultCharge(st, 2700));
+  });
+
+  it('carries over between rounds (Combat.clear(true), DuelManager.parkPlows) and empties at match start', () => {
+    const st = statsFor('volt', 'mid');
+    const p = pilot(newCtx(), st, fakePlow(st), {}, true);
+    const c = p.c as unknown as { critCharge: number };
+    c.critCharge = 0.7;
+    p.c.clear(true);
+    expect(c.critCharge).toBe(0.7);
+    p.c.clear();
+    expect(c.critCharge).toBe(0);
   });
 });

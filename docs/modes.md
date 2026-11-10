@@ -62,7 +62,8 @@ day is saved separately from normal Survival, and the game-over screen shows the
 
 ## Duel
 
-An online best-of-3 against a friend. See [duel.md](duel.md).
+An online best-of-3 against a friend in a shrunk Snowdome (Brawl's venues at 120 m, two thirds of the dome), with
+ultimates that charge in about a round and carry over between rounds. See [duel.md](duel.md).
 
 ## Tutorial
 

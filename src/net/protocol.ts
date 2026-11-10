@@ -12,7 +12,9 @@
  *            Depth is quantised to a byte over 0..SNOW_Q_MAX metres. flags & 1 = full-field keyframe.
  * ---------------------------------------------------------------------------------------------- */
 
-export const PROTOCOL_VERSION = 5;
+/** v6: the Duel moved to the shrunk Snowdome (venue list, arena size and spawns changed: peers on v5 would build a
+ *  different arena from the same room code) and its ultimate meters carry over between rounds. Wire layout as v5. */
+export const PROTOCOL_VERSION = 6;
 
 export const MSG_INPUT = 1;
 export const MSG_SNAP = 2;

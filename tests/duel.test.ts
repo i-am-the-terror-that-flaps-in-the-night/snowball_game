@@ -5,7 +5,7 @@ import {
 } from '../src/net/protocol';
 import { CATCHUP_MAX, DUEL_ZONE, catchUp, catchUpBonus, cleanDuelGear, cleanLevels, duelBonus, duelPower, duelSpent, garageSpent, sharedMatchCost } from '../src/config/duel';
 import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, gearSpent, grantLevels } from '../src/config/gear';
-import { ZONES } from '../src/config/zones';
+import { BRAWL_ZONE } from '../src/config/zones';
 import { UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../src/config/upgrades';
 import { Progression, computeStatsFor } from '../src/core/Progression';
 import { DuelWallet } from '../src/duel/DuelWallet';
@@ -31,7 +31,7 @@ afterEach(() => vi.unstubAllGlobals());
 /* DUEL_ZONE is built from an explicit field list so biome / terrain / hazard data added to arena 1 never leaks into
  * Duel. Adding a field to this list is a deliberate choice (e.g. when Duel gets its biome pool). */
 describe('duel arena', () => {
-  it('pins its own fields and inherits nothing else from arena 1', () => {
+  it('pins its own fields and inherits nothing else from the Brawl Snowdome', () => {
     expect(Object.keys(DUEL_ZONE).sort()).toEqual([
       'ambientColor', 'ambientIntensity', 'bossName', 'clearReward', 'coinMult', 'enemyHpMult', 'fogColor', 'fogFar', 'fogNear',
       'id', 'index', 'name', 'rounds', 'skyBottom', 'skyTop', 'snowDepth', 'snowRegenMult', 'snowTint', 'snowfall',
@@ -39,7 +39,8 @@ describe('duel arena', () => {
     ]);
     expect(DUEL_ZONE.terrain).toBeUndefined();
     expect('biome' in DUEL_ZONE).toBe(false);
-    expect(DUEL_ZONE.index).toBe(ZONES[0].index);
+    expect(DUEL_ZONE.index).toBe(BRAWL_ZONE.index);
+    expect(DUEL_ZONE.theme).toBe('brawl');
     expect(DUEL_ZONE.rounds.every((r) => r.groups.length === 0)).toBe(true);
     expect(DUEL_ZONE.coinMult).toBe(0);
   });
@@ -402,7 +403,7 @@ describe('SnapBuffer (opponent interpolation)', () => {
 
 describe('height sync (terrain: feet height, vertical speed, airborne)', () => {
   it('is part of protocol v4: three floats at the end of each 35-float plow block', () => {
-    expect(PROTOCOL_VERSION).toBe(5);
+    expect(PROTOCOL_VERSION).toBe(6); // v5 layout; v6 = the shrunk-Snowdome Duel
     expect(NET_PLOW_LEN).toBe(35);
     expect([NP.y, NP.vy, NP.air]).toEqual([32, 33, 34]);
     const idx = Object.values(NP);

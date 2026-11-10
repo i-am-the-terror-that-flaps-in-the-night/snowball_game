@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { BIOMES, BIOME_ZONE, BRAWL_BIOMES, BRAWL_ZONE, ZONES, brawlZone, pickBrawlZone, zoneLook } from '../src/config/zones';
-import { ENEMY_GATES, PLOW_SPAWN } from '../src/core/types';
+import { BRAWL_ARENA_HALF, DUEL_ARENA_HALF, ENEMY_GATES, PLOW_SPAWN } from '../src/core/types';
 import { Terrain, makeSurface } from '../src/world/Terrain';
 import type { TerrainDef } from '../src/world/Terrain';
 import { V_LANDED, makeVert, stepVertical } from '../src/world/terrainMotion';
-import { DUEL_VENUES, DUEL_ZONE, duelVenueFor, duelZone, duelZoneFor } from '../src/config/duel';
+import { DUEL_SPAWNS, DUEL_VENUES, DUEL_ZONE, duelVenueFor, duelZone, duelZoneFor } from '../src/config/duel';
+import { DUEL_DOME_TERRAIN } from '../src/world/biomes/terrains';
+import { DOME_COVER } from '../src/world/environment/layout';
 import { weatherLayers } from '../src/world/biomes/Weather';
 
 /* Layout rules for the biome terrains (src/world/biomes/terrains.ts, docs/level-overhaul.md "Arenas"). */
@@ -63,13 +65,9 @@ describe('campaign terrain layout (60 m)', () => {
     const def = zone.terrain!;
     const t = new Terrain(def);
     describe(zone.name, () => {
-      it('keeps the plow spawn and both Duel spawns flat and patch-free', () => {
+      it('keeps the plow spawn flat and patch-free', () => {
         expect(flatNear(t, PLOW_SPAWN.x, PLOW_SPAWN.z, 5, 0.2)).toBeNull();
         expect(patchNear(def, PLOW_SPAWN.x, PLOW_SPAWN.z, 6)).toBeUndefined();
-        for (const z of [15, -15]) {
-          expect(flatNear(t, 0, z, 3, 0.35)).toBeNull();
-          expect(patchNear(def, 0, z, 3)).toBeUndefined();
-        }
       });
 
       it('keeps the first 10 m of every gate lane open (no bumps, no lava)', () => {
@@ -130,15 +128,23 @@ describe('campaign terrain layout (60 m)', () => {
   });
 });
 
-/* Nominal Snowdome cover (Environment.buildObstacles, before its +-2 m jitter), base quadrant, rotated by 90° steps. */
-const COVER: [number, number, number][] = [
-  [24, 16, 2], [27.8, 17.2, 2], [25.3, 19.7, 2], // ice pillar cluster
-  [47, 10, 4.5], // container (3 colliders along its length)
-  [38, 40, 6], // rock outcrop + satellite
-  [12, 54, 2.3], // snowman
-  [77, 36, 2], // tire pile
-  [62, 64, 4.5], // corner container
-];
+/* Nominal Snowdome cover (Environment.buildObstacles, before its +-2 m jitter), base quadrant, rotated by 90° steps, for a
+ * dome of half-size `half` (sites from DOME_COVER at half / BRAWL_ARENA_HALF; object sizes and the pillar cluster's
+ * spacing stay). */
+function domeCover(half: number): [number, number, number][] {
+  const k = half / BRAWL_ARENA_HALF;
+  const C = DOME_COVER;
+  const [px, pz] = [C.pillars[0] * k, C.pillars[1] * k];
+  return [
+    [px, pz, 2], [px + 3.8, pz + 1.2, 2], [px + 1.3, pz + 3.7, 2], // ice pillar cluster
+    [C.container[0] * k, C.container[1] * k, 4.5], // container (3 colliders along its length)
+    [C.rock[0] * k, C.rock[1] * k, 6], // rock outcrop + satellite
+    [C.snowman[0] * k, C.snowman[1] * k, 2.3], // snowman
+    [Math.min(C.tires[0] * k, half - 10), C.tires[1] * k, 2], // tire pile (clamped off the wall)
+    [C.corner[0] * k, C.corner[1] * k, 4.5], // corner container
+  ];
+}
+const COVER = domeCover(BRAWL_ARENA_HALF);
 const rot = (q: number, x: number, z: number): [number, number] => {
   const c = Math.round(Math.cos((q * Math.PI) / 2));
   const s = Math.round(Math.sin((q * Math.PI) / 2));
@@ -205,6 +211,7 @@ describe('ramp lanes', () => {
   const venues: [string, TerrainDef][] = [
     ...CAMPAIGN.filter((z) => z.terrain).map((z): [string, TerrainDef] => [z.name, z.terrain!]),
     ...BRAWL_BIOMES.filter((k) => brawlZone(k).terrain).map((k): [string, TerrainDef] => [`Brawl ${k}`, brawlZone(k).terrain!]),
+    ...DUEL_VENUES.filter((k) => duelZone(k).terrain).map((k): [string, TerrainDef] => [`Duel ${k}`, duelZone(k).terrain!]),
   ];
   for (const [name, def] of venues) {
     const ramps = (def.shapes ?? []).filter((s) => s.kind === 'ramp');
@@ -272,29 +279,91 @@ describe('ramp lanes', () => {
   }
 });
 
-describe('Duel venues', () => {
+describe('Duel venues (the Snowdome shrunk to 120 m)', () => {
   it('both peers derive the same venue from the room code, and every venue occurs', () => {
     expect(duelVenueFor('abcd')).toBe(duelVenueFor('ABCD '));
     const seen = new Set<string>();
     for (let i = 0; i < 400; i++) seen.add(duelVenueFor(`R${i.toString(36).toUpperCase()}X`));
     expect([...seen].sort()).toEqual([...DUEL_VENUES].sort());
+    expect([...DUEL_VENUES].sort()).toEqual([...BRAWL_BIOMES].sort());
   });
 
-  it('classic is DUEL_ZONE; biome venues add only the look, biome and ground terrain', () => {
-    expect(duelZone('classic')).toBe(DUEL_ZONE);
+  it('DUEL_ZONE is the Snowdome at Duel size: no bots, no coins, an explicit key set', () => {
+    expect(DUEL_ARENA_HALF).toBe(60);
+    expect(duelZone('snowdome')).toBe(DUEL_ZONE);
+    expect(Object.keys(DUEL_ZONE).sort()).toEqual([
+      'ambientColor', 'ambientIntensity', 'bossName', 'clearReward', 'coinMult', 'enemyHpMult', 'fogColor', 'fogFar', 'fogNear', 'id', 'index',
+      'name', 'rounds', 'skyBottom', 'skyTop', 'snowDepth', 'snowRegenMult', 'snowTint', 'snowfall', 'sunColor', 'sunIntensity', 'tagline',
+      'terrain', 'theme',
+    ]);
+    expect(DUEL_ZONE.id).toBe('duel');
+    expect(DUEL_ZONE.theme).toBe('brawl');
+    expect(DUEL_ZONE.skyTop).toBe(BRAWL_ZONE.skyTop);
+    expect(DUEL_ZONE.terrain).toBeUndefined();
+  });
+
+  it('biome venues add only the look, biome and Duel-size ground terrain', () => {
     for (const v of DUEL_VENUES) {
-      if (v === 'classic') continue;
+      if (v === 'snowdome') continue;
       const z = duelZone(v);
       expect(z).toBe(duelZone(v));
       expect(Object.keys(z).sort()).toEqual([...Object.keys(DUEL_ZONE), 'biome'].sort());
+      expect(z.theme).toBe('brawl');
       expect(z.biome).toBe(BIOME_ZONE[v].biome);
-      expect(z.terrain).toBe(BIOME_ZONE[v].terrain);
+      expect(z.skyTop).toBe(brawlZone(v).skyTop);
+      expect(z.fogFar).toBe(brawlZone(v).fogFar);
+      expect(z.terrain).toBe((DUEL_DOME_TERRAIN as Record<string, TerrainDef | undefined>)[v]);
       expect(z.terrain?.decks ?? []).toHaveLength(0);
       expect(z.coinMult).toBe(0);
       expect(z.rounds.every((r) => r.groups.length === 0)).toBe(true);
       expect(duelZoneFor('ZZZZ').id).toBe('duel');
     }
+    expect(duelZone('plaza').terrain).toBeUndefined();
+    expect(duelZone('mars').terrain?.gravityMult).toBe(0.6);
   });
+
+  const H = DUEL_ARENA_HALF;
+  const cover = domeCover(H);
+  it('the spawns face each other, inside the walls and clear of every cover piece (even jittered 2 m)', () => {
+    const [a, b] = DUEL_SPAWNS;
+    expect(a.x).toBe(0);
+    expect(b.x).toBe(0);
+    expect(a.z).toBe(-b.z);
+    expect(a.heading).toBeCloseTo(Math.PI);
+    expect(b.heading).toBe(0);
+    expect(Math.abs(a.z)).toBeLessThan(H - 20);
+    for (const s of DUEL_SPAWNS)
+      for (let q = 0; q < 4; q++)
+        for (const [cx, cz, r] of cover) {
+          const [x, z] = rot(q, cx, cz);
+          expect(Math.hypot(s.x - x, s.z - z) - r - 2, `spawn ${s.z} vs cover ${x.toFixed(1)},${z.toFixed(1)}`).toBeGreaterThan(2.5);
+        }
+  });
+
+  for (const key of DUEL_VENUES) {
+    const def = duelZone(key).terrain;
+    if (!def) continue;
+    const t = new Terrain(def);
+    it(`${key}: spawns, cover and walls stay on flat ground; lava < 15%`, () => {
+      for (const s of DUEL_SPAWNS) {
+        expect(flatNear(t, s.x, s.z, 4, 0.25), `spawn ${s.z}`).toBeNull();
+        expect(patchNear(def, s.x, s.z, 5)).toBeUndefined();
+      }
+      for (let q = 0; q < 4; q++)
+        for (const [cx, cz, r] of cover) {
+          const [x, z] = rot(q, cx, cz);
+          expect(flatNear(t, x, z, r + 2.5, 0.3), `cover ${x.toFixed(1)},${z.toFixed(1)}`).toBeNull();
+          expect(patchNear(def, x, z, r + 2.5), `cover ${x.toFixed(1)},${z.toFixed(1)}`).toBeUndefined();
+        }
+      expect(flatNear(t, 0, 0, 6.5, 0.3)).toBeNull(); // the fountain
+      for (let s = -H; s <= H; s += 2) {
+        for (const [x, z] of [[s, -H], [s, H], [-H, s], [H, s]]) expect(Math.abs(t.ground(x, z))).toBeLessThanOrEqual(0.3);
+      }
+      expect(coverage(t, H, 'lava')).toBeLessThanOrEqual(0.15);
+      if (key === 'quarry') expect(coverage(t, H, 'lava')).toBeGreaterThan(0.004);
+      expect(t.active).toBe(true);
+    });
+  }
 });
 
 describe('weather presets', () => {

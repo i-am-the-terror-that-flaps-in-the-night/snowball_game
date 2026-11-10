@@ -4,7 +4,7 @@ import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import { FX } from '../../config/upgrades';
 import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
-import { ultCharge } from './ultimates';
+import { ultMeter } from './ultimates';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const UPDATE_FLAME_BURST = { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 };
@@ -164,7 +164,7 @@ export class ClassicKit extends Kit {
   feedFire(dealt: number): void {
     if (dealt <= 0 || this.b.stats.plowKind !== 'classic') return;
     const was = this.h.crit;
-    this.h.crit = Math.min(1, this.h.crit + dealt / ultCharge(this.b.stats, FIRESTORM_CHARGE));
+    this.h.crit = Math.min(1, this.h.crit + dealt / ultMeter(this.b, FIRESTORM_CHARGE));
     if (was < 1 && this.h.crit >= 1 && this.b.local) {
       this.ctx.ui.toast('🔥 FIRESTORM READY · F', 'info');
       this.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });
@@ -202,6 +202,7 @@ export class ClassicKit extends Kit {
         knockback: _kb.set((dx / nd) * knock, 0, (dz / nd) * knock),
         fromX: x,
         fromZ: z,
+        ult: !feed,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       if (feed) this.feedFire(dealt);
@@ -311,7 +312,7 @@ export class ClassicKit extends Kit {
       if (!e.alive) continue;
       this.ignite(e, true);
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, stormDps(st) * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+      const killed = this.b.enemies.damage(e, stormDps(st) * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: true });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e, false);
     }
@@ -344,7 +345,7 @@ export class ClassicKit extends Kit {
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;
         const hp0 = e.hp;
-        const killed = this.b.enemies.damage(e, (b.storm ? storm : dps) * st.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+        const killed = this.b.enemies.damage(e, (b.storm ? storm : dps) * st.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: b.storm });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         if (!b.storm) this.feedFire(dealt);
         this.onPlayerHit(dealt, killed, e, false);

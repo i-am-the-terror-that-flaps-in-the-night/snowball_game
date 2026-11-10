@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ARENA, ENEMY_GATES, GATE_WIDTH } from '../../core/types';
+import { ARENA, BRAWL_ARENA_HALF, ENEMY_GATES, GATE_WIDTH } from '../../core/types';
 
 /* ---------------------------------------------------------------- arena layout */
 
@@ -61,6 +61,20 @@ export interface Side {
 
 /** Snowdome mode: no gates, uniform wall height. Set by buildDecor. */
 export let brawlMode = false;
+/** Snowdome scale: the current arena's half-size over the Brawl dome's (1 in Brawl; 2/3 in the Duel's shrunk dome,
+ *  DUEL_ARENA_HALF 60). Snowdome dressing laid out for the 180 m dome (cover positions, tunnels, light aims) is placed
+ *  at this scale; object sizes stay as they are. Set by setBrawlMode. */
+export let domeK = 1;
+/** Nominal Snowdome cover sites in the base quadrant (Environment.buildObstacles rotates them by 90° steps and jitters
+ *  them by up to 2 m), for the 180 m dome: multiply by domeK. tests/biomes.test.ts keeps terrain off them. */
+export const DOME_COVER = {
+  pillars: [24, 16],
+  container: [47, 10],
+  rock: [38, 40],
+  snowman: [12, 54],
+  tires: [77, 36],
+  corner: [62, 64],
+} as const;
 /** The only writer of `brawlMode` (an imported binding is read-only in other modules). */
 /** Quality preset crowd subsample (pure, deterministic, no RNG): the indices of `n` crowd figures kept at `fraction`,
  *  spread evenly along the build order; null = keep all (fraction >= 1). */
@@ -74,6 +88,7 @@ export function crowdKeep(n: number, fraction: number): number[] | null {
 
 export function setBrawlMode(on: boolean): void {
   brawlMode = on;
+  domeK = on ? ARENA.maxX / BRAWL_ARENA_HALF : 1;
 }
 export const BRAWL_WALL_H = 3.0;
 

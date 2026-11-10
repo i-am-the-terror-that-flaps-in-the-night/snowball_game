@@ -1,12 +1,16 @@
 # Duel
 
-An online best-of-3 against a friend in the classic Frostbite Yard (arena 1's size and snow, its pre-overhaul look),
-with no bots.
+An online best-of-3 against a friend in a **shrunk Snowdome**: Brawl's venue (stands, cover, deep drifts, the six
+biome variants) at Duel size, 120 m across (`DUEL_ARENA_HALF` 60, two thirds of the 180 m dome), with no bots and no
+coins. The cover, stands, floodlights and drifts scale with the arena (`domeK` in `src/world/environment/layout.ts`);
+the ground terrain has its own Duel layout (`DUEL_DOME_TERRAIN` in `src/world/biomes/terrains.ts`). Both peers derive
+the venue from the room code (`duelVenueFor` in `src/config/duel.ts`), so it needs no protocol message.
 
 ## Playing
 
 **HOST** shows a 5-letter room code (with a copy button); your friend types it under **JOIN**. Spawns face each
-other, a countdown starts each round, and a round ends on a wreck or after 90 s (higher HP% wins). Pausing opens the
+other 50 m apart across the fountain (0 / ±25), a countdown starts each round, and a round ends on a wreck or after
+90 s (higher HP% wins). Pausing opens the
 menu but the match keeps running; leaving ends it for both. REMATCH needs both players. Duels pay no coins and drop
 no loot.
 
@@ -14,6 +18,15 @@ Each player brings their **own garage**: core upgrades, plow line, equipped gear
 sees your gear on your plow. Player-vs-player hits are scaled well below PvE damage (45%, minigun
 rounds further, and damped by the attacker's garage power so late-game duels don't end in seconds), then take the
 same 60% max-HP hit cap as Brawl, so nothing one-shots. See [balance.md](balance.md).
+
+**Ultimates** (FIRESTORM, SUPERCELL, EARTHQUAKE, NUKE, SINGULARITY) fire in the Duel too. There the meter is sized in
+the opponent's HP instead of in damage: it fills once the damage that counts toward it adds up to `DUEL_ULT_CHARGE`
+(2.5) x the opponent's max HP (ISOTOPE x0.65, BRUTUS x1.25, Overclock / sqrt(cooldownMult)), which is the same at every
+garage tier. In an even same-tier fight the first ultimate comes about 30-45 s into continuous fighting, and the meter
+**carries over between rounds** (it is empty at match start), so it is typically ready about once per round. An
+ultimate landing on a human goes through the normal Duel damage path, and its damage (blast and aftermath) is also
+soft-capped at `DUEL_ULT_HP_CAP` (35%) of the victim's max HP per ultimate: measured on a parked same-tier plow it
+takes about 20-45%. The host owns both meters (they ride in the snapshot) and fires both players' ultimates.
 
 ## Duel garage and catch-up
 

@@ -1,6 +1,6 @@
 import { PLOW_MASS, type DamageOpts, type EnemyHandle, type EnemyManagerAPI, type EnemyType, type PlayerStats } from '../core/types';
 import { BRAWL_HIT_CAP, brawlHit } from '../config/brawl';
-import { DUEL_DAMAGE_SCALE, DUEL_POWER_DAMP, DUEL_ROUND_SCALE } from '../config/duel';
+import { DUEL_DAMAGE_SCALE, DUEL_POWER_DAMP, DUEL_ROUND_SCALE, DUEL_ULT_CAP_SECONDS, DUEL_ULT_HP_CAP } from '../config/duel';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
 
@@ -89,6 +89,9 @@ export class OpponentTarget implements EnemyManagerAPI {
   private out: EnemyHandle[] = [];
   /** Recent F-ability / passive ('other') damage on this victim, decaying (see ABILITY_BURST_*). */
   private burst = 0;
+  /** Recent ultimate damage on this victim before the ultimate cap (DUEL_ULT_HP_CAP), decaying over
+   *  DUEL_ULT_CAP_SECONDS. */
+  private ultRaw = 0;
   private hit: DuelHit = { final: 0, source: 'other', fromX: 0, fromZ: 0, kx: 0, kz: 0, stop: 0 };
 
   constructor(
@@ -97,6 +100,11 @@ export class OpponentTarget implements EnemyManagerAPI {
     private attackerStats: () => PlayerStats,
     private attackerPlow: () => Plow,
   ) {}
+
+  /** The victim's max HP: the attacker's Duel ultimate meter is sized in it (combat/ultimates.ts ultMeter). */
+  get duelFoeMaxHp(): number {
+    return this.handle.plow.maxHp;
+  }
 
   spawn(): EnemyHandle {
     return this.handle;
@@ -124,7 +132,14 @@ export class OpponentTarget implements EnemyManagerAPI {
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';
-    if (other) scaled /= 1 + this.burst / (ABILITY_BURST_FRAC * victim.maxHp);
+    if (opts?.ult) {
+      // Ultimates: soft-capped per ultimate instead (DUEL_ULT_HP_CAP of max HP, approached smoothly), so one is a big
+      // swing but never a one-shot.
+      const cap = DUEL_ULT_HP_CAP * victim.maxHp;
+      const before = this.ultRaw;
+      this.ultRaw += scaled;
+      scaled = cap > 0 ? cap * (Math.exp(-before / cap) - Math.exp(-this.ultRaw / cap)) : 0;
+    } else if (other) scaled /= 1 + this.burst / (ABILITY_BURST_FRAC * victim.maxHp);
     // Shotgun blasts (one summed hit per blast) are capped in pairs: a point-blank blast can never take more than
     // half of BRAWL_HIT_CAP of the victim, however upgraded the attacker.
     const pair = opts?.direct === 'round' ? ROUND_CAP_GROUP : 1;
@@ -187,11 +202,13 @@ export class OpponentTarget implements EnemyManagerAPI {
   /** Decay the ability-burst meter (call every sim frame). */
   update(dt = 0): void {
     if (this.burst > 0) this.burst *= Math.exp(-dt / ABILITY_BURST_SECONDS);
+    if (this.ultRaw > 0) this.ultRaw *= Math.exp(-dt / DUEL_ULT_CAP_SECONDS);
   }
 
   /** New round: forget recent damage. */
   reset(): void {
     this.burst = 0;
+    this.ultRaw = 0;
   }
 }
 

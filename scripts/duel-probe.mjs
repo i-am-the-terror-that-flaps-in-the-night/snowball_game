@@ -45,6 +45,9 @@ async function open(tag, query) {
   await page.goto(`http://localhost:${port}/${q}`, { waitUntil: 'load' });
   await page.waitForTimeout(900);
   await page.evaluate(() => window.__game.setLoop(false));
+  // Parked-plow tests stand on the centre line near the host's spawn (z = PZ +- 6): the shrunk Snowdome has the
+  // fountain (cover, r 4) at the origin, and the area round the spawns is flat and clear in every venue.
+  await page.evaluate(() => { window.PZ = 26; });
   return page;
 }
 async function session(name, fn, query, optIn = false) {
@@ -68,10 +71,13 @@ async function session(name, fn, query, optIn = false) {
 
 const shot = async (page, name) => {
   if (!SHOTS) return;
-  await page.evaluate(() => window.__game.setLoop(true));
+  // The shot runs this page's real loop while the other page is paused (no pings): on software rendering a shot of the
+  // Snowdome can take longer than the drop detector's 6 s, so hold it off for the shot (the probe paused the peer, not
+  // the network).
+  await page.evaluate(() => { window.__game.setLoop(true); window.__game.duel.lastHeard = Infinity; });
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${out}/${name}.png` });
-  await page.evaluate(() => window.__game.setLoop(false));
+  await page.evaluate(() => { window.__game.setLoop(false); window.__game.duel.lastHeard = performance.now() / 1000; });
 };
 const st = (page) => page.evaluate(() => window.__game.duel.debugState());
 /** Advance both sims `secs` in lockstep, in short alternating slices so messages flow between them. */
@@ -228,7 +234,7 @@ await session('match', async (host, guest) => {
   check(h.phase === 'fight' && g.phase === 'fight', 'countdown ends in FIGHT on both', [h.phase, g.phase]);
   // F abilities, player vs player: the guest's Ground Pound (guest keyboard), then the host's Thunderclap.
   const fTest = async (who, label, victim) => {
-    await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 3); me.heading = Math.PI; op.position.set(0, 0, -3); op.heading = 0; });
+    await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 3 + PZ); me.heading = Math.PI; op.position.set(0, 0, -3 + PZ); op.heading = 0; });
     await run(host, guest, 0.3);
     const before = await host.evaluate(() => ({ hp: [window.__game.ctx.plow.hp, window.__game.duel.opponent.hp], other: window.__game.duel.counters.bySource.map((b) => b[3]) }));
     const page = who === 0 ? host : guest;
@@ -301,7 +307,7 @@ await session('rematch', async (host, guest) => {
   check(h.stats[0].plowKind === 'classic' && h.stats[1].plowKind === 'isotope' && h.round === 1, 'rematch round 1 with the new plows', h.stats.map((s) => s.plowKind));
   // Meltdown (guest F, Critical Mass empty) on the host.
   {
-    await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 3); op.position.set(0, 0, -3); window.__game.duel.opponentCombat.critCharge = 0; });
+    await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 3 + PZ); op.position.set(0, 0, -3 + PZ); window.__game.duel.opponentCombat.critCharge = 0; });
     await run(host, guest, 0.3);
     const b0 = await host.evaluate(() => ({ hp: window.__game.ctx.plow.hp, other: window.__game.duel.counters.bySource[1][3] }));
     await guest.keyboard.down('KeyF');
@@ -316,7 +322,7 @@ await session('rematch', async (host, guest) => {
   // Arm the guest's Critical Mass on the host (authoritative) so its next F is the NUKE; park the plows close.
   const hp0 = await host.evaluate(() => {
     const d = window.__game.duel, me = window.__game.ctx.plow, op = d.opponent;
-    me.position.set(0, 0, 4); op.position.set(0, 0, -4);
+    me.position.set(0, 0, 4 + PZ); op.position.set(0, 0, -4 + PZ);
     d.opponentCombat.critCharge = 1;
     return me.hp;
   });
@@ -332,7 +338,7 @@ await session('rematch', async (host, guest) => {
   await shot(guest, '12-guest-nuke');
   await shot(host, '13-host-nuke');
   // Inferno from the host keyboard, aimed at the guest.
-  await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 4); me.heading = Math.PI; op.position.set(0, 0, -3); });
+  await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 4 + PZ); me.heading = Math.PI; op.position.set(0, 0, -3 + PZ); });
   const gHp0 = (await st(host)).hp[1];
   await host.keyboard.down('KeyF');
   await run(host, guest, 0.1, 2);
@@ -377,8 +383,8 @@ await session('arsenal', async (host, guest) => {
   // Guest at (0, -2) facing +z; host at (0, 4): 6 m dead ahead (the shotgun is fixed forward, ~10 m reach).
   const park = () => host.evaluate(() => {
     const me = window.__game.ctx.plow, op = window.__game.duel.opponent;
-    me.position.set(0, 0, 4); me.heading = Math.PI; me.hp = me.maxHp;
-    op.position.set(0, 0, -2); op.heading = 0; op.hp = op.maxHp;
+    me.position.set(0, 0, 4 + PZ); me.heading = Math.PI; me.hp = me.maxHp;
+    op.position.set(0, 0, -2 + PZ); op.heading = 0; op.hp = op.maxHp;
   });
   const hostHits = () => host.evaluate(() => ({ other: window.__game.duel.counters.bySource[1][3], hp: window.__game.ctx.plow.hp }));
   await park();
@@ -410,7 +416,7 @@ await session('arsenal', async (host, guest) => {
   await host.keyboard.up('Space');
   check((seen.fire & 1) === 1, "the guest sees the host's shotgun firing", seen);
   // Host Mag Repulsor (a 0.3 s wave): the guest's puppet plays it too.
-  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(-3, 0, -4); });
+  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(-3, 0, -4 + PZ); });
   await run(host, guest, 0.2);
   await host.keyboard.press('KeyE');
   await run(host, guest, 0.1);
@@ -420,7 +426,7 @@ await session('arsenal', async (host, guest) => {
   await run(host, guest, 1.5);
   // Guest Mag Repulsor + Polarity Burst land on the host. Face the host straight on (the burst's clump is 4 m ahead).
   await park();
-  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -6); op.heading = 0; });
+  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -6 + PZ); op.heading = 0; });
   await run(host, guest, 0.5);
   b0 = await hostHits();
   await guest.keyboard.press('KeyE');
@@ -428,7 +434,7 @@ await session('arsenal', async (host, guest) => {
   b1 = await hostHits();
   check(b1.other > b0.other && b1.hp < b0.hp, 'guest Mag Repulsor (E) hits the host', { b0, b1 });
   await park();
-  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -5); op.heading = 0; });
+  await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -5 + PZ); op.heading = 0; });
   await run(host, guest, 0.3);
   b0 = await hostHits();
   await guest.keyboard.press('KeyF');

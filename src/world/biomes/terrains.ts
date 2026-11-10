@@ -3,15 +3,16 @@
  * gravity, read by Terrain.load via ZoneDef.terrain. Ground layer only (no decks: those are The Omega Works').
  *
  * Campaign arenas are 60 x 60 m (CAMPAIGN_ARENA_HALF 30). Layout rules (tests/biomes.test.ts checks them):
- *  - the plow spawn (PLOW_SPAWN, 0 / 18), the Duel spawns (0 / +-15) and the first metres of every gate lane stay flat
- *    and patch-free;
+ *  - the plow spawn (PLOW_SPAWN, 0 / 18) and the first metres of every gate lane stay flat and patch-free;
  *  - lava covers at most ~15% of the floor;
  *  - the centre stays readable for the boss fights (at most a shallow bowl / pit);
  *  - (every arena, Brawl too) no lava on a ramp's run-up or face, and 6 m of lava-free run-out past every landing off
  *    it, side drops and angled launches included.
  *
- * Brawl variants are for the 180 x 180 m Snowdome (BRAWL_ARENA_HALF 90): features sit in the open pockets between the
- * fixed cover obstacles (Environment.buildObstacles) and clear of the Brawl spawn rings (r ~69 and ~34).
+ * Snowdome variants: one layout builder (domeTerrains) for the 180 x 180 m Brawl Snowdome (BRAWL_ARENA_HALF 90) and the
+ * Duel's 120 x 120 m shrunk dome (DUEL_ARENA_HALF 60). Features sit in the open pockets between the fixed cover
+ * obstacles (Environment.buildObstacles, at the dome's scale) and clear of the spawns (Brawl's rings r ~69 and ~34, the
+ * two Duel spawns at 0 / +-25).
  *
  * Ramps: rot is the heading the ramp RISES toward (0 = +z); (x, z) is its toe. A lip launches you.
  */
@@ -126,70 +127,34 @@ export const DIVIDE_TERRAIN: TerrainDef = {
   ],
 };
 
-/* ------------------------------------------------------------------ Brawl variants (180 m) */
+/* ------------------------------------------------------------------ Snowdome variants (Brawl 180 m, Duel 120 m) */
 
-/** Open pockets of the Snowdome floor, base quadrant (rotated by 90° steps): A = between a container, a rock outcrop
- *  and the outer spawn ring (feature radius <= 8); B = the inner ring around the fountain (feature radius <= 7). */
 const rot90 = (q: number, x: number, z: number): [number, number] => {
   const c = Math.round(Math.cos((q * PI) / 2));
   const s = Math.round(Math.sin((q * PI) / 2));
   return [x * c - z * s, x * s + z * c];
 };
-const SITE_A: [number, number] = [50, 25];
-const SITE_B: [number, number] = [0, 15];
 /** Tangential heading at a point (counter-clockwise around the centre). */
 const tangent = (x: number, z: number) => heading(0, 0, -z, x);
 
-function quads<T>(fn: (q: number, a: [number, number], b: [number, number]) => T[]): T[] {
-  const out: T[] = [];
-  for (let q = 0; q < 4; q++) out.push(...fn(q, rot90(q, ...SITE_A), rot90(q, ...SITE_B)));
-  return out;
+/** Where a Snowdome variant puts its features. A / B = open pockets of the floor, base quadrant (rotated by 90° steps):
+ *  in the Brawl dome A sits between a container, a rock outcrop and the outer spawn ring (feature radius <= 8), B on the
+ *  inner ring around the fountain (feature radius <= 7). `river`: the Quarry's lava river (base quadrant); `ridge`: the
+ *  Divide's central dip runs along z from ridge[0] to ridge[1] (and mirrored). `fs`: scale of the bowls, mesas and
+ *  material patches; the ramps and their lava trenches keep their size (jump distances are physics). */
+interface DomeSites {
+  a: [number, number];
+  b: [number, number];
+  river: [[number, number], [number, number]];
+  ridge: [number, number];
+  fs: number;
 }
-
-export const BRAWL_GLACIER_TERRAIN: TerrainDef = {
-  shapes: quads<TerrainShape>((_q, [ax, az], [bx, bz]) => {
-    const r = tangent(ax, az);
-    return [
-      { kind: 'ramp', x: ax - Math.sin(r) * 4, z: az - Math.cos(r) * 4, rot: r, len: 7, w: 5, h: 1.4, fall: 1.2 },
-      { kind: 'dome', x: bx, z: bz, r: 6.5, h: -1.2 },
-    ];
-  }),
-  patches: quads<MaterialPatch>((_q, [ax, az], [bx, bz]) => {
-    const r = tangent(ax, az);
-    return [
-      { material: 'ice', x: bx, z: bz, r: 3.6 },
-      { material: 'ice', x: ax - Math.sin(r) * 3, z: az - Math.cos(r) * 3, x2: ax + Math.sin(r) * 2.4, z2: az + Math.cos(r) * 2.4, r: 2.1 },
-    ];
-  }),
-};
-
-/** Brawl Quarry river (base quadrant): 10 m long, centred at (16, 42), running along x (searched clear of both spawn rings, the cover and every ramp lane in all four rotated copies). */
-const QUARRY_RIVER: [[number, number], [number, number]] = [[11, 42], [21, 42]];
-
-/** Brawl Quarry: at each A site a ramp along the tangent launches over a lava trench (the campaign's QUARRY_JUMP). */
-export const BRAWL_QUARRY_TERRAIN: TerrainDef = {
-  shapes: quads<TerrainShape>((_q, [ax, az], [bx, bz]) => {
-    const { gap, len, w, h } = QUARRY_JUMP;
-    return [rampTo(ax, az, tangent(ax, az), gap, len, w, h), { kind: 'dome', x: bx, z: bz, r: 6.5, h: -1.8, rim: 0.5 }];
-  }),
-  patches: quads<MaterialPatch>((q, [ax, az]) => {
-    // Plus a 10 m river in the open pocket between the fountain ring and the outcrop (searched clear of the spawn
-    // ring, cover, ramp lanes and pit rims), so the venue keeps its lava look now the jump trenches are short.
-    const [x1, z1] = rot90(q, ...QUARRY_RIVER[0]);
-    const [x2, z2] = rot90(q, ...QUARRY_RIVER[1]);
-    return [trench(ax, az, tangent(ax, az), QUARRY_JUMP.half, QUARRY_JUMP.r), { material: 'lava', x: x1, z: z1, x2, z2, r: 1.8 }];
-  }),
-  baseMaterial: 'rock',
-};
-
-export const BRAWL_MARS_TERRAIN: TerrainDef = {
-  shapes: quads<TerrainShape>((_q, [ax, az], [bx, bz]) => [
-    { kind: 'dome', x: ax, z: az, r: 6, h: -2, rim: 1.1 },
-    { kind: 'mesa', x: bx, z: bz, r: 2.6, h: 1.8, slope: 4 },
-  ]),
-  gravityMult: 0.6,
-  baseMaterial: 'rock',
-};
+/** The 180 m Brawl Snowdome. The river is 10 m long, centred at (16, 42), running along x (searched clear of both spawn
+ *  rings, the cover and every ramp lane in all four rotated copies). */
+const BRAWL_SITES: DomeSites = { a: [50, 25], b: [0, 15], river: [[11, 42], [21, 42]], ridge: [13, 36], fs: 1 };
+/** The Duel's shrunk dome (120 m, DUEL_ARENA_HALF 60; cover at 2/3 of its Brawl spots): features clear of the two Duel
+ *  spawns (0, +-25), the scaled cover and the fountain (tests/biomes.test.ts). */
+const DUEL_SITES: DomeSites = { a: [40, 21], b: [0, 12.5], river: [[9, 22], [15, 22]], ridge: [10.5, 16.5], fs: 0.7 };
 
 /** Brawl Divide: the ramp at each A site runs along the tangent, toe 3 m before the site, 6 m long, 4.5 m wide. */
 const DIVIDE_RAMP = { back: 3, len: 6, w: 4.5, h: 1.2 };
@@ -198,25 +163,84 @@ const DIVIDE_VENT_R = 2.4;
  *  snow's melt fringe around it), never in front of it. */
 const DIVIDE_VENT_SIDE = DIVIDE_RAMP.w / 2 + DIVIDE_VENT_R + 2.8;
 
-export const BRAWL_DIVIDE_TERRAIN: TerrainDef = {
-  shapes: [
-    { kind: 'ridge', x1: 0, z1: 13, x2: 0, z2: 36, w: 6, h: -0.9 },
-    { kind: 'ridge', x1: 0, z1: -13, x2: 0, z2: -36, w: 6, h: -0.9 },
-    ...quads<TerrainShape>((_q, [ax, az]) => {
-      const r = tangent(ax, az);
-      const { back, len, w, h } = DIVIDE_RAMP;
-      return [{ kind: 'ramp', x: ax - Math.sin(r) * back, z: az - Math.cos(r) * back, rot: r, len, w, h }];
-    }),
-  ],
-  patches: quads<MaterialPatch>((_q, [ax, az], [bx]) => {
-    // B sites on the x axis only (the z-axis ones sit in the central dip)
-    const out: MaterialPatch[] = [];
-    if (ax < 0) {
-      const d = Math.hypot(ax, az); // the ramp runs along the tangent, so "beside it" is radial
-      out.push({ material: 'lava', x: ax - (ax / d) * DIVIDE_VENT_SIDE, z: az - (az / d) * DIVIDE_VENT_SIDE, r: DIVIDE_VENT_R });
-    } else out.push({ material: 'ice', x: ax, z: az, r: 5 });
-    if (bx < -1) out.push({ material: 'lava', x: bx, z: 0, r: 2.2 });
-    else if (bx > 1) out.push({ material: 'ice', x: bx, z: 0, r: 4.5 });
+/** The four ground-terrain Snowdome variants for a site layout. */
+function domeTerrains(L: DomeSites): { glacier: TerrainDef; quarry: TerrainDef; mars: TerrainDef; divide: TerrainDef } {
+  const f = L.fs;
+  function quads<T>(fn: (q: number, a: [number, number], b: [number, number]) => T[]): T[] {
+    const out: T[] = [];
+    for (let q = 0; q < 4; q++) out.push(...fn(q, rot90(q, ...L.a), rot90(q, ...L.b)));
     return out;
-  }),
-};
+  }
+  const glacier: TerrainDef = {
+    shapes: quads<TerrainShape>((_q, [ax, az], [bx, bz]) => {
+      const r = tangent(ax, az);
+      return [
+        { kind: 'ramp', x: ax - Math.sin(r) * 4, z: az - Math.cos(r) * 4, rot: r, len: 7, w: 5, h: 1.4, fall: 1.2 },
+        { kind: 'dome', x: bx, z: bz, r: 6.5 * f, h: -1.2 },
+      ];
+    }),
+    patches: quads<MaterialPatch>((_q, [ax, az], [bx, bz]) => {
+      const r = tangent(ax, az);
+      return [
+        { material: 'ice', x: bx, z: bz, r: 3.6 * f },
+        { material: 'ice', x: ax - Math.sin(r) * 3, z: az - Math.cos(r) * 3, x2: ax + Math.sin(r) * 2.4, z2: az + Math.cos(r) * 2.4, r: 2.1 },
+      ];
+    }),
+  };
+  // Quarry: at each A site a ramp along the tangent launches over a lava trench (the campaign's QUARRY_JUMP).
+  const quarry: TerrainDef = {
+    shapes: quads<TerrainShape>((_q, [ax, az], [bx, bz]) => {
+      const { gap, len, w, h } = QUARRY_JUMP;
+      return [rampTo(ax, az, tangent(ax, az), gap, len, w, h), { kind: 'dome', x: bx, z: bz, r: 6.5 * f, h: -1.8, rim: 0.5 }];
+    }),
+    patches: quads<MaterialPatch>((q, [ax, az]) => {
+      // Plus a river in the open pocket between the fountain ring and the outcrop (searched clear of the spawns,
+      // cover, ramp lanes and pit rims), so the venue keeps its lava look now the jump trenches are short.
+      const [x1, z1] = rot90(q, ...L.river[0]);
+      const [x2, z2] = rot90(q, ...L.river[1]);
+      return [trench(ax, az, tangent(ax, az), QUARRY_JUMP.half, QUARRY_JUMP.r), { material: 'lava', x: x1, z: z1, x2, z2, r: 1.8 }];
+    }),
+    baseMaterial: 'rock',
+  };
+  const mars: TerrainDef = {
+    shapes: quads<TerrainShape>((_q, [ax, az], [bx, bz]) => [
+      { kind: 'dome', x: ax, z: az, r: 6 * f, h: -2, rim: 1.1 },
+      { kind: 'mesa', x: bx, z: bz, r: 2.6 * f, h: 1.8, slope: 4 * f },
+    ]),
+    gravityMult: 0.6,
+    baseMaterial: 'rock',
+  };
+  const [r0, r1] = L.ridge;
+  const divide: TerrainDef = {
+    shapes: [
+      { kind: 'ridge', x1: 0, z1: r0, x2: 0, z2: r1, w: 6 * f, h: -0.9 },
+      { kind: 'ridge', x1: 0, z1: -r0, x2: 0, z2: -r1, w: 6 * f, h: -0.9 },
+      ...quads<TerrainShape>((_q, [ax, az]) => {
+        const r = tangent(ax, az);
+        const { back, len, w, h } = DIVIDE_RAMP;
+        return [{ kind: 'ramp', x: ax - Math.sin(r) * back, z: az - Math.cos(r) * back, rot: r, len, w, h }];
+      }),
+    ],
+    patches: quads<MaterialPatch>((_q, [ax, az], [bx]) => {
+      // B sites on the x axis only (the z-axis ones sit in the central dip)
+      const out: MaterialPatch[] = [];
+      if (ax < 0) {
+        const d = Math.hypot(ax, az); // the ramp runs along the tangent, so "beside it" is radial
+        out.push({ material: 'lava', x: ax - (ax / d) * DIVIDE_VENT_SIDE, z: az - (az / d) * DIVIDE_VENT_SIDE, r: DIVIDE_VENT_R });
+      } else out.push({ material: 'ice', x: ax, z: az, r: 5 * f });
+      if (bx < -1) out.push({ material: 'lava', x: bx, z: 0, r: 2.2 * f });
+      else if (bx > 1) out.push({ material: 'ice', x: bx, z: 0, r: 4.5 * f });
+      return out;
+    }),
+  };
+  return { glacier, quarry, mars, divide };
+}
+
+const BRAWL_DOME = domeTerrains(BRAWL_SITES);
+export const BRAWL_GLACIER_TERRAIN: TerrainDef = BRAWL_DOME.glacier;
+export const BRAWL_QUARRY_TERRAIN: TerrainDef = BRAWL_DOME.quarry;
+export const BRAWL_MARS_TERRAIN: TerrainDef = BRAWL_DOME.mars;
+export const BRAWL_DIVIDE_TERRAIN: TerrainDef = BRAWL_DOME.divide;
+
+/** The same four variants laid out for the Duel's shrunk Snowdome (config/duel.ts duelZone). */
+export const DUEL_DOME_TERRAIN = domeTerrains(DUEL_SITES);

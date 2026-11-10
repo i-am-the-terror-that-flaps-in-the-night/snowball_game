@@ -416,16 +416,18 @@ export class DuelManager {
     return { name, plow, look, levels, gear, coins, spent: duelSpent(levels, gear) };
   }
 
-  /** Both plows at their spawns facing each other, nothing armed. */
-  private parkPlows(): void {
+  /** Both plows at their spawns facing each other, nothing armed. `keepMeters`: a later round of the same match, the
+   *  ultimate meters carry over (config/duel.ts DUEL_ULT_CHARGE); they start empty at match start. The host owns the
+   *  meters (its snapshots carry both, net/protocol NP.crit); the guest keeps its copy too, so nothing flickers. */
+  private parkPlows(keepMeters = false): void {
     const me = this.ctx.plow as Plow;
     const opp = this.oppPlow!;
     const a = DUEL_SPAWNS[this.meIdx];
     const b = DUEL_SPAWNS[this.oppIdx];
     me.reset(a);
     opp.reset(b);
-    (this.ctx.combat as Combat).clear();
-    this.oppCombat!.clear();
+    (this.ctx.combat as Combat).clear(keepMeters);
+    this.oppCombat!.clear(keepMeters);
     for (const t of [this.targetOpp, this.targetMe]) {
       if (!t) continue;
       t.enabled = false;
@@ -1125,7 +1127,7 @@ export class DuelManager {
     ctx.snow.reset(ctx.zone);
     ctx.fx.clear();
     ctx.impact.clear();
-    this.parkPlows();
+    this.parkPlows(this.round > 1);
     this.buffer.clear();
     this.haveSnap = false;
     ctx.cameraRig.setMode('follow');

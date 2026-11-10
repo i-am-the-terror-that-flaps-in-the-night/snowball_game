@@ -26,8 +26,8 @@ import type { LootDrop } from '../config/loot';
 
 export const CAMPAIGN_ARENA_HALF = 30;
 export const BRAWL_ARENA_HALF = 90;
-/** The Duel arena: 1.5x the campaign's, so two plows have room to manoeuvre. */
-export const DUEL_ARENA_HALF = 45;
+/** The Duel arena: the Brawl Snowdome shrunk to 2/3 (120 m across), room for the ranged plows to use their reach. */
+export const DUEL_ARENA_HALF = 60;
 /** Current playable area. MUTABLE: Game calls setArenaHalfSize() when switching between the campaign
  *  (±30) and Brawl mode (±90). Always read ARENA.* at use time — never cache the numbers. */
 export const ARENA = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
@@ -410,6 +410,9 @@ export interface DamageOpts {
   /** Magnetic hits (ARSENAL's Mag Shotgun / Repulsor) mostly pierce frontal plates: the Brute Dozer's plate and
    *  Frostbyte's ball block only cut them to PLATE_PIERCE instead of 30% / 50%. */
   pierce?: boolean;
+  /** An ultimate's damage (the blast and its aftermath). Bots ignore it; the online Duel soft-caps it per ultimate
+   *  (duel/opponent.ts, DUEL_ULT_HP_CAP). */
+  ult?: boolean;
 }
 
 export interface EnemyManagerAPI {

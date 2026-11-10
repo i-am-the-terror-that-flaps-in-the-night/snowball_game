@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, type AbilityDesc, type VehicleKit, Reach, WAVE_BAND, _p, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
-import { ultCharge } from './ultimates';
+import { ultMeter } from './ultimates';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const UPDATE_PUDDLES_BURST = { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.18, gravity: -3, life: 0.6 };
@@ -257,7 +257,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
   meltCharge = 1;
   /** Fallout pools (pooled glowing discs draped over the floor). `from`: the floor the pool was cast on; the pool only
    *  doses bots standing on that floor (not one flying over it or on a deck above), whatever the plow does since. */
-  private pools: { disc: GroundDisc; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; t: number; life: number; tickT: number; from: CastOrigin }[] = [];
+  private pools: { disc: GroundDisc; mat: THREE.MeshBasicMaterial; x: number; z: number; r: number; t: number; life: number; tickT: number; from: CastOrigin; ult: boolean }[] = [];
   /** Irradiated bots -> seconds of radiation left. */
   readonly rads = new Map<EnemyHandle, number>();
   /** RAD DOSE still soaking in, per bot (raw damage, before damage mult / vulnerability). */
@@ -281,7 +281,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
     super(h);
     for (let i = 0; i < MAX_POOLS; i++) {
       const mat = new THREE.MeshBasicMaterial({ color: 0x5dff3a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-      this.pools.push({ disc: new GroundDisc(h.ctx.scene, mat), mat, x: 0, z: 0, r: 1, t: 0, life: 1, tickT: 0, from: { y: 0, deck: -1 } });
+      this.pools.push({ disc: new GroundDisc(h.ctx.scene, mat), mat, x: 0, z: 0, r: 1, t: 0, life: 1, tickT: 0, from: { y: 0, deck: -1 }, ult: false });
     }
     for (let i = 0; i < TRAIL_N; i++) {
       // Normal blending (an additive glow vanishes on white snow): an opaque-ish toxic green sludge.
@@ -291,7 +291,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
   }
 
   /** Lay a fallout pool (a free disc, else the oldest) of radius r on the cast floor `from` at (x, z). */
-  private layPool(x: number, z: number, r: number, life: number, from: CastOrigin): void {
+  private layPool(x: number, z: number, r: number, life: number, from: CastOrigin, ult = false): void {
     let pl = this.pools.find((p) => p.t <= 0);
     if (!pl) pl = this.pools.reduce((a, b) => (a.t < b.t ? a : b));
     pl.x = x;
@@ -299,6 +299,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
     pl.r = r;
     pl.life = pl.t = life;
     pl.tickT = 0;
+    pl.ult = ult;
     pl.from.y = from.y;
     pl.from.deck = from.deck;
     // After the cast's melt: the pool lies on the snow left at its rim.
@@ -318,13 +319,13 @@ export class IsotopeKit extends Kit implements VehicleKit {
   }
 
   /** Radiation damage to one bot (player credit, irradiates it). */
-  private radHit(e: EnemyHandle, amount: number, heal = false, critFrac = 1, freezeSeconds = 0): void {
+  private radHit(e: EnemyHandle, amount: number, heal = false, critFrac = 1, freezeSeconds = 0, ult = false): void {
     if (!e.alive) return;
     this.irradiate(e);
     const hp0 = e.hp;
-    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, freezeSeconds: freezeSeconds || undefined });
+    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, freezeSeconds: freezeSeconds || undefined, ult: ult || undefined });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
-    this.h.crit = Math.min(1, this.h.crit + (dealt * critFrac) / ultCharge(this.b.stats, NUKE_CHARGE_DMG));
+    this.h.crit = Math.min(1, this.h.crit + (dealt * critFrac) / ultMeter(this.b, NUKE_CHARGE_DMG));
     this.onPlayerHit(dealt, killed, e, false, heal);
   }
 
@@ -443,6 +444,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         knockback: _kb.set(dx * NUKE_KNOCK * fall, 0, dz * NUKE_KNOCK * fall),
         fromX: px,
         fromZ: pz,
+        ult: true,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e, false);
@@ -451,7 +453,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
     }
     this.clearTargets();
     // A huge fallout pool that lingers.
-    this.layPool(px, pz, R * 0.55, st.poolSeconds * 1.5, this.nukeFrom);
+    this.layPool(px, pz, R * 0.55, st.poolSeconds * 1.5, this.nukeFrom, true);
   }
 
   /** Fallout pools: glow, bubble and dose every bot standing in them. */
@@ -491,7 +493,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         if (!this.reaches(e, Reach.Wave, pl.from)) continue;
         if (ctx.time - (this.poolHitAt.get(e) ?? -1) < POOL_TICK * 0.9) continue;
         this.poolHitAt.set(e, ctx.time);
-        this.radHit(e, st.poolDps * POOL_TICK);
+        this.radHit(e, st.poolDps * POOL_TICK, false, 1, 0, pl.ult);
       }
     }
     if (!active && this.poolHitAt.size) this.poolHitAt.clear();
@@ -553,7 +555,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         const killed = this.b.enemies.damage(e, (amt + soak) * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(dealt, killed, e, false, soak > 0, soak > 0 ? (DOSE_HEAL * soak) / (amt + soak) : 0);
-        if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultCharge(st, NUKE_CHARGE_DMG));
+        if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultMeter(this.b, NUKE_CHARGE_DMG));
         if (soak > 0 && dealt > 0 && glow) {
           _q.set(e.position.x, e.position.y + e.radius + 0.9, e.position.z);
           ctx.fx.floatText(_q, `☣${Math.round(dealt)}`, '#7dff4a', 0.6);

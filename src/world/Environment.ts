@@ -10,7 +10,7 @@ import { GroundDecals, lavaTime } from './biomes/GroundDecals';
 import { OmegaWorks } from './omega/OmegaWorks';
 import { OmegaSet } from './omega/OmegaSet';
 import { PUFF_CAM_CLEAR, STYLES, BIOME_SKY } from './environment/styles';
-import { TOWER_OFF, DOME_TOWER_OFF, DOME_TOWER_H, STAGE_HALF, brawlMode, setBrawlMode, mulberry32 } from './environment/layout';
+import { TOWER_OFF, DOME_TOWER_OFF, DOME_TOWER_H, STAGE_HALF, brawlMode, domeK, setBrawlMode, mulberry32 } from './environment/layout';
 import { chevronTex } from './environment/textures';
 import { VenueScenery } from './environment/VenueScenery';
 
@@ -39,6 +39,8 @@ export class Environment extends VenueScenery implements WorldAPI {
 
   setZone(zone: ZoneDef): void {
     this.zone = zone;
+    // Snowdome mode + scale first: the floodlight aims below read them (buildDecor sets them again).
+    setBrawlMode(zone.theme === 'brawl');
     this.ctx.terrain.load(zone.terrain ?? {});
     this.biome = zone.biome?.key ?? null;
     const base = (this.biome && STYLES[this.biome]) || STYLES[zone.theme] || STYLES.meadow;
@@ -87,7 +89,7 @@ export class Environment extends VenueScenery implements WorldAPI {
       if (brawl) {
         const c = ARENA.maxX + DOME_TOWER_OFF;
         s.position.set(sx * c, DOME_TOWER_H, ARENA.minZ - DOME_TOWER_OFF);
-        s.target.position.set(-sx * 20, 0, 20);
+        s.target.position.set(-sx * 20 * domeK, 0, 20 * domeK);
         s.angle = Math.PI / 4.5;
       } else {
         const c = ARENA.maxX + TOWER_OFF;
@@ -96,7 +98,7 @@ export class Environment extends VenueScenery implements WorldAPI {
         s.angle = Math.PI / 4.2;
       }
       // The Thermal Divide: each tower floods its own half (hot west, cold east)
-      if (bs.splitSpots) s.target.position.set(sx * (brawl ? 40 : 14), 0, brawl ? 10 : 4);
+      if (bs.splitSpots) s.target.position.set(sx * (brawl ? 40 * domeK : 14), 0, brawl ? 10 * domeK : 4);
     }
 
     this.buildDecor(zone);

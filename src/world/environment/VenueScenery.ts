@@ -5,7 +5,7 @@ import { StaticBatch } from '../../render/mergeStatic';
 import { getBackdropTex, getBuntingTex, getCarpetTex, getUsFlagTex } from '../rallyTextures';
 import type { Item } from './types';
 import { BRAWL_SKIN, CONFETTI } from './styles';
-import { WALL_IN, WALL_C, GATE_HALF, PILLAR_W, DOME_TOWER_OFF, DOME_TOWER_K, DOME_N0, DOME_ROWS, DOME_ROW_D, DOME_RISE, DOME_CROWD_CAP, SPONSORS, CORE_X, CORE_Z, STAGE_HALF, STAGE_Y, STAGE_Z0, STAGE_Z1, GOLD_TOWER_X, GOLD_TOWER_Z, SIDES, gapsFor, subtract, mulberry32, colored, merge } from './layout';
+import { WALL_IN, WALL_C, GATE_HALF, PILLAR_W, DOME_TOWER_OFF, DOME_TOWER_K, DOME_N0, DOME_ROWS, DOME_ROW_D, DOME_RISE, DOME_CROWD_CAP, SPONSORS, CORE_X, CORE_Z, STAGE_HALF, STAGE_Y, STAGE_Z0, STAGE_Z1, GOLD_TOWER_X, GOLD_TOWER_Z, SIDES, domeK, DOME_COVER, gapsFor, subtract, mulberry32, colored, merge } from './layout';
 import { canvas, toTex, hexCss, wavyFlag } from './textures';
 import { ThemeScenery } from './ThemeScenery';
 
@@ -452,10 +452,11 @@ export class VenueScenery extends ThemeScenery {
     g.fillStyle = '#ffffff';
     g.fillText('SNOWDOME', 512, 120, 960);
     g.fillStyle = hexCss(st.accents[0]);
-    g.fillText('BRAWL', 512, 245, 960);
+    const duel = zone.id === 'duel';
+    g.fillText(duel ? 'DUEL' : 'BRAWL', 512, 245, 960);
     g.font = 'bold 40px Arial, sans-serif';
     g.fillStyle = hexCss(st.accents[1]);
-    g.fillText(`${zone.name.toUpperCase()}  ·  FREE-FOR-ALL  ·  9 PLOWS`, 512, 338, 960);
+    g.fillText(duel ? `${zone.name.replace(/^DUEL · /, '').toUpperCase()}  ·  ONE ON ONE  ·  BEST OF 3` : `${zone.name.toUpperCase()}  ·  FREE-FOR-ALL  ·  9 PLOWS`, 512, 338, 960);
     const screenTex = toTex(c);
     this.zoneTex.push(screenTex);
     const screenMat = new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false });
@@ -466,7 +467,9 @@ export class VenueScenery extends ThemeScenery {
     tg.fillRect(0, 0, 2048, 64);
     tg.font = 'bold 38px Arial, sans-serif';
     tg.textBaseline = 'middle';
-    const parts = ['★ SNOWDOME BRAWL', '★ EVERYONE HUNTS EVERYONE', '★ STREAKS PAY MORE', '★ SHUTDOWNS PAY BOUNTIES', '★ FIRST TO 20 WRECKS', '★ DASH · SLAM · WHIRL  '];
+    const parts = duel
+      ? ['★ SNOWDOME DUEL', '★ ONE ON ONE', '★ BEST OF 3 ROUNDS', '★ ULTIMATES CARRY OVER', '★ OWN GARAGE · CATCH-UP COINS', '★ DASH · SLAM · WHIRL  ']
+      : ['★ SNOWDOME BRAWL', '★ EVERYONE HUNTS EVERYONE', '★ STREAKS PAY MORE', '★ SHUTDOWNS PAY BOUNTIES', '★ FIRST TO 20 WRECKS', '★ DASH · SLAM · WHIRL  '];
     let x = 10;
     for (let i = 0; i < parts.length; i++) {
       tg.fillStyle = hexCss(st.accents[i % st.accents.length]);
@@ -515,7 +518,7 @@ export class VenueScenery extends ThemeScenery {
     const lights: Item[] = [];
     for (let i = 0; i < SIDES.length; i++) {
       const side = SIDES[i];
-      const s = i % 2 ? -46 : 46;
+      const s = (i % 2 ? -46 : 46) * domeK;
       const [x, z] = side.map(s, DOME_N0 - 0.6);
       frames.push({ x, y: 0, z, ry: side.yaw, sx: 1, sy: 1, sz: 1 });
       const [hx, hz] = side.map(s, DOME_N0 - 1.82);
@@ -541,7 +544,8 @@ export class VenueScenery extends ThemeScenery {
   /** A light lighting rig ring + cables high above the arena. */
   protected buildDomeRig(): void {
     const st = this.style;
-    const R = 128;
+    // the ring hangs just outside the stands (128 m in the 180 m dome)
+    const R = ARENA.maxX + 38;
     const Y = 58;
     const hubY = 70;
     const trussMat = this.std(0x3a3f55, { metalness: 0.6, roughness: 0.5 });
@@ -588,6 +592,8 @@ export class VenueScenery extends ThemeScenery {
     const tirePiles: Item[] = [];
     const contCols = [0xc0392b, 0x2f6fb0, 0xe0a030, 0x3c8d5a, 0x8e44ad, 0xd35400];
     const lim = ARENA.maxX - 8;
+    const K = domeK;
+    const C = DOME_COVER;
     const clampP = (v: number, r: number) => Math.max(-lim + r, Math.min(lim - r, v));
     const j = (amt: number) => (rnd() - 0.5) * 2 * amt;
 
@@ -621,7 +627,7 @@ export class VenueScenery extends ThemeScenery {
 
       // A) ice pillar cluster
       {
-        const [cx, cz] = P(24 + j(2), 16 + j(2));
+        const [cx, cz] = P(C.pillars[0] * K + j(2), C.pillars[1] * K + j(2));
         const offs: [number, number][] = [[0, 0], [3.8, 1.2], [1.3, 3.7]];
         for (const [ox, oz] of offs) {
           const [rx, rz] = P(ox, oz);
@@ -637,12 +643,12 @@ export class VenueScenery extends ThemeScenery {
       }
       // B) shipping container
       {
-        const [cx, cz] = P(47 + j(2), 10 + j(2));
+        const [cx, cz] = P(C.container[0] * K + j(2), C.container[1] * K + j(2));
         addContainer(cx, cz, yaw0 + 0.35 + j(0.25));
       }
       // C) rock outcrop (main + satellite)
       {
-        const [cx, cz] = P(38 + j(2), 40 + j(2));
+        const [cx, cz] = P(C.rock[0] * K + j(2), C.rock[1] * K + j(2));
         const r = 3 + rnd();
         obs.push({ x: cx, z: cz, r });
         rocks.push({ x: cx, y: r * 0.15, z: cz, ry: rnd() * 6, rx: j(0.3), sx: r * 1.05, sy: r * 0.95, sz: r * 1.05 });
@@ -657,19 +663,19 @@ export class VenueScenery extends ThemeScenery {
       }
       // D) giant snowman statue (faces the center)
       {
-        const [x, z] = P(12 + j(2), 54 + j(2));
+        const [x, z] = P(C.snowman[0] * K + j(2), C.snowman[1] * K + j(2));
         obs.push({ x, z, r: 2.3 });
         snowmen.push({ x, y: 0, z, ry: Math.atan2(-x, -z) + j(0.3), sx: 1, sy: 1, sz: 1 });
       }
       // E) stacked tire pile
       {
-        const [x, z] = P(clampP(77 + j(1.5), 2), 36 + j(2));
+        const [x, z] = P(clampP(C.tires[0] * K + j(1.5), 2), C.tires[1] * K + j(2));
         obs.push({ x, z, r: 2 });
         tirePiles.push({ x, y: 0, z, ry: rnd() * 6, sx: 1, sy: 1, sz: 1 });
       }
       // F) corner container
       {
-        const [cx, cz] = P(62 + j(2), 64 + j(2));
+        const [cx, cz] = P(C.corner[0] * K + j(2), C.corner[1] * K + j(2));
         addContainer(cx, cz, yaw0 + Math.PI / 4 + j(0.3));
       }
     }

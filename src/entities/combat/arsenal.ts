@@ -419,7 +419,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (pulse ticks, lance ticks), see
    *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it. Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1): number {
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -432,6 +432,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       fromZ: knock < 0 ? e.position.z + (dz / d) * 2 : fromZ,
       direct,
       pierce: true,
+      ult: ult || undefined,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);
@@ -1034,7 +1035,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const dmg = this.b.stats.missileDamage * SING_TICK_DMG;
         for (let i = 0; i < hits.length; i++) {
           const e = hits[i];
-          if (e.alive && Math.hypot(e.position.x - C.x, e.position.z - C.z) <= SING_R + e.radius) this.weaponHit(e, dmg, C.x, C.z, tug);
+          if (e.alive && Math.hypot(e.position.x - C.x, e.position.z - C.z) <= SING_R + e.radius) this.weaponHit(e, dmg, C.x, C.z, tug, undefined, 1, true);
         }
       }
       this.clearTargets();
@@ -1087,7 +1088,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       const d = Math.hypot(e.position.x - C.x, e.position.z - C.z);
       if (d > SING_R + e.radius) continue;
       const k = 1 - 0.5 * THREE.MathUtils.clamp((d - SING_CORE) / (SING_R - SING_CORE), 0, 1);
-      const dealt = this.weaponHit(e, per * k, C.x, C.z, SING_KNOCK);
+      const dealt = this.weaponHit(e, per * k, C.x, C.z, SING_KNOCK, undefined, 1, true);
       if (dealt > 0) {
         _tip.set(e.position.x, e.position.y + e.radius + 1.3, e.position.z);
         fx.floatText(_tip, `🌀${Math.round(dealt)}`, '#b9a4ff', 1.2);

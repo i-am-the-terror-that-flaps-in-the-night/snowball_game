@@ -1,42 +1,43 @@
 import { FX, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from './upgrades';
-import { BIOME_ZONE, ZONES, zoneLook, type BiomeKey, type ZoneDef } from './zones';
+import { BIOME_ZONE, BRAWL_BIOMES, BRAWL_ZONE, brawlZone, zoneLook, type BiomeKey, type ZoneDef } from './zones';
+import { DUEL_DOME_TERRAIN } from '../world/biomes/terrains';
+import type { TerrainDef } from '../world/Terrain';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, gearLevels, gearSpent } from './gear';
 
 /* ------------------------------------------------------------------------------------------------
- * Online DUEL tuning: 1v1, best of 3 rounds in a campaign-size arena.
+ * Online DUEL tuning: 1v1, best of 3 rounds in a shrunk Snowdome (the Brawl venue at 2/3 size).
  * Each player fights with their OWN garage (core upgrades + equipped gear). Before the match both get a short DUEL
  * GARAGE phase, and the weaker garage gets CATCH-UP coins, spent first on upgrades OR gear; what they buy is saved
  * to the garage once the match starts. Garage value counts gear at what the items actually cost.
  * ---------------------------------------------------------------------------------------------- */
 
-/** The duel arena: arena 1's slot (prop seed via `index`, snow) with the classic Frostbite Yard look, no bots, no coins.
- *  Built from an explicit field list, NOT a spread of ZONES[0]: arena 1 became Coldboot Glacier in the level overhaul,
- *  and anything the biome / terrain passes add to it (biome, terrain, hazard patches, gravity) must not leak into Duel
- *  silently. Duel keeps its old flat venue until it gets its own biome pool (docs/level-overhaul.md "Other modes");
- *  tests/duel.test.ts pins the key set. */
+/** The duel arena: THE SNOWDOME (Brawl's venue: stands, cover, deep drifts) shrunk to DUEL_ARENA_HALF (60 m, 2/3 of the
+ *  180 m dome; the dressing scales with the arena, world/environment/layout.ts domeK), no bots, no coins. Built from an
+ *  explicit field list, NOT a spread of BRAWL_ZONE, so nothing added to the Brawl venue leaks into Duel silently;
+ *  tests/biomes.test.ts pins the key set. */
 export const DUEL_ZONE: ZoneDef = {
-  index: ZONES[0].index, id: 'duel', name: 'DUEL · Frostbite Yard', tagline: 'One on one.', bossName: '', rounds: [{ groups: [] }],
-  enemyHpMult: ZONES[0].enemyHpMult, coinMult: 0, snowDepth: ZONES[0].snowDepth, snowRegenMult: ZONES[0].snowRegenMult, clearReward: 0,
-  skyTop: 0x4f8fd6, skyBottom: 0xdcefff, fogColor: 0xd6e9fb, fogNear: 60, fogFar: 170,
-  sunColor: 0xfff1d6, sunIntensity: 2.6, ambientColor: 0xbcd7ff, ambientIntensity: 0.9, snowTint: 0xffffff, snowfall: 0.25, theme: 'meadow',
+  index: BRAWL_ZONE.index, id: 'duel', name: 'DUEL · The Snowdome', tagline: 'One on one.', bossName: '', rounds: [{ groups: [] }],
+  enemyHpMult: 1, coinMult: 0, snowDepth: BRAWL_ZONE.snowDepth, snowRegenMult: BRAWL_ZONE.snowRegenMult, clearReward: 0,
+  ...zoneLook(BRAWL_ZONE), theme: 'brawl',
   terrain: undefined,
 };
 
-/** Duel venues: the classic Frostbite Yard plus the five campaign biomes (their ground terrain; no decks). Both peers
- *  pick the same one from the room code (duelZoneFor), so the choice needs no protocol message. This deviates from the
- *  plan's "host picks or random" (docs/level-overhaul.md, Follow-ups): the room code is effectively a random pick, and
- *  a later host choice can ride in the host's hello (a venue key) with duelVenueFor kept as the default. */
-export type DuelVenue = 'classic' | Exclude<BiomeKey, 'snowdome'>;
-export const DUEL_VENUES: readonly DuelVenue[] = ['classic', 'glacier', 'quarry', 'mars', 'divide', 'plaza'];
+/** Duel venues: the Brawl venues (the Snowdome plus its five biome variants, BRAWL_BIOMES) at Duel size, the ground
+ *  terrain laid out for the smaller dome (DUEL_DOME_TERRAIN). Both peers pick the same one from the room code
+ *  (duelZoneFor), so the choice needs no protocol message. The room code is effectively a random pick; a later host
+ *  choice can ride in the host's hello (a venue key) with duelVenueFor kept as the default. */
+export type DuelVenue = BiomeKey;
+export const DUEL_VENUES: readonly DuelVenue[] = BRAWL_BIOMES;
+const DUEL_TERRAIN: Partial<Record<DuelVenue, TerrainDef>> = DUEL_DOME_TERRAIN;
 const duelZones = new Map<DuelVenue, ZoneDef>();
 
-/** DUEL_ZONE dressed as a biome arena (cached). 'classic' = DUEL_ZONE itself. */
+/** DUEL_ZONE dressed as a biome Snowdome (cached; the look of brawlZone(venue)). 'snowdome' = DUEL_ZONE itself. */
 export function duelZone(venue: DuelVenue): ZoneDef {
-  if (venue === 'classic') return DUEL_ZONE;
+  if (venue === 'snowdome') return DUEL_ZONE;
   let z = duelZones.get(venue);
   if (!z) {
-    const src = BIOME_ZONE[venue];
-    z = { ...DUEL_ZONE, ...zoneLook(src), name: `DUEL · ${src.name}`, biome: src.biome, terrain: src.terrain };
+    const src = brawlZone(venue);
+    z = { ...DUEL_ZONE, ...zoneLook(src), name: `DUEL · ${BIOME_ZONE[venue].name}`, biome: src.biome, terrain: DUEL_TERRAIN[venue] };
     duelZones.set(venue, z);
   }
   return z;
@@ -77,14 +78,36 @@ export const DUEL_ROUND_SCALE = 0.7;
  *  also divided by the attacker's ultPower (PlayerStats) ^ DUEL_POWER_DAMP: late-game duels last nearly as long as
  *  fresh ones. */
 export const DUEL_POWER_DAMP = 0.4;
+/** ULTIMATES IN THE DUEL. Off-line the meter is sized in damage (combat/ultimates.ts ultCharge: a base that grows with
+ *  the garage's ultPower and Overclock, ~20x from fresh to late), but Duel damage is scaled down and power-damped
+ *  (above) and capped against HP that only grows ~3x, so a round used to fill only 5-15% of it: ultimates never
+ *  fired. In the Duel the meter is instead sized in the OPPONENT's HP: it fills after the damage that counts toward
+ *  it (every hit for VOLT-9 / BRUTUS / ARSENAL, fire damage for the Classic, the usual Critical Mass shares for
+ *  ISOTOPE) adds up to DUEL_ULT_CHARGE x the opponent's max HP. That is tier-independent by construction (and
+ *  independent of the Duel damage scales): in an even same-tier fight the first ultimate comes ~25-40 s into
+ *  continuous fighting (`npm run duel2`, ult table). The meter carries over between the rounds of a match (empty at
+ *  match start), so it is typically ready once per round. */
+export const DUEL_ULT_CHARGE = 2.5;
+/** Per-vehicle factor on DUEL_ULT_CHARGE (others 1), evening the fill out: ISOTOPE's Critical Mass counts only part of
+ *  its damage (radiation shares), BRUTUS deals the most plow-vs-plow. Overclock (cooldownMult < 1: abilities more
+ *  often, so more damage) grows the meter by 1 / sqrt(cooldownMult), as it grows the off-line one by 1 / cooldownMult. */
+export const DUEL_ULT_KIND_CHARGE: Partial<Record<string, number>> = { isotope: 0.65, brute: 1.25 };
+/** ...and an ultimate landing on a human is a big swing, never a one-shot: on top of the usual Duel path (scales,
+ *  power damp, hit cap, i-frames, shields), ultimate damage (the blast and its aftermath: SUPERCELL strikes,
+ *  EARTHQUAKE rings, SINGULARITY pull + detonation, FIRESTORM nova + burning ground, NUKE blast + its fallout pool) is
+ *  soft-capped at DUEL_ULT_HP_CAP of the victim's max HP per ultimate (the cap's memory fades over
+ *  DUEL_ULT_CAP_SECONDS). Measured share of a parked same-tier victim's HP: ~25-40%. */
+export const DUEL_ULT_HP_CAP = 0.35;
+export const DUEL_ULT_CAP_SECONDS = 10;
 /** HP% within this of each other at time-out = a draw round (nobody scores). */
 export const DUEL_DRAW_EPS = 0.005;
 /** Both players use this snow regrowth (m/s) instead of their Snow Machine: the field is shared. */
 export const DUEL_SNOW_REGEN = FX.snowRegen(0);
-/** Spawn points: both on the centre line, facing each other. */
+/** Spawn points: both on the centre line, 50 m apart across the fountain, facing each other (clear of the scaled cover
+ *  and the drifts, on flat ground in every venue: tests/biomes.test.ts). */
 export const DUEL_SPAWNS = [
-  { x: 0, z: 15, heading: Math.PI },
-  { x: 0, z: -15, heading: 0 },
+  { x: 0, z: 25, heading: Math.PI },
+  { x: 0, z: -25, heading: 0 },
 ] as const;
 
 /** Sanity cap on any one upgrade level that comes over the wire. */

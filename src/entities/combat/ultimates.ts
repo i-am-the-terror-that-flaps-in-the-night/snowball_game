@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { PlayerStats, PlowAPI } from '../../core/types';
+import type { EnemyManagerAPI, PlayerStats, PlowAPI } from '../../core/types';
+import { DUEL_ULT_CHARGE, DUEL_ULT_KIND_CHARGE } from '../../config/duel';
 import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type UltKind } from './shared';
 
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
@@ -18,6 +19,16 @@ const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '�
  *  upgrade, so the meter grows with the pilot's power and with Overclock (faster abilities, more damage): it takes
  *  about as long to fill at every stage of the game. */
 export const ultCharge = (st: PlayerStats, base: number) => (base * Math.max(1, st.ultPower || 1)) / Math.min(1, st.cooldownMult || 1);
+
+/** The meter size a pilot actually fills: ultCharge off-line; in the online Duel (pvp, its targets the opponent's
+ *  plow: duel/opponent.ts OpponentTarget) DUEL_ULT_CHARGE x the opponent's max HP instead (x DUEL_ULT_KIND_CHARGE, and
+ *  / sqrt(cooldownMult) for Overclock; config/duel.ts). */
+export function ultMeter(b: { readonly stats: PlayerStats; readonly pvp?: boolean; readonly enemies: EnemyManagerAPI }, base: number): number {
+  const foe = b.pvp ? (b.enemies as { duelFoeMaxHp?: number }).duelFoeMaxHp : undefined;
+  if (!foe || !(foe > 0)) return ultCharge(b.stats, base);
+  const st = b.stats;
+  return (DUEL_ULT_CHARGE * (DUEL_ULT_KIND_CHARGE[st.plowKind] ?? 1) * foe) / Math.sqrt(Math.min(1, st.cooldownMult || 1));
+}
 
 /** One plow's ultimate, driven by Ultimates. */
 export interface UltScript {
@@ -56,7 +67,7 @@ export class Ultimates {
     const was = h.crit;
     // ARSENAL's PvE damage bonus doesn't speed its meter up: it charges as in the Duel.
     const pve = kind === 'arsenal' && !h.b.pvp ? PVE_ULT : 1;
-    h.crit = Math.min(1, h.crit + dealt / pve / ultCharge(h.b.stats, ULT_CHARGE[kind]));
+    h.crit = Math.min(1, h.crit + dealt / pve / ultMeter(h.b, ULT_CHARGE[kind]));
     if (was < 1 && h.crit >= 1 && h.b.local) {
       h.ctx.ui.toast(`${ULT_NAME[kind]} READY · F`, 'info');
       h.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });
@@ -125,6 +136,7 @@ export function ultBlast(
       freezeSeconds: o.freeze,
       fromX: x,
       fromZ: z,
+      ult: true,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     h.onPlayerHit(dealt, killed, e, false, false);

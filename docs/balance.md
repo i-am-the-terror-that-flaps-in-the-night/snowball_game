@@ -473,6 +473,22 @@ stays (622 lost is still about two full 312-HP pools). High is noise (one 408 ou
 at or under the reference). Clear times unchanged (Plaza mid 69.4 s, Omega mid 69.6 s, high 45.7 / 52.6 s). If the
 death should go too, 30% is the next step; past that it starts to make ISOTOPE the tank it was never meant to be.
 
+## Follow-up: Duel ultimates and the shrunk Snowdome
+
+**Ultimates never fired in a Duel.** A round deals ~100-350 HP, but the off-line meters (`ultCharge`) need ~1200-2700
+damage fresh and ~20x that late, and Duel damage is scaled down, power-damped and capped. In the Duel the meter is now
+sized in the opponent's HP (`ultMeter` in combat/ultimates.ts): `DUEL_ULT_CHARGE` (2.5) x their max HP, ISOTOPE x0.65,
+BRUTUS x1.25, Overclock / sqrt(cooldownMult) (`src/config/duel.ts`). It carries over between the rounds of a match.
+Ultimate damage on a human is soft-capped at `DUEL_ULT_HP_CAP` (35%) of max HP per ultimate (`DamageOpts.ult`,
+duel/opponent.ts). `npm run duel2` now reports, per tier, the first ultimate in continuous fighting (meters kept through
+wrecks): fresh 35-45 s (Classic 59 s: only fire charges it), mid 34-38 s, high 31-35 s; before, 0 of 15 fights per plow
+filled it at mid / high. One ultimate takes 20-42% of a parked same-tier plow without a Battery Shield (VOLT-9's shield
+soaks most of it once upgraded); before the cap they took 50-90%.
+
+**Arena.** The Duel moved from the 90 m Frostbite Yard to the Brawl Snowdome shrunk to 120 m, spawns 50 m apart. The
+two-way sim only models one line (start distance, walls), so it cannot show what cover and room to strafe give the
+ranged plows.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

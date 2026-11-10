@@ -7,7 +7,7 @@
  * i-frames, the Duel scales / hit cap / ability burst damping. Nothing in the game is changed or re-tuned here.
  *
  * MOVEMENT MODEL ('move'). The fake plows do not drive, so positioning is modelled on one line (the axis between the
- * two Duel spawns, starting DUEL_SPAWNS apart = 30 m, walls at DUEL_ARENA_HALF):
+ * two Duel spawns, starting DUEL_SPAWNS apart = 50 m, walls at DUEL_ARENA_HALF = 60):
  *  - Preferred range: each plow wants the centre distance where its main weapon works best, read from the real kit
  *    numbers (preferredRange below): Classic = where its slam lands (TIP_Z + ball + 0.5), BRUTUS = its fist zone
  *    (FIST_REACH x fistSize + Piston Fists reach), VOLT-9 / ISOTOPE = REACH_MARGIN of arcRange / sprayRange (+ line
@@ -35,7 +35,8 @@
  * Known gaps (honest limits): no terrain, snow or props; BRUTUS's Saw Charge and the slam lunge do not move the plow;
  * no strafing geometry beyond the juke; pilots never hold an ability back for a better moment. The Classic's ball (its
  * frontal shield) refills at sim.ts MELEE.SNOW_INTAKE even while it stands still, and the held ball does not slow it.
- * Ultimate meters fill from Duel damage and start empty, so in rounds this short they rarely (if ever) fill. */
+ * Ultimate meters start empty in every fight here (in a match they carry over from round to round), so the in-round
+ * matrices see few ultimates; the per-tier ultimates table measures the fill in continuous fighting (renderUlts). */
 import * as THREE from 'three';
 import { DUEL_ARENA_HALF, ballRadius, type EnemyHandle, type EnemyManagerAPI } from '../../src/core/types';
 import { DUEL_DRAW_EPS, DUEL_ROUND_SECONDS, DUEL_SPAWNS } from '../../src/config/duel';
@@ -121,6 +122,9 @@ export interface FightOpts {
   seed: number;
   /** Fight cap (s); at the time-out the higher HP% wins. */
   cap?: number;
+  /** Keep fighting through wrecks (continuous fighting, as across the rounds of a match: the meters carry over):
+   *  a wrecked plow is revived at full HP where it stands and the fight runs to `cap`. For ultimate fill times. */
+  continuous?: boolean;
 }
 export interface FightResult {
   /** 0 / 1 = that side won (wreck, or more HP% at the time-out), -1 = draw (both wrecked on the same tick, or HP% level
@@ -131,6 +135,10 @@ export interface FightResult {
   t: number;
   /** HP left as a share of max HP, per side. */
   hp: [number, number];
+  /** Times (s) each side's ultimate went off. */
+  ults: [number[], number[]];
+  /** 'continuous': wrecks per side. */
+  wrecks: [number, number];
 }
 
 interface Side {
@@ -184,6 +192,8 @@ export function fight(ka: PlowKind, kb: PlowKind, tier: Tier, opts: FightOpts): 
       me.p = pilot(ctx, me.st, me.plow, t as EnemyManagerAPI, true);
     }
     const dist = () => sides[1].z - sides[0].z;
+    const ults: [number[], number[]] = [sides[0].p.ults, sides[1].p.ults];
+    const wrecks: [number, number] = [0, 0];
     for (let i = 0; i < 2; i++) {
       const me = sides[i];
       const foe = sides[1 - i];
@@ -315,14 +325,56 @@ export function fight(ka: PlowKind, kb: PlowKind, tier: Tier, opts: FightOpts): 
       }
       const a = sides[0].plow.dead;
       const b = sides[1].plow.dead;
-      if (a || b) return { winner: a && b ? -1 : a ? 1 : 0, t: (tick + 1) * DT, hp: [sides[0].plow.hp / sides[0].plow.maxHp, sides[1].plow.hp / sides[1].plow.maxHp] };
+      if ((a || b) && opts.continuous) {
+        for (let i = 0; i < 2; i++) {
+          const pl = sides[i].plow;
+          if (!pl.dead) continue;
+          wrecks[i]++;
+          pl.dead = false;
+          pl.hp = pl.maxHp;
+        }
+      } else if (a || b) return { winner: a && b ? -1 : a ? 1 : 0, t: (tick + 1) * DT, hp: [sides[0].plow.hp / sides[0].plow.maxHp, sides[1].plow.hp / sides[1].plow.maxHp], ults, wrecks };
     }
     // Time-out: the higher HP% wins the round, a draw within DUEL_DRAW_EPS (the Duel's rule).
     const hp: [number, number] = [sides[0].plow.hp / sides[0].plow.maxHp, sides[1].plow.hp / sides[1].plow.maxHp];
-    return { winner: Math.abs(hp[0] - hp[1]) <= DUEL_DRAW_EPS ? -1 : hp[0] > hp[1] ? 0 : 1, t: cap, hp, timeout: true };
+    return { winner: Math.abs(hp[0] - hp[1]) <= DUEL_DRAW_EPS ? -1 : hp[0] > hp[1] ? 0 : 1, t: cap, hp, timeout: true, ults, wrecks };
   } finally {
     Math.random = mathRandom;
   }
+}
+
+/** Share of a parked, same-tier `def` plow's max HP that `atk`'s ultimate alone takes off at centre distance `dist`
+ *  (m), through the real Duel damage path: the ultimate and its aftermath over `window` s, minus the same window
+ *  without it (passive auras). The attacker does nothing else; the victim does nothing at all. */
+export function ultShare(atk: PlowKind, def: PlowKind, tier: Tier, dist: number, window = 10): number {
+  const once = (fire: boolean) => {
+    const ctx = newCtx();
+    const sa = statsFor(atk, tier);
+    const sd = statsFor(def, tier);
+    const pa = fakePlow(sa, 0, 0, 0);
+    const pd = fakePlow(sd, 0, dist, Math.PI);
+    let cd: Pilot | null = null;
+    const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow);
+    target.enabled = true;
+    const A = pilot(ctx, sa, pa, target as EnemyManagerAPI, true);
+    cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);
+    for (let i = 0, n = Math.round(window / DT); i < n; i++) {
+      (ctx as { time: number }).time += DT;
+      A.press.clear();
+      if (fire && i === 0) {
+        (A.c as unknown as { critCharge: number }).critCharge = 1;
+        A.press.add('KeyF');
+      }
+      A.c.update(DT);
+      cd.c.update(DT);
+      target.update(DT);
+      if (pd.dead) break;
+    }
+    return { lost: (sd.maxHp - Math.max(0, pd.hp)) / sd.maxHp, fired: A.ults.length > 0 };
+  };
+  const a = once(true);
+  if (!a.fired) return NaN;
+  return a.lost - once(false).lost;
 }
 
 /** Aggregate of one kind vs another (row kind's view). */
@@ -424,6 +476,36 @@ export function renderVariant(tier: Tier, v: Variant, cells: Cell[][], kinds: Pl
   return out.join('\n');
 }
 
+/** Ultimates per tier: for each plow, continuous fights (`continuous`, meters carried through wrecks as across a
+ *  match's rounds, ULT_CAP s) against every plow (mirror included): mean time of the first ultimate (over the fights
+ *  where one fired) and ultimates per minute; plus the share of a parked same-tier victim's max HP one ultimate takes
+ *  (ultShare at 4 m, mean over the five victims). */
+export const ULT_CAP = 120;
+export function renderUlts(tier: Tier, N: number, seed: number, kinds: PlowKind[] = KINDS): string {
+  const out: string[] = [];
+  out.push(`\n#### ${tier}: ultimates (${N} continuous ${ULT_CAP} s fights per opponent)\n`);
+  out.push('| plow | first ultimate (s) | fired in | ultimates / min | ultimate on a parked victim (% max HP) |');
+  out.push('|---|---|---|---|---|');
+  const ti = TIERS.indexOf(tier);
+  for (let i = 0; i < kinds.length; i++) {
+    const firsts: number[] = [];
+    let fights = 0;
+    let ults = 0;
+    for (let j = 0; j < kinds.length; j++)
+      for (let f = 0; f < N; f++) {
+        const r = fight(kinds[i], kinds[j], tier, { mode: 'move', seed: hash(seed, ti, i, j, f, 77), cap: ULT_CAP, continuous: true });
+        fights++;
+        ults += r.ults[0].length;
+        if (r.ults[0].length) firsts.push(r.ults[0][0]);
+      }
+    const share = kinds.map((d) => ultShare(kinds[i], d, tier, 4)).filter(Number.isFinite);
+    const first = firsts.length ? (firsts.reduce((a, b) => a + b, 0) / firsts.length).toFixed(1) : '-';
+    const sh = share.length ? pct(share.reduce((a, b) => a + b, 0) / share.length) : '-';
+    out.push(`| ${NAMES[kinds[i]]} | ${first} | ${firsts.length}/${fights} | ${((ults / fights) * 60 / ULT_CAP).toFixed(2)} | ${sh} |`);
+  }
+  return out.join('\n');
+}
+
 /** The whole report: every tier x variant. */
 export function report(N = 40, seed = 1, tiers: Tier[] = TIERS, variants: Variant[] = VARIANTS, log?: (s: string) => void): string {
   const out: string[] = [];
@@ -440,6 +522,7 @@ export function report(N = 40, seed = 1, tiers: Tier[] = TIERS, variants: Varian
       out.push(renderVariant(t, v, matrix(t, v, N, seed)));
       log?.(`${t} / ${v.name}: ${((Date.now() - t0) / 1000).toFixed(1)} s`);
     }
+    out.push(renderUlts(t, Math.max(2, Math.round(N / 10)), seed));
   }
   return out.join('\n') + '\n';
 }

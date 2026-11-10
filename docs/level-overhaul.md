@@ -184,7 +184,8 @@ record.
 - **[B, deviation] Duel venue:** "Other modes" says the Duel host picks the venue or it is random. As built, both peers
   derive it from the room code (`duelVenueFor` in `src/config/duel.ts`, FNV-1a over the code), so it is effectively
   random and needs no protocol message, but the host cannot choose. A host choice can ride in the host's hello (a venue
-  key) later, with `duelVenueFor` kept as the default.
+  key) later, with `duelVenueFor` kept as the default. *Later:* the Duel moved to the Brawl venues (the Snowdome and
+  its biome variants) shrunk to 120 m; the pick from the room code stays (docs/duel.md).
 - **[B, deviation] Inferno Quarry jumps:** "Arenas" says lava rivers with jump ramps. As built, the two long rivers sit
   in the north corners and each jump ramp (campaign and Brawl) launches over a short lava trench (`trench()` in
   `src/world/biomes/terrains.ts`, about 7 m across a 6.5 m wide ramp). A long river running on past a ramp's sides left no
