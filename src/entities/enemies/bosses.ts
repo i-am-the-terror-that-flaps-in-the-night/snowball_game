@@ -894,6 +894,40 @@ function summon(h: Host, type: EnemyType, gate: number): void {
   add.summoned = true;
 }
 
+/** MEGAPLOW Ω's lines (src/config/lore.ts: a smug corporate factory AI with a slide deck). Rotation every
+ *  OMEGA_TAUNT_GAP s while it drives about; reaction lines (phases, deck leaps, the core) jump the queue. */
+const OMEGA_TAUNTS = [
+  'NEXT SLIDE.',
+  'PLEASE HOLD YOUR QUESTIONS',
+  "LET'S CIRCLE BACK TO YOUR DEFEAT",
+  'PER MY LAST EMAIL: MOVE.',
+  'YOUR FEEDBACK HAS BEEN NOTED. AND IGNORED.',
+  'THIS COULD HAVE BEEN AN EMAIL',
+  'YOU ARE BEING EVALUATED',
+  'DRIVERS ARE A COST CENTRE',
+  'SYNERGY!',
+  'LET ME SHARE MY SCREEN',
+];
+const OMEGA_TAUNT_GAP = 9;
+const OMEGA_PINK = '#ff7ab8';
+interface OmegaTalk {
+  t: number;
+  i: number;
+  say: string | null;
+}
+const OMEGA_TALK = new WeakMap<Bot, OmegaTalk>();
+/** Queue a reaction line `delay` s from now (after the label it follows has had its moment). */
+function omegaSay(e: Bot, line: string, delay = 1.4): void {
+  const s = omegaTalk(e);
+  s.say = line;
+  s.t = delay;
+}
+function omegaTalk(e: Bot): OmegaTalk {
+  let s = OMEGA_TALK.get(e);
+  if (!s) OMEGA_TALK.set(e, (s = { t: 4, i: (Math.random() * OMEGA_TAUNTS.length) | 0, say: null }));
+  return s;
+}
+
 function omega(h: Host, e: Bot, dt: number): void {
   const d = h.dist(e);
   if (e.phase < 1 && e.hpFrac <= 0.66) {
@@ -902,6 +936,7 @@ function omega(h: Host, e: Bot, dt: number): void {
     summon(h, 'scrapper', 0);
     summon(h, 'scrapper', 1);
     summon(h, 'scrapper', 2);
+    omegaSay(e, 'PLEASE HOLD YOUR QUESTIONS. INTERNS?');
   }
   if (e.phase < 2 && e.hpFrac <= 0.33) {
     e.phase = 2;
@@ -909,6 +944,15 @@ function omega(h: Host, e: Bot, dt: number): void {
     h.bossPhase(e, 'PHASE 3 — ENRAGED!');
     summon(h, 'brute', 1);
     summon(h, 'brute', 2);
+    omegaSay(e, 'Q4: TOTAL VICTORY');
+  }
+  const talk = omegaTalk(e);
+  talk.t -= dt;
+  // Lines only while it drives about (never over a telegraph), reactions whenever they come due.
+  if (talk.t <= 0 && (talk.say || e.state === 'approach')) {
+    h.label(e, talk.say ?? OMEGA_TAUNTS[talk.i++ % OMEGA_TAUNTS.length], OMEGA_PINK, talk.say ? 1.15 : 1.0);
+    talk.say = null;
+    talk.t = OMEGA_TAUNT_GAP * (e.enraged ? 0.75 : 1);
   }
   const dl = deckLeapState(e);
   const campReady = dl.camp.update(dt, e.vert.surfaceY, h.ctx.plow.position.y);
@@ -976,6 +1020,7 @@ function omega(h: Host, e: Bot, dt: number): void {
         e.vulnMult = 1.5;
         e.set('exposed', 1.5);
         h.label(e, 'CORE EXPOSED!', '#ff6a7a', 1.1);
+        if (Math.random() < 0.3) omegaSay(e, 'THAT SLIDE WAS A DRAFT', 1.2);
       }
       break;
     case 'deckLeapWind': {
@@ -1035,6 +1080,7 @@ function omega(h: Host, e: Bot, dt: number): void {
       dl.plan = null;
       dl.camp.reset();
       e.set('recover', 0.9);
+      if (Math.random() < 0.5) omegaSay(e, "DECKS ARE NOT A HIDING PLACE. I CHECKED.", 1.0);
       break;
     }
     case 'exposed':
@@ -1111,7 +1157,14 @@ const DONALD_TAUNTS = [
   'LOW ENERGY PLOW!',
   'MANY PLOWS ARE SAYING IT',
   'A VERY STABLE PLOW',
+  'RIGGED! TOTALLY RIGGED!',
+  'Ω? NEVER MET HIM. VERY MINOR COFFEE BOY.',
+  'NINETEEN DAYS. BIGGEST RALLY EVER.',
+  'I KNOW PLOWS. I HAVE THE BEST PLOWS.',
+  'PEOPLE ARE CRYING. BIG STRONG PLOWS, CRYING.',
 ];
+/** Before GOLD PLATED THE DONALD only taunts every DONALD_TAUNT_SLOW s; plated, every 6 s. */
+const DONALD_TAUNT_SLOW = 11;
 /** Where the boss parks for a RALLY: in front of the stage (north end). */
 const RALLY_X = 0;
 const RALLY_Z = -21;
@@ -1122,6 +1175,8 @@ interface DonaldState {
   rallyCd: number;
   tauntT: number;
   tauntI: number;
+  /** A reaction line said at the next taunt slot instead of the rotation (e.g. RIGGED! after a broken rally). */
+  say: string | null;
   plated: boolean;
   /** The first rally triggers early once the boss is below 75% HP. */
   rallied: boolean;
@@ -1135,7 +1190,7 @@ const DSTATE = new WeakMap<Bot, DonaldState>();
 function dstate(e: Bot): DonaldState {
   let s = DSTATE.get(e);
   if (!s) {
-    s = { wallCd: 3.5, beamCd: 8, rallyCd: 20, tauntT: 2, tauntI: (Math.random() * 12) | 0, plated: false, rallied: false, rally: [], glintT: 0, podX: 0, podZ: 0, podPending: false };
+    s = { wallCd: 3.5, beamCd: 8, rallyCd: 20, tauntT: 5, tauntI: (Math.random() * 12) | 0, say: null, plated: false, rallied: false, rally: [], glintT: 0, podX: 0, podZ: 0, podPending: false };
     DSTATE.set(e, s);
   }
   return s;
@@ -1250,6 +1305,8 @@ function donaldRallyEnd(h: Host, e: Bot, s: DonaldState, broken: boolean): void 
     e.stunMult = 1.5;
     h.label(e, 'RALLY BROKEN!', '#ffe14a', 1.3);
     h.sfx('stun', 0.9, 0.9, 0.1);
+    s.say = 'RIGGED!';
+    s.tauntT = 1.4;
   } else e.set('recover', 0.5);
 }
 
@@ -1290,12 +1347,13 @@ function donald(h: Host, e: Bot, dt: number): void {
   if (e.state !== 'rally' && e.dmgTakenMult !== 1) donaldRallyEnd(h, e, s, false);
   const d = h.dist(e);
   if (!s.plated && e.hpFrac <= 0.5) donaldPlate(h, e, s);
+  s.tauntT -= dt;
+  if (s.tauntT <= 0) {
+    s.tauntT = s.plated ? 6 : DONALD_TAUNT_SLOW;
+    h.label(e, s.say ?? DONALD_TAUNTS[s.tauntI++ % DONALD_TAUNTS.length], '#ffd24a', 1.05);
+    s.say = null;
+  }
   if (s.plated) {
-    s.tauntT -= dt;
-    if (s.tauntT <= 0) {
-      s.tauntT = 6;
-      h.label(e, DONALD_TAUNTS[s.tauntI++ % DONALD_TAUNTS.length], '#ffd24a', 1.05);
-    }
     s.glintT -= dt;
     if (s.glintT <= 0) {
       s.glintT = 0.12;

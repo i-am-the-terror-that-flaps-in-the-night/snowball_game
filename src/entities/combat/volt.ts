@@ -42,6 +42,10 @@ export const ARC_BOSS = 2.6;
 const PARA_CHANCE = 0.07;
 const PARA_SECONDS = 1.2;
 const PARA_IMMUNE = 2.5;
+/** Paralysed bots shown crackling at once (oldest dropped past this). */
+const PARA_FX_MAX = 6;
+/** GROUNDED pop text: at most once per this many seconds while the arc stays grounded. */
+const GROUNDED_POP_GAP = 1.6;
 const ARC_CONE = 0.5;
 export const arcRange = (ballR: number) => 9 + 2.5 * Math.max(0, ballR - 1.2);
 /** STATIC FIELD (E): a lingering electrified field that rides with the rover for STATIC_SECONDS, pulsing every
@@ -97,6 +101,13 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
   private arcHit = new Set<number>();
   /** PARALYSIS: bot id -> ctx.time it can be paralysed again. */
   private paraReady = new Map<number, number>();
+  /** PARALYSIS readability: bots crackling with a blue-white outline until ctx.time `until`. */
+  private paraFx: { e: EnemyHandle; until: number; t: number }[] = [];
+  /** GROUNDED cue: was the last arc tick grounded (into a boss or a lone bot), the bot it grounded into, and when
+   *  the last pop text showed. */
+  private groundedOn = false;
+  private groundedTgt: EnemyHandle | null = null;
+  private groundedPopAt = -999;
   /** Is the lance firing this frame (HUD / tests). */
   arcOn = false;
 
@@ -108,6 +119,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     if (this.b.plow) this.b.plow.voltArc = held && !this.b.plow.dead; // tower FX (vehicles/volt.ts)
     if (!held) {
       this.arcLock = null;
+      this.groundedOn = false;
       return;
     }
     if (this.arcT > 0) return;
@@ -158,6 +170,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       this.lightning.bolt(_p, _q, { life: tick * 0.8, width: 0.16, jag: 0.9, color: 0x6fc8ff });
       ctx.fx.sparks(_q, null, PRIMARY_SPARKS);
       if (this.arcN % 3 === 0) this.b.audio.play('zap', { volume: 0.18, pitch: 1.6 + Math.random() * 0.3 });
+      this.groundedOn = false;
       return;
     }
     const dmg = ARC_DAMAGE * st.damageMult * coilBoost(st.clapDamage) ** ARC_COIL_EXP * (st.arcBoost || 1);
@@ -175,8 +188,9 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       this.arcHit.add(hit.id);
       _q.set(hit.position.x, hit.position.y + hit.radius * 0.9, hit.position.z);
       if (hop === 0) {
-        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: solo ? 0.6 : 0.42, jag: 1.0, color: 0xbff0ff });
-        this.lightning.bolt(_p, _q, { life: tick * 0.7, width: 0.18, jag: 1.6, color: 0x3fa8ff });
+        this.lightning.bolt(_p, _q, { life: tick * 1.1, width: solo ? (grounded ? 0.95 : 0.75) : 0.42, jag: 1.0, color: solo ? 0xffffff : 0xbff0ff });
+        this.lightning.bolt(_p, _q, { life: tick * 0.7, width: solo ? 0.3 : 0.18, jag: 1.6, color: 0x3fa8ff });
+        if (solo) this.groundCue(hit, tick, grounded);
       } else {
         _r.set(src.position.x, src.position.y + src.radius * 0.9, src.position.z);
         this.lightning.bolt(_r, _q, { life: tick * 1.1, width: 0.26, jag: 0.8, color: 0x9fe8ff });
@@ -200,6 +214,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         crackArmor: solo || undefined,
       });
       if (para && !killed) {
+        this.markParalysed(hit, hit.isBoss ? para * 0.5 : para);
         ctx.fx.floatText(_q, 'PARALYZED', '#bff0ff', 0.85);
         ctx.fx.sparks(_q, null, PRIMARY_SPARKS_2);
         this.lightning.bolt(_q, _r.set(_q.x, _q.y + 2.2, _q.z), { life: 0.3, width: 0.2, jag: 1.4, color: 0xdff6ff });
@@ -223,7 +238,74 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         }
       }
     }
-    if (this.arcN % 2 === 0) this.b.audio.play('zap', { volume: 0.3, pitch: 1.25 + Math.random() * 0.25 });
+    if (!solo) this.groundedOn = false;
+    // A grounded arc buzzes lower and heavier than a chain.
+    if (this.arcN % 2 === 0) this.b.audio.play('zap', solo ? { volume: 0.42, pitch: 0.8 + Math.random() * 0.15 } : { volume: 0.3, pitch: 1.25 + Math.random() * 0.25 });
+  }
+
+  /** GROUNDED ARC cue (hop 0 into a boss or a lone bot, `_q` = the hit point): the arc forks down through the bot into
+   *  the floor, and on a fresh ground (or every GROUNDED_POP_GAP s) a GROUNDED pop with a deep zap. */
+  private groundCue(e: EnemyHandle, tick: number, boss: boolean): void {
+    const ctx = this.ctx;
+    const floorY = e.position.y + 0.05;
+    for (let i = 0; i < 2; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = e.radius * (0.9 + Math.random() * 0.6);
+      _r.set(e.position.x + Math.sin(a) * r, floorY, e.position.z + Math.cos(a) * r);
+      this.lightning.bolt(_q, _r, { life: tick * 0.9, width: 0.2, jag: 0.6, color: 0x9fe8ff });
+    }
+    const fresh = !this.groundedOn || this.groundedTgt !== e;
+    this.groundedOn = true;
+    this.groundedTgt = e;
+    if (!fresh && ctx.time - this.groundedPopAt < GROUNDED_POP_GAP) return;
+    this.groundedPopAt = ctx.time;
+    _r.set(e.position.x, e.position.y + e.radius * 2 + 1.2, e.position.z);
+    ctx.fx.floatText(_r, boss ? 'GROUNDED ×2.6' : 'GROUNDED', '#ffffff', boss ? 1.05 : 0.9);
+    _r.set(e.position.x, floorY + 0.06, e.position.z);
+    ctx.fx.ring(_r, e.radius * 1.8, 0x9fe8ff);
+    ctx.fx.sparks(_r, null, PRIMARY_SPARKS_2);
+    if (fresh) {
+      this.b.audio.play('zap', { volume: 0.7, pitch: 0.55 });
+      this.b.audio.play('thunder', { volume: 0.25, pitch: 1.6 });
+    }
+  }
+
+  /** PARALYSIS readability: keep `e` crackling for `seconds` (see updateParalysis). */
+  private markParalysed(e: EnemyHandle, seconds: number): void {
+    const until = this.ctx.time + seconds;
+    const cur = this.paraFx.find((p) => p.e === e);
+    if (cur) {
+      cur.until = Math.max(cur.until, until);
+      return;
+    }
+    if (this.paraFx.length >= PARA_FX_MAX) this.paraFx.shift();
+    this.paraFx.push({ e, until, t: 0 });
+  }
+
+  /** PARALYSIS readability: a paralysed bot wears a flickering blue-white outline of short arcs round its body (plus
+   *  a spark now and then) for as long as the lock lasts, so frozen bots read at a glance. */
+  updateParalysis(dt: number): void {
+    const list = this.paraFx;
+    const now = this.ctx.time;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const p = list[i];
+      const e = p.e;
+      if (!e.alive || now >= p.until) {
+        list.splice(i, 1);
+        continue;
+      }
+      p.t -= dt;
+      if (p.t > 0) continue;
+      p.t = 0.06 + Math.random() * 0.04;
+      const r = e.radius * 1.05;
+      const cy = e.position.y + e.radius * 0.9;
+      const a = Math.random() * Math.PI * 2;
+      const b = a + 0.8 + Math.random() * 1.4;
+      _p.set(e.position.x + Math.sin(a) * r, cy + (Math.random() - 0.3) * r, e.position.z + Math.cos(a) * r);
+      _q.set(e.position.x + Math.sin(b) * r, cy + (Math.random() - 0.3) * r, e.position.z + Math.cos(b) * r);
+      this.lightning.bolt(_p, _q, { life: 0.09, width: 0.12, jag: 0.35 * r, color: 0xdff6ff });
+      if (Math.random() < 0.35) this.ctx.fx.sparks(_q, null, PRIMARY_SPARKS);
+    }
   }
 
   /** E: STATIC FIELD — a shock ring bursts out of the coil tower: damage + a short stun on every bot within
@@ -660,6 +742,9 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
   clear(): void {
     this.staticT = 0;
     this.paraReady.clear();
+    this.paraFx.length = 0;
+    this.groundedOn = false;
+    this.groundedTgt = null;
     this.clapCharge = 1;
     this.clapHeat = 0;
     this.lastClapAt = -999;

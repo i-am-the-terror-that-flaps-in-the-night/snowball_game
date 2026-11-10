@@ -615,6 +615,7 @@ export class Combat implements CombatAPI {
     this.brute.updatePound(dt);
     this.volt.updateStorm(dt);
     this.volt.updateField(dt);
+    this.volt.updateParalysis(dt);
     this.brute.updateSaws(dt);
     this.brute.updateSpikes(dt);
     this.isotope.updateMeltdown(dt);
