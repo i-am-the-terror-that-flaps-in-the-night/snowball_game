@@ -5,7 +5,7 @@ import type { PlowKind } from '../src/config/plows';
 import { computeStatsFor } from '../src/core/Progression';
 import { ultCharge, ultMeter } from '../src/entities/combat/ultimates';
 import { fight, ultShare } from '../scripts/balance/duel2';
-import { DUEL_KIND_DAMAGE, DUEL_KIND_TAKEN, DUEL_ULT_CHARGE } from '../src/config/duel';
+import { DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, DUEL_KIND_TAKEN, DUEL_ULT_CHARGE, duelKindFactor } from '../src/config/duel';
 import type { EnemyManagerAPI } from '../src/core/types';
 
 /* Balance invariants on the headless sim (scripts/balance/sim.ts; the full report is `npm run balance`). Storm strikes
@@ -129,6 +129,17 @@ describe('duel ultimate meter', () => {
 });
 
 describe('Duel-only balance levers', () => {
+  it('Duel kind factors ease from the fresh value to the late value with garage power', () => {
+    expect(duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, 'brute', 1)).toBeCloseTo(DUEL_KIND_DAMAGE_FRESH.brute!, 6);
+    expect(duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, 'brute', 50)).toBeCloseTo(DUEL_KIND_DAMAGE.brute!, 6);
+    const mid = duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, 'brute', 4);
+    expect(mid).toBeLessThan(DUEL_KIND_DAMAGE_FRESH.brute!);
+    expect(mid).toBeGreaterThan(DUEL_KIND_DAMAGE.brute!);
+    // no fresh override: the late value at every tier; unknown: 1
+    expect(duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, 'arsenal', 1)).toBe(DUEL_KIND_DAMAGE.arsenal);
+    expect(duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, 'isotope', 4)).toBe(1);
+  });
+
   it('DUEL_KIND_DAMAGE / DUEL_KIND_TAKEN change Duel damage but no PvE stat, DPS or meter (campaign / Survival / Brawl)', () => {
     const pve = () =>
       KINDS.map((k) => {

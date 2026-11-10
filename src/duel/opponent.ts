@@ -1,6 +1,6 @@
 import { PLOW_MASS, type DamageOpts, type EnemyHandle, type EnemyManagerAPI, type EnemyType, type PlayerStats } from '../core/types';
 import { BRAWL_HIT_CAP, brawlHit } from '../config/brawl';
-import { DUEL_DAMAGE_SCALE, DUEL_KIND_DAMAGE, DUEL_KIND_TAKEN, DUEL_POWER_DAMP, DUEL_ROUND_SCALE, DUEL_ULT_CAP_SECONDS, DUEL_ULT_HP_CAP } from '../config/duel';
+import { DUEL_DAMAGE_SCALE, DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, DUEL_KIND_TAKEN, DUEL_KIND_TAKEN_FRESH, duelKindFactor, DUEL_POWER_DAMP, DUEL_ROUND_SCALE, DUEL_ULT_CAP_SECONDS, DUEL_ULT_HP_CAP } from '../config/duel';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
 
@@ -103,7 +103,8 @@ export class OpponentTarget implements EnemyManagerAPI {
   /** The victim's effective max HP (max HP x its DUEL_KIND_TAKEN): the attacker's Duel ultimate meter is sized in it
    *  (combat/ultimates.ts ultMeter), so a tougher-skinned victim does not delay the attacker's ultimate. */
   get duelFoeMaxHp(): number {
-    return this.handle.plow.maxHp * (DUEL_KIND_TAKEN[this.victimStats().plowKind] ?? 1);
+    const v = this.victimStats();
+    return this.handle.plow.maxHp * duelKindFactor(DUEL_KIND_TAKEN, DUEL_KIND_TAKEN_FRESH, v.plowKind, v.ultPower);
   }
 
   spawn(): EnemyHandle {
@@ -128,7 +129,9 @@ export class OpponentTarget implements EnemyManagerAPI {
     const victim = this.handle.plow;
     if (!this.enabled || enemy !== this.handle || victim.dead || !(amount > 0)) return false;
     const power = Math.max(1, this.attackerStats().ultPower || 1);
-    const kind = (DUEL_KIND_DAMAGE[this.attackerStats().plowKind] ?? 1) * (DUEL_KIND_TAKEN[this.victimStats().plowKind] ?? 1);
+    const a = this.attackerStats();
+    const v = this.victimStats();
+    const kind = duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, a.plowKind, a.ultPower) * duelKindFactor(DUEL_KIND_TAKEN, DUEL_KIND_TAKEN_FRESH, v.plowKind, v.ultPower);
     let scaled = (amount * kind * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.

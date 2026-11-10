@@ -574,6 +574,26 @@ rolls VOLT-9's storm gets. With the old Duel constants restored the report print
 new test computes the PvE numbers with the levers at extreme values and requires them unchanged. The duel TTK column
 moved as intended.
 
+**Tier-scaled factors (follow-up).** A second high pass (VOLT-9 deals x1.8 -> x1.95, BRUTUS x0.62 -> x0.56) evened high
+out (12 rounds/pairing: ISOTOPE 60, BRUTUS 53, ARSENAL 49, VOLT-9 48, Classic 40; spread 20) but sank BRUTUS early
+(fresh / mid 27%, spreads 42 / 45). BRUTUS grows strongest with upgrades, so one flat factor can't fit every tier: the
+factors now ease from fresh-garage values (`DUEL_KIND_DAMAGE_FRESH`: VOLT-9 x1.8, BRUTUS x0.75;
+`DUEL_KIND_TAKEN_FRESH`: BRUTUS x1) to the late tables by log(ultPower) / log(10) (`duelKindFactor`; mid is about 60%
+of the way, high fully late). Real browser matrix, 8 rounds/pairing:
+
+| plow | fresh | mid | high |
+|---|---|---|---|
+| ISOTOPE | 59 | 41 | 58 |
+| Classic | 58 | 63 | 42 |
+| VOLT-9 | 55 | 48 | 50 |
+| BRUTUS | 45 | 34 | 64 |
+| ARSENAL | 33 | 64 | 36 |
+| spread (points) | 26 | 30 | 28 |
+
+High uses the same values as the 12-round run above (its 28 vs 20 is sample noise; pooled 20 rounds/pairing: BRUTUS
+~57, ISOTOPE ~59, VOLT-9 ~49, ARSENAL ~44, Classic ~41). Against the first pass (spreads 27 / 40 / 25) fresh holds, mid
+improves and high is at least as even, with VOLT-9 near 50% at every tier.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

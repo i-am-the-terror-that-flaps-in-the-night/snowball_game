@@ -81,20 +81,36 @@ export const DUEL_ROUND_SCALE = 0.7;
 export const DUEL_POWER_DAMP = 0.4;
 /** Per-vehicle Duel balance, keyed by PlowKind (missing = 1). Both are Duel-only (applied in duel/opponent.ts
  *  OpponentTarget.damage, before the hit caps): campaign / Survival / Brawl never see them (tests/balance.test.ts
- *  "Duel-only balance levers"), and they do not depend on the garage tier, so they scale the same fresh, mid and late.
+ *  "Duel-only balance levers"). They are the LATE-garage values; DUEL_KIND_DAMAGE_FRESH / DUEL_KIND_TAKEN_FRESH hold
+ *  the fresh-garage ones for the vehicles whose strength changes with tier, and duelKindFactor eases between them by
+ *  the garage's ultPower (see DUEL_KIND_POWER_LATE).
  *  Tuned on the real browser matrix (scripts/duel-matrix.mjs, docs/balance.md "Duel balance at high").
  *  DUEL_KIND_DAMAGE scales every hit the vehicle DEALS to a human plow: VOLT-9's kit is tuned for crowds (its grounded
  *  arc is off against a lone human), BRUTUS's fists and saws out-trade everything up close, the Classic's slams / rams
  *  topped every tier of the matrix. ARSENAL stays below 1 because its minigun ('round' hits) already skips i-frames and
  *  ability diminishing returns: 0.85 is the most that keeps the minigun alone under a fifth of a same-tier Classic in
  *  2 s of held fire (tests/balance.test.ts), so the rest of its help comes from DUEL_KIND_TAKEN. */
-export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 1.8, brute: 0.62, arsenal: 0.85, classic: 0.92 };
+export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 1.95, brute: 0.56, arsenal: 0.85, classic: 0.92 };
 /** DUEL_KIND_TAKEN scales every hit the vehicle TAKES from a human plow (an effective-HP lever: the HP bar, the hit caps
  *  and the ultimate meter sizes stay on the real max HP). VOLT-9 and ARSENAL carry ~75% of the others' HP at every
  *  tier (light, fast vehicles) and lost most even trades; ISOTOPE fell furthest once the others were evened out (its
  *  spray range and radiation want kiting the fight never gives it); BRUTUS (the most HP) still won most of its trades
  *  after its damage trim, so it takes a little more. */
 export const DUEL_KIND_TAKEN: Partial<Record<PlowKind, number>> = { volt: 0.77, arsenal: 0.62, isotope: 0.9, brute: 1.15 };
+/** Fresh-garage overrides (vehicles not listed use the late value at every tier). BRUTUS grows strongest with upgrades
+ *  (the matrix had it ~30% fresh / mid but ~65% at high under one flat trim), and VOLT-9 needs its full boost only late. */
+export const DUEL_KIND_DAMAGE_FRESH: Partial<Record<PlowKind, number>> = { volt: 1.8, brute: 0.75 };
+export const DUEL_KIND_TAKEN_FRESH: Partial<Record<PlowKind, number>> = { brute: 1 };
+/** Garage ultPower at which the late values are fully in (fresh = 1, mid ~4, high ~10-13). In between the factor eases
+ *  by log(ultPower) / log(DUEL_KIND_POWER_LATE): about 60% of the way at mid. */
+export const DUEL_KIND_POWER_LATE = 10;
+/** The Duel factor for `kind` at garage power `ultPower`: `late` table value, eased in from `fresh` (missing = late). */
+export function duelKindFactor(late: Partial<Record<PlowKind, number>>, fresh: Partial<Record<PlowKind, number>>, kind: PlowKind, ultPower: number): number {
+  const l = late[kind] ?? 1;
+  const f = fresh[kind] ?? l;
+  const t = Math.min(1, Math.max(0, Math.log(Math.max(1, ultPower || 1)) / Math.log(DUEL_KIND_POWER_LATE)));
+  return f + (l - f) * t;
+}
 /** ULTIMATES IN THE DUEL. Off-line the meter is sized in damage (combat/ultimates.ts ultCharge: a base that grows with
  *  the garage's ultPower and Overclock, ~20x from fresh to late), but Duel damage is scaled down and power-damped
  *  (above) and capped against HP that only grows ~3x, so a round used to fill only 5-15% of it: ultimates never
