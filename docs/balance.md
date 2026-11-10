@@ -14,7 +14,7 @@ it do run in `npm test`: `tests/balance.test.ts`.
 The sim builds the real `Combat` (every plow kit, the ultimates and the Duel damage path) on fake plows, with no
 browser, and drives it at 60 Hz:
 
-- **Rotation.** Every F ability goes off when it is ready, ARSENAL holds its SPACE weapon (now the Mag Shotgun) and fires its E (now the Mag Repulsor) on cooldown.
+- **Rotation.** Every F ability goes off when it is ready, ARSENAL holds its SPACE weapon (now the Mag Discs) and fires its E (now the Mag Repulsor) on cooldown.
   The Plow drives slam, whirl and dash, and the sim has no snow field or driving, so these three are scheduled from an
   engagement model (`MELEE` in sim.ts). The blade gathers 5 m³/s of snow while fighting (about half the open-field
   rate) times Snow Compactor. You slam once the ball reaches 80% of max radius, whirl on every recharge holding a
@@ -599,6 +599,35 @@ improves and high is at least as even, with VOLT-9 near 50% at every tier.
 fresh (was 0.75: 34% at mid) and takes x1.18 late (was 1.15); ARSENAL takes x0.6 late (was 0.62) and x0.58 fresh
 (33% at fresh). VOLT-9 and ISOTOPE unchanged. Each step is a few percent of one side's damage, inside the matrix's noise
 for a single run; re-run `scripts/duel-matrix.mjs` when convenient to confirm.
+
+## Follow-up: ARSENAL Mag Discs replace the Mag Shotgun
+
+ARSENAL's role moved from a close-range blaster to a **mid-range magnetic disruptor**: SPACE is now the Mag Discs (a
+steady cycle of homing discs that fly out to ~10 m and boomerang back, hitting both ways, the return leg tugging the
+target in), the Mag Repulsor's reach went from 11 to 13 m. The disc numbers were set so ARSENAL's PvE damage did not
+move: same sim, same seed, 30 s windows, before (shotgun, b6ebefc) and after (discs):
+
+| tier | 1-target DPS before / after | cluster DPS before / after |
+|---|---|---|
+| fresh | 114 / 113 (-1%) | 353 / 346 (-2%) |
+| mid | 581 / 575 (-1%) | 2204 / 2151 (-2%) |
+| high | 2500 / 2578 (+3%) | 7714 / 7738 (+0%) |
+
+How it got there: per-disc damage 4.3 (+1.4 a level to 5, +0.7 after; x damage mult, x1.5 PvE), 4 discs/s (+0.25 a
+level, tapering), and the shape of the stream. A thin, single-file stream only matched the shotgun on one target (a
+disc hits it twice); on a cluster it fell 25% short, because the shotgun's cone hit every bot in it with the whole
+blast. Three levers closed that without touching the single-target number: the discs fan out a little (0 / ±8° /
+±15° in turn), each has a 1 m magnetic hit radius, and the return leg sweeps twice as wide (it drags back what the way
+out missed). Overclock only speeds the cycle up by cooldownMult^0.25 (18% more discs at the high tier's -48%): at full
+cooldown strength the high tier ran 7% over the shotgun.
+
+Duel: the discs stay 'round' hits (skip i-frames, DUEL_ROUND_SCALE). The discs alone in 2 s of held fire take 10 /
+12 / 16% of a same-tier Classic (fresh / mid / high; the shotgun took 12 / 15 / 20%, the cap in tests/balance.test.ts
+is 20%): a stream ramps up where a blast front-loaded. Time to kill a parked plow (full rotation) barely moved: e.g.
+at high vs Classic / VOLT-9 / BRUTUS / ISOTOPE / ARSENAL 5.9 / 6.1 / 5.9 / 5.9 / 8.4 s (was 6.0 / 6.5 / 6.0 / 6.0 /
+8.3). The return tug in the Duel is scaled by DUEL_KNOCK_TAKEN (BRUTUS 0.4, ISOTOPE 0.75, Classic 0.85). The real
+matrix (scripts/duel-matrix.mjs) has not been re-run for the discs: the kept range now matters more there than in
+this parked-target sim.
 
 ## Limits of the model
 

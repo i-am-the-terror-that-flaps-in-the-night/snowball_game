@@ -1,6 +1,6 @@
 /* Balance report (not part of `npm test`): `npm run balance`. Prints the markdown tables used in docs/balance.md. */
 import { it } from 'vitest';
-import { KINDS, TIERS, clusterDps, duelGunDamage, duelTtk, singleDps, statsFor, ultDamage, ultFill, ultFillBoss } from './balance/sim';
+import { KINDS, TIERS, clusterDps, duelDiscDamage, duelTtk, singleDps, statsFor, ultDamage, ultFill, ultFillBoss } from './balance/sim';
 
 const f0 = (n: number) => (Number.isFinite(n) ? Math.round(n).toString() : '∞');
 const f1 = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : '∞');
@@ -30,7 +30,7 @@ it('balance report', () => {
     }
     out.push(`\nVOLT-9 1-target DPS with a bot near the dummy (no GROUNDED ARC, as on a typical bot in a wave): ${f0(singleDps('volt', tier, 60, false))}.`);
     out.push(
-      `\nDuel minigun alone, 2 s held: ${f0(duelGunDamage(tier))} HP of a ${f0(statsFor('classic', tier).maxHp)}-HP Classic; ${f0(duelGunDamage(tier, 2, 'arsenal'))} of a ${f0(statsFor('arsenal', tier).maxHp)}-HP ARSENAL mirror.`,
+      `\nDuel Mag Discs alone, 2 s held: ${f0(duelDiscDamage(tier))} HP of a ${f0(statsFor('classic', tier).maxHp)}-HP Classic; ${f0(duelDiscDamage(tier, 2, 'arsenal'))} of a ${f0(statsFor('arsenal', tier).maxHp)}-HP ARSENAL mirror.`,
     );
   }
   process.stdout.write(out.join('\n') + '\n');

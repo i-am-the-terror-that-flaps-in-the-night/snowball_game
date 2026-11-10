@@ -28,6 +28,8 @@ export class DuelPilot implements PilotBinding {
   look: Partial<Record<CosmeticSlot, string>> | null = null;
   /** Equipped gear ids to show on this plow (an opponent's), or null for the save's. */
   gear: string[] | null = null;
+  /** The other pilot's plow (PilotBinding.foe: a guest's visual-only homing). */
+  foe: Plow | null = null;
   readonly pvp = true;
 
   constructor(
@@ -87,7 +89,7 @@ export class NetInput implements InputSource {
     const i = CODE_ACTION.get(code);
     return i !== undefined && this.now[i];
   }
-  /** Held keys travel as a bitmask in every input packet (ARSENAL's Mag Shotgun fires while SPACE is held). */
+  /** Held keys travel as a bitmask in every input packet (ARSENAL's Mag Discs cycle while SPACE is held). */
   isDown(code: string): boolean {
     const i = CODE_ACTION.get(code);
     return i !== undefined && this.enabled && (this.tracker.held & HELD_BIT(i)) !== 0;
@@ -107,7 +109,7 @@ export class PuppetInput implements InputSource {
 /** Hull half-length (m) the AutoPilot adds to a fist's reach past the hull (as scripts/balance/duel2.ts HULL). */
 const AUTO_HULL = 1.6;
 /** Centre distance (m) within which the AutoPilot holds SPACE: the plow's real held-primary reach from its kit (VOLT-9
- *  Arc Lance, ISOTOPE Rad Sprayer, ARSENAL Mag Shotgun, all with Mega Hopper; BRUTUS Wrecking Fist), and the old 9 m
+ *  Arc Lance, ISOTOPE Rad Sprayer, ARSENAL Mag Discs, all with Mega Hopper; BRUTUS Wrecking Fist), and the old 9 m
  *  for the Classic (its snowball ignores the hold). Before, every plow held at 9 m, so the three ranged primaries
  *  (12-17 m late) never fired at their reach. AutoPilot only: probes / testing, not gameplay. */
 export function autoHoldRange(st: PlayerStats): number {
@@ -127,7 +129,7 @@ export function autoHoldRange(st: PlayerStats): number {
 
 /** A dumb but aggressive autopilot (probes, idle testing): drive at the opponent, slam / dash / whirl / F, and hold
  *  SPACE when facing within the held primary's real reach (autoHoldRange: Arc Lance, Wrecking Fist, Rad Sprayer, Mag
- *  Shotgun; snowball plows ignore the hold). ARSENAL fires its Mag Repulsor (E) when facing within its wave's reach. */
+ *  Discs; snowball plows ignore the hold). ARSENAL fires its Mag Repulsor (E) when facing within its wave's reach. */
 export class AutoPilot implements InputSource {
   throttle = 0;
   steer = 0;

@@ -1,6 +1,6 @@
 import { PVE_MULT } from '../src/entities/combat/arsenal';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { KINDS, clusterDps, duelGunDamage, duelTtk, fakePlow, newCtx, pilot, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
+import { KINDS, clusterDps, duelDiscDamage, duelTtk, fakePlow, newCtx, pilot, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
 import type { PlowKind } from '../src/config/plows';
 import { computeStatsFor } from '../src/core/Progression';
 import { ultCharge, ultMeter } from '../src/entities/combat/ultimates';
@@ -71,9 +71,9 @@ describe('sustained damage', () => {
 });
 
 describe('duel', () => {
-  it('the minigun alone takes under a fifth of a same-tier plow in 2 s of held fire', () => {
+  it('the Mag Discs alone take under a fifth of a same-tier plow in 2 s of held fire', () => {
     for (const tier of ['fresh', 'mid', 'high'] as const) {
-      expect(duelGunDamage(tier, 2) / statsFor('classic', tier).maxHp).toBeLessThan(0.2);
+      expect(duelDiscDamage(tier, 2) / statsFor('classic', tier).maxHp).toBeLessThan(0.2);
     }
   });
 

@@ -7,6 +7,9 @@ import { HELD_BIT, INPUT_BYTES, PressTracker, decodeInput, encodeInput, type Inp
 import { NetInput } from '../src/duel/plumbing';
 import type { EnemyHandle, GameContext } from '../src/core/types';
 import type { PilotBinding } from '../src/entities/pilot';
+import type { Plow } from '../src/entities/Plow';
+import { NO_TARGETS, OpponentTarget, PlowHandle } from '../src/duel/opponent';
+import { fakePlow, newCtx, pilot, statsFor } from '../scripts/balance/sim';
 
 /* ------------------------------------------------------------------ duel: held keys */
 
@@ -86,14 +89,13 @@ describe('ARSENAL targeting', () => {
 });
 
 describe('ARSENAL: the snowball shop lines still pay off', () => {
-  it('Mega Hopper adds shotgun reach, Whirlwind Turbine pellets, Snow Compactor repulsor width', async () => {
-    const { tankGunRange, tankPellets, tankRepulseHalf } = await import('../src/entities/combat/arsenal');
+  it('Mega Hopper adds disc reach, Whirlwind Turbine wider discs, Snow Compactor repulsor width', async () => {
+    const { tankGunRange, tankDiscRadius, tankRepulseHalf } = await import('../src/entities/combat/arsenal');
     const base = computeStatsFor({}, 'arsenal');
     const up = computeStatsFor({ hopper: 5, whirl: 3, compactor: 5 }, 'arsenal');
     expect(tankGunRange(up)).toBeGreaterThan(tankGunRange(base) + 1);
     expect(tankGunRange(base)).toBeLessThan(12.5); // short range, like every plow
-    expect(tankPellets(base)).toBe(8);
-    expect(tankPellets(up)).toBeGreaterThan(tankPellets(base));
+    expect(tankDiscRadius(up)).toBeGreaterThan(tankDiscRadius(base));
     expect(tankRepulseHalf(up)).toBeGreaterThan(tankRepulseHalf(base) + 0.05);
   });
 });
@@ -153,7 +155,9 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
 
 const sum = (log: { e: EnemyHandle; n: number }[], e: EnemyHandle) => log.filter((h) => h.e === e).reduce((t, h) => t + h.n, 0);
 
-describe('MAG SHOTGUN (SPACE)', () => {
+describe('MAG DISCS (SPACE)', () => {
+  type DiscView = { on: boolean; back: boolean; pos: THREE.Vector3; dx: number; dz: number; range: number };
+  const kit = (c: Combat) => (c as unknown as { arsenal: { discs: DiscView[]; discsOut: number; discN: number } }).arsenal;
   /** Hold SPACE for `s` seconds against `bots` (the emitter sits at (0, 1, 1.5), the hull faces +z). */
   const shoot = (bots: EnemyHandle[], s: number, levels: Record<string, number> = {}) => {
     const r = gravRig(bots, levels);
@@ -161,62 +165,162 @@ describe('MAG SHOTGUN (SPACE)', () => {
     r.run(s);
     return r;
   };
+  /** One disc: SPACE held for a single frame, then released; the disc flies its whole path. */
+  const oneDisc = (bots: EnemyHandle[], s = 2) => {
+    const r = gravRig(bots);
+    r.held.add('Space');
+    r.run(1 / 60);
+    r.held.delete('Space');
+    let far = 0;
+    let wentBack = false;
+    const d = kit(r.c).discs.find((x) => x.on)!;
+    for (let i = 0; i < Math.round(s * 60); i++) {
+      r.run(1 / 60);
+      if (d.on) far = Math.max(far, Math.hypot(d.pos.x, d.pos.z - 1.5));
+      if (d.on && d.back) wentBack = true;
+    }
+    return { ...r, far, wentBack, d };
+  };
 
-  it('fires straight off the nose: hits a bot 6 m ahead, never one 35° off the nose, behind or beyond reach', () => {
-    const ahead = bot(0, 7.5, 1e6);
-    const off = bot(Math.sin(0.61) * 6, 1.5 + Math.cos(0.61) * 6, 1e6);
+  it('a disc flies out to the reach, turns, and comes back to the emitter to be recycled', () => {
+    const { c, stats, far, wentBack } = oneDisc([]);
+    expect(stats.gunRange).toBe(10);
+    expect(far).toBeGreaterThan(9.5);
+    expect(far).toBeLessThan(12);
+    expect(wentBack).toBe(true);
+    expect(kit(c).discsOut).toBe(0); // snapped back in and recycled
+  });
+
+  it('a steady cycle while held: one disc every 1/gunRate s, about four in the air at once', () => {
+    const r = shoot([], 3);
+    const k = kit(r.c);
+    expect(r.stats.gunRate).toBeCloseTo(4, 5);
+    expect(k.discN).toBeGreaterThanOrEqual(Math.floor(3 * r.stats.gunRate));
+    expect(k.discN).toBeLessThanOrEqual(Math.ceil(3 * r.stats.gunRate) + 1);
+    expect(k.discsOut).toBeGreaterThanOrEqual(3);
+    expect(k.discsOut).toBeLessThanOrEqual(6);
+  });
+
+  it('hits each target at most once per leg: one disc hits a bot on the way out and again on the way back', () => {
+    const e = bot(0, 6, 1e6);
+    const { stats, log } = oneDisc([e]);
+    const hits = log.filter((h) => h.e === e);
+    expect(hits.length).toBe(2);
+    for (const h of hits) expect(h.n).toBeCloseTo(stats.gunDamage * stats.damageMult * PVE_MULT, 3);
+    // Out: a nudge away from ARSENAL; back: a TUG toward it.
+    expect(hits[0].kz).toBeGreaterThan(0);
+    expect(hits[1].kz).toBeLessThan(0);
+    expect(hits[1].kb).toBeGreaterThan(2);
+  });
+
+  it('pierces: a disc hits every bot on its line, each once a leg; nothing behind or past the reach', () => {
+    const a = bot(0, 4.5, 1e6);
+    const b = bot(0, 8, 1e6);
     const behind = bot(0, -5, 1e6);
-    const far = bot(3, 14, 1e6);
-    shoot([ahead, off, behind, far], 0.05);
-    expect(ahead.hp).toBeLessThan(ahead.maxHp);
-    expect(off.hp).toBe(off.maxHp);
+    const far = bot(0, 16, 1e6);
+    const { log } = oneDisc([a, b, behind, far]);
+    expect(log.filter((h) => h.e === a).length).toBe(2);
+    expect(log.filter((h) => h.e === b).length).toBe(2);
     expect(behind.hp).toBe(behind.maxHp);
-    const { c } = shoot([far], 0.05);
     expect(far.hp).toBe(far.maxHp);
-    expect((c as unknown as { b: { plow: { turretAim: number } } }).b.plow.turretAim).toBe(0); // the turret stays locked forward
   });
 
-  it('a blast every 1/gunRate s while held; all of one blast lands on a bot as one hit', () => {
-    const e = bot(0, 5, 1e6);
-    const { stats, log } = shoot([e], 3);
-    const n = log.filter((h) => h.e === e).length;
-    expect(n).toBeGreaterThanOrEqual(Math.floor(3 * stats.gunRate));
-    expect(n).toBeLessThanOrEqual(Math.ceil(3 * stats.gunRate) + 1);
-    expect(stats.gunRate).toBeGreaterThan(1.5);
-    expect(stats.gunRate).toBeLessThan(2.8);
+  it('homing: a disc turns gently toward a bot ahead off its line (and hits it), but not sharply', () => {
+    const e = bot(3, 8, 1e6);
+    const r = gravRig([e]);
+    r.held.add('Space');
+    r.run(1 / 60);
+    r.held.delete('Space');
+    const d = kit(r.c).discs.find((x) => x.on)!;
+    expect(d.dx).toBeLessThan(0.04); // launched straight off the nose (one frame of homing so far)
+    r.run(0.1);
+    expect(d.dx).toBeGreaterThan(0.05); // turning toward the bot
+    expect(Math.asin(d.dx)).toBeLessThan(2 * 0.12); // at most ~2 rad/s
+    r.run(1.5);
+    expect(e.hp).toBeLessThan(e.maxHp);
+    // Without a target the same disc flies dead straight.
+    const r2 = gravRig([]);
+    r2.held.add('Space');
+    r2.run(1 / 60);
+    const d2 = kit(r2.c).discs.find((x) => x.on)!;
+    r2.run(0.2);
+    expect(d2.dx).toBeCloseTo(0, 5);
   });
 
-  it('damage falls off with distance; point-blank blasts shove, far ones only nudge', () => {
-    const near = bot(0, 4, 1e6);
-    const { stats, log } = shoot([near], 0.05);
-    const nearDmg = sum(log, near);
-    // Point-blank: all 8 pellets at full damage (x the PvE bonus), and a real shove.
-    expect(nearDmg).toBeCloseTo(8 * stats.gunDamage * stats.damageMult * PVE_MULT, 3);
-    expect(log[0].kb).toBeGreaterThan(1);
-    const farBot = bot(0, 10, 1e6);
-    const r2 = shoot([farBot], 0.05);
-    const farDmg = sum(r2.log, farBot);
-    expect(farDmg).toBeGreaterThan(0);
-    expect(farDmg).toBeLessThan(nearDmg * 0.95); // the whole blast lands, but falls off with distance
-    // Nothing drags it in any more (the Magnetic Reel is gone): a far blast only nudges it.
-    expect(r2.log[0].kb).toBeLessThan(log[0].kb);
+  it('a bot well off the nose (past the homing cone) is never chased', () => {
+    const wide = bot(7, 2, 1e6);
+    const { log } = oneDisc([wide]);
+    expect(log.length).toBe(0);
   });
 
-  it('every small bot inside the cone takes the whole blast (no pellet luck): one blast kills a pack of 55-HP bots up close', () => {
-    const pack = [bot(-1.2, 4, 55), bot(0, 5, 55), bot(1.2, 4, 55)];
-    shoot(pack, 0.05, { armCannon: 14 });
-    for (const b of pack) expect(b.hp).toBeLessThanOrEqual(0);
+  it('the return tug is small on a boss', () => {
+    const boss = Object.assign(bot(0, 6, 1e6), { isBoss: true });
+    const { log } = oneDisc([boss]);
+    expect(log.length).toBe(2);
+    expect(log[1].kz).toBeLessThan(0);
+    expect(log[1].kb).toBeLessThan(1);
+  });
+
+  it('a duel guest hits nothing locally but its discs still home on the other plow (what the host sees)', () => {
+    const stats = computeStatsFor({}, 'arsenal');
+    const plow = {
+      position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, turretAim: 0, turretHeading: 0, hop: 0, surfaceY: 0,
+      gunFiring: false, gunPitch: 0, gyroFlat: 0, gyroCharge: 0, eCharge: 1, feedSawFury: () => {}, damage: () => {}, spendE: () => {},
+      getForward: (o: THREE.Vector3) => o.set(0, 0, 1),
+      mountWorld: (_k: string, _i: number, o: THREE.Vector3) => o.set(0, 1, 1.5),
+    };
+    const foe = { position: new THREE.Vector3(3, 0, 8), dead: false };
+    const ctx = { scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop } as unknown as GameContext;
+    const held = new Set<string>(['Space']);
+    const input = { throttle: 0, steer: 0, wasPressed: () => false, isDown: (k: string) => held.has(k) };
+    const binding = { stats, plow, enemies: NO_TARGETS, input, audio: noop, snow: noop, events: { emit: () => {} }, local: true, authoritative: false, pvp: true, foe } as unknown as PilotBinding;
+    const c = new Combat(ctx, binding);
+    c.clear();
+    c.update(1 / 60);
+    held.clear();
+    const d = kit(c).discs.find((x) => x.on)!;
+    for (let i = 0; i < 6; i++) c.update(1 / 60);
+    expect(d.dx).toBeGreaterThan(0.05);
+  });
+});
+
+describe('MAG DISCS in the Duel: the return tug is resisted by heavier vehicles', () => {
+  it('BRUTUS is pulled least, VOLT-9 most', () => {
+    const pull = (def: 'brute' | 'volt') => {
+      const ctx = newCtx();
+      const sa = statsFor('arsenal', 'fresh');
+      const sd = statsFor(def, 'fresh');
+      const pa = fakePlow(sa, 0, 0, 0);
+      const pd = fakePlow(sd, 0, 6, Math.PI);
+      pd.hp = 1e6;
+      let pz = 0;
+      pd.push = (_vx: number, vz: number) => {
+        pz += vz;
+      };
+      let cd: ReturnType<typeof pilot> | null = null;
+      const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow, () => sd);
+      target.enabled = true;
+      // The disc's return-leg hit, as the kit sends it: a negative knock (toward ARSENAL), flagged as a tug.
+      cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);
+      target.damage(target.handle, 5, { knockback: new THREE.Vector3(0, 0, -3), fromX: 0, fromZ: 8, direct: 'round', tug: true });
+      return pz;
+    };
+    const brute = pull('brute');
+    const volt = pull('volt');
+    expect(volt).toBeLessThan(0); // toward ARSENAL (it sits at z = 0)
+    expect(brute).toBeLessThan(0);
+    expect(Math.abs(brute)).toBeLessThan(Math.abs(volt) * 0.6);
   });
 });
 
 describe('SCRAP MAGNET: strip scrap', () => {
   const scrap = (c: Combat) => (c as unknown as { arsenal: { scrapCount: number } }).arsenal.scrapCount;
 
-  it('blasting a tough bot sheds shards into the ring with no kill (every 20% of its max HP)', () => {
+  it('disc hits on a tough bot shed shards into the ring with no kill (every 20% of its max HP)', () => {
     const tank = bot(0, 5, 300);
     const r = gravRig([tank], { armMagnet: 3 });
     r.held.add('Space');
-    r.run(1.5);
+    r.run(2.5);
     expect(tank.hp).toBeGreaterThan(0);
     expect(scrap(r.c)).toBeGreaterThan(0);
   });

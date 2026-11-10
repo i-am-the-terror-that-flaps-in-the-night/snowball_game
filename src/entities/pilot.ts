@@ -10,7 +10,7 @@ export interface InputSource {
   readonly throttle: number;
   readonly steer: number;
   wasPressed(code: string): boolean;
-  /** Held right now (optional: network inputs only know presses; ARSENAL's Mag Shotgun then fires one blast per press). */
+  /** Held right now (optional: network inputs only know presses; ARSENAL's Mag Discs then launch a disc or two per press). */
   isDown?(code: string): boolean;
 }
 
@@ -51,6 +51,9 @@ export interface PilotBinding {
   readonly gear?: readonly string[] | null;
   /** True for the online Duel's pilots (plow vs plow), where PvE-only damage bonuses don't apply. */
   readonly pvp?: boolean;
+  /** Online Duel: the other pilot's plow. A guest's Combats hit nothing locally (the host decides), so visual-only
+   *  homing (ARSENAL's Mag Discs) aims at this instead. Unset outside the Duel. */
+  readonly foe?: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly dead: boolean } | null;
 }
 
 /** The single-player pilot: everything comes from the GameContext (read lazily, so systems built later work). */
