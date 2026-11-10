@@ -412,7 +412,7 @@ and passing ARSENAL is allowed. Final buff:
 - Half of each spray hit lands on contact (was 35%; the rest is still the RAD DOSE). Real 200-HP bots die faster (the
   slow dose was only ~2% of the damage actually dealt in sweeps) and more of the damage feeds lifesteal.
 - Rad Sprayer line (`isoSpray`): `1 + 0.1 * grow(L, 5)` -> `1 + 0.25 * grow(L, 3, 0.25)` (x1.75 at L3, x2.06 at L8;
-  was x1.3 / x1.8).
+  was x1.3 / x1.68).
 - One secondary change: HP 1.1x -> 1.2x (it brawls inside ~6 m with no shield, range or damage reduction).
 
 Sim (`npm run balance`, ISOTOPE, before -> after, both on top of the Classic buff):
