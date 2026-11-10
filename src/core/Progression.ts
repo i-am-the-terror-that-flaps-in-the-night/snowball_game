@@ -510,7 +510,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
   const fire = plow.fAbility === 'fire';
   const arsenal = plow.id === 'arsenal';
   // Classic buff (late-game slam damage): Packed Ice levels past the knee add plow.iceGrowth each (soft: linear to +6,
-  // capped at +12). Fresh / mid builds sit at or below the knee, so only high-tier builds change.
+  // then easing toward +12: x1.33 at Packed Ice 10, never past x1.66). Fresh / mid builds sit at or below the knee, so only high-tier builds change.
   const ICE_GROWTH_KNEE = 4;
   const iceL = L('packedIce');
   const plowIce = 1 + (plow.iceGrowth ?? 0) * soft(Math.max(0, iceL - ICE_GROWTH_KNEE), 6);

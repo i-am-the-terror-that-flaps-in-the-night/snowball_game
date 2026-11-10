@@ -366,7 +366,8 @@ x1.35 breaks the Duel floor). Final buff:
 
 - New `PlowDef.iceGrowth` (Classic 0.055): each Packed Ice level past `ICE_GROWTH_KNEE = 4` adds 5.5% to the Classic's
   slam-damage stat (`damageMult`, which like Packed Ice and `slamMult` also scales its fire) and its `ultPower`,
-  through `soft(levels past 4, 6)`: linear for 6 levels, capped at +12 (about x1.33). The sim's fresh and mid builds
+  through `soft(levels past 4, 6)`: linear for 6 levels (x1.33 at Packed Ice 10), then easing
+  toward +12 levels (x1.66) and never past it. The sim's fresh and mid builds
   are at or below the knee, so only high changes.
 - Slam Combo per stack: `0.12 + 0.03 * grow(L, 5)` -> `0.12 + 0.04 * grow(L, 5)` (L3 21% -> 24%, L8 32% -> 39%). The
   sim doesn't model it, but slams and other basic attacks are 25-32% of the Classic's real damage.

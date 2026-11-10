@@ -15,7 +15,8 @@ export interface PlowDef {
   accelMult: number;
   dashPowerMult: number;
   slamMult: number;
-  /** Packed Ice levels past ICE_GROWTH_KNEE add this much slam damage on this plow. */
+  /** Packed Ice levels past ICE_GROWTH_KNEE add this much to this plow's damage mult (the whole kit: slam, fire,
+   *  whirl) and its ult power, eased by soft(): see Progression.computeStatsFor. */
   iceGrowth?: number;
   /** What F does with this plow. */
   fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
@@ -41,7 +42,8 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     accelMult: 1,
     dashPowerMult: 1,
     slamMult: 1,
-    // Classic buff (by request, mainly slam): +5.5% damage per Packed Ice level past 4 (soft cap, up to ~x1.33).
+    // Classic buff (by request, mainly slam): +5.5% damage per Packed Ice level past 4: x1.33 at Packed Ice 10, easing
+    // toward x1.66 at very high levels (soft(), never past +12 levels).
     // Sim high-tier 1-target 1259 -> 1663, cluster 5188 -> 6880; fresh / mid unchanged (docs/balance.md).
     iceGrowth: 0.055,
     fAbility: 'fire',
