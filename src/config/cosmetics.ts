@@ -98,7 +98,7 @@ export const COSMETICS: readonly CosmeticDef[] = [
   { id: 'paint_stock', slot: 'paint', name: 'Factory', blurb: "Each plow's own colours.", price: 0, body: null, trim: null },
   { id: 'paint_arctic', slot: 'paint', name: 'Arctic White', blurb: 'Clean as fresh powder.', price: 150, body: 0xeef4fa, trim: 0x9fb8cf, accent: 0x3fa7f0 },
   { id: 'paint_red', slot: 'paint', name: 'Fire Engine', blurb: 'Loud, proud and red.', price: 200, body: 0xd81f2e, trim: 0xf2f2f2, accent: 0xffd23a },
-  { id: 'paint_lime', slot: 'paint', name: 'Toxic Lime', blurb: 'Visible from orbit.', price: 300, body: 0x7cd61c, trim: 0x3f7a12, accent: 0x1d1f24 },
+  { id: 'paint_lime', slot: 'paint', name: 'Toxic Lime', blurb: 'Visible from orbit.', price: 300, body: 0x7cd61c, trim: 0x3f7a12, accent: 0xe4ff3d },
   { id: 'paint_purple', slot: 'paint', name: 'Midnight Grape', blurb: 'Deep purple, deeper menace.', price: 400, body: 0x5b2ca0, trim: 0xffc531, accent: 0xffc531 },
   { id: 'paint_pink', slot: 'paint', name: 'Hot Pink', blurb: 'Loud, proud and very, very pink.', price: 550, body: 0xff1493, trim: 0xff69b4, accent: 0xffffff },
   { id: 'paint_black', slot: 'paint', name: 'Stealth Black', blurb: 'Matte black. No reflections, no mercy.', price: 750, body: 0x22252b, trim: 0x44484f, accent: 0xff3b2f, roughness: 0.9, metalness: 0.05 },

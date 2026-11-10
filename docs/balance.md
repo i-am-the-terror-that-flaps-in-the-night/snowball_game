@@ -353,8 +353,7 @@ Sweeps (mid, current autopilot; VOLT 1 run on normal, 2 on Hard; others from the
 | Plaza Hard | 88.8 / 30.1 | 72.8 / 19.4 | arsenal 69.3, isotope 70.5, brute 74.4, classic 80.7 |
 | Omega Works Hard | 86.2 / 30.8 | 72.7 / 19.6 | arsenal 70.2, brute 71.1, isotope 81.6, classic 92.0 |
 
-VOLT is now in the pack everywhere, still behind ARSENAL on every clear time and a few seconds back on normal Plaza
-(single runs there swing 5-10 s). Its boss rounds are now the fastest on Hard, by a few seconds, as the boss-fight
+VOLT is now in the pack on Hard and on most normal arenas, still behind ARSENAL on every clear time; on normal Plaza it is last, about 5 s back (single runs there swing 5-10 s). Its boss rounds are now the fastest on Hard, by a few seconds, as the boss-fight
 plow. Arc 2.5 left it 6-9 s behind on Omega Works; 2.9 put it ahead of everyone on Hard Plaza.
 
 ## Limits of the model

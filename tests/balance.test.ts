@@ -27,9 +27,9 @@ describe('ultimate meters', () => {
     expect(ultCharge(computeStatsFor({ packedIce: 10, voltClap: 8, overclock: 8 }, 'volt'), 1000)).toBeGreaterThan(ultCharge(big, 1000) * 1.8);
   });
 
-  it.each(KINDS)('%s: fills in 20-35 s fresh (ARSENAL 15+: its storm charges faster by request), and no faster than 12 s late-game (in a fight or on a boss)', (kind) => {
+  it.each(KINDS)('%s: fills in 20-35 s fresh (ARSENAL 15+, VOLT-9 19+: both by request), and no faster than 12 s late-game (in a fight or on a boss)', (kind) => {
     const fresh = ultFill(kind, 'fresh', 150);
-    // VOLT-9 19+: its Arc Lance buff (2.1 -> 2.7 per tick, by request) also fills SUPERCELL faster (19.3 s fresh).
+    // VOLT-9 19+: its Arc Lance buff (2.1 -> 2.7 per tick, by request) also fills SUPERCELL faster (19.4 s fresh).
     expect(fresh).toBeGreaterThan(kind === 'arsenal' ? 15 : kind === 'volt' ? 19 : 20);
     expect(fresh).toBeLessThan(35);
     expect(ultFill(kind, 'high', 150)).toBeGreaterThan(12);
