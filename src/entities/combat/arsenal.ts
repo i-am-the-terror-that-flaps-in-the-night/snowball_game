@@ -72,8 +72,9 @@ const RATE_SPLIT = 10 / 12;
 const LASER_OVERCLOCK = 0.25;
 const LASER_W = 0.8;
 const LASER_W_MAX = 1.2;
-/** The beam WIDENS with distance (by request: "fat laser pulses ... or a beam that widens", easy to aim): its hit
- *  half-width grows LASER_WIDEN m per metre of reach on top of tankBeamRadius (~0.8 m at the nose, ~2.8 m at 10 m). */
+/** AUTO-AIM WEDGE: the bolt locks onto a target whose body is within tankBeamRadius + LASER_WIDEN m per metre of
+ *  reach of the heading line (~0.8 m at the nose, ~2.8 m either side at 10 m), then fires a standard-width beam
+ *  straight at it (fireBolt). */
 export const LASER_WIDEN = 0.2;
 const WHIRL_LASER_W = 0.1;
 const LASER_TUG = 3.5 * RATE_SPLIT;
@@ -192,6 +193,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private flashK = 0;
   /** Per-bolt scratch: targets one bolt crossed (reused). */
   private laserHits: EnemyHandle[] = [];
+  /** The Mag Laser's auto-aim lock (kept while it stays in the aim wedge). */
+  private laserLock: EnemyHandle | null = null;
   /** When the last laser-hit sound / shake played (12 bolts a second land on a target). */
   private lastLaserSfx = -1;
   /** Mag Repulsor time left (s; 0 = idle), where it was cast from, its heading / reach / half-angle, bots already hit. */
@@ -514,23 +517,99 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.drawFlash(dt);
   }
 
-  /** One bolt: straight along the heading from the nose emitter to the reach, cut short by a prop (it breaks) or the
-   *  ground; every target on the line within the beam's width and height band is hit once. */
+  /** One bolt, HITSCAN (instant). AUTO-AIM: it locks onto ONE target inside the aim wedge (the area the old widening
+   *  beam covered: half-width tankBeamRadius + LASER_WIDEN m per metre of reach, out to the reach) and fires a
+   *  standard-width beam straight at it. The lock is the nearest target in the wedge, a boss whenever one is in it,
+   *  and it sticks while it stays in the wedge (no jitter). No target: straight along the heading. The bolt is cut
+   *  short by a prop (it breaks) or the ground, and pierces anything else on its aimed line inside the beam width. */
   private fireBolt(): void {
     const plow = this.b.plow;
     const ctx = this.ctx;
     const st = this.b.stats;
-    const fx = Math.sin(plow.heading);
-    const fz = Math.cos(plow.heading);
+    const hx = Math.sin(plow.heading);
+    const hz = Math.cos(plow.heading);
     plow.mountWorld('muzzle', 0, _a);
-    const S = _a.set(_a.x + fx * 0.35, _a.y, _a.z + fz * 0.35);
+    const S = _a.set(_a.x + hx * 0.35, _a.y, _a.z + hz * 0.35);
     const reach = tankGunRange(st);
-    const hitY = plow.position.y + LASER_HIT_Y;
-    let end = reach;
+    const rad = tankBeamRadius(st);
+    let hitY = plow.position.y + LASER_HIT_Y;
+    // 1) Candidates: every live target inside the aim wedge (and the height band).
+    const out = this.laserHits;
+    out.length = 0;
+    if (!this.puppet) {
+      const hits = this.collect(S.x + hx * reach * 0.5, S.z + hz * reach * 0.5, reach * 0.75 + rad + 2);
+      for (let i = 0; i < hits.length; i++) {
+        const e = hits[i];
+        if (!e.alive) continue;
+        const ex = e.position.x - S.x;
+        const ez = e.position.z - S.z;
+        const u = ex * hx + ez * hz;
+        if (u < -e.radius * 0.5 || u > reach + e.radius) continue;
+        if (Math.abs(ex * hz - ez * hx) > e.radius + rad + LASER_WIDEN * Math.max(0, u)) continue;
+        if (hitY < e.position.y - LASER_DY || hitY > e.position.y + Math.min(2.4, e.radius * 1.2) + LASER_DY) continue;
+        out.push(e);
+      }
+    }
+    // 2) The lock: keep it while it is in the wedge, unless a boss is there and it is not one; else the nearest
+    //    (a boss first).
+    let lock = this.laserLock && out.includes(this.laserLock) ? this.laserLock : null;
+    let best: EnemyHandle | null = null;
+    let bestD = Infinity;
+    for (let i = 0; i < out.length; i++) {
+      const e = out[i];
+      const d = Math.hypot(e.position.x - S.x, e.position.z - S.z) - (e.isBoss ? 1e4 : 0);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (!lock || (best?.isBoss && !lock.isBoss)) lock = best;
+    this.laserLock = lock;
+    // A duel guest (its own laser or the replayed opponent's) aims its picture at the other plow when it is in the
+    // wedge (the host decides the hit).
+    let aimX = 0;
+    let aimZ = 0;
+    let aimed = false;
+    if (lock) {
+      this.chest(lock, _r);
+      aimX = _r.x;
+      aimZ = _r.z;
+      hitY = _r.y;
+      aimed = true;
+    } else if (!this.b.authoritative && this.b.foe && !this.b.foe.dead) {
+      const foe = this.b.foe;
+      const ex = foe.position.x - S.x;
+      const ez = foe.position.z - S.z;
+      const u = ex * hx + ez * hz;
+      if (u > 0 && u < reach + 1.6 && Math.abs(ex * hz - ez * hx) < 1.6 + rad + LASER_WIDEN * u) {
+        aimX = foe.position.x;
+        aimZ = foe.position.z;
+        hitY = foe.position.y + 1;
+        aimed = true;
+      }
+    }
+    let fx = hx;
+    let fz = hz;
+    let span = reach;
+    let stopAt = 0;
+    if (aimed) {
+      const dx = aimX - S.x;
+      const dz = aimZ - S.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.05) {
+        fx = dx / d;
+        fz = dz / d;
+        span = d;
+      }
+      // The drawn bolt stops on the body's near side.
+      stopAt = Math.max(0.3, span - (lock ? Math.min(1, lock.radius * 0.6) : 1));
+    }
+    // 3) Blockers along the aimed line: a prop (breaks) or the ground cuts the bolt short.
+    let end = Math.max(reach, span + 1);
     let blocked = false;
     const props = this.b.authoritative ? ctx.world : null;
     if (props) {
-      const t = props.blastPropRay(S.x, S.z, fx, fz, reach);
+      const t = props.blastPropRay(S.x, S.z, fx, fz, end);
       if (t >= 0) {
         end = t;
         blocked = true;
@@ -539,7 +618,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const ter = ctx.terrain;
     if (ter?.active) {
       for (let d = LASER_STEP; d <= end; d += LASER_STEP) {
-        const y = S.y + (hitY - S.y) * (d / reach);
+        const y = S.y + (hitY - S.y) * Math.min(1, d / span);
         if (ter.heightAt(S.x + fx * d, S.z + fz * d, y) > y - 0.25) {
           end = Math.max(0.3, d - LASER_STEP * 0.5);
           blocked = true;
@@ -548,43 +627,32 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       }
     }
     this.boltsFired++;
-    // Hits: every live target whose body the beam crosses (host / solo only; a duel guest's view hits nothing).
+    // 4) Hits (host / solo only): the lock, plus anything else in the wedge on the aimed line before the end.
     let struck = 0;
-    if (!this.puppet) {
-      const rad = tankBeamRadius(st);
-      const hits = this.collect(S.x + fx * end * 0.5, S.z + fz * end * 0.5, end * 0.5 + rad + 0.5);
-      const out = this.laserHits;
-      out.length = 0;
-      for (let i = 0; i < hits.length; i++) {
-        const e = hits[i];
-        if (!e.alive) continue;
+    if (out.length) {
+      let n = 0;
+      for (let i = 0; i < out.length; i++) {
+        const e = out[i];
         const ex = e.position.x - S.x;
         const ez = e.position.z - S.z;
         const u = ex * fx + ez * fz;
-        if (u < -e.radius * 0.5 || u > end + e.radius) continue;
-        if (Math.abs(ex * fz - ez * fx) > e.radius + rad + LASER_WIDEN * Math.max(0, u)) continue;
-        if (hitY < e.position.y - LASER_DY || hitY > e.position.y + Math.min(2.4, e.radius * 1.2) + LASER_DY) continue;
-        out.push(e);
+        if (u > end + e.radius) continue;
+        if (e !== lock && (u < -e.radius * 0.5 || Math.abs(ex * fz - ez * fx) > e.radius + rad)) continue;
+        out[n++] = e;
       }
+      out.length = n;
       this.clearTargets();
       for (let i = 0; i < out.length; i++) if (this.laserStrike(out[i], fx, fz)) struck++;
       out.length = 0;
     }
-    // A duel guest (its own laser or the replayed opponent's): the bolt visibly stops on the other plow if it is on
-    // the line (the host decides the hit).
+    // The bolt ends on the lock (its chest), at a blocker, or at the reach.
     let impact = blocked ? 1 : struck ? 0.8 : 0;
-    const foe = this.b.authoritative ? null : this.b.foe;
-    if (foe && !foe.dead) {
-      const u = (foe.position.x - S.x) * fx + (foe.position.z - S.z) * fz;
-      const off = Math.abs((foe.position.x - S.x) * fz - (foe.position.z - S.z) * fx);
-      if (u > 0 && u < end + 1.6 && off < 1.6 + tankBeamRadius(st) + LASER_WIDEN * u) {
-        end = Math.max(0.3, u - 1);
-        impact = 1;
-      }
+    if (aimed && (!blocked || end > stopAt)) {
+      end = stopAt;
+      impact = 1;
     }
-    _tip.set(S.x + fx * end, S.y + (hitY - S.y) * (end / reach), S.z + fz * end);
-    // Drawn as a widening pulse: its far radius matches the hit width at the end point (a touch inside it).
-    this.laserFx.fire(S, _tip, impact, tankBeamRadius(st), tankBeamRadius(st) + LASER_WIDEN * end, Math.atan2(fx, fz));
+    _tip.set(S.x + fx * end, S.y + (hitY - S.y) * Math.min(1, end / span), S.z + fz * end);
+    this.laserFx.fire(S, _tip, impact, rad);
     this.flashK = 1;
     if (blocked) {
       _fwd.set(-fx, 0.5, -fz).normalize();
@@ -1062,6 +1130,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.shedDmg.clear();
     this.scrapT = 0;
     this.laserFx.clear();
+    this.laserLock = null;
     this.gunT = this.gunBurstT = 0;
     this.gunsOn = false;
     this.flashK = 0;

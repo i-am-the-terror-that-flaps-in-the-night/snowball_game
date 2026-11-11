@@ -227,12 +227,26 @@ describe('MAG LASER (SPACE)', () => {
     for (const e of [wide, behind, far, high]) expect(e.hp).toBe(e.maxHp);
   });
 
-  it('the beam widens with distance: 2.4 m off the line is missed near the nose but hit far out', () => {
+  it('auto-aim wedge widens with distance: 2.4 m off the line is missed near the nose but locked far out', () => {
     const nearSide = bot(2.4, 3, 1e6);
     const farSide = bot(2.4, 9.5, 1e6);
     const { log } = oneBolt([nearSide, farSide]);
     expect(log.filter((h) => h.e === nearSide).length).toBe(0);
     expect(log.filter((h) => h.e === farSide).length).toBe(1);
+  });
+
+  it('auto-aim: one lock, the nearest in the wedge (a boss first), and the bolt is drawn straight at it', () => {
+    const near = bot(2, 6, 1e6);
+    const far = bot(-2.5, 9, 1e6);
+    const r1 = oneBolt([near, far]);
+    expect(r1.log.filter((h) => h.e === near).length).toBe(1);
+    expect(far.hp).toBe(far.maxHp);
+    const b1 = kit(r1.c).laserFx.bolts.find((x) => x.to.z > 0)!;
+    expect(b1.to.x).toBeGreaterThan(1);
+    const minion = bot(0, 4, 1e6);
+    const boss = Object.assign(bot(-2.5, 9, 1e6), { isBoss: true });
+    const r2 = oneBolt([minion, boss]);
+    expect(r2.log.filter((h) => h.e === boss).length).toBe(1);
   });
 
   it('follows the hull heading (no homing): a bot off the nose is never hit', () => {
