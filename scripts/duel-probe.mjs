@@ -12,7 +12,7 @@
 //            travel in the input packet); its turret stays locked forward; the host's discs and Mag Repulsor show on
 //            the guest's puppet; the guest's Mag Repulsor and Polarity Burst land on the host.
 //   rework   (opt-in: --only=rework) what the guest sees of the reworked kits on the host's puppet: a Classic's PLOW
-//            RUSH telegraph while it charges, then the rush; an ARSENAL's Mag Discs in flight. Screenshots from the guest.
+//            RUSH telegraph while it charges, then the rush, then its tap BALL SLAM (puppet wind-up, a hit, a snow chunk); an ARSENAL's Mag Discs in flight. Screenshots from the guest.
 // Each session runs in a fresh Chrome (the sandbox kills long-lived headless Chrome). The duel clock is sim time, so
 // both pages are fast-forwarded in lockstep (render loops paused except for screenshots).
 import { createServer } from 'vite';
@@ -492,6 +492,32 @@ for (const [hostPlow, guestPlow] of [['classic', 'arsenal'], ['arsenal', 'classi
       const r = await guest.evaluate(() => window.__game.duel.opponent.rushing);
       check(r, "the guest sees the host's rush", r);
       await shot(guest, '21-guest-sees-rush');
+      // The tap is the classic BALL SLAM: park the guest 4.5 m ahead, give the host a 1.2 m ball and tap SPACE. The
+      // guest's puppet plays the wind-up / lunge (slamPhase) and the impact; every hit packs a snow chunk.
+      await run(host, guest, 1.5);
+      await host.evaluate(() => {
+        const me = window.__game.ctx.plow, op = window.__game.duel.opponent;
+        me.position.set(0, 0, 6 + PZ); me.heading = Math.PI; me.hp = me.maxHp; me.speed = 0;
+        me.heldVolume = (4 / 3) * Math.PI * 1.2 ** 3;
+        op.position.set(0, 0, 1.5 + PZ); op.heading = 0; op.hp = op.maxHp;
+      });
+      await run(host, guest, 0.3);
+      const c0 = await guest.evaluate(() => window.__game.duel.opponentCombat.classic.chunks);
+      const hp0 = await host.evaluate(() => window.__game.duel.opponent.hp);
+      await host.keyboard.press('Space');
+      let phase = 0;
+      for (let i = 0; i < 12; i++) {
+        await run(host, guest, 1 / 60, 1);
+        phase = Math.max(phase, await guest.evaluate(() => window.__game.duel.opponent.slamPhase));
+      }
+      await shot(guest, '30-classic-tap-slam');
+      await run(host, guest, 0.3);
+      const tap = await guest.evaluate(() => ({ chunks: window.__game.duel.opponentCombat.classic.chunks, ball: window.__game.duel.opponent.heldBallRadius }));
+      const hp1 = await host.evaluate(() => window.__game.duel.opponent.hp);
+      log('tap slam', { phase, c0, ...tap, hp0, hp1 });
+      check(phase > 0, "the guest's puppet plays the host's tap slam (wind-up / lunge)", phase);
+      check(hp1 < hp0 && tap.chunks === c0 + 1, 'the tap slam lands on the guest and packs a snow chunk', { hp0, hp1, c0, chunks: tap.chunks });
+      check(tap.ball < 0.6, 'the tap slam spends the ball (1.2 m before; the blade plows a crumb back after)', tap.ball);
     } else {
       await host.keyboard.down('Space');
       await run(host, guest, 0.9);
