@@ -77,16 +77,11 @@ export abstract class PlowBase {
   protected dashTargets: EnemyHandle[] = [];
   protected spinAngle = 0;
   protected wallCd = 0;
-  // Classic Plow SPACE kit (combat/classicRush.ts): tap = BLADE SWIPE, hold = charge a PLOW RUSH.
+  // Classic Plow SPACE kit (combat/classicRush.ts): tap = the BALL SLAM, hold = charge a PLOW RUSH.
   /** Seconds SPACE has been held since the press (-1 = not held / consumed). */
   protected spaceT = -1;
-  /** The hold passed the tap window with too little dash meter for a rush (buzzed once; release swipes). */
+  /** The hold passed the tap window with too little dash meter for a rush (buzzed once; the release slams). */
   protected rushNoMeter = false;
-  protected swipeCd = 0;
-  /** A tap during the swipe cooldown, fired when it ends (s left). */
-  protected swipeBuffer = 0;
-  /** Swipes so far (snapshot field: the Duel puppet replays the arc on every increment). */
-  protected swipeN = 0;
   /** Rush charge 0..1 while charging (-1 = not charging) and the telegraphed distance (m). */
   protected rushChargeK = -1;
   protected rushDist = 0;
@@ -97,7 +92,7 @@ export abstract class PlowBase {
   protected rushStop = false;
   /** Puppet: the host's plow was rushing at the last snapshot (launch fx edge). */
   protected puppetRush = false;
-  /** MOMENTUM: seconds of the landed-swipe speed boost left. */
+  /** MOMENTUM: seconds of the landed-tap-slam speed boost left. */
   protected momentumT = 0;
   protected rushFx!: RushFx;
 

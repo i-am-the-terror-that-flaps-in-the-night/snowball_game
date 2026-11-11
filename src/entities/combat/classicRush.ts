@@ -1,23 +1,12 @@
-/* The Classic Plow's SPACE kit (pure numbers, no scene): a TAP is a BLADE SWIPE that packs SNOW CHUNKS, a HOLD charges
- * a PLOW RUSH that ends in the ball slam and cashes the chunks in. Plow.update runs the input / motion state machine
- * (plow/classicSpace.ts), ClassicKit (combat/classic.ts) the hits. Vehicles switched to the snowball kit keep the old
- * tap slam. See docs/plows.md "Classic Plow". */
+/* The Classic Plow's SPACE kit (pure numbers, no scene): a TAP is the classic BALL SLAM (the slam state machine in
+ * Plow.update; every bot / opponent it hits packs a SNOW CHUNK), a HOLD charges a PLOW RUSH that ends in the ball slam
+ * and cashes the chunks in. Plow.update runs the input / motion state machine (PlowMotion.updateClassicSpace),
+ * ClassicKit (combat/classic.ts) the chunks. See docs/plows.md "Classic Plow". */
 
-/** SPACE released within this many seconds of the press = a tap (BLADE SWIPE); held past it = charging a rush. */
-export const SWIPE_TAP = 0.2;
-/** Swipe reach (m, from the blade tip) and cone half-angle (rad): a ~100° sweep in front of the blade. */
-export const SWIPE_RANGE = 3.5;
-export const SWIPE_HALF = (50 * Math.PI) / 180;
-/** Seconds between two swipes. */
-export const SWIPE_COOLDOWN = 0.35;
-/** Swipe damage before stats.damageMult (Packed Ice and the Classic's iceGrowth, like the slam). */
-export const SWIPE_DAMAGE = 16;
-/** Swipe knockback (m/s): a nudge, so the target stays in swipe range. */
-export const SWIPE_KNOCK = 3.5;
-/** Seconds the swipe's arc takes to sweep across (visual; the hit lands at once). */
-export const SWIPE_FX_SECONDS = 0.16;
+/** SPACE released within this many seconds of the press = a tap (BALL SLAM); held past it = charging a rush. */
+export const TAP_WINDOW = 0.2;
 
-/** SNOW CHUNKS: every bot / opponent a swipe hits packs one onto the blade, up to CHUNK_MAX. */
+/** SNOW CHUNKS: every bot / opponent a tap slam hits packs one onto the blade, up to CHUNK_MAX. */
 export const CHUNK_MAX = 10;
 /** Chunks cashed in by a rush slam: zone radius x (1 + CHUNK_RADIUS n), damage x (1 + CHUNK_DAMAGE n). */
 export const CHUNK_RADIUS = 0.05;
@@ -25,7 +14,7 @@ export const CHUNK_DAMAGE = 0.04;
 /** A cash-in of at least this many chunks gets the big float text. */
 export const CHUNK_BIG = 5;
 
-/** MOMENTUM: a landed swipe gives +MOMENTUM_BOOST top speed for MOMENTUM_SECONDS (refreshes, doesn't stack). */
+/** MOMENTUM: a landed tap slam gives +MOMENTUM_BOOST top speed for MOMENTUM_SECONDS (refreshes, doesn't stack). */
 export const MOMENTUM_BOOST = 0.2;
 export const MOMENTUM_SECONDS = 1;
 
@@ -71,9 +60,9 @@ export function rushChargeTime(engine: number, nitro: number, hopper: number, so
 }
 
 /** Charge 0..1 after holding `held` s (the tap window doesn't count) with a full charge taking `chargeTime` s. */
-export const rushCharge = (held: number, chargeTime: number) => clamp01((held - SWIPE_TAP) / Math.max(0.05, chargeTime));
+export const rushCharge = (held: number, chargeTime: number) => clamp01((held - TAP_WINDOW) / Math.max(0.05, chargeTime));
 
-/** Chunks after a swipe that hit `hits` targets. */
+/** Chunks after a tap slam that hit `hits` targets. */
 export const addChunks = (n: number, hits: number) => Math.max(0, Math.min(CHUNK_MAX, n + Math.max(0, Math.floor(hits))));
 
 /** Cash-in multipliers for `n` chunks (clamped to 0..CHUNK_MAX). */

@@ -292,7 +292,7 @@ export class Combat implements CombatAPI {
     this.critCharge = s[o + NP.crit];
     this.volt.clapHeat = s[o + NP.heat];
     this.volt.lastClapAt = this.ctx.time;
-    // SNOW CHUNKS come from the host's swipe hits (the guest hits nothing locally).
+    // SNOW CHUNKS come from the host's tap slam hits (the guest hits nothing locally).
     this.classic.chunks = Math.max(0, Math.round(s[o + NP.chunks]));
     // The guest hits nothing locally, so its turret follows the host's aim.
     this.arsenal.netTurret = s[o + NP.turret];
@@ -519,9 +519,12 @@ export class Combat implements CombatAPI {
     return this.melee.slamAt(x, z, r, volume, zoneMult, dmgMult);
   }
 
-  /** Classic Plow BLADE SWIPE (SPACE tap; ClassicKit.swipe): returns the bots hit (each packed a SNOW CHUNK). */
-  classicSwipe(): number {
-    return this.classic.swipe();
+  /** The Classic Plow's tap BALL SLAM (PlowMotion.slamImpact): slamAt, and every bot / opponent it hits packs a
+   *  SNOW CHUNK (ClassicKit.packChunks). Vehicles on the snowball kit slam without chunks. Returns the bots hit. */
+  tapSlam(x: number, z: number, r: number, volume: number): number {
+    const hits = this.melee.slamAt(x, z, r, volume);
+    if (hits > 0 && this.b.stats.plowKind === 'classic') this.classic.packChunks(hits);
+    return hits;
   }
 
   /** Classic Plow PLOW RUSH end: the slam at (x, z) (ball radius `r`, `volume` already taken off the plow), cashing in

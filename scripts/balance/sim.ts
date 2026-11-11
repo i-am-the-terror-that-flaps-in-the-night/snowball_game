@@ -1,5 +1,5 @@
 /* Headless balance sim: drives the real Combat kits (no browser) against dummy bots and duel opponents.
- * Plow-driven attacks (the Classic's BLADE SWIPE / rush slam / whirl, everyone's dash strike) are scheduled from a simple engagement
+ * Plow-driven attacks (the Classic's tap / rush slams and whirl, everyone's dash strike) are scheduled from a simple engagement
  * model (see MELEE below); everything Combat owns (F abilities, ultimates, auras, burns, the vehicles' SPACE / E
  * kits via held keys, ARSENAL's grav weapons) runs for real. */
 import * as THREE from 'three';
@@ -56,14 +56,13 @@ export function statsFor(kind: PlowKind, tier: Tier): PlayerStats {
 
 /** Engagement model for the Plow-driven attacks (the sim has no snow field or driving):
  *  - the blade moves SNOW_INTAKE m^3/s of snow while fighting (about half the open-field rate), x collectRate;
- *  - the Classic's slams are PLOW RUSH slams (Combat.rushSlam, cashing in its SNOW CHUNKS): a ball of SLAM_BALL x max
- *    radius once it has grown (slam cycle >= SLAM_CYCLE s), each paying a short rush (RUSH_COST_MIN of the dash meter
- *    it shares with the dash; a dash strike needs a full meter), landing on the target (the rush slams at first contact);
- *  - the Classic BLADE SWIPEs (Combat.classicSwipe) every SWIPE_CYCLE s (the 0.35 s cooldown at about half uptime:
- *    a real swipe needs the target inside 3.5 m of the blade, in front of it) except while whirling;
+ *  - the Classic slams a ball of SLAM_BALL x max radius once it has grown (slam cycle >= SLAM_CYCLE s): a tap slam
+ *    (Combat.tapSlam: every hit packs a SNOW CHUNK) until it holds RUSH_CHUNKS chunks, then a PLOW RUSH slam
+ *    (Combat.rushSlam, cashing them in) when the meter pays a short rush (RUSH_COST_MIN of the dash meter it shares
+ *    with the dash; a dash strike needs a full meter), landing on the target (the rush slams at first contact);
  *  - whirls go off every recharge (+ the 0.9s spin) holding a ball of WHIRL_BALL x max radius;
  *  - dashes go off every recharge (+0.5s dash) and DASH_CONNECT of them land a dash strike. */
-export const MELEE = { SNOW_INTAKE: 5, SLAM_BALL: 0.8, SLAM_CYCLE: 0.82, WHIRL_BALL: 0.5, DASH_CONNECT: 0.5, SWIPE_CYCLE: 0.7 } as const;
+export const MELEE = { SNOW_INTAKE: 5, SLAM_BALL: 0.8, SLAM_CYCLE: 0.82, WHIRL_BALL: 0.5, DASH_CONNECT: 0.5, RUSH_CHUNKS: 5 } as const;
 const WHIRL_TICKS = [0.1, 0.35, 0.6, 0.85];
 
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
@@ -175,7 +174,6 @@ export class Rotation {
   private hits = new Set<number>();
   private dashT = 0;
   private dashN = 0;
-  private swipeT = 0;
   /** The Classic's shared rush / dash meter (0..1, refilled over dashCooldown). */
   private meter = 1;
   t = 0;
@@ -221,20 +219,17 @@ export class Rotation {
       const want = ballVolume(st.maxBallRadius * MELEE.SLAM_BALL);
       this.meter = Math.min(1, this.meter + dt / Math.max(0.1, st.dashCooldown));
       this.slamT -= dt;
-      if (this.slamT <= 0 && this.ball_ >= want && tgt && this.whirlAt < 0 && this.meter >= RUSH_COST_MIN) {
+      if (this.slamT <= 0 && this.ball_ >= want && tgt && this.whirlAt < 0) {
         const r = st.maxBallRadius * MELEE.SLAM_BALL;
         const at = this.hooks.slamPoint ? this.hooks.slamPoint(r) : tgt.position;
         if (at) {
-          p.c.rushSlam(at.x, at.z, r, want);
-          this.meter -= RUSH_COST_MIN;
+          if (p.c.chunks >= MELEE.RUSH_CHUNKS && this.meter >= RUSH_COST_MIN) {
+            p.c.rushSlam(at.x, at.z, r, want);
+            this.meter -= RUSH_COST_MIN;
+          } else p.c.tapSlam(at.x, at.z, r, want);
           this.ball_ -= want * (1 - st.reserveFrac);
           this.slamT = MELEE.SLAM_CYCLE;
         }
-      }
-      this.swipeT -= dt;
-      if (this.swipeT <= 0 && tgt && this.whirlAt < 0) {
-        p.c.classicSwipe();
-        this.swipeT = MELEE.SWIPE_CYCLE;
       }
       this.whirlT -= dt;
       if (this.whirlAt < 0 && this.whirlT <= 0) {

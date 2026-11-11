@@ -2,18 +2,15 @@ import * as THREE from 'three';
 import type { SnowFieldAPI } from '../../core/types';
 import type { Terrain } from '../../world/Terrain';
 import { floorTop } from '../combat/shared';
-import { SWIPE_FX_SECONDS, SWIPE_HALF, SWIPE_RANGE } from '../combat/classicRush';
 
 /* The Classic Plow's SPACE kit visuals (world space, owned by the Plow): the PLOW RUSH telegraph (a ground line from the
- * blade to the landing point, a landing ring and a charge aura under the hull) and the BLADE SWIPE's snow arc. Both
- * are driven from plain numbers, so a Duel puppet replays them from its snapshot fields exactly like the host's plow. */
+ * blade to the landing point, a landing ring and a charge aura under the hull). It is
+ * driven from plain numbers, so a Duel puppet replays them from its snapshot fields exactly like the host's plow. */
 
 /** Telegraph strip segments (the line is draped over the floor / snow, one height sample per vertex pair). */
 const SEG = 24;
 const LINE_W = 0.55;
 const LIFT = 0.12;
-
-const _f = new THREE.Vector3();
 
 export class RushFx {
   private readonly lineGeo = new THREE.BufferGeometry();
@@ -25,14 +22,6 @@ export class RushFx {
   private readonly end: THREE.Mesh;
   private readonly auraMat = new THREE.MeshBasicMaterial({ color: 0x2b9bff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
   private readonly aura: THREE.Mesh;
-  /** Swipe: a faint full 100° sector and a bright wedge sweeping across it. Saturated blue (pale white vanished on the
-   *  snow) and drawn over the held ball and the hull (no depth test): at blade height the ball hides most of it from
-   *  the follow camera otherwise. It lasts 0.3 s, so showing through a prop for that long is harmless. */
-  private readonly swipe = new THREE.Group();
-  private readonly sectorMat = new THREE.MeshBasicMaterial({ color: 0x2b9bff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
-  private readonly wedgeMat = new THREE.MeshBasicMaterial({ color: 0x0f6fff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
-  private readonly wedge: THREE.Mesh;
-  private swipeT = -1;
   private time = 0;
 
   constructor(scene: THREE.Scene) {
@@ -62,18 +51,6 @@ export class RushFx {
     this.aura.renderOrder = 3;
     this.aura.visible = false;
     scene.add(this.aura);
-
-    // Ring sectors lie in XY; laid flat (-90° about X) local -Y is the group's +Z (the plow's forward).
-    const fwd = -Math.PI / 2;
-    const sector = new THREE.Mesh(new THREE.RingGeometry(0.6, SWIPE_RANGE + 0.3, 20, 1, fwd - SWIPE_HALF, SWIPE_HALF * 2), this.sectorMat);
-    sector.rotation.x = -Math.PI / 2;
-    this.wedge = new THREE.Mesh(new THREE.RingGeometry(0.9, SWIPE_RANGE + 0.6, 8, 1, fwd - 0.26, 0.52), this.wedgeMat);
-    this.wedge.rotation.order = 'YXZ';
-    this.wedge.rotation.x = -Math.PI / 2;
-    this.swipe.add(sector, this.wedge);
-    this.swipe.visible = false;
-    this.swipe.renderOrder = 3;
-    scene.add(this.swipe);
   }
 
   /**
@@ -127,47 +104,7 @@ export class RushFx {
     this.auraMat.color.setHex(full ? 0xffc21a : 0x2b9bff);
   }
 
-  /** Start the swipe arc at the blade tip `tip` (y = floor there), facing `heading`. */
-  startSwipe(tip: THREE.Vector3, heading: number): void {
-    this.swipeT = 0;
-    this.swipe.visible = true;
-    this.swipe.position.copy(tip);
-    this.swipe.position.y += 0.8; // blade height: it reads round the held ball
-    this.swipe.rotation.set(0, heading, 0);
-    this.updateSwipe(0);
-  }
-
-  /** Advance the swipe arc (sweeps left to right across the blade, then fades). */
-  updateSwipe(dt: number): void {
-    if (this.swipeT < 0) return;
-    this.swipeT += dt;
-    const total = SWIPE_FX_SECONDS + 0.14;
-    if (this.swipeT >= total) {
-      this.swipeT = -1;
-      this.swipe.visible = false;
-      return;
-    }
-    const k = Math.min(1, this.swipeT / SWIPE_FX_SECONDS);
-    const fade = this.swipeT <= SWIPE_FX_SECONDS ? 1 : 1 - (this.swipeT - SWIPE_FX_SECONDS) / 0.14;
-    // Wedge sweeps from the left edge (-half about Y) to the right edge (+half).
-    this.wedge.rotation.y = -SWIPE_HALF + 2 * SWIPE_HALF * k;
-    this.wedgeMat.opacity = 0.85 * fade;
-    this.sectorMat.opacity = 0.55 * fade * Math.min(1, 0.6 + k);
-    const s = 0.75 + 0.25 * k;
-    this.swipe.scale.set(s, 1, s);
-  }
-
-  /** World position of the swipe arc's wedge right now (spray follows it), or null when idle. */
-  wedgePoint(out: THREE.Vector3): THREE.Vector3 | null {
-    if (this.swipeT < 0) return null;
-    const a = this.swipe.rotation.y + this.wedge.rotation.y;
-    _f.set(Math.sin(a), 0, Math.cos(a)).multiplyScalar(SWIPE_RANGE * 0.75 * this.swipe.scale.x);
-    return out.copy(this.swipe.position).add(_f);
-  }
-
   hide(): void {
     this.line.visible = this.end.visible = this.aura.visible = false;
-    this.swipeT = -1;
-    this.swipe.visible = false;
   }
 }

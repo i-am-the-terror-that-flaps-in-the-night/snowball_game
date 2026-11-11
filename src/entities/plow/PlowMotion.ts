@@ -6,13 +6,12 @@ import { STEP_UP, type Deck } from '../../world/Terrain';
 import { LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, stepVertical } from '../../world/terrainMotion';
 import {
   TIP_Z, PROP_SMASH_SPEED, REAR_Z, SLAM_COOLDOWN, DASH_SECONDS, WHIRL_SECONDS, WHIRL_TICKS, WHIRL_TURNS,
-  PLOW_HEIGHT, ICE_LINGER, LAVA_SFX_GAP, LAVA_EVENT_GAP,
+  PLOW_HEIGHT, ICE_LINGER, LAVA_SFX_GAP, LAVA_EVENT_GAP, INPUT_BUFFER,
 } from './constants';
 import { _fwd, _a, _c, _dir } from './scratch';
 import { deckById } from './assets';
-import { floorTop } from '../combat/shared';
 import {
-  MOMENTUM_SECONDS, RUSH_MAX, RUSH_MIN_SLAM_R, RUSH_SPEED, SWIPE_COOLDOWN, SWIPE_TAP, rushAffordable, rushCharge,
+  MOMENTUM_SECONDS, RUSH_MAX, RUSH_MIN_SLAM_R, RUSH_SPEED, TAP_WINDOW, rushAffordable, rushCharge,
   rushPlan,
 } from '../combat/classicRush';
 
@@ -55,7 +54,10 @@ export abstract class PlowMotion extends PlowVisuals {
     const cx = _c.x + _fwd.x * (r + 0.5);
     const cz = _c.z + _fwd.z * (r + 0.5);
     this.kick = 1;
-    this.b.combat.slamAt(cx, cz, r, volume);
+    // The Classic Plow's tap slam packs a SNOW CHUNK per bot / opponent hit and, when it lands, starts MOMENTUM.
+    if (this.kind === 'classic') {
+      if (this.b.combat.tapSlam(cx, cz, r, volume) > 0) this.momentumT = MOMENTUM_SECONDS;
+    } else this.b.combat.slamAt(cx, cz, r, volume);
   }
 
   protected tryDash(): void {
@@ -134,21 +136,14 @@ export abstract class PlowMotion extends PlowVisuals {
     this.whirlFx();
   }
 
-  /* ------------------------------------------------------------------ Classic Plow SPACE: swipe / rush */
+  /* ------------------------------------------------------------------ Classic Plow SPACE: tap slam / rush */
 
-  /** The Classic Plow's SPACE (combat/classicRush.ts): a tap swipes, a hold charges a PLOW RUSH released on key-up.
+  /** The Classic Plow's SPACE (combat/classicRush.ts): a tap is the ball slam (slamBuffer -> the slam state machine in
+   *  Plow.update, as it always was), a hold charges a PLOW RUSH released on key-up.
    *  `high`: airborne clear of the surface (SPACE is the air slam there: AirKit). Runs every non-hit-stop frame. */
   protected updateClassicSpace(dt: number, high: boolean): void {
     const input = this.b.input;
-    if (this.swipeCd > 0) this.swipeCd -= dt;
-    if (this.swipeBuffer > 0) {
-      this.swipeBuffer -= dt;
-      if (this.swipeCd <= 0 && this.rushLeft <= 0) {
-        this.swipeBuffer = 0;
-        this.swipe();
-      }
-    }
-    // Mid-rush the plow is committed: presses are ignored (no buffered rush / swipe out of a rush).
+    // Mid-rush the plow is committed: presses are ignored (no buffered rush / slam out of a rush).
     if (this.rushLeft > 0) {
       this.spaceT = -1;
       this.rushChargeK = -1;
@@ -168,9 +163,9 @@ export abstract class PlowMotion extends PlowVisuals {
     const down = !!input.isDown?.('Space');
     this.spaceT += dt;
     if (down) {
-      if (this.spaceT >= SWIPE_TAP) {
+      if (this.spaceT >= TAP_WINDOW) {
         if (rushAffordable(this.dashCharge) <= 0) {
-          // Not enough dash meter for even the shortest rush: buzz once; the release swipes instead.
+          // Not enough dash meter for even the shortest rush: buzz once; the release slams instead.
           if (!this.rushNoMeter) this.b.audio.play('error', { volume: 0.5 });
           this.rushNoMeter = true;
           this.rushChargeK = -1;
@@ -196,8 +191,8 @@ export abstract class PlowMotion extends PlowVisuals {
         return;
       }
     }
-    if (this.swipeCd > 0) this.swipeBuffer = 0.2;
-    else this.swipe();
+    // A tap (or a hold the meter can't pay for): the ball slam, buffered through its cooldown like any slam press.
+    this.slamBuffer = INPUT_BUFFER;
   }
 
   /** Drop a SPACE hold / charge (whirl, dash, jump, death, reset). */
@@ -205,37 +200,6 @@ export abstract class PlowMotion extends PlowVisuals {
     this.spaceT = -1;
     this.rushChargeK = -1;
     this.rushNoMeter = false;
-  }
-
-  /** BLADE SWIPE: the arc and sound here, the hits in ClassicKit (chunks); a landed swipe starts MOMENTUM. */
-  private swipe(): void {
-    this.swipeCd = SWIPE_COOLDOWN;
-    this.swipeN++;
-    this.swipeFx();
-    const hits = this.b.combat.classicSwipe();
-    if (hits > 0) this.momentumT = MOMENTUM_SECONDS;
-  }
-
-  /** Swipe feedback (also replayed for a duel opponent's puppet): the snow arc, spray and a whoosh. */
-  protected swipeFx(): void {
-    const ctx = this.ctx;
-    this.getBladeTip(_c);
-    this.getForward(_fwd);
-    _c.y = floorTop(this.ctx.terrain, this.b.snow, this.vert.y, _c.x, _c.z);
-    const top = _c.y;
-    this.rushFx.startSwipe(_c, this.heading);
-    this.kick = Math.max(this.kick, 0.55);
-    this.b.audio.play('whirlTick', { pitch: 1.7, volume: 0.65 });
-    this.b.audio.play('dash', { pitch: 1.9, volume: 0.3 });
-    // Snow thrown off the blade across the arc, left to right.
-    for (let i = 0; i < 5; i++) {
-      const a = this.heading - 0.8 + i * 0.4;
-      _a.set(_c.x + Math.sin(a) * 2.2, top + 0.6, _c.z + Math.cos(a) * 2.2);
-      _dir.set(Math.sin(a + 0.9), 0.7, Math.cos(a + 0.9)).normalize();
-      ctx.fx.spray(_a, _dir, 0.8);
-    }
-    _a.set(_c.x + _fwd.x * 1.6, top + 0.7, _c.z + _fwd.z * 1.6);
-    ctx.fx.burst(_a, { color: 0xffffff, count: 14, speed: 6, size: 0.2, gravity: 14, life: 0.5 });
   }
 
   /** Launch a PLOW RUSH of `dist` m: straight ahead, no steering, ends in the slam (finishRush). */
@@ -246,6 +210,9 @@ export abstract class PlowMotion extends PlowVisuals {
     this.rushStop = false;
     this.speed = RUSH_SPEED;
     this.pushVel.multiplyScalar(0.3);
+    // The rush's end slam takes over the blade: drop a tap slam still winding up / buffered.
+    this.slamPhase = 0;
+    this.slamBuffer = 0;
     this.rushLaunchFx();
   }
 
@@ -299,9 +266,8 @@ export abstract class PlowMotion extends PlowVisuals {
     this.b.combat.rushSlam(cx, cz, r, volume);
   }
 
-  /** Rush telegraph / charge aura and the swipe arc (own plow and Duel puppet alike). */
+  /** Rush telegraph / charge aura (own plow and Duel puppet alike). */
   protected updateRushVisuals(dt: number): void {
-    this.rushFx.updateSwipe(dt);
     if (this._dead || this.rushChargeK < 0) {
       this.rushFx.telegraph(dt, -1, 0, 0, 0, 0, 0, 0, 0, 0, undefined, null);
       return;

@@ -9,12 +9,15 @@ import { Terrain } from '../src/world/Terrain';
 import { NP, NET_PLOW_LEN } from '../src/net/protocol';
 import { PLOWS } from '../src/config/plows';
 import { FX } from '../src/config/upgrades';
+import type { PlowKind } from '../src/config/plows';
+import { INPUT_BUFFER } from '../src/entities/plow/constants';
+import { ballVolume } from '../src/core/types';
 import { RUSH_CHARGE_SLOW,
-  CHUNK_MAX, MOMENTUM_SECONDS, RUSH_CHARGE_BASE, RUSH_CHARGE_MIN, RUSH_COST_MIN, RUSH_MAX, RUSH_MIN, RUSH_MIN_SLAM_R, SWIPE_TAP,
+  CHUNK_MAX, MOMENTUM_SECONDS, RUSH_CHARGE_BASE, RUSH_CHARGE_MIN, RUSH_COST_MIN, RUSH_MAX, RUSH_MIN, RUSH_MIN_SLAM_R, TAP_WINDOW,
   addChunks, cashIn, rushAffordable, rushCharge, rushCost, rushDistance, rushPlan,
 } from '../src/entities/combat/classicRush';
 
-/* The Classic Plow's SPACE kit: BLADE SWIPE (tap) packs SNOW CHUNKS, PLOW RUSH (hold) runs on the dash meter and ends
+/* The Classic Plow's SPACE kit: the tap BALL SLAM packs SNOW CHUNKS, PLOW RUSH (hold) runs on the dash meter and ends
  * in the ball slam that cashes the chunks in. */
 
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
@@ -25,8 +28,8 @@ function bot(x: number, z: number, hp = 10000): EnemyHandle {
 }
 
 /** A Combat bound to a scripted Classic plow at the origin facing +Z (blade tip at z = 2.5). */
-function rig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
-  const stats = computeStatsFor(levels, 'classic');
+function rig(bots: EnemyHandle[], levels: Record<string, number> = {}, kind: PlowKind = 'classic') {
+  const stats = computeStatsFor(levels, kind);
   const plow = {
     position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, radius: 1.6, heldBallRadius: 0,
     airborne: false, vy: 0, airTime: 0, surfaceY: 0, deck: -1, hop: 0, dashing: false, rushing: false, speed: 0,
@@ -68,8 +71,8 @@ describe('Classic SPACE kit: numbers', () => {
     expect(rushDistance(-1)).toBe(1.5);
     expect(rushDistance(0.5)).toBeCloseTo(10.75);
     // The tap window doesn't count toward the charge; a long hold never passes full.
-    expect(rushCharge(SWIPE_TAP, 1)).toBe(0);
-    expect(rushCharge(SWIPE_TAP + 0.5, 1)).toBeCloseTo(0.5);
+    expect(rushCharge(TAP_WINDOW, 1)).toBe(0);
+    expect(rushCharge(TAP_WINDOW + 0.5, 1)).toBeCloseTo(0.5);
     expect(rushCharge(60, 1)).toBe(1);
   });
 
@@ -84,8 +87,8 @@ describe('Classic SPACE kit: numbers', () => {
       expect(t).toBeGreaterThanOrEqual(RUSH_CHARGE_MIN);
       prev = t;
       // Full meter: the smallest charge is 1.5 m, a full one exactly 20 m, however long it is held.
-      expect(rushPlan(rushCharge(SWIPE_TAP, t), 1).dist).toBe(1.5);
-      expect(rushPlan(rushCharge(SWIPE_TAP + t, t), 1).dist).toBe(20);
+      expect(rushPlan(rushCharge(TAP_WINDOW, t), 1).dist).toBe(1.5);
+      expect(rushPlan(rushCharge(TAP_WINDOW + t, t), 1).dist).toBe(20);
       expect(rushPlan(rushCharge(30, t), 1).dist).toBe(20);
     }
     expect(prev).toBeLessThan(RUSH_CHARGE_BASE);
@@ -132,33 +135,40 @@ describe('Classic SPACE kit: numbers', () => {
   });
 });
 
-describe('BLADE SWIPE (ClassicKit)', () => {
-  it('hits every bot in the ~100° cone ahead, none behind / beside / out of reach, and packs a chunk per hit', () => {
-    const ahead = bot(0, 5);
-    const corner = bot(1.6, 3);
-    const far = bot(0, 10);
-    const behind = bot(0, -3);
-    const beside = bot(5, 1.5);
-    const { c, hits } = rig([ahead, corner, far, behind, beside]);
+describe('Tap BALL SLAM packs SNOW CHUNKS (Combat.tapSlam)', () => {
+  // A 1.5 m ball slammed at (0, 5): zone 1.5 x 1.3 + 2.6 x 0.35 = 2.86 m.
+  it('every bot the slam hits packs one chunk; a miss packs none', () => {
+    const { c, hits } = rig([bot(0, 5), bot(1, 4), bot(-1, 4), bot(0, 12)]);
     expect(c.chunks).toBe(0);
-    expect(c.classicSwipe()).toBe(2);
-    expect(new Set(hits.map((h) => h.e))).toEqual(new Set([ahead, corner]));
-    expect(c.chunks).toBe(2);
+    expect(c.tapSlam(0, 5, 1.5, 0)).toBe(3);
+    expect(hits.length).toBe(3);
+    expect(c.chunks).toBe(3);
+    expect(c.tapSlam(0, 30, 1.5, 0)).toBe(0);
+    expect(c.chunks).toBe(3);
   });
 
-  it('scales with damageMult (Packed Ice and the Classic iceGrowth) like the slam', () => {
-    const a = rig([bot(0, 5)]);
-    a.c.classicSwipe();
-    const b = rig([bot(0, 5)], { packedIce: 10 });
-    b.c.classicSwipe();
-    expect(b.hits[0].amount / a.hits[0].amount).toBeCloseTo(b.stats.damageMult / a.stats.damageMult);
-    expect(b.stats.damageMult).toBeGreaterThan(FX.damageMult(10)); // iceGrowth past Packed Ice 4
-  });
-
-  it('chunks stop at 10 however many swipes land', () => {
+  it('chunks stop at 10 however many slams land', () => {
     const { c } = rig([bot(0, 5), bot(-1, 4), bot(1, 4)]);
-    for (let i = 0; i < 6; i++) c.classicSwipe();
+    for (let i = 0; i < 4; i++) c.tapSlam(0, 5, 1.5, 0);
     expect(c.chunks).toBe(10);
+  });
+
+  it('is the plain ball slam: held chunks do not boost it (only the rush slam cashes them in)', () => {
+    const plain = rig([bot(0, 5)]);
+    plain.c.slamAt(0, 5, 1.5, 0);
+    const loaded = rig([bot(0, 5), bot(-1, 4), bot(1, 4)]);
+    for (let i = 0; i < 4; i++) loaded.c.tapSlam(0, 5, 1.5, 0);
+    loaded.hits.length = 0;
+    loaded.c.tapSlam(0, 5, 1.5, 0);
+    expect(loaded.hits[0].amount).toBeCloseTo(plain.hits[0].amount);
+    expect(loaded.slams.every((e) => e.zoneMult === undefined)).toBe(true);
+    expect(loaded.c.chunks).toBe(10);
+  });
+
+  it('a vehicle on the snowball kit slams without chunks', () => {
+    const { c } = rig([bot(0, 5), bot(1, 4)], {}, 'brute');
+    expect(c.tapSlam(0, 5, 1.5, 0)).toBe(2);
+    expect(c.chunks).toBe(-1);
   });
 });
 
@@ -172,11 +182,12 @@ describe('PLOW RUSH slam cash-in (Combat.rushSlam)', () => {
     expect(plain.hits.map((h) => h.e)).toEqual([centre]);
     expect(plain.slams[0].zoneMult).toBeUndefined();
 
-    const swipeBots = [bot(0, 5), bot(-1, 4), bot(1, 4)];
-    const loaded = rig([...swipeBots, centre, edge]);
-    for (let i = 0; i < 4; i++) loaded.c.classicSwipe();
+    const slamBots = [bot(0, 5), bot(-1, 4), bot(1, 4)];
+    const loaded = rig([...slamBots, centre, edge]);
+    for (let i = 0; i < 4; i++) loaded.c.tapSlam(0, 5, 1.5, 0);
     expect(loaded.c.chunks).toBe(10);
     loaded.hits.length = 0;
+    loaded.slams.length = 0;
     loaded.c.rushSlam(0, 10, RUSH_MIN_SLAM_R, 0);
     const got = loaded.hits.filter((h) => h.e === centre || h.e === edge);
     expect(got.map((h) => h.e)).toEqual([centre, edge]);
@@ -187,7 +198,7 @@ describe('PLOW RUSH slam cash-in (Combat.rushSlam)', () => {
 
   it('chunks ride the Duel snapshot (the guest HUD / predicted cash-in read the host count)', () => {
     const host = rig([bot(0, 5), bot(1, 4)]);
-    host.c.classicSwipe();
+    host.c.tapSlam(0, 5, 1.5, 0);
     const buf = new Float32Array(NET_PLOW_LEN);
     host.c.writeNet(buf, 0);
     expect(buf[NP.chunks]).toBe(2);
@@ -202,7 +213,6 @@ describe('PLOW RUSH slam cash-in (Combat.rushSlam)', () => {
 function spacePlow(dashCharge = 1) {
   const stats = computeStatsFor({}, 'classic');
   const keys = { pressed: false, down: false };
-  const swipes: number[] = [];
   const audio: string[] = [];
   const p = Object.create(Plow.prototype) as Record<string, unknown>;
   Object.assign(p, {
@@ -210,11 +220,10 @@ function spacePlow(dashCharge = 1) {
       stats,
       input: { throttle: 0, steer: 0, wasPressed: (k: string) => k === 'Space' && keys.pressed, isDown: (k: string) => k === 'Space' && keys.down },
       audio: { play: (n: string) => audio.push(n) },
-      combat: { classicSwipe: () => (swipes.push(1), 1) },
     },
-    spaceT: -1, rushNoMeter: false, swipeCd: 0, swipeBuffer: 0, swipeN: 0, rushChargeK: -1, rushDist: 0, rushLeft: 0,
+    spaceT: -1, rushNoMeter: false, slamBuffer: 0, slamPhase: 0, rushChargeK: -1, rushDist: 0, rushLeft: 0,
     rushT: 0, rushStall: 0, rushStop: false, momentumT: 0, whirlT: -1, dashT: 0, dashCharge, speed: 0, kick: 0,
-    pushVel: new THREE.Vector3(), swipeFx: () => {}, rushLaunchFx: () => {},
+    pushVel: new THREE.Vector3(), rushLaunchFx: () => {},
   });
   const step = (dt = 1 / 60) => {
     (p.updateClassicSpace as (dt: number, high: boolean) => void).call(p, dt, false);
@@ -229,29 +238,30 @@ function spacePlow(dashCharge = 1) {
     keys.down = false;
     step();
   };
-  return { p, step, hold, release, swipes, audio };
+  const slams = () => ((p.slamBuffer as number) > 0 ? 1 : 0);
+  return { p, step, hold, release, slams, audio };
 }
 
 describe('Classic SPACE input (Plow.updateClassicSpace)', () => {
-  it('a tap swipes (and a landed swipe starts MOMENTUM); no rush, no meter spent', () => {
-    const { p, hold, release, swipes } = spacePlow();
+  it('a tap is the ball slam (the slam buffer, as on the original plow); no rush, no meter spent', () => {
+    const { p, hold, release, slams } = spacePlow();
     hold(0.1);
+    expect(slams()).toBe(0);
     release();
-    expect(swipes.length).toBe(1);
+    expect(slams()).toBe(1);
+    expect(p.slamBuffer).toBe(INPUT_BUFFER);
     expect(p.rushLeft).toBe(0);
     expect(p.dashCharge).toBe(1);
-    expect(p.swipeN).toBe(1);
-    expect(p.momentumT).toBe(MOMENTUM_SECONDS);
   });
 
   it('a hold charges (telegraph distance) and the release rushes, spending the shared meter by distance', () => {
-    const { p, hold, release, swipes } = spacePlow();
-    hold(SWIPE_TAP + 0.5);
+    const { p, hold, release, slams } = spacePlow();
+    hold(TAP_WINDOW + 0.5);
     expect(p.rushChargeK as number).toBeGreaterThan(0.4);
     const dist = p.rushDist as number;
     expect(dist).toBeGreaterThan(9);
     release();
-    expect(swipes.length).toBe(0);
+    expect(slams()).toBe(0);
     expect(p.rushLeft).toBeCloseTo(dist);
     expect(p.dashCharge as number).toBeCloseTo(1 - dist / 20);
     expect(p.rushChargeK).toBe(-1);
@@ -304,19 +314,19 @@ describe('Classic SPACE input (Plow.updateClassicSpace)', () => {
     expect(p.dashCharge as number).toBeCloseTo(0);
   });
 
-  it('with the meter under the minimum cost, the hold buzzes once and the release swipes instead', () => {
-    const { p, hold, release, swipes, audio } = spacePlow(0.2);
+  it('with the meter under the minimum cost, the hold buzzes once and the release slams instead', () => {
+    const { p, hold, release, slams, audio } = spacePlow(0.2);
     hold(1);
     expect(p.rushChargeK).toBe(-1);
     expect(audio.filter((n) => n === 'error').length).toBe(1);
     release();
     expect(p.rushLeft).toBe(0);
-    expect(swipes.length).toBe(1);
+    expect(slams()).toBe(1);
     expect(p.dashCharge).toBe(0.2);
   });
 
   it('a dash or a whirl during the hold drops the charge', () => {
-    const { p, hold, release, swipes } = spacePlow();
+    const { p, hold, release, slams } = spacePlow();
     hold(0.6);
     p.dashT = 0.4;
     hold(0.05);
@@ -324,6 +334,53 @@ describe('Classic SPACE input (Plow.updateClassicSpace)', () => {
     p.dashT = 0;
     release();
     expect(p.rushLeft).toBe(0);
-    expect(swipes.length).toBe(0);
+    expect(slams()).toBe(0);
+  });
+});
+
+/** A Plow with only the slam-impact state (no model), for PlowMotion.slamImpact. */
+function impactPlow(kind: PlowKind, tapHits: number) {
+  const calls: string[] = [];
+  const p = Object.create(Plow.prototype) as Record<string, unknown>;
+  Object.assign(p, {
+    kind,
+    b: {
+      stats: computeStatsFor({}, kind),
+      audio: { play: () => {} },
+      combat: {
+        tapSlam: () => (calls.push('tap'), tapHits),
+        slamAt: () => (calls.push('slam'), tapHits),
+      },
+    },
+    heldVolume: ballVolume(1.2), ballR: 1.2, ball: { visible: true }, glow: { visible: true }, ballWasVisible: true,
+    slamHit: false, slamCd: 0, kick: 0, momentumT: 0,
+    getBladeTip: (o: THREE.Vector3) => o.set(0, 0, 2.5),
+    getForward: (o: THREE.Vector3) => o.set(0, 0, 1),
+  });
+  const impact = () => (p.slamImpact as () => void).call(p);
+  return { p, calls, impact };
+}
+
+describe('Classic tap slam impact (PlowMotion.slamImpact)', () => {
+  it('goes through Combat.tapSlam (chunks) and a landed slam starts MOMENTUM; the ball is spent', () => {
+    const { p, calls, impact } = impactPlow('classic', 2);
+    impact();
+    expect(calls).toEqual(['tap']);
+    expect(p.momentumT).toBe(MOMENTUM_SECONDS);
+    expect(p.heldVolume as number).toBeLessThan(ballVolume(1.2) * 0.01);
+    expect(p.slamCd as number).toBeGreaterThan(0);
+  });
+
+  it('a slam that hits nothing gives no MOMENTUM', () => {
+    const { p, impact } = impactPlow('classic', 0);
+    impact();
+    expect(p.momentumT).toBe(0);
+  });
+
+  it('other plows on the snowball kit keep the plain slam (no chunks, no MOMENTUM)', () => {
+    const { p, calls, impact } = impactPlow('brute', 3);
+    impact();
+    expect(calls).toEqual(['slam']);
+    expect(p.momentumT).toBe(0);
   });
 });

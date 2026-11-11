@@ -5,7 +5,7 @@ import { computeStatsFor } from '../src/core/Progression';
 import type { PlowKind } from '../src/config/plows';
 import type { Plow } from '../src/entities/Plow';
 
-/* The Duel AutoPilot (probes / duel-matrix) plays each kit's role: Classic swipes close and rushes from range, VOLT-9
+/* The Duel AutoPilot (probes / duel-matrix) plays each kit's role: Classic tap-slams close and rushes from range, VOLT-9
  * kites at the Arc Lance's reach, ARSENAL holds mid range inside its disc reach. */
 
 type Fake = {
@@ -24,8 +24,11 @@ function setup(kind: PlowKind, gap: number) {
 }
 
 describe('Duel AutoPilot', () => {
-  it('Classic: taps a swipe up close (no hold)', () => {
-    const { ap } = setup('classic', 4.5);
+  it('Classic: taps the ball slam up close with a ball (no hold); no ball, no tap', () => {
+    const { me, ap } = setup('classic', 4.5);
+    ap.think(1 / 60);
+    expect(ap.wasPressed('Space')).toBe(false);
+    me.heldBallRadius = 1;
     ap.think(1 / 60);
     expect(ap.wasPressed('Space')).toBe(true);
     expect(ap.isDown('Space')).toBe(false);

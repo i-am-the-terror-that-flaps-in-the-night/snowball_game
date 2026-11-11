@@ -58,7 +58,7 @@ export class Plow extends PlowMotion implements PlowAPI {
   get rushPreview(): number {
     return this.rushChargeK >= 0 ? this.rushDist : 0;
   }
-  /** MOMENTUM: seconds of the landed-swipe speed boost left. */
+  /** MOMENTUM: seconds of the landed-tap-slam speed boost left. */
   get momentum(): number {
     return this.momentumT;
   }
@@ -176,11 +176,10 @@ export class Plow extends PlowMotion implements PlowAPI {
     out[o + NP.y] = this.position.y;
     out[o + NP.vy] = this.vert.vy;
     out[o + NP.air] = this.vert.airborne ? 1 : 0;
-    // Classic Plow SPACE kit: 0 idle / 1 charging / 2 rushing, the charge, the telegraph (or metres left), swipes.
+    // Classic Plow SPACE kit: 0 idle / 1 charging / 2 rushing, the charge, the telegraph (or metres left).
     out[o + NP.rushState] = this.rushLeft > 0 ? 2 : this.rushChargeK >= 0 ? 1 : 0;
     out[o + NP.rushCharge] = Math.max(0, this.rushChargeK);
     out[o + NP.rushDist] = this.rushLeft > 0 ? this.rushLeft : this.rushChargeK >= 0 ? this.rushDist : 0;
-    out[o + NP.swipeN] = this.swipeN;
   }
 
   /**
@@ -282,8 +281,8 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.slamPhase = s[o + NP.slamPhase] as 0 | 1 | 2;
     this.slamT = s[o + NP.slamT];
     this.lungeVel = 0;
-    // Classic Plow SPACE kit: telegraph while the host charges, launch fx + trail while it rushes, a swipe arc for
-    // every swipe the counter went up by (the end slam replays from the duel's slam event).
+    // Classic Plow SPACE kit: telegraph while the host charges, launch fx + trail while it rushes (a tap slam plays
+    // from slamPhase / slamT above like any slam; both slams' impacts replay from the duel's slam event).
     const rs = Math.round(s[o + NP.rushState]);
     this.rushChargeK = rs === 1 ? Math.min(1, Math.max(0, s[o + NP.rushCharge])) : -1;
     this.rushDist = rs === 1 ? s[o + NP.rushDist] : 0;
@@ -291,9 +290,6 @@ export class Plow extends PlowMotion implements PlowAPI {
     if (rushingNow && !this.puppetRush) this.rushLaunchFx();
     this.puppetRush = rushingNow;
     this.rushLeft = rushingNow ? Math.max(0.01, s[o + NP.rushDist]) : 0;
-    const sn = Math.round(s[o + NP.swipeN]);
-    if (sn > this.swipeN) this.swipeFx();
-    this.swipeN = sn;
     // Dash: replay the launch once, then follow the host's timers (flame, ghosts and streaks key off them).
     const dT = s[o + NP.dashT];
     if (dT > 0 && this.dashT <= 0 && dT > DASH_SECONDS - 0.3) {
@@ -433,9 +429,6 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.slamBuffer = 0;
     this.lungeVel = 0;
     this.cancelSpace();
-    this.swipeCd = 0;
-    this.swipeBuffer = 0;
-    this.swipeN = 0;
     this.rushLeft = 0;
     this.rushT = 0;
     this.rushStall = 0;
@@ -574,7 +567,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     const steer = input.steer;
 
     // ---- abilities
-    // The Classic Plow (not a vehicle on the snowball kit): tap = BLADE SWIPE, hold = PLOW RUSH (combat/classicRush.ts).
+    // The Classic Plow (not a vehicle on the snowball kit): tap = the BALL SLAM, hold = PLOW RUSH (combat/classicRush.ts).
     const classicKit = this.kind === 'classic';
     const high = this.vert.airborne && this.vert.y - this.vert.surfaceY >= AIR_SLAM_MIN_HEIGHT;
     if (classicKit) this.updateClassicSpace(dt, high);
@@ -584,7 +577,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     const armed = this.vehicle;
     // Airborne and clear of the surface, SPACE is the air slam (Combat's AirKit dives, ball or not): no ground slam,
     // and no 'error' buzz for a missing ball.
-    if (armed || classicKit || high) this.slamBuffer = 0;
+    if (armed || high) this.slamBuffer = 0;
     if (this.slamBuffer > 0 && this.slamPhase === 0 && this.slamCd <= 0 && this.whirlT < 0) {
       this.slamBuffer = 0;
       if (this.heldBallRadius >= MIN_BALL_RADIUS) {
