@@ -40,13 +40,14 @@ export class MeleeKit extends Kit {
     const plow = this.b.plow;
     const stats = this.b.stats;
     if (!plow || plow.dead || !enemy.alive) return 0;
-    const until = this.ramCd.get(enemy.id);
-    if (until !== undefined && until > ctx.time) return 0;
-    // PLOW RUSH: first contact ends the rush in the ball slam right there (the slam does the damage).
+    // PLOW RUSH: first contact ends the rush in the ball slam right there (the slam does the damage). Before the ram
+    // cooldown: a bot rammed a moment ago still stops the rush.
     if ((plow as { rushing?: boolean }).rushing) {
       (plow as { rushContact?: () => void }).rushContact?.();
       return 0;
     }
+    const until = this.ramCd.get(enemy.id);
+    if (until !== undefined && until > ctx.time) return 0;
     const dashing = plow.dashing;
     if (dashing) return this.dashStrike(enemy);
     this.ramCd.set(enemy.id, ctx.time + RAM_REPEAT);

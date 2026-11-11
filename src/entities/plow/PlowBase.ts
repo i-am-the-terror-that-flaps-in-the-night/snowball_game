@@ -90,6 +90,8 @@ export abstract class PlowBase {
   protected rushT = 0;
   protected rushStall = 0;
   protected rushStop = false;
+  /** The rush ended in the air (off a deck edge): its slam fires on touchdown (PlowMotion.finishRush). */
+  protected rushLanding = false;
   /** Puppet: the host's plow was rushing at the last snapshot (launch fx edge). */
   protected puppetRush = false;
   /** MOMENTUM: seconds of the landed-tap-slam speed boost left. */

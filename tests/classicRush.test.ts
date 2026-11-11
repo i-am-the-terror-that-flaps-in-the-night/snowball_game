@@ -223,7 +223,7 @@ function spacePlow(dashCharge = 1) {
       audio: { play: (n: string) => audio.push(n) },
     },
     spaceT: -1, rushNoMeter: false, slamBuffer: 0, slamPhase: 0, rushChargeK: -1, rushDist: 0, rushLeft: 0,
-    rushT: 0, rushStall: 0, rushStop: false, momentumT: 0, whirlT: -1, dashT: 0, dashCharge, speed: 0, kick: 0,
+    rushT: 0, rushStall: 0, rushStop: false, rushLanding: false, momentumT: 0, whirlT: -1, dashT: 0, dashCharge, speed: 0, kick: 0,
     pushVel: new THREE.Vector3(), rushLaunchFx: () => {},
   });
   const step = (dt = 1 / 60) => {
@@ -276,7 +276,8 @@ describe('Classic SPACE input (Plow.updateClassicSpace)', () => {
     const q: { alive: boolean }[] = [];
     Object.assign(p, {
       position: new THREE.Vector3(), speed: 28, bladeWidth: 2.6, queryOut: [], dashTargets: [],
-      b: { ...(p.b as object), enemies: { query: () => q } },
+      // Combat.playerRam -> MeleeKit.playerRam -> rushContact (the body height rule sits in between).
+      b: { ...(p.b as object), authoritative: true, enemies: { query: () => q }, combat: { playerRam: () => (p.rushContact as () => void).call(p) } },
     });
     const dashHits = (p.dashHits as () => void).bind(p);
     dashHits();
@@ -383,5 +384,93 @@ describe('Classic tap slam impact (PlowMotion.slamImpact)', () => {
     impact();
     expect(calls).toEqual(['slam']);
     expect(p.momentumT).toBe(0);
+  });
+});
+
+/* Review fixes: the rush's first contact obeys the body height rule, the Duel guest's predicted rush stops on the
+ * other plow like the host's, and a rush that ends in the air (off a deck edge) slams on touchdown. */
+describe('PLOW RUSH contact and landing (review)', () => {
+  const rushingPlow = (authoritative: boolean, foe: unknown = null) => {
+    const { p, hold, release } = spacePlow();
+    hold(5);
+    release();
+    const slams: number[] = [];
+    const q: EnemyHandle[] = [];
+    Object.assign(p, {
+      position: new THREE.Vector3(), speed: 28, bladeWidth: 2.6, queryOut: [], dashTargets: [], radius: 1.6,
+      vert: { airborne: false, vy: 0, y: 0, surfaceY: 0 },
+      heldVolume: 0, ballR: 0, getBladeTip: (o: THREE.Vector3) => o.set(0, 0, 2.5), getForward: (o: THREE.Vector3) => o.set(0, 0, 1),
+      b: { ...(p.b as object), authoritative, foe, enemies: { query: () => q }, combat: { rushSlam: () => slams.push(1), playerRam: () => 0 } },
+    });
+    return { p, q, slams };
+  };
+
+  it('Combat.playerRam ends a rush only on a bot at body height, even one rammed a moment ago', () => {
+    const level = bot(0, 3);
+    const above = bot(0, 3);
+    above.position.y = 4; // on a deck over the plow's line
+    const { c, plow } = rig([level, above]);
+    let contacts = 0;
+    Object.assign(plow, { rushing: true, rushContact: () => contacts++ });
+    expect(c.playerRam(above, 28)).toBe(0);
+    expect(contacts).toBe(0);
+    expect(c.playerRam(level, 28)).toBe(0);
+    expect(contacts).toBe(1);
+    // A fresh ram cooldown on this bot (from a plain ram just before) doesn't let the rush pass through it.
+    plow.rushing = false;
+    plow.speed = 10;
+    c.playerRam(level, 10);
+    plow.rushing = true;
+    expect(c.playerRam(level, 28)).toBe(0);
+    expect(contacts).toBe(2);
+  });
+
+  it('the rushing blade asks Combat (playerRam) instead of stopping on any bot in its 2D query', () => {
+    const { p, q } = rushingPlow(true);
+    const asked: EnemyHandle[] = [];
+    (p.b as { combat: { playerRam: (e: EnemyHandle) => number } }).combat.playerRam = (e) => (asked.push(e), 0);
+    q.push(bot(0, 3));
+    (p.dashHits as () => void).call(p);
+    expect(asked.length).toBe(1);
+    expect(p.rushStop).toBe(false); // Combat said no (height): the rush carries on
+  });
+
+  it('Duel guest: the predicted rush stops on the other plow in front of the blade (as the host does), not above / far', () => {
+    const foe = { position: new THREE.Vector3(0, 0, 5), dead: false, radius: 1.6 };
+    const { p } = rushingPlow(false, foe);
+    (p.dashHits as () => void).call(p);
+    expect(p.rushStop).toBe(true);
+    p.rushStop = false;
+    foe.position.y = 6;
+    (p.dashHits as () => void).call(p);
+    expect(p.rushStop).toBe(false);
+    foe.position.set(0, 0, 9);
+    (p.dashHits as () => void).call(p);
+    expect(p.rushStop).toBe(false);
+    // The host (authoritative) never uses the foe shortcut: its OpponentTarget query does it.
+    const host = rushingPlow(true, { position: new THREE.Vector3(0, 0, 5), dead: false, radius: 1.6 });
+    (host.p.dashHits as () => void).call(host.p);
+    expect(host.p.rushStop).toBe(false);
+  });
+
+  it('a rush that ends in the air (off a deck edge) waits for the touchdown to slam; a ramp launch slams at once', () => {
+    const { p, slams } = rushingPlow(true);
+    (p.vert as { airborne: boolean }).airborne = true;
+    (p.finishRush as (l?: boolean) => void).call(p);
+    expect(slams.length).toBe(0);
+    expect(p.rushLeft).toBe(0);
+    expect(p.rushLanding).toBe(true);
+    // SPACE is ignored while the slam waits (no tap slam or new rush on top of it).
+    const keys = (p.b as { input: { wasPressed: (k: string) => boolean } }).input;
+    keys.wasPressed = (k) => k === 'Space';
+    (p.updateClassicSpace as (dt: number, high: boolean) => void).call(p, 1 / 60, false);
+    expect(p.spaceT).toBe(-1);
+    expect(p.slamBuffer).toBe(0);
+
+    const launch = rushingPlow(true);
+    (launch.p.vert as { airborne: boolean }).airborne = true;
+    (launch.p.finishRush as (l?: boolean) => void).call(launch.p, true);
+    expect(launch.slams.length).toBe(1);
+    expect(launch.p.rushLanding).toBe(false);
   });
 });

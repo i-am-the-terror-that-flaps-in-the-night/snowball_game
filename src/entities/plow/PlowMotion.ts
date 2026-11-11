@@ -10,6 +10,7 @@ import {
 } from './constants';
 import { _fwd, _a, _c, _dir } from './scratch';
 import { deckById } from './assets';
+import { bodyBand, heightOk } from '../combat/shared';
 import {
   MOMENTUM_SECONDS, RUSH_MAX, RUSH_MIN_SLAM_R, RUSH_SPEED, TAP_WINDOW, rushAffordable, rushCharge,
   rushPlan,
@@ -104,9 +105,14 @@ export abstract class PlowMotion extends PlowVisuals {
     const tx = this.position.x + _fwd.x * (TIP_Z - 0.4);
     const tz = this.position.z + _fwd.z * (TIP_Z - 0.4);
     const q = enemies.query(tx, tz, this.bladeWidth / 2 + 0.4, this.queryOut);
-    // PLOW RUSH: the first bot / opponent the blade meets ends the rush in the slam right there.
+    // PLOW RUSH: the first bot / opponent the blade meets ends the rush in the slam right there. Through
+    // Combat.playerRam (-> rushContact) so the body height rule applies: a bot on a deck above / below, or one the plow
+    // flies over off a deck edge, doesn't stop it.
     if (this.rushLeft > 0) {
-      for (let i = 0; i < q.length; i++) if (q[i].alive) this.rushStop = true;
+      for (let i = 0; i < q.length && !this.rushStop; i++) if (q[i].alive) this.b.combat.playerRam(q[i], this.speed);
+      // Duel guest: its targets are empty (the host decides), so its predicted rush stops on the other plow the
+      // same way the host's does, instead of running on past it and snapping back.
+      if (!this.rushStop && !this.b.authoritative) this.rushFoeContact(tx, tz);
       return;
     }
     const list = this.dashTargets;
@@ -144,7 +150,7 @@ export abstract class PlowMotion extends PlowVisuals {
   protected updateClassicSpace(dt: number, high: boolean): void {
     const input = this.b.input;
     // Mid-rush the plow is committed: presses are ignored (no buffered rush / slam out of a rush).
-    if (this.rushLeft > 0) {
+    if (this.rushLeft > 0 || this.rushLanding) {
       this.spaceT = -1;
       this.rushChargeK = -1;
       return;
@@ -225,23 +231,37 @@ export abstract class PlowMotion extends PlowVisuals {
     this.b.audio.play('ram', { volume: 0.6, pitch: 0.7 });
   }
 
+  /** Duel guest prediction: the blade query of dashHits against the other plow (PilotBinding.foe), with the body
+   *  height band (Combat.playerRam's Reach.Body). */
+  private rushFoeContact(tx: number, tz: number): void {
+    const foe = this.b.foe;
+    if (!foe || foe.dead) return;
+    const fr = typeof foe.radius === 'number' ? foe.radius : this.radius;
+    if (Math.hypot(foe.position.x - tx, foe.position.z - tz) >= this.bladeWidth / 2 + 0.4 + fr) return;
+    if (heightOk(this.position.y, foe.position.y, bodyBand(fr))) this.rushStop = true;
+  }
+
   /** A body contact while rushing (a bot driving into the hull, Combat.playerRam): the rush ends in the slam there. */
   rushContact(): void {
     if (this.rushLeft > 0) this.rushStop = true;
   }
 
   /** End the rush (first contact, distance done, blocked, a wall or a launch): slow down and slam at the blade. */
-  protected finishRush(): void {
+  protected finishRush(launched = false): void {
     this.rushLeft = 0;
     this.rushStop = false;
     this.rushStall = 0;
     this.speed = Math.min(Math.max(0, this.speed), this.b.stats.maxSpeed * 0.45);
-    this.rushSlam();
+    // Still in the air (it rode off a deck edge, or over a bump) and not launched up a ramp lip: the slam waits for
+    // the touchdown (Plow.update), so it lands on the floor the plow lands on instead of going off mid-air at the
+    // wrong height. A launch up off a lip slams right there, on the lip (as designed).
+    if (this.vert.airborne && !launched) this.rushLanding = true;
+    else this.rushSlam();
   }
 
   /** The rush's end slam: the held ball (Snow Reserve keeps its share) or a small snow-chunk slam without one; the
    *  chunks cash in inside Combat.rushSlam. */
-  private rushSlam(): void {
+  protected rushSlam(): void {
     const r0 = this.heldBallRadius;
     let r = RUSH_MIN_SLAM_R;
     let volume = 0;
@@ -652,6 +672,7 @@ export abstract class PlowMotion extends PlowVisuals {
     this.slamPhase = 0;
     this.dashT = 0;
     this.rushLeft = 0;
+    this.rushLanding = false;
     this.momentumT = 0;
     this.cancelSpace();
     this.rushFx.hide();

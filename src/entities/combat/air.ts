@@ -145,6 +145,10 @@ export class AirKit extends Kit {
     // Only the Classic air-slams: every other vehicle's SPACE is its kit's primary ability (VehicleKit.primary).
     if (isVehicle(this.b.stats)) return;
     if (!this.b.input.wasPressed('Space')) return;
+    // The Classic's PLOW RUSH is committed (presses are ignored mid-rush and while its slam waits for the touchdown):
+    // no air slam on top of the rush's own end slam.
+    const r = plow as { rushing?: boolean; rushSlamQueued?: boolean };
+    if (r.rushing || r.rushSlamQueued) return;
     // Only if the plow started a ground slam on this very press (it was just under the height at its input read):
     // cancel that one. A slam begun before lift-off plays out untouched.
     const s = plow as unknown as SlamState;

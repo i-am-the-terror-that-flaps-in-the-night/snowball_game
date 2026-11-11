@@ -56,7 +56,7 @@ export interface PilotBinding {
   readonly visualFoe?: EnemyHandle | null;
   /** Online Duel: the other pilot's plow. A guest's Combats hit nothing locally (the host decides), so visual-only
    *  homing (ARSENAL's Mag Discs) aims at this instead. Unset outside the Duel. */
-  readonly foe?: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly dead: boolean } | null;
+  readonly foe?: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly dead: boolean; readonly radius?: number } | null;
 }
 
 /** The single-player pilot: everything comes from the GameContext (read lazily, so systems built later work). */

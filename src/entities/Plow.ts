@@ -50,6 +50,10 @@ export class Plow extends PlowMotion implements PlowAPI {
   get rushing(): boolean {
     return this.rushLeft > 0;
   }
+  /** A PLOW RUSH that ended in the air waits to slam on touchdown (SPACE presses are ignored until then). */
+  get rushSlamQueued(): boolean {
+    return this.rushLanding;
+  }
   /** Classic Plow rush charge 0..1 while SPACE is held past the tap window (-1 = not charging). */
   get rushCharge(): number {
     return this.rushChargeK;
@@ -433,6 +437,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.rushT = 0;
     this.rushStall = 0;
     this.rushStop = false;
+    this.rushLanding = false;
     this.puppetRush = false;
     this.momentumT = 0;
     this.rushFx.hide();
@@ -533,7 +538,7 @@ export class Plow extends PlowMotion implements PlowAPI {
       this.hitStopT -= dt;
       // The Classic's SPACE hold keeps counting through a hit-stop (a press starts it); the release acts after.
       if (this.kind === 'classic') {
-        if (b.input.wasPressed('Space') && this.rushLeft <= 0 && this.spaceT < 0) {
+        if (b.input.wasPressed('Space') && this.rushLeft <= 0 && !this.rushLanding && this.spaceT < 0) {
           this.spaceT = 0;
           this.rushNoMeter = false;
         } else if (this.spaceT >= 0 && b.input.isDown?.('Space')) this.spaceT += dt;
@@ -714,10 +719,16 @@ export class Plow extends PlowMotion implements PlowAPI {
       this.rushLeft -= Math.max(0, moved);
       this.rushT += dt;
       this.rushStall = moved < vf * dt * 0.35 ? this.rushStall + dt : 0;
-      if (this.rushLeft <= 0.02 || this.rushStop || this.rushStall > 0.06 || (this.vert.airborne && this.vert.vy > 0 && this.vert.y - this.vert.surfaceY > 0.8) || this._dead || this.rushT > RUSH_MAX / RUSH_SPEED + 0.5) {
+      const launched = this.vert.airborne && this.vert.vy > 0 && this.vert.y - this.vert.surfaceY > 0.8;
+      if (this.rushLeft <= 0.02 || this.rushStop || this.rushStall > 0.06 || launched || this._dead || this.rushT > RUSH_MAX / RUSH_SPEED + 0.5) {
         if (this._dead) this.rushLeft = 0;
-        else this.finishRush();
+        else this.finishRush(launched);
       }
+    }
+    // A rush that ended in the air slams on touchdown, on the floor it lands on.
+    if (this.rushLanding && !this.vert.airborne && !this._dead) {
+      this.rushLanding = false;
+      this.rushSlam();
     }
 
     // ---- plowing
