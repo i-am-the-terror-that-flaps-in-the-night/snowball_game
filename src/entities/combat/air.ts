@@ -12,7 +12,7 @@ const _kb = new THREE.Vector3();
 
 /* ------------------------------------------------------------------ landing attacks (level overhaul, 3D combat)
  * STOMP: touching down at speed next to / on a bot on your level hurts it, scaled by the touchdown speed.
- * AIR SLAM: SPACE while airborne (every plow but ARSENAL, whose SPACE is the Mag Shotgun; ball or not) dives at
+ * AIR SLAM: SPACE while airborne (every plow but ARSENAL, whose SPACE is the Mag Discs; ball or not) dives at
  *   AIR_SLAM_DIVE m/s; the landing sends a shockwave whose radius and damage grow with the touchdown speed and the
  *   drop height. A held ball adds the ground slam's
  *   ball damage on top (and is used up). BRUTUS's Ground Pound pressed in the air dives the same way and lands as a

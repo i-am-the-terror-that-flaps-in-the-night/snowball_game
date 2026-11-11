@@ -318,6 +318,8 @@ export class DuelManager {
     const oppCombat = this.oppCombat!;
     me.plow = ctx.plow as Plow;
     me.combat = ctx.combat as Combat;
+    me.foe = oppPlow;
+    opp.foe = me.plow;
     // Host: each side's attacks hit the other's plow. Guest: nothing is hit locally (the host decides).
     if (host) {
       this.targetOpp = new OpponentTarget(new PlowHandle(2, oppPlow), () => oppCombat, () => me.stats, () => me.plow, () => opp.stats);

@@ -72,7 +72,7 @@ export const DUEL_REMATCH_GARAGE_SECONDS = 60;
 /** Every player-vs-player hit is scaled by this before the Brawl hit cap (brawlHit). Bot-tuned kits (Thunderclap
  *  storms, Inferno burn, saw / aura ticks) shred a single human target, so PvP runs at a fraction of PvE damage. */
 export const DUEL_DAMAGE_SCALE = 0.45;
-/** ARSENAL minigun rounds skip the i-frames and the ability diminishing returns (they land faster than either), so
+/** ARSENAL Mag Disc hits skip the i-frames and the ability diminishing returns (they land faster than either), so
  *  they take this extra scale against a human plow on top of DUEL_DAMAGE_SCALE. */
 export const DUEL_ROUND_SCALE = 0.7;
 /** Upgrades multiply damage far faster than HP (a late garage hits ~20x harder on ~3x the HP), so PvP damage is
@@ -87,8 +87,8 @@ export const DUEL_POWER_DAMP = 0.4;
  *  Tuned on the real browser matrix (scripts/duel-matrix.mjs, docs/balance.md "Duel balance at high").
  *  DUEL_KIND_DAMAGE scales every hit the vehicle DEALS to a human plow: VOLT-9's kit is tuned for crowds (its grounded
  *  arc is off against a lone human), BRUTUS's fists and saws out-trade everything up close, the Classic's slams / rams
- *  topped every tier of the matrix. ARSENAL stays below 1 because its minigun ('round' hits) already skips i-frames and
- *  ability diminishing returns: 0.85 is the most that keeps the minigun alone under a fifth of a same-tier Classic in
+ *  topped every tier of the matrix. ARSENAL stays below 1 because its Mag Discs ('round' hits) already skip i-frames and
+ *  ability diminishing returns: 0.85 is the most that keeps the discs alone under a fifth of a same-tier Classic in
  *  2 s of held fire (tests/balance.test.ts), so the rest of its help comes from DUEL_KIND_TAKEN. */
 export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 1.95, brute: 0.56, arsenal: 0.85, classic: 0.97 };
 /** DUEL_KIND_TAKEN scales every hit the vehicle TAKES from a human plow (an effective-HP lever: the HP bar, the hit caps
@@ -97,6 +97,10 @@ export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 1.95,
  *  spray range and radiation want kiting the fight never gives it); BRUTUS (the most HP) still won most of its trades
  *  after its damage trim, so it takes a little more. */
 export const DUEL_KIND_TAKEN: Partial<Record<PlowKind, number>> = { volt: 0.77, arsenal: 0.6, isotope: 0.9, brute: 1.18 };
+/** Knockback resistance in the Duel: how much of a TUG (DamageOpts.tug: ARSENAL's Mag Discs pulling the other plow in on
+ *  their way back) a vehicle takes, by its heaviness (missing = 1). BRUTUS (the heavy mech) resists most, ISOTOPE's
+ *  long flatbed and the bladed Classic a little; the light VOLT-9 and ARSENAL take it all. */
+export const DUEL_KNOCK_TAKEN: Partial<Record<PlowKind, number>> = { brute: 0.4, isotope: 0.75, classic: 0.85 };
 /** Fresh-garage overrides (vehicles not listed use the late value at every tier). BRUTUS grows strongest with upgrades
  *  (the matrix had it ~30% fresh / mid but ~65% at high under one flat trim), and VOLT-9 needs its full boost only late. */
 export const DUEL_KIND_DAMAGE_FRESH: Partial<Record<PlowKind, number>> = { volt: 1.8, brute: 0.78, classic: 0.9 };

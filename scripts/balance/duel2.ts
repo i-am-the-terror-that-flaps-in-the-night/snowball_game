@@ -11,7 +11,7 @@
  *  - Preferred range: each plow wants the centre distance where its main weapon works best, read from the real kit
  *    numbers (preferredRange below): Classic = where its slam lands (TIP_Z + ball + 0.5), BRUTUS = its fist zone
  *    (FIST_REACH x fistSize + Piston Fists reach), VOLT-9 / ISOTOPE = REACH_MARGIN of arcRange / sprayRange (+ line
- *    reach), ARSENAL = the Mag Shotgun's full-damage distance (pelletFalloff) capped at REACH_MARGIN of tankGunRange.
+ *    reach), ARSENAL = REACH_MARGIN of the Mag Discs' reach (tankGunRange: the discs hit a target there both ways).
  *  - Closing: every tick each plow moves toward its preferred range at MANEUVER x its real maxSpeed (backing off,
  *    still facing the enemy, at REVERSE of that), holding within HOLD m of it. When both pull opposite ways the
  *    faster plow wins the tug and the fight settles near ITS preferred range. Plows cannot overlap (CONTACT), and a
@@ -23,7 +23,7 @@
  *    whose preferred range is within dash reach DASH STRIKES when the enemy is in dash reach (it dashes in and the
  *    real dash strike lands on contact).
  *  - Jukes: a per-tick chance (JUKE_RATE /s) that a plow slips out of the enemy's forward cone: the enemy's heading is
- *    off by JUKE_ANGLE (past every forward cone: shotgun, arc lock, flame, spray, fists, ball shield) until it turns
+ *    off by JUKE_ANGLE (past every forward cone: disc homing, arc lock, flame, spray, fists, ball shield) until it turns
  *    back at its real turnRate. Radius attacks (whirl, auras, fields, pools, ultimates) still land.
  *  - Both pilots open fire after a seeded reaction delay (0..REACTION s) and who acts first alternates every tick from a
  *    seeded coin flip, so mirrors do not replay one fixed script.
@@ -43,7 +43,7 @@ import { DUEL_DRAW_EPS, DUEL_ROUND_SECONDS, DUEL_SPAWNS } from '../../src/config
 import { DASH_IFRAMES, DASH_SECONDS, TIP_Z } from '../../src/entities/plow/constants';
 import { arcRange } from '../../src/entities/combat/volt';
 import { sprayRange } from '../../src/entities/combat/isotope';
-import { pelletFalloff, tankGunRange } from '../../src/entities/combat/arsenal';
+import { tankGunRange } from '../../src/entities/combat/arsenal';
 import { FIST_REACH, fistSize } from '../../src/entities/combat/brute';
 import { OpponentTarget, PlowHandle } from '../../src/duel/opponent';
 import type { Plow } from '../../src/entities/Plow';
@@ -89,12 +89,8 @@ export function preferredRange(st: PlayerStats): number {
       return arcRange(ball) * REACH_MARGIN;
     case 'isotope':
       return (sprayRange(ball) + (st.sprayReach || 0)) * REACH_MARGIN;
-    case 'arsenal': {
-      const range = tankGunRange(st);
-      let full = 0;
-      while (full < range && pelletFalloff(full + 0.1, range) >= 1) full += 0.1;
-      return Math.max(CONTACT, Math.min(full, range * REACH_MARGIN));
-    }
+    case 'arsenal':
+      return Math.max(CONTACT, tankGunRange(st) * REACH_MARGIN);
   }
 }
 
