@@ -23,6 +23,17 @@ export interface PlowDef {
   /** Not a snowplow (every kind but the Classic): no blade, never plows snow or holds a ball, and SPACE / E are the
    *  vehicle's own abilities (combat/shared.ts VehicleKit.primary / secondary) instead of slam / whirlwind. */
   noBall?: boolean;
+  /** HEAVINESS: share of every knockback / shove / pull this plow takes (1 = full, 0.5 = half). Bots' rams, boss
+   *  shockwaves and pulls, Duel hits and pulls all scale by it (knockScale). Heavy chassis shrug off being moved. */
+  knockResist: number;
+}
+
+/** Share of a knockback, shove or pull a plow of this kind takes (PlowDef.knockResist; 1 for an unknown kind). Every
+ *  source that moves a plow scales by it: Combat.hitPlow (bots, Brawl rivals, the Duel opponent), boss pulls
+ *  (enemies/bosses.ts), and any Duel pull on the other plow (ARSENAL's disc). */
+export function knockScale(kind: PlowKind | undefined): number {
+  const k = kind ? PLOWS[kind]?.knockResist : undefined;
+  return k ?? 1;
 }
 
 /** SPACE / E are the vehicle's own kit (not slam / whirlwind): a non-Classic kind not switched to the snowball kit. */
@@ -37,7 +48,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     icon: '🚜',
     tagline: 'The close-range assassin: swipe up snow chunks, then rush in 20 m and slam them home.',
     traits: [
-      '+15% HP · full slam damage, +5.5% more per Packed Ice level past 4',
+      '+15% HP · sturdy: takes 20% less knockback · full slam damage, +5.5% more per Packed Ice level past 4',
       'SPACE tap: BLADE SWIPE, a 100° sweep; every hit packs a ❄ snow chunk (max 10) and gives +20% speed for 1 s',
       'SPACE hold + release: PLOW RUSH, 1.5-20 m in a straight line (shares the dash meter), ending in your ball slam; the chunks cash in for +5% radius / +4% damage each',
       'F: Inferno fire cone (10 m) + fireball finisher (free) · fire damage builds FIRESTORM: full = 360° fire nova on F',
@@ -52,13 +63,14 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     // Sim high-tier 1-target 1259 -> 1663, cluster 5188 -> 6880; fresh / mid unchanged (docs/balance.md).
     iceGrowth: 0.055,
     fAbility: 'fire',
+    knockResist: 0.8, // heavy pro plow: a diver that shouldn't bounce off its target
   },
   volt: {
     id: 'volt',
     name: 'VOLT-9',
     icon: '⚡',
     tagline: 'A quick, twitchy rover under a crackling coil tower. No blade, all voltage.',
-    traits: ['+12% speed, +25% acceleration, +20% dash', '+15% damage (overcharged coils), -5% HP', 'SPACE (hold): Arc Lance chains lightning through up to 7 bots, can PARALYSE, and grounds into lone bots for 1.75x, bosses for 2.6x · E: Static Field, a pulsing stun field that rides with you for 2.5 s', 'F: Thunderclap storm (free, costs HP) · damage builds SUPERCELL: 3 waves of sky lightning'],
+    traits: ['True ranged: the Arc Lance reaches 14 m (~20 m late) and you reverse at 80% speed while it fires', 'Duel: the lance hits 40% softer bumper to bumper (full again 5 m out): keep your distance', '+12% speed, +25% acceleration, +20% dash', '+15% damage (overcharged coils), -5% HP', 'SPACE (hold): Arc Lance chains lightning through up to 7 bots, can PARALYSE, and grounds into lone bots for 1.75x, bosses for 2.6x · E: Static Field, a pulsing stun field that rides with you for 2.5 s', 'F: Thunderclap storm (free, costs HP) · damage builds SUPERCELL: 3 waves of sky lightning'],
     hpMult: 0.95,
     speedMult: 1.12,
     accelMult: 1.25,
@@ -66,13 +78,14 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     slamMult: 1.15,
     fAbility: 'zap',
     noBall: true,
+    knockResist: 1,
   },
   brute: {
     id: 'brute',
     name: 'BRUTUS',
     icon: '🦏',
     tagline: 'Tracked wrecking mech. Two piston fists, two buzzsaws, no patience.',
-    traits: ['+35% HP, +20% damage', '-8% acceleration, -10% dash', 'SPACE (hold): rapid Wrecking Fist combo, no cooldown: every landed jab staggers and cracks armour; E: Saw Charge', 'F: Ground Pound shockwave (free)', 'Damage builds EARTHQUAKE: full = 3 rolling shockwaves'],
+    traits: ['+35% HP, +20% damage', 'Heavy: takes half knockback and pull', '-8% acceleration, -10% dash', 'SPACE (hold): rapid Wrecking Fist combo, no cooldown: every landed jab staggers and cracks armour; E: Saw Charge', 'F: Ground Pound shockwave (free)', 'Damage builds EARTHQUAKE: full = 3 rolling shockwaves'],
     hpMult: 1.35,
     speedMult: 1,
     accelMult: 0.92,
@@ -80,13 +93,14 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     slamMult: 1.2,
     fAbility: 'pound',
     noBall: true,
+    knockResist: 0.5, // the close tank: half knockback, so it stays in your face
   },
   isotope: {
     id: 'isotope',
     name: 'ISOTOPE',
     icon: '☢️',
     tagline: 'A nuclear flatbed with a glowing reactor on its back. No blade; everything it hoses glows, then falls apart.',
-    traits: ['Irradiated bots take +30% damage, burn, and hit you 20% softer (lead lining)', '+5% speed, +20% HP', 'SPACE (hold): Rad Sprayer soaks bots in a RAD DOSE that burns for 8-15 s and spreads · E: Fallout Trail of gripping toxic puddles for 4 s', 'F: Meltdown blast + fallout pool (free) · radiation builds Critical Mass: full = NUKE on F'],
+    traits: ['Specialist: zone control, damage over time and tank-buster', 'Irradiated bots take +30% damage, burn, and hit you 20% softer (lead lining)', 'Tank-buster: radiation burn also eats 0.5% of max HP per second (bots counted up to 1500 HP; the bigger the plow, the harder it burns)', '+5% speed, +20% HP', 'SPACE (hold): Rad Sprayer soaks bots in a RAD DOSE that burns for 8-15 s and spreads · E: Fallout Trail of gripping toxic puddles for 4 s', 'F: Meltdown blast + fallout pool (free) · radiation builds Critical Mass: full = NUKE on F'],
     hpMult: 1.2, // ISOTOPE buff by request (secondary to the Rad Sprayer): 1.1 -> 1.2
     speedMult: 1.05,
     accelMult: 1,
@@ -94,6 +108,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     slamMult: 1,
     fAbility: 'meltdown',
     noBall: true,
+    knockResist: 0.85, // lead-lined reactor: a little ballast
   },
   arsenal: {
     id: 'arsenal',
@@ -108,5 +123,6 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     slamMult: 1,
     fAbility: 'missiles',
     noBall: true,
+    knockResist: 1,
   },
 };

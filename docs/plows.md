@@ -9,6 +9,15 @@ blade, plows snow into a ball, slams with a SPACE tap and whirls with E (the Cla
 rush), and keeps its own F and ultimate.
 It takes effect on the next run; the Duel always uses SPECIAL.
 
+**Roles** (in Brawl Stars terms): BRUTUS is the close tank (El Primo), the Classic the close-range assassin (Nori),
+VOLT-9 the true ranged pilot (Colt), ARSENAL the mid-range magnetic disruptor and ISOTOPE the specialist (zone, damage
+over time, tank-buster).
+
+**Heaviness.** Every knockback, shove or pull a plow takes (bots' rams and attacks, boss shockwaves and the GRINDER's
+auger suck-in, Brawl rivals, the Duel opponent's hits) is scaled by its weight: BRUTUS takes half, the Classic 80%,
+ISOTOPE 85%, VOLT-9 and ARSENAL the full push (`PlowDef.knockResist`, `knockScale(kind)` in `src/config/plows.ts`).
+A plow's own moves (dash, Saw Charge) are never scaled.
+
 ## Classic Plow
 
 **The close-range assassin** (Brawl Stars: Nori): chip in with the blade, then commit to a long charged rush that ends
@@ -51,13 +60,14 @@ Vehicles switched to the SNOWBALL kit (⚙ Settings) keep the old SPACE: a tap s
 
 ## VOLT-9
 
-In the Duel its attacks hit 1.8x as hard (its kit is built for crowds).
+In the Duel its attacks hit 1.8x as hard (its kit is built for crowds). **The true ranged pilot:** the Arc Lance
+reaches 14 m, it backs off fast while firing (kiting), and in the Duel it is weak bumper to bumper.
 
 No blade: a low, wide rover under a crackling coil tower. It doesn't plow snow or carry a snowball, though deep
 snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% damage, but -5% HP.
 
 - **SPACE (hold): Arc Lance.** Every 0.15 s an arc jumps from the tower to the nearest bot within 60° of the nose and
-  9 m (Mega Hopper adds reach), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
+  14 m (+2.5 m per metre of Mega Hopper ball radius above 1.2 m: about 20 m late; it was 9 m), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
   nearest unhit bot within 8 m, the first hop at 60% damage and each one after keeping 90% of the one before. Every
   arc hit (any hop) has a 7% chance to **PARALYSE** the bot for 1.2 s (a stun; bosses half); a paralysed bot can't be
   paralysed again for 2.5 s after. **GROUNDED ARC:** when the locked bot is a boss, or has nothing within 8 m to chain to
@@ -66,7 +76,14 @@ snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% dama
   that forks down through the bot into the floor, a lower buzz, and a **GROUNDED** pop (GROUNDED ×2.6 on a boss) with a
   deep zap when it first grounds, repeated at most every 1.6 s. A paralysed bot crackles with a blue-white outline of
   short arcs for as long as the lock lasts, so frozen bots read at a glance. It stays locked onto its target
-  while that bot stays in reach. Overclock speeds the arc up.
+  while that bot stays in reach. Overclock speeds the arc up. Past 9 m the bolt jitters wider so a 14-20 m shot still
+  crackles.
+  **Kiting:** while the lance fires, VOLT-9 reverses at up to 80% of its top speed (every other plow, and VOLT-9
+  when not firing: 45%), so it can back off a diver and keep the lance on it.
+  **Close-range penalty (Duel only):** an arc on an opponent whose gap is under 3 m hits for 0.6x, ramping linearly
+  back to full at 5 m. The gap is bumper to bumper: centre-to-centre distance minus both hull radii (1.6 m each for
+  plows). Bots take full damage at any range. On the Duel guest the bolt is drawn onto the opponent's hull (visual
+  only; the host deals the damage).
 - **E: Static Field.** An electrified field rides with the rover for 2.5 s (6.5 m, wider with Tesla Field). It pulses
   every 0.5 s, the first pulse a bigger burst: each pulse damages and stuns every bot inside for 0.7 s, so bots caught in
   it stay locked down while you drive through a pack. It recharges on the E timer (Whirlwind Turbine and Overclock
@@ -112,11 +129,18 @@ it).
 
 ## ISOTOPE ☢️
 
+**The specialist:** zone control (Fallout Trail, Meltdown pools), damage over time (RAD DOSE) and tank-buster.
+
 A long, low nuclear flatbed: a stubby armoured cab, a big glowing reactor capsule lying on the bed with control rods
 bobbing out of it, twin cooling stacks, a spinning vent fan and a sprayer nozzle over the nose. No blade, no snowball
 (deep snow still slows it). +5% speed and +20% HP; bots it irradiates glow green, take +30% damage from you
 and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose, or for as long as a RAD DOSE is
-still soaking in). **Lead lining:** a bot it has irradiated hits ISOTOPE 20% softer (bots only; Duel and Brawl
+still soaking in). **Tank-buster:** every burn tick also takes 0.5% of the target's max HP per second of burn, as true
+damage on top (no damage mult, vulnerability or armour, no lifesteal). Bots count their max HP only up to 1500 (just
+above the base campaign bosses, below THE DONALD / MEGAPLOW and Hard / Survival-scaled bosses), so a fresh run's boss
+loses about 7.5 HP/s but a huge late boss doesn't melt; Duel plows count in full (BRUTUS's 540 HP burns ~2.7 HP/s,
+ARSENAL's 360 ~1.8 HP/s; the Duel lands it unscaled, with the usual area-ability diminishing returns). Sim: ISOTOPE
+1-target DPS fresh 80 -> 87, mid 363 -> 371, high 1799 -> 1806. **Lead lining:** a bot it has irradiated hits ISOTOPE 20% softer (bots only; Duel and Brawl
 unchanged), so dosing a pack before wading into it pays off.
 
 - **SPACE (hold): Rad Sprayer.** Every 0.12 s (faster with Overclock) the nozzle hoses a glowing cone (about 100°

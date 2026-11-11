@@ -419,6 +419,10 @@ export interface DamageOpts {
   /** An ultimate's damage (the blast and its aftermath). Bots ignore it; the online Duel soft-caps it per ultimate
    *  (duel/opponent.ts, DUEL_ULT_HP_CAP). */
   ult?: boolean;
+  /** A share of the target's own max HP (ISOTOPE's TANK-BUSTER burn): the online Duel lands it as dealt (no Duel
+   *  damage / kind / power scaling; the area-ability diminishing returns still apply), then the victim's own
+   *  defences. Bots ignore it. */
+  hpShare?: boolean;
 }
 
 export interface EnemyManagerAPI {

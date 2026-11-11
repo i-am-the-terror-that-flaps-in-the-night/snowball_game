@@ -213,7 +213,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   const isArs = plow === 'arsenal';
   // Held SPACE primaries of the vehicle kits (no snowball to slam): Arc Lance, Wrecking Fist, Rad Sprayer reach (m,
   // centre to centre, before the target's radius).
-  const KIT_REACH = { volt: 9, brute: 5.6, isotope: 8.5 }[plow] ?? 0;
+  const KIT_REACH = { volt: 14, brute: 5.6, isotope: 8.5 }[plow] ?? 0;
   wrap(cb.air, 'update', 'air');
   wrap(cb.classic, 'updateFlame', 'F');
   wrap(cb.classic, 'updateBurns', 'F');

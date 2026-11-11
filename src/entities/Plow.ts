@@ -16,7 +16,7 @@ import {
 import {
   BLADE_Z, SAW_FURY_DEALT, SAW_FURY_TAKEN, SLAM_WINDUP, SLAM_LUNGE, SLAM_IMPACT_AT, SLAM_LUNGE_SPEED, DASH_SECONDS,
   DASH_EASE, DASH_STEER, DASH_STRIKE_KEEP, WHIRL_SPEED, WHIRL_STEER, SPAWN_PROTECT, INPUT_BUFFER, TRAIL_MIN_SPEED,
-  SLOPE_BOOST_DECAY,
+  SLOPE_BOOST_DECAY, reverseCap,
 } from './plow/constants';
 import { _fwd, _right, _a, _b, _dir } from './plow/scratch';
 import { MOMENTUM_BOOST, RUSH_CHARGE_SLOW, RUSH_MAX, RUSH_SPEED } from './combat/classicRush';
@@ -622,7 +622,9 @@ export class Plow extends PlowMotion implements PlowAPI {
     const maxF = stats.maxSpeed * (1 - 0.2 * Math.min(1, heldR / maxBallR)) * (this.whirlT >= 0 ? WHIRL_SPEED : 1) *
       (this.rushChargeK >= 0 ? RUSH_CHARGE_SLOW : 1) * (this.momentumT > 0 ? 1 + MOMENTUM_BOOST : 1);
     const accel = stats.accel;
-    const maxRev = stats.maxSpeed * 0.45;
+    // KITING: VOLT-9 backs off at VOLT_KITE_REV x top speed while its Arc Lance fires (voltArc is set by the kit on
+    // every pilot that simulates this plow: single player, the Duel host, and the guest's own prediction).
+    const maxRev = reverseCap(stats.maxSpeed, stats.plowKind, this.voltArc);
     // Terrain: no traction in the air (speed carries), less on ice (spinning wheels, long braking, long coasting).
     const air = this.vert.airborne;
     const iceK = this.ice;
