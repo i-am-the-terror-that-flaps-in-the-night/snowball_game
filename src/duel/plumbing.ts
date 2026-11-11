@@ -210,7 +210,8 @@ export class AutoPilot implements InputSource {
   }
   /** The Classic Plow's SPACE: tap BLADE SWIPEs when the opponent is inside the swipe (SWIPE_RANGE past both hulls);
    *  lined up at ~6-21 m with meter for a rush that reaches them (rushCost), hold to charge a PLOW RUSH and let go
-   *  once the telegraph matches the gap (the slam's ring covers the last ~2.5 m) or the charge is full. Its dash
+   *  once the telegraph reaches them (2.5 m short of their centre: the blade touches them there, and the first contact
+   *  ends the rush in the slam) or the charge is full. Charging no longer slows the plow, so it keeps closing. Its dash
    *  shares that meter, so it only dashes when the opponent is past rush reach. */
   private classicSpace(me: Plow, d: number, err: number, facing: boolean): void {
     const swipeD = SWIPE_RANGE + 2 * AUTO_HULL;

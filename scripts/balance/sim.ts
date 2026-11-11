@@ -58,7 +58,7 @@ export function statsFor(kind: PlowKind, tier: Tier): PlayerStats {
  *  - the blade moves SNOW_INTAKE m^3/s of snow while fighting (about half the open-field rate), x collectRate;
  *  - the Classic's slams are PLOW RUSH slams (Combat.rushSlam, cashing in its SNOW CHUNKS): a ball of SLAM_BALL x max
  *    radius once it has grown (slam cycle >= SLAM_CYCLE s), each paying a short rush (RUSH_COST_MIN of the dash meter
- *    it shares with the dash; a dash strike needs a full meter);
+ *    it shares with the dash; a dash strike needs a full meter), landing on the target (the rush slams at first contact);
  *  - the Classic BLADE SWIPEs (Combat.classicSwipe) every SWIPE_CYCLE s (the 0.35 s cooldown at about half uptime:
  *    a real swipe needs the target inside 3.5 m of the blade, in front of it) except while whirling;
  *  - whirls go off every recharge (+ the 0.9s spin) holding a ball of WHIRL_BALL x max radius;

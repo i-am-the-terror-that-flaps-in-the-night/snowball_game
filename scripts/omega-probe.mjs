@@ -426,7 +426,8 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
     if (KIT_REACH) set('Space', sameT && bd < kitReach() + (best.radius || 1) * 0.5 && Math.abs(bdiff) < 0.7);
     if (plow === 'classic') {
       // BLADE SWIPE when the target is inside the sweep; lined up at range with meter for a rush that reaches it,
-      // hold SPACE to charge a PLOW RUSH and let go once the telegraph matches the gap (or the charge is full).
+      // hold SPACE to charge a PLOW RUSH and let go once the telegraph reaches the target (or the charge is full); the
+      // rush slams at the first bot it touches, so a longer line only costs meter.
       const swipeD = SWIPE_RANGE + p.radius + (best.radius || 1);
       if (AP.rush) {
         const k = p.rushCharge;
