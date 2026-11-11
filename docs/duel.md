@@ -17,8 +17,8 @@ menu but the match keeps running; leaving ends it for both. REMATCH needs both p
 no loot.
 
 Each player brings their **own garage**: core upgrades, plow line, equipped gear and Paint Shop look. Your opponent
-sees your gear on your plow. Player-vs-player hits are scaled well below PvE damage (45%, minigun
-rounds further, and damped by the attacker's garage power so late-game duels don't end in seconds), then take the
+sees your gear on your plow. Player-vs-player hits are scaled well below PvE damage (45%, Mag Disc
+hits further, and damped by the attacker's garage power so late-game duels don't end in seconds), then take the
 same 60% max-HP hit cap as Brawl, so nothing one-shots. On top of that each vehicle has a Duel-only factor on the
 damage it deals and on the damage it takes (`DUEL_KIND_DAMAGE` / `DUEL_KIND_TAKEN` in `src/config/duel.ts`: VOLT-9
 deals x1.95 and takes x0.77, ARSENAL deals x0.85 and takes x0.6, ISOTOPE takes x0.9, BRUTUS deals x0.56 and takes

@@ -2,14 +2,15 @@ import * as THREE from 'three';
 import type { EnemyHandle } from '../../core/types';
 import { settings } from '../../core/settings';
 import { SingularityFx } from '../../fx/singularity';
-import { ArcWaves, Horizon, Shockwaves, addMat, aimBeam, beamGeometry, paintMat } from './arsenalFx';
+import { ArcWaves, DiscFx, Horizon, Shockwaves, addMat, beamGeometry, paintMat } from './arsenalFx';
 import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, wrapAngle, type CombatHost } from './shared';
 import type { UltScript } from './ultimates';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const UPDATE_SCRAP_BURST = { color: 0x8fb4c6, count: 1, speed: 0.5, size: 0.12, gravity: -1, life: 0.6 };
 const UPDATE_SCRAP_BURST_2 = { color: 0xd8f4ff, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 };
-const BLAST_BURST = { color: 0xbff6ff, count: 4, speed: 5, size: 0.12, gravity: 0, life: 0.14 };
+const LAUNCH_BURST = { color: 0xbff6ff, count: 2, speed: 4, size: 0.1, gravity: 0, life: 0.12 };
+const CATCH_BURST = { color: 0xd8ffff, count: 3, speed: 3, size: 0.08, gravity: 0, life: 0.12 };
 const TICK_BURST_SPARKS = { count: 3, color: 0xbff8ff, speed: 14, spread: 0.2, size: 0.05, life: 0.4, gravity: 0, length: 0.08 };
 
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
@@ -18,8 +19,9 @@ const _kb = new THREE.Vector3();
 
 /* ARSENAL: a magnetic vehicle (two huge front wheels, a hovering gyro core at the back). Like every plow, it fights
  * up close and aims by steering: both main weapons fire straight off the nose.
- *   SPACE  MAG SHOTGUN   held: a fixed forward emitter fires a blast every 1/gunRate s: SHOT_PELLETS pellets in a
- *                        SHOT_HALF x 2 cone, short reach, damage falling off with distance, a shove point-blank.
+ *   SPACE  MAG DISCS     held: a steady cycle of spinning magnetic discs off the nose emitter, one every ~0.25 s;
+ *                        each flies out to the reach (lightly homing), boomerangs back to the emitter, and hits on
+ *                        both legs (once per target per leg); a return-leg hit tugs the target toward ARSENAL.
  *   E      MAG REPULSOR  a magnetic wave sweeps out across a forward wedge (REP_HALF x 2, laserRange m): one big hit
  *                        on every bot it reaches, flinging it away (bosses barely).
  *   F      POLARITY BURST the gyro folds into a disc, an event horizon expands to BURST_R m, every bot inside is pulled
@@ -43,7 +45,7 @@ const SCRAP_HIT_R = 0.7;
 const SCRAP_HIT_CD = 0.4;
 const SCRAP_POOL = 12;
 /** STRIP SCRAP: the ring doesn't depend on wrecking cannon fodder. Every SHED_FRAC of a target's max HP that ARSENAL's
- *  weapons tear off (shotgun, repulsor, burst, singularity) rips a shard off it; bosses shed every SHED_FRAC_BOSS (a boss
+ *  weapons tear off (discs, repulsor, burst, singularity) rips a shard off it; bosses shed every SHED_FRAC_BOSS (a boss
  *  fight keeps the ring full). The ring's own shard hits and the field count at SHED_SELF (partial self-feeding: a ring
  *  grinding a boss slowly tops itself up, but it still needs you firing to stay full). Wrecks still shed one. */
 const SHED_FRAC = 0.2;
@@ -52,46 +54,87 @@ const SHED_SELF = 0.25;
 interface Shard { mesh: THREE.Mesh; state: 0 | 1 | 2; t: number; from: THREE.Vector3; slot: number; hitAt: Map<EnemyHandle, number> }
 
 const DEG = Math.PI / 180;
-/** MAG SHOTGUN: SHOT_PELLETS pellets (more with Whirlwind Turbine, PELLET_MAX at most) fanned evenly across
- *  ±SHOT_HALF round the hull's nose. A pellet stops in the first bot whose body comes within SHOT_PELLET_R m of its
- *  line; it deals full damage out to SHOT_FULL m, falling to SHOT_FAR of it at full reach. A bot within SHOT_PB m
- *  takes a point-blank shove (SHOT_PB_KNOCK), anything further a nudge (SHOT_KNOCK). All of one blast's pellets on
- *  one bot land as ONE hit (the Duel caps a blast as one hit, armour is paid once per blast). */
-const SHOT_PELLETS = 8;
-const PELLET_MAX = 12;
-const SHOT_HALF = 18 * DEG;
-const SHOT_PELLET_R = 0.4;
-const SHOT_FULL = 6;
-const SHOT_FAR = 0.7;
-const SHOT_PB = 3.5;
-const SHOT_PB_KNOCK = 7;
-const SHOT_KNOCK = 1.2;
-/** The emitter never yaws; it only tilts (at GUN_PITCH_SLEW rad/s, within ±SHOT_PITCH) toward the nearest bot in the
- *  cone; each pellet connects with any bot whose body is inside that band (slopes, ramps, small bots point-blank under a
- *  high emitter), so only bots on another deck are out of reach. */
-const SHOT_PITCH = 30 * DEG;
-const GUN_PITCH_SLEW = 2.5;
+/** MAG DISCS (SPACE, held): a steady cycle, one disc every discInterval s (1 / gunRate; Overclock shortens it a
+ *  little). Each disc flies out of the nose at DISC_SPEED m/s to the reach (tankGunRange), gently
+ *  homing (DISC_HOME rad/s) on the nearest target ahead of it (within DISC_HOME_CONE of its course, inside the reach),
+ *  then stalls to DISC_APEX m/s, whips round (DISC_BACK_TURN rad/s) and flies to the emitter wherever ARSENAL has driven, speeding up to
+ *  DISC_BACK_MAX m/s; it snaps back in within DISC_CATCH m (or is recycled after DISC_LIFE s). It hits every target its
+ *  body (tankDiscRadius) passes through, each at most once per leg, for gunDamage: on the way out with a nudge
+ *  (DISC_KNOCK), on the way back with a TUG toward ARSENAL (DISC_TUG m/s divided by the bot's mass, bosses
+ *  DISC_TUG_BOSS x; in the Duel DISC_DUEL_TUG, scaled by the victim plow's
+ *  heaviness, knockScale(kind), in Combat.hitPlow). Launches cycle through
+ *  DISC_YAW so the stream fans a touch. A disc that meets a prop (it breaks) or the ground turns back early. */
+const DISC_SPEED = 22;
+const DISC_OVERCLOCK = 0.25;
+const DISC_HOME = 1.75;
+const DISC_HOME_CONE = 70 * DEG;
+const DISC_BACK_TURN = 14;
+/** Speed (m/s) a disc snaps round at the far end (a boomerang's stall) before it accelerates home. */
+const DISC_APEX = 6;
+const DISC_BACK_ACCEL = 45;
+const DISC_BACK_MAX = 34;
+/** Within this distance of the emitter the return leg steers straight at it (no turn limit: no orbiting). */
+const DISC_BACK_DIRECT = 3;
+const DISC_CATCH = 0.9;
+const DISC_LIFE = 3;
+const DISC_R = 1.0;
+const DISC_R_MAX = 1.4;
+/** The return leg drags a wider field behind it (its hit radius x this): it sweeps up what the way out missed. */
+const DISC_BACK_WIDE = 2;
+const WHIRL_DISC_R = 0.1;
+const DISC_KNOCK = 1.2;
+const DISC_TUG = 3.5;
+const DISC_TUG_BOSS = 0.2;
+const DISC_DUEL_TUG = 3;
+const DISC_YAW = [0, -15 * DEG, 15 * DEG, -8 * DEG, 8 * DEG];
+/** Discs out at once at most (the pool: ~1 s round trip x the fastest cycle). */
+const DISC_POOL = 12;
+/** Height slack (m) round a target's body a disc must be inside to hit it; a disc climbs / dives toward its homing
+ *  target at up to DISC_CLIMB m/s (slopes, ramps). */
+const DISC_DY = 0.6;
+const DISC_CLIMB = 4;
+/** Spin (rad/s), pop-in time (s), the rising hum's ramp (s) and the snap-back clank's minimum spacing (s). */
+const DISC_SPIN = 22;
+const DISC_POP = 0.06;
+const HUM_RISE = 1.5;
+const CLANK_GAP = 0.07;
+/** Nose flash decay (1/s). */
+const FLASH_DECAY = 14;
+/** A press without held-key reporting keeps the trigger down this long (one disc, maybe two). */
+const GUN_BURST = 0.3;
 /* The snowball / spin shop lines, re-purposed on ARSENAL so every bought level still does something:
- * Mega Hopper stretches the shotgun's reach (HOPPER_RANGE m per m of max ball radius over the base 1.2 m),
- * Whirlwind Turbine adds pellets (WHIRL_PELLETS per m of spin radius over 4),
+ * Mega Hopper stretches the discs' reach (HOPPER_RANGE m per m of max ball radius over the base 1.2 m),
+ * Whirlwind Turbine makes the discs wider (WHIRL_DISC_R m per m of spin radius over 4, DISC_R_MAX at most),
  * Snow Compactor widens the Mag Repulsor's wedge (COMPACT_ARC rad per unit of pack rate over the base 0.12). */
 const HOPPER_RANGE = 1.5;
-const WHIRL_PELLETS = 0.5;
 const COMPACT_ARC = 0.6;
-/** Shotgun reach (m) with Mega Hopper. */
+/** Mag Discs reach (m) with Mega Hopper. */
 export const tankGunRange = (st: { gunRange: number; maxBallRadius: number }): number => st.gunRange + HOPPER_RANGE * Math.max(0, st.maxBallRadius - 1.2);
-/** Pellets per blast with Whirlwind Turbine. */
-export const tankPellets = (st: { whirlRadius: number }): number => Math.min(PELLET_MAX, SHOT_PELLETS + Math.floor(WHIRL_PELLETS * Math.max(0, st.whirlRadius - 4) + 1e-6));
+/** Disc hit radius (m) with Whirlwind Turbine. */
+export const tankDiscRadius = (st: { whirlRadius: number }): number => Math.min(DISC_R_MAX, DISC_R + WHIRL_DISC_R * Math.max(0, st.whirlRadius - 4));
 /** Mag Repulsor wedge half-angle (rad) with Snow Compactor. */
 export const tankRepulseHalf = (st: { collectRate: number }): number => Math.min(REP_HALF_MAX, REP_HALF + COMPACT_ARC * Math.max(0, st.collectRate - 0.12));
-/** Shotgun damage multiplier for a pellet that travelled `d` m of a `range` m reach. */
-export const pelletFalloff = (d: number, range: number): number =>
-  1 - (1 - SHOT_FAR) * THREE.MathUtils.clamp((d - SHOT_FULL) / Math.max(0.1, range - SHOT_FULL), 0, 1);
-/** A press without held-key reporting keeps the trigger down this long (one blast). */
-const GUN_BURST = 0.3;
-/** Pellet streak lifetime (s) and muzzle flash decay (1/s). */
-const STREAK_LIFE = 0.12;
-const FLASH_DECAY = 14;
+/** Seconds between two discs: 1 / gunRate, x cooldownMult^DISC_OVERCLOCK (Overclock speeds the cycle up a little:
+ *  -48% cooldowns = 18% more discs; any more and late garages out-damaged the old shotgun). */
+export const discInterval = (st: { gunRate: number; cooldownMult: number }): number => Math.max(0.4, st.cooldownMult || 1) ** DISC_OVERCLOCK / Math.max(0.3, st.gunRate);
+interface Disc {
+  on: boolean;
+  /** On the return leg. */
+  back: boolean;
+  pos: THREE.Vector3;
+  prev: THREE.Vector3;
+  /** Unit course (XZ). */
+  dx: number;
+  dz: number;
+  speed: number;
+  travelled: number;
+  range: number;
+  t: number;
+  spin: number;
+  /** Targets already hit on the way out / back (each at most once per leg). */
+  hitOut: Set<EnemyHandle>;
+  hitBack: Set<EnemyHandle>;
+}
 
 /** MAG REPULSOR: a wave sweeps from the nose across ±REP_HALF (REP_HALF_MAX with Snow Compactor) out to laserRange m
  *  over REP_SECONDS; each bot is hit once as the front reaches it: laserDps x REP_DMG_SECONDS (x your damage mult),
@@ -150,30 +193,32 @@ const SING_VIS_R = 2.6;
 
 const CYAN = 0x38e8ff;
 const _a = new THREE.Vector3();
-const _hit = { t: 0, x: 0, y: 0, z: 0, what: 'ground' as 'ground' | number };
 
 const glowMat = addMat;
 /** Normal-blended tint: additive cyan washes out to white over sunlit snow, so the outer glows are painted on. */
 const tintMat = paintMat;
 
-/** ARSENAL: Mag Shotgun, Mag Repulsor, Polarity Burst, the SINGULARITY and the Scrap Magnet (plus the duel guest's view). */
+/** ARSENAL: Mag Discs, Mag Repulsor, Polarity Burst, the SINGULARITY and the Scrap Magnet (plus the duel guest's view). */
 export class ArsenalKit extends Kit implements UltScript, VehicleKit {
-  readonly primaryDesc: AbilityDesc = { icon: '🔷', label: 'SHOTGUN', hint: 'hold for MAG SHOTGUN' };
+  readonly primaryDesc: AbilityDesc = { icon: '🔷', label: 'DISCS', hint: 'hold for MAG DISCS' };
   readonly secondaryDesc: AbilityDesc = { icon: '🧲', label: 'REPULSE', hint: 'MAG REPULSOR' };
   /** SPACE state handed in by Combat (primary) for updateGuns this frame. */
   private trigHeld = false;
   private trigPressed = false;
-  /** Shotgun cycle timer + burst window. */
+  /** Disc cycle timer, burst window, how long the cycle has run (the hum rises with it), launches so far. */
   private gunT = 0;
   private gunBurstT = 0;
-  /** Pellet streaks (pooled: white core + painted cyan sheath each), their start / end / age; the muzzle flash. */
-  private pellets: { core: THREE.Mesh; glow: THREE.Mesh; a: THREE.Vector3; b: THREE.Vector3; t: number }[] = [];
+  private cycleT = 0;
+  private discN = 0;
+  /** The disc pool (fixed size, nothing allocated per launch) and its visuals; the nose flash. */
+  private discs: Disc[] = [];
+  private discFx!: DiscFx;
   private flashCore!: THREE.Mesh;
   private flashTint!: THREE.Mesh;
   private flashK = 0;
-  /** Per-blast scratch: bot -> summed damage / nearest pellet distance (reused, never reallocated). */
-  private blastDmg = new Map<EnemyHandle, number>();
-  private blastNear = new Map<EnemyHandle, number>();
+  /** Per-step scratch: targets one disc touched this frame (reused). */
+  private discHits: EnemyHandle[] = [];
+  private lastClank = -1;
   /** Mag Repulsor time left (s; 0 = idle), where it was cast from, its heading / reach / half-angle, bots already hit. */
   laserT = 0;
   private repAt = new THREE.Vector3();
@@ -203,11 +248,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private singTickT = 0;
   private singCollapsed = false;
   private singBlown = false;
-  /** Is the shotgun trigger down this frame (snapshot bit). The repulsor always fires straight ahead (net field NP.laser). */
+  /** Is the Mag Discs trigger down this frame (snapshot bit). The repulsor always fires straight ahead (net field NP.laser). */
   gunsOn = false;
   laserOff = 0;
-  /** The emitter's elevation (rad, + up; the Plow tilts it). */
-  gunPitch = 0;
   /** Duel guest: last host snapshot fire bits (diagnostics only; Combat routes them through primary / secondary),
    *  -1 = not a puppet. netTurret: the host's turret yaw (always 0 now: the emitter is fixed; slot kept). */
   netFire = -1;
@@ -369,7 +412,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.netTurret = NaN;
   }
 
-  /** SPACE (VehicleKit): the pulse laser; updateGuns (run right after by Combat) reads the trigger. */
+  /** SPACE (VehicleKit): the Mag Discs; updateGuns (run right after by Combat) reads the trigger. */
   primary(_dt: number, held: boolean, pressed: boolean): void {
     this.trigHeld = held;
     this.trigPressed = pressed;
@@ -379,12 +422,12 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
    *  the SINGULARITY when the HUD already showed it, not when this frame's own hits topped the meter up. */
   private ultArmed = false;
 
-  /** E (VehicleKit): the Grav Lance; spends the E charge when it fires. */
+  /** E (VehicleKit): the Mag Repulsor; spends the E charge when it fires. */
   secondary(_dt: number, _held: boolean, pressed: boolean): boolean {
     return pressed && this.fireLaser();
   }
 
-  /** Puppet bits: bit 0 = shotgun trigger down, bit 1 = Mag Repulsor running. */
+  /** Puppet bits: bit 0 = Mag Discs trigger down, bit 1 = Mag Repulsor running. */
   netBits(): number {
     return (this.gunsOn ? 1 : 0) | (this.laserT > 0 ? 2 : 0);
   }
@@ -400,12 +443,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       return m;
     };
     const ball = new THREE.SphereGeometry(1, 14, 10);
-    // Shotgun: PELLET_MAX streaks (white-hot core in a painted cyan sheath) and a muzzle flash.
-    const core = glowMat(0xf0feff, 1);
-    const sheath = tintMat(0x10c0f2, 0.7);
-    for (let i = 0; i < PELLET_MAX; i++) {
-      this.pellets.push({ core: mk(core, 4), glow: mk(sheath, 3), a: new THREE.Vector3(), b: new THREE.Vector3(), t: 1 });
+    // Mag Discs: a fixed pool of discs (state + spinning ring visuals) and the nose flash.
+    for (let i = 0; i < DISC_POOL; i++) {
+      this.discs.push({ on: false, back: false, pos: new THREE.Vector3(), prev: new THREE.Vector3(), dx: 0, dz: 1, speed: 0, travelled: 0, range: 0, t: 0, spin: 0, hitOut: new Set(), hitBack: new Set() });
     }
+    this.discFx = new DiscFx(scene, DISC_POOL, beam);
     this.flashCore = mk(glowMat(0xe8ffff, 1), 4, ball);
     this.flashTint = mk(tintMat(0x22ccff, 0.55), 3, ball);
     // Mag Repulsor: the forward wave, a gyro flare at the emitter; shared shockwaves (flash rings).
@@ -417,9 +459,10 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.shock.reduceFlash = settings.reduceFlash;
   }
 
-  /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (pulse ticks, lance ticks), see
-   *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it. Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false): number {
+  /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (disc hits), see
+   *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it; `tug`: that pull is a Mag
+   *  Discs tug (DamageOpts.tug: the Duel scales it by the victim's knockback resistance). Returns damage dealt. */
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false, tug = false): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -433,6 +476,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       direct,
       pierce: true,
       ult: ult || undefined,
+      tug: tug || undefined,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);
@@ -462,10 +506,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     pull.call(this.b.enemies, e, (dx / d) * v, (dz / d) * v, dt);
   }
 
-  /* ------------------------------------------------------------------ SPACE: Mag Shotgun */
+  /* ------------------------------------------------------------------ SPACE: Mag Discs */
 
-  /** Mag Shotgun (SPACE, held): the emitter is fixed straight ahead (aim by steering); a blast every 1/gunRate s.
-   *  A duel puppet fires when the host's snapshot says the trigger is down (its targets are empty: visuals only). */
+  /** Mag Discs (SPACE, held): a steady cycle, one disc every discInterval s while the trigger is down; every disc out
+   *  flies its out-and-back path whether or not the trigger is still held. A duel puppet launches when the host's
+   *  snapshot says the trigger is down (its targets are empty: visuals only). */
   updateGuns(dt: number): void {
     const held = this.trigHeld;
     const pressed = this.trigPressed;
@@ -476,162 +521,243 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     if (plow) {
       plow.gunFiring = false;
       plow.turretAim = 0;
+      plow.gunPitch = 0;
     }
-    if (st.gunDamage <= 0 || !plow) return this.drawPellets(dt);
+    if (st.gunDamage <= 0 || !plow || plow.dead) {
+      this.recallDiscs();
+      this.drawFlash(dt);
+      return;
+    }
     if (this.gunT > 0) this.gunT -= dt;
-    if (plow.dead) return this.drawPellets(dt);
-    // A press without held-key reporting fires one blast; a puppet follows the host's held bit only.
+    // A press without held-key reporting launches a disc or two; a puppet follows the host's held bit only.
     if (pressed && !this.puppet) this.gunBurstT = GUN_BURST;
     else if (this.gunBurstT > 0) this.gunBurstT -= dt;
     const firing = held || this.gunBurstT > 0;
     this.gunsOn = firing;
     plow.gunFiring = firing;
-    const px = plow.position.x;
-    const pz = plow.position.z;
-    const py = plow.mountWorld('muzzle', 0, _p).y;
-    const range = tankGunRange(st);
-    // The emitter only tilts: toward the nearest bot inside the cone (slopes / ramps), else level.
-    const near = this.coneNearest(px, py, pz, plow.heading, range);
-    const wantPitch = near ? this.pitchTo(px, py, pz, near, -SHOT_PITCH, SHOT_PITCH) || 0 : 0;
-    const pstep = GUN_PITCH_SLEW * dt;
-    this.gunPitch += THREE.MathUtils.clamp(wantPitch - this.gunPitch, -pstep, pstep);
-    plow.gunPitch = this.gunPitch;
-    if (!firing || this.gunT > 0) return this.drawPellets(dt);
-    this.gunT += 1 / Math.max(0.3, st.gunRate);
-    if (this.gunT < 0) this.gunT = 0;
-    this.blast(range);
-    this.drawPellets(dt);
+    if (firing) {
+      if (this.gunT <= 0) {
+        this.gunT += discInterval(st);
+        if (this.gunT < 0) this.gunT = 0;
+        this.launchDisc();
+      }
+      this.cycleT += dt;
+    } else this.cycleT = 0;
+    this.stepDiscs(dt);
+    this.drawFlash(dt);
   }
 
-  /** Nearest live bot whose body is inside the shotgun cone and reach (for the emitter's tilt), or null. */
-  private coneNearest(x: number, y: number, z: number, heading: number, range: number): EnemyHandle | null {
-    const hits = this.collect(x, z, range);
-    let best: EnemyHandle | null = null;
+  /** Discs out right now (HUD / tests). */
+  get discsOut(): number {
+    let n = 0;
+    for (const d of this.discs) if (d.on) n++;
+    return n;
+  }
+
+  /** One disc out of the nose (skipped if the whole pool is out, which the cycle never reaches). */
+  private launchDisc(): void {
+    let d: Disc | null = null;
+    for (const x of this.discs) {
+      if (!x.on) {
+        d = x;
+        break;
+      }
+    }
+    if (!d) return;
+    const plow = this.b.plow;
+    const fx = Math.sin(plow.heading);
+    const fz = Math.cos(plow.heading);
+    plow.mountWorld('muzzle', 0, _p);
+    const yaw = plow.heading + DISC_YAW[this.discN++ % DISC_YAW.length];
+    d.on = true;
+    d.back = false;
+    d.t = 0;
+    d.travelled = 0;
+    d.speed = DISC_SPEED;
+    d.dx = Math.sin(yaw);
+    d.dz = Math.cos(yaw);
+    d.pos.set(_p.x + fx * 0.35, _p.y, _p.z + fz * 0.35);
+    d.prev.copy(d.pos);
+    d.range = tankGunRange(this.b.stats);
+    d.spin = Math.random() * Math.PI * 2;
+    d.hitOut.clear();
+    d.hitBack.clear();
+    this.flashK = 0.7;
+    this.ctx.fx.burst(d.pos, LAUNCH_BURST);
+    // The magnetic hum: each launch a low thrum that climbs as the cycle keeps running; a soft rev as it starts.
+    const k = Math.min(1, this.cycleT / HUM_RISE);
+    if (this.cycleT === 0) this.b.audio.play('charge', { volume: 0.2, pitch: 1.25 });
+    this.b.audio.play('pulse', { volume: 0.12 + 0.08 * k, pitch: 0.36 + 0.22 * k + Math.random() * 0.03 });
+  }
+
+  /** Fly every disc out and back, hit what it passes through, recycle it at the emitter; then draw them. */
+  private stepDiscs(dt: number): void {
+    const plow = this.b.plow;
+    const ctx = this.ctx;
+    plow.mountWorld('muzzle', 0, _a);
+    const ex = _a.x;
+    const ey = _a.y;
+    const ez = _a.z;
+    const ter = ctx.terrain;
+    const props = this.b.authoritative ? ctx.world : null;
+    const rad = tankDiscRadius(this.b.stats);
+    for (let i = 0; i < this.discs.length; i++) {
+      const d = this.discs[i];
+      if (!d.on) {
+        this.discFx.hide(i);
+        continue;
+      }
+      d.t += dt;
+      d.spin += DISC_SPIN * dt;
+      d.prev.copy(d.pos);
+      if (!d.back) {
+        // Out: gentle homing on the nearest target ahead (a swerve or a dash slips it), level otherwise.
+        if (this.homeTarget(d, plow.position.x, plow.position.z, _q)) {
+          this.steer(d, Math.atan2(_q.x - d.pos.x, _q.z - d.pos.z), DISC_HOME * dt);
+          d.pos.y += THREE.MathUtils.clamp(_q.y - d.pos.y, -DISC_CLIMB * dt, DISC_CLIMB * dt);
+        }
+        const step = d.speed * dt;
+        let blocked = !!props && props.blastPropRay(d.pos.x, d.pos.z, d.dx, d.dz, step + 0.3) >= 0;
+        d.pos.x += d.dx * step;
+        d.pos.z += d.dz * step;
+        d.travelled += step;
+        if (ter?.active && ter.heightAt(d.pos.x, d.pos.z, d.pos.y) > d.pos.y - 0.25) blocked = true;
+        if (blocked) {
+          _fwd.set(-d.dx, 0.5, -d.dz).normalize();
+          ctx.fx.sparks(d.pos, _fwd, { count: 4, color: CYAN, speed: 7, spread: 0.8, size: 0.05, life: 0.2, gravity: 6 });
+        }
+        if (blocked || d.travelled >= d.range) {
+          d.back = true;
+          d.speed = DISC_APEX;
+        }
+      } else {
+        // Back: turn round and home on the emitter (it moves with ARSENAL), faster and faster.
+        const tx = ex - d.pos.x;
+        const tz = ez - d.pos.z;
+        const dist = Math.hypot(tx, tz);
+        if (dist <= DISC_CATCH + d.speed * dt || d.t >= DISC_LIFE) {
+          this.catchDisc(i, dist <= DISC_CATCH + d.speed * dt);
+          continue;
+        }
+        this.steer(d, Math.atan2(tx, tz), dist < DISC_BACK_DIRECT ? Math.PI : DISC_BACK_TURN * dt);
+        d.speed = Math.min(DISC_BACK_MAX, d.speed + DISC_BACK_ACCEL * dt);
+        d.pos.x += d.dx * d.speed * dt;
+        d.pos.z += d.dz * d.speed * dt;
+        d.pos.y += (ey - d.pos.y) * Math.min(1, dt * 6);
+      }
+      if (!this.puppet) this.discHit(d, d.back ? rad * DISC_BACK_WIDE : rad);
+      const pop = Math.min(1, d.t / DISC_POP);
+      this.discFx.show(i, d.pos, d.dx, d.dz, d.spin, 0.22 * Math.sin(d.t * 9), pop, Math.min(1.4, d.speed * 0.045) * pop);
+    }
+  }
+
+  /** Turn a disc's course toward `want` (rad) by at most `max` rad. */
+  private steer(d: Disc, want: number, max: number): void {
+    const cur = Math.atan2(d.dx, d.dz);
+    const a = cur + THREE.MathUtils.clamp(wrapAngle(want - cur), -max, max);
+    d.dx = Math.sin(a);
+    d.dz = Math.cos(a);
+  }
+
+  /** The point an outbound disc homes on (into `out`): the nearest live target ahead of its course (within
+   *  DISC_HOME_CONE), inside ARSENAL's reach, not yet hit on this leg. False if none. A duel guest hits nothing
+   *  locally (the host decides), so there its discs (its own and the replayed opponent's) home on the other plow,
+   *  to look as they do on the host. */
+  private homeTarget(d: Disc, px: number, pz: number, out: THREE.Vector3): boolean {
+    const cone = Math.cos(DISC_HOME_CONE);
+    const hits = this.collect(d.pos.x, d.pos.z, d.range);
     let bestD = Infinity;
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
-      if (!e.alive) continue;
-      const d = Math.hypot(e.position.x - x, e.position.z - z);
-      if (d > range + e.radius || d >= bestD) continue;
-      const off = d > e.radius ? Math.abs(wrapAngle(Math.atan2(e.position.x - x, e.position.z - z) - heading)) - Math.asin(Math.min(1, e.radius / d)) : 0;
-      if (off > SHOT_HALF) continue;
-      if (Number.isNaN(this.pitchTo(x, y, z, e, -SHOT_PITCH, SHOT_PITCH))) continue;
-      best = e;
-      bestD = d;
+      if (!e.alive || d.hitOut.has(e)) continue;
+      const tx = e.position.x - d.pos.x;
+      const tz = e.position.z - d.pos.z;
+      const dist = Math.hypot(tx, tz);
+      if (dist >= bestD || dist < 1e-3 || (tx * d.dx + tz * d.dz) / dist < cone) continue;
+      if (Math.hypot(e.position.x - px, e.position.z - pz) > d.range + e.radius) continue;
+      bestD = dist;
+      this.chest(e, out);
     }
     this.clearTargets();
-    return best;
+    if (bestD < Infinity) return true;
+    const foe = this.b.authoritative ? null : this.b.foe;
+    if (!foe || foe.dead || d.hitOut.size) return false;
+    const tx = foe.position.x - d.pos.x;
+    const tz = foe.position.z - d.pos.z;
+    const dist = Math.hypot(tx, tz);
+    // Past the other plow already (the disc would have hit it): fly on.
+    if (dist < 1.6 || dist > d.range || (tx * d.dx + tz * d.dz) / dist < cone) return false;
+    if (Math.hypot(foe.position.x - px, foe.position.z - pz) > d.range + 1.6) return false;
+    out.set(foe.position.x, foe.position.y + 1, foe.position.z);
+    return true;
   }
 
-  /** One blast: every pellet runs straight out of the emitter and stops in the first bot (or prop / terrain) on its
-   *  line; each bot then takes all of its pellets as one hit. */
-  private blast(range: number): void {
-    const st = this.b.stats;
-    const plow = this.b.plow;
-    const ctx = this.ctx;
-    plow.mountWorld('muzzle', 0, _p);
-    const ox = _p.x;
-    const oy = _p.y;
-    const oz = _p.z;
-    const n = tankPellets(st);
-    const cp = Math.cos(this.gunPitch);
-    const sp = Math.sin(this.gunPitch);
-    const hits = this.collect(ox, oz, range + 1);
-    const dmgMap = this.blastDmg;
-    const nearMap = this.blastNear;
-    dmgMap.clear();
-    nearMap.clear();
-    const ter = ctx.terrain;
-    const props = this.b.authoritative ? ctx.world : null;
-    for (let i = 0; i < n; i++) {
-      const yaw = plow.heading + (n > 1 ? (i / (n - 1) - 0.5) * 2 * SHOT_HALF : 0);
-      const hx = Math.sin(yaw);
-      const hz = Math.cos(yaw);
-      // First bot on the line (closest along it).
-      let best: EnemyHandle | null = null;
-      let bestT = range;
-      for (let j = 0; j < hits.length; j++) {
-        const e = hits[j];
-        if (!e.alive) continue;
-        const dx = e.position.x - ox;
-        const dz = e.position.z - oz;
-        const along = dx * hx + dz * hz;
-        if (along < -e.radius) continue;
-        const perp = Math.abs(dx * hz - dz * hx);
-        const r = e.radius + SHOT_PELLET_R;
-        if (perp > r) continue;
-        const t = Math.max(0, along - Math.sqrt(r * r - perp * perp));
-        if (t >= bestT) continue;
-        // Height: some part of the bot's body within the emitter's tilt band (slopes, ramps; not another deck).
-        if (Number.isNaN(this.pitchTo(ox, oy, oz, e))) continue;
-        best = e;
-        bestT = t;
-      }
-      let reach = bestT;
-      if (best && !this.canSee(ox, oy, oz, best)) {
-        best = null;
-        reach = range;
-      }
-      if (!best) {
-        // A miss stops at the first prop (it takes the blast), ramp, deck or hill in the way.
-        const tp = props ? props.blastPropRay(ox, oz, hx, hz, range) : -1;
-        if (tp >= 0) reach = Math.min(reach, tp);
-        if (ter?.active) {
-          const hit = ter.raycast(ox, oy, oz, hx * cp, sp, hz * cp, reach, _hit);
-          if (hit) reach = hit.t;
-        }
-      }
-      // Streak: its end jitters a touch in height so the fan reads as a spray, not a comb.
-      const s = this.pellets[i];
-      s.a.set(ox, oy, oz);
-      if (best) {
-        // Into the bot's body, spread a little round its chest.
-        this.chest(best, s.b);
-        s.b.x = ox + hx * (reach + best.radius * 0.5);
-        s.b.z = oz + hz * (reach + best.radius * 0.5);
-        s.b.y += (Math.random() - 0.5) * best.radius * 0.6;
-      } else s.b.set(ox + hx * cp * reach, oy + sp * reach + (Math.random() - 0.5) * 0.25, oz + hz * cp * reach);
-      s.t = 0;
-      if (best || reach < range - 0.05) {
-        _fwd.set(-hx, 0.4, -hz).normalize();
-        ctx.fx.sparks(s.b, _fwd, { count: best ? 3 : 2, color: CYAN, speed: 7, spread: 0.8, size: 0.05, life: 0.16, gravity: 6 });
-      }
-    }
-    // Damage is a CONE, not per pellet: every bot whose body is inside the blast cone (in range, in sight, in the
-    // emitter's tilt band) takes the WHOLE blast, falling off with distance — so a blast at a small bot up close is a
-    // near-certain kill and nothing depends on pellet luck. The pellets above are the visual spray.
-    const full = n * st.gunDamage;
-    const fx = Math.sin(plow.heading);
-    const fz = Math.cos(plow.heading);
-    for (let j = 0; j < hits.length; j++) {
-      const e = hits[j];
-      if (!e.alive) continue;
-      const dx = e.position.x - ox;
-      const dz = e.position.z - oz;
-      const d = Math.hypot(dx, dz);
-      const t = Math.max(0, d - e.radius);
-      if (t > range) continue;
-      if (d > e.radius) {
-        const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d)));
-        if (ang > SHOT_HALF + Math.atan2(e.radius + SHOT_PELLET_R, d)) continue;
-      }
-      if (Number.isNaN(this.pitchTo(ox, oy, oz, e)) || !this.canSee(ox, oy, oz, e)) continue;
-      dmgMap.set(e, full * pelletFalloff(t, range));
-      nearMap.set(e, t);
+  /** Every target the disc's body swept through this step (prev -> pos, `rad` m wide), once per leg each. */
+  private discHit(d: Disc, rad: number): void {
+    const ax = d.prev.x;
+    const az = d.prev.z;
+    const sx = d.pos.x - ax;
+    const sz = d.pos.z - az;
+    const len2 = sx * sx + sz * sz;
+    const half = Math.sqrt(len2) * 0.5;
+    const hits = this.collect(ax + sx * 0.5, az + sz * 0.5, half + rad + 0.5);
+    const seen = d.back ? d.hitBack : d.hitOut;
+    const out = this.discHits;
+    out.length = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive || seen.has(e)) continue;
+      // Closest approach of the target's centre to this step's segment.
+      const u = len2 > 1e-9 ? THREE.MathUtils.clamp(((e.position.x - ax) * sx + (e.position.z - az) * sz) / len2, 0, 1) : 0;
+      if (Math.hypot(e.position.x - (ax + sx * u), e.position.z - (az + sz * u)) > e.radius + rad) continue;
+      const y = d.pos.y;
+      if (y < e.position.y - DISC_DY || y > e.position.y + Math.min(2.4, e.radius * 1.2) + DISC_DY) continue;
+      out.push(e);
     }
     this.clearTargets();
-    for (const [e, dmg] of dmgMap) {
-      const d = nearMap.get(e) ?? range;
-      // Point-blank: a real shove; further out a nudge.
-      this.weaponHit(e, dmg, ox, oz, d <= SHOT_PB ? SHOT_PB_KNOCK : SHOT_KNOCK, 'round');
+    for (let i = 0; i < out.length; i++) {
+      seen.add(out[i]);
+      this.discStrike(d, out[i]);
     }
-    dmgMap.clear();
-    nearMap.clear();
-    this.flashK = 1;
-    ctx.fx.burst(_p.set(ox + Math.sin(plow.heading) * 0.4, oy, oz + Math.cos(plow.heading) * 0.4), BLAST_BURST);
-    this.b.audio.play('pulse', { volume: 0.32, pitch: 0.55 + Math.random() * 0.08 });
-    this.b.audio.play('zap', { volume: 0.2, pitch: 1.6 + Math.random() * 0.2 });
-    if (this.b.local) ctx.fx.shake(0.05);
+    out.length = 0;
+  }
+
+  /** One disc hit: gunDamage (a direct 'round' hit); out a nudge away, back a tug toward ARSENAL. */
+  private discStrike(d: Disc, e: EnemyHandle): void {
+    const plow = this.b.plow;
+    const knock = !d.back ? DISC_KNOCK : -(this.b.pvp ? DISC_DUEL_TUG : DISC_TUG * (e.isBoss ? DISC_TUG_BOSS : 1));
+    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round', 1, false, d.back);
+    _fwd.set(-d.dx, 0.35, -d.dz).normalize();
+    this.ctx.fx.sparks(d.pos, _fwd, { count: 4, color: d.back ? 0xd8ffff : CYAN, speed: 8, spread: 0.7, size: 0.05, life: 0.18, gravity: 6 });
+    if (dealt > 0 && Math.random() < 0.5) this.b.audio.play('zap', { volume: 0.1, pitch: d.back ? 2.2 : 1.8 });
+  }
+
+  /** A disc back at the emitter (`snap`: a clank and a spark; false: timed out somewhere, it just winks out). */
+  private catchDisc(i: number, snap: boolean): void {
+    const d = this.discs[i];
+    d.on = false;
+    d.hitOut.clear();
+    d.hitBack.clear();
+    this.discFx.hide(i);
+    if (!snap) return;
+    this.ctx.fx.burst(d.pos, CATCH_BURST);
+    const now = this.ctx.time;
+    if (now - this.lastClank >= CLANK_GAP) {
+      this.lastClank = now;
+      this.b.audio.play('block', { volume: 0.13, pitch: 1.5 + Math.random() * 0.15 });
+    }
+  }
+
+  /** Every disc out winks out (dead, kit switched off, round reset). */
+  private recallDiscs(): void {
+    for (let i = 0; i < this.discs.length; i++) {
+      const d = this.discs[i];
+      d.on = false;
+      d.hitOut.clear();
+      d.hitBack.clear();
+    }
+    this.discFx.clear();
+    this.gunT = this.gunBurstT = this.cycleT = 0;
   }
 
   /** A bot's chest point (aim / beam end). */
@@ -639,22 +765,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return out.set(e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
   }
 
-  /** Pellet streaks (a short bright dash racing out along each pellet's line) and the muzzle flash. */
-  private drawPellets(dt: number): void {
-    for (const s of this.pellets) {
-      if (s.t >= STREAK_LIFE) {
-        s.core.visible = s.glow.visible = false;
-        continue;
-      }
-      s.t += dt;
-      const k = Math.min(1, s.t / STREAK_LIFE);
-      // Head runs out fast, the tail follows: a streak about 40% of the line long at its peak, thinning out.
-      _tip.lerpVectors(s.a, s.b, Math.min(1, k * 1.8));
-      _a.lerpVectors(s.a, s.b, Math.max(0, k * 1.8 - 0.8));
-      const w = 1 - k * 0.6;
-      aimBeam(s.core, _a, _tip, 0.045 * w);
-      aimBeam(s.glow, _a, _tip, 0.12 * w);
-    }
+  /** The small flash at the nose as each disc leaves. */
+  private drawFlash(dt: number): void {
     this.flashK = Math.max(0, this.flashK - dt * FLASH_DECAY);
     const plow = this.b.plow;
     const on = this.flashK > 0.02 && !!plow;
@@ -666,22 +778,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const k = this.flashK;
     this.flashCore.position.copy(_a);
     this.flashTint.position.copy(_a);
-    this.flashCore.scale.setScalar(0.3 * k + 0.05);
-    this.flashTint.scale.setScalar(0.65 * k + 0.1);
+    this.flashCore.scale.setScalar(0.22 * k + 0.04);
+    this.flashTint.scale.setScalar(0.5 * k + 0.08);
     (this.flashTint.material as THREE.MeshBasicMaterial).opacity = 0.55 * k;
-  }
-
-  /**
-   * Elevation (rad) from an emitter at (x, y, z) to the best point on a bot's body within [min, max]: its chest when
-   * that is in the band, else the nearest reachable part of it. NaN when no part of the bot is inside the band.
-   */
-  private pitchTo(x: number, y: number, z: number, e: EnemyHandle, min = -SHOT_PITCH, max = SHOT_PITCH): number {
-    const d = Math.max(0.5, Math.hypot(e.position.x - x, e.position.z - z) - e.radius * 0.5);
-    const lo = Math.atan2(e.position.y - y, d);
-    const hi = Math.atan2(e.position.y + Math.min(2.4, e.radius * 1.2) - y, d);
-    if (hi < min || lo > max) return NaN;
-    const chest = Math.atan2(e.position.y + Math.min(1.2, e.radius * 0.6) - y, d);
-    return Math.min(Math.min(hi, max), Math.max(Math.max(lo, min), chest));
   }
 
   /** Can a weapon at (x, y, z) see the bot (terrain / decks in the way)? Always true on flat arenas. */
@@ -1108,18 +1207,13 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     for (const s of this.shards) this.dropShard(s);
     this.shedDmg.clear();
     this.scrapT = 0;
-    this.gunT = this.gunBurstT = 0;
+    this.recallDiscs();
     this.gunsOn = false;
-    for (const s of this.pellets) {
-      s.t = STREAK_LIFE;
-      s.core.visible = s.glow.visible = false;
-    }
     this.flashK = 0;
     this.flashCore.visible = this.flashTint.visible = false;
     this.arcs.clear();
     this.endRepulse();
     this.laserOff = 0;
-    this.gunPitch = 0;
     this.trigHeld = this.trigPressed = false;
     this.burstT = -1;
     this.horizon.clear();

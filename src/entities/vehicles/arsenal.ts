@@ -7,7 +7,7 @@ import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
 export interface ArsenalRigState {
   /** Ground speed along the nose (m/s, + forward). */
   speed: number;
-  /** Pulse laser firing (spins the gyro rings and the emitter coils up). */
+  /** Mag Discs cycling (spins the gyro rings and the emitter coils up). */
   firing: boolean;
   /** 0..1: the gyro rings fold flat into one spinning disc (Polarity Burst). */
   flat: number;
@@ -22,7 +22,7 @@ export interface ArsenalVehicleParts {
   /** Emitter elevation pivot (follows gunPitch) and the coil rotor inside it (spins while firing). */
   gunMount: THREE.Group;
   minigun: THREE.Group;
-  /** mountWorld('muzzle' | 'laser' | 'gyro', i) anchors: the pulse emitter tip, the Grav Lance nose lens, the gyro core. */
+  /** mountWorld('muzzle' | 'laser' | 'gyro', i) anchors: the disc emitter tip, the Mag Repulsor nose lens, the gyro core. */
   muzzles: THREE.Object3D[];
   laser: THREE.Object3D;
   gyro: THREE.Object3D;
@@ -573,7 +573,8 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   box(0.04, 0.04, 0.04, glowMat, -0.3, 1.21, -0.58, 0, 0, 0, turret, false);
 
   // Emitter: an angled mantlet, a heavy barrel with a thermal sleeve and square cooling fins, three cyan focusing
-  // coils (they spin while firing), a hex muzzle shroud with vent slots and a crystal tip.
+  // coils (they spin while the discs cycle), a hex muzzle shroud with vent slots and a crystal tip, and a flat cyan
+  // launch collar round the shroud: the Mag Discs leave the nose through it, flat, and snap back into it.
   const GY = 0.2;
   const GZ = 0.3;
   const gun = new THREE.Group();
@@ -601,6 +602,9 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     addMesh(new THREE.BoxGeometry(0.06, 0.06, 0.07), m.chrome, 0, 0.15 - i * 0.01, i * 0.2, rotor, false);
     addMesh(new THREE.BoxGeometry(0.06, 0.06, 0.07), m.chrome, 0, -0.15 + i * 0.01, i * 0.2, rotor, false);
   }
+  const collar = addMesh(new THREE.TorusGeometry(0.27, 0.022, 4, 18), glowMat, 0, 0, 1.36, gun, false);
+  collar.rotation.x = Math.PI / 2;
+  for (const sx of [-1, 1]) box(0.1, 0.03, 0.05, trimMat, sx * 0.25, 0, 1.36, 0, 0, 0, gun, false);
   const tip = addMesh(new THREE.OctahedronGeometry(0.07, 0), glowMat, 0, 0, 1.47, gun, false);
   tip.scale.set(1, 1, 2);
   const mz = new THREE.Object3D();

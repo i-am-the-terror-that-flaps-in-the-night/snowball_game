@@ -463,3 +463,83 @@ export class ArcWaves {
     for (const w of this.arcs) w.root.visible = false;
   }
 }
+
+/* ------------------------------------------------------------------ mag discs */
+
+interface DiscMesh {
+  root: THREE.Group;
+  trail: THREE.Mesh;
+  sheath: THREE.Mesh;
+}
+const _t0 = new THREE.Vector3();
+
+/** MAG DISCS: a small fixed pool of bright spinning cyan rings (an additive ring with a white-hot core line, a spinning
+ *  cross-bar so the spin reads, a faint painted halo for contrast on sunlit snow) and a short light trail each. The kit
+ *  drives it: show(i, ...) every frame a disc is out, hide(i) when it is recycled. Nothing allocates per frame. */
+export class DiscFx {
+  private discs: DiscMesh[] = [];
+
+  constructor(scene: THREE.Scene, n: number, beam: THREE.BufferGeometry) {
+    // Flat in the XZ plane (a torus is built in XY).
+    const ringGeo = new THREE.TorusGeometry(0.42, 0.06, 6, 28);
+    ringGeo.rotateX(Math.PI / 2);
+    const coreGeo = new THREE.TorusGeometry(0.42, 0.024, 4, 28);
+    coreGeo.rotateX(Math.PI / 2);
+    const barGeo = new THREE.BoxGeometry(0.8, 0.03, 0.07);
+    const haloGeo = new THREE.CircleGeometry(0.62, 24);
+    haloGeo.rotateX(-Math.PI / 2);
+    const ringMat = addMat(CYAN, 1);
+    const coreMat = addMat(0xf0feff, 1);
+    const haloMat = paintMat(DEEP, 0.28);
+    haloMat.side = THREE.DoubleSide;
+    const trailMat = addMat(0x7ff4ff, 0.75);
+    const sheathMat = paintMat(0x10c0f2, 0.35);
+    for (let i = 0; i < n; i++) {
+      const root = new THREE.Group();
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      const bar = new THREE.Mesh(barGeo, coreMat);
+      const bar2 = new THREE.Mesh(barGeo, ringMat);
+      bar2.rotation.y = Math.PI / 2;
+      const halo = new THREE.Mesh(haloGeo, haloMat);
+      halo.renderOrder = 2;
+      ring.renderOrder = core.renderOrder = bar.renderOrder = bar2.renderOrder = 4;
+      root.add(halo, ring, core, bar, bar2);
+      for (const m of root.children) m.frustumCulled = false;
+      root.visible = false;
+      scene.add(root);
+      const mk = (mat: THREE.Material, order: number) => {
+        const m = new THREE.Mesh(beam, mat);
+        m.visible = false;
+        m.frustumCulled = false;
+        m.renderOrder = order;
+        scene.add(m);
+        return m;
+      };
+      this.discs.push({ root, trail: mk(trailMat, 3), sheath: mk(sheathMat, 2) });
+    }
+  }
+
+  /** Disc `i` at `pos`, flying along (dx, dz) (unit), spun to `spin` rad, banked `bank` rad, at `scale` (pop-in /
+   *  snap-back), with a trail `trail` m long behind it. */
+  show(i: number, pos: THREE.Vector3, dx: number, dz: number, spin: number, bank: number, scale: number, trail: number): void {
+    const d = this.discs[i];
+    if (!d) return;
+    d.root.visible = true;
+    d.root.position.copy(pos);
+    d.root.rotation.set(bank, spin, 0);
+    d.root.scale.setScalar(Math.max(0.01, scale));
+    _t0.set(pos.x - dx * trail, pos.y, pos.z - dz * trail);
+    aimBeam(d.trail, _t0, pos, 0.07 * scale);
+    aimBeam(d.sheath, _t0, pos, 0.16 * scale);
+  }
+
+  hide(i: number): void {
+    const d = this.discs[i];
+    if (d) hide(d.root, d.trail, d.sheath);
+  }
+
+  clear(): void {
+    for (let i = 0; i < this.discs.length; i++) this.hide(i);
+  }
+}
