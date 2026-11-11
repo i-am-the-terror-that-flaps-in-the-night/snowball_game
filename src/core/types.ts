@@ -413,9 +413,6 @@ export interface DamageOpts {
   /** An ultimate's damage (the blast and its aftermath). Bots ignore it; the online Duel soft-caps it per ultimate
    *  (duel/opponent.ts, DUEL_ULT_HP_CAP). */
   ult?: boolean;
-  /** Max-HP damage (ISOTOPE's tank-buster burn): already sized from the victim's max HP, so the online Duel skips its
-   *  garage-power damping for it (duel/opponent.ts). Bots ignore it. */
-  maxHpShare?: boolean;
 }
 
 export interface EnemyManagerAPI {

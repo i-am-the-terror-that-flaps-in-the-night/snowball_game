@@ -14,7 +14,7 @@ import {
   AIR_STEER, ICE_ACCEL, ICE_BRAKE, ICE_DRAG, ICE_GRIP, slopeAccel,
 } from '../world/terrainMotion';
 import {
-  BLADE_Z, SAW_FURY_DEALT, SAW_FURY_TAKEN, SLAM_WINDUP, SLAM_LUNGE, SLAM_IMPACT_AT, SLAM_LUNGE_SPEED, DASH_SECONDS, VOLT_KITE_REVERSE,
+  BLADE_Z, SAW_FURY_DEALT, SAW_FURY_TAKEN, SLAM_WINDUP, SLAM_LUNGE, SLAM_IMPACT_AT, SLAM_LUNGE_SPEED, DASH_SECONDS,
   DASH_EASE, DASH_STEER, DASH_STRIKE_KEEP, WHIRL_SPEED, WHIRL_STEER, SPAWN_PROTECT, INPUT_BUFFER, TRAIL_MIN_SPEED,
   SLOPE_BOOST_DECAY,
 } from './plow/constants';
@@ -561,8 +561,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     const heldR = this.heldBallRadius;
     const maxF = stats.maxSpeed * (1 - 0.2 * Math.min(1, heldR / maxBallR)) * (this.whirlT >= 0 ? WHIRL_SPEED : 1);
     const accel = stats.accel;
-    // VOLT-9 kites: backing off with the Arc Lance held keeps most of its speed (role rework: true ranged).
-    const maxRev = stats.maxSpeed * (this.voltArc && stats.plowKind === 'volt' ? VOLT_KITE_REVERSE : 0.45);
+    const maxRev = stats.maxSpeed * 0.45;
     // Terrain: no traction in the air (speed carries), less on ice (spinning wheels, long braking, long coasting).
     const air = this.vert.airborne;
     const iceK = this.ice;

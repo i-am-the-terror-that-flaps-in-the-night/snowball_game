@@ -153,7 +153,7 @@ describe('VOLT-9 Tesla Rover', () => {
   });
 
   it('ARC LANCE reach grows with Mega Hopper', () => {
-    expect(arcRange(1.2)).toBe(14);
+    expect(arcRange(1.2)).toBe(9);
     expect(arcRange(2.4)).toBeGreaterThan(arcRange(1.2));
     const far = bot(0, 9.5);
     const r = rig([far]);

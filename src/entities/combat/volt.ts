@@ -47,19 +47,7 @@ const PARA_FX_MAX = 6;
 /** GROUNDED pop text: at most once per this many seconds while the arc stays grounded. */
 const GROUNDED_POP_GAP = 1.6;
 const ARC_CONE = 0.5;
-/** Arc Lance reach: VOLT-9 is the true-ranged vehicle (role rework: 9 -> 14 m base, ~20 m late with Mega Hopper). */
-export const arcRange = (ballR: number) => 14 + 2.5 * Math.max(0, ballR - 1.2);
-/** Duel only: VOLT-9 is weak up close. Arc hits on a plow within ARC_CLOSE_NEAR m (surface to surface) deal
- *  ARC_CLOSE_MULT, ramping linearly back to x1 at ARC_CLOSE_FAR m. Bots are unaffected. */
-export const ARC_CLOSE_NEAR = 3;
-export const ARC_CLOSE_FAR = 5;
-export const ARC_CLOSE_MULT = 0.6;
-/** The Duel close-range multiplier for an arc hit at surface gap `gap` m. */
-export function arcCloseMult(gap: number): number {
-  if (gap >= ARC_CLOSE_FAR) return 1;
-  if (gap <= ARC_CLOSE_NEAR) return ARC_CLOSE_MULT;
-  return ARC_CLOSE_MULT + ((1 - ARC_CLOSE_MULT) * (gap - ARC_CLOSE_NEAR)) / (ARC_CLOSE_FAR - ARC_CLOSE_NEAR);
-}
+export const arcRange = (ballR: number) => 9 + 2.5 * Math.max(0, ballR - 1.2);
 /** STATIC FIELD (E): a lingering electrified field that rides with the rover for STATIC_SECONDS, pulsing every
  *  STATIC_PULSE s: each pulse deals STATIC_DAMAGE (x damage mult) and stuns for STATIC_STUN to everything inside the
  *  radius (+ Tesla Field reach above its 4.5 m base). The first pulse is a bigger burst (STATIC_FIRST x). */
@@ -217,9 +205,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         if (this.paraReady.size > 64) for (const [id, t] of this.paraReady) if (t < ctx.time) this.paraReady.delete(id);
       }
       const share = hop === 0 ? (grounded ? ARC_BOSS : solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
-      // Duel: weak up close (true ranged only).
-      const close = this.b.pvp ? arcCloseMult(Math.hypot(hit.position.x - px, hit.position.z - pz) - hit.radius - 1.2) : 1;
-      const killed = this.b.enemies.damage(hit, dmg * share * close * this.hitMult(hit), {
+      const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), {
         source: 'other',
         weapon: 'arcLance',
         fromX: px,
