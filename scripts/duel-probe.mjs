@@ -8,8 +8,8 @@
 //   rematch  results -> REMATCH (both must accept) -> fresh garage -> Classic vs ISOTOPE: a NUKE pressed on the
 //            guest keyboard lands on the host, Inferno from the host keyboard; pause keeps the match running;
 //            LEAVE ends it for both; single-player still works afterwards.
-//   arsenal  ARSENAL vs ARSENAL: the guest HOLDING Space keeps its Mag Shotgun blasting the host 6 m ahead (held keys
-//            travel in the input packet); its turret stays locked forward; the host's shotgun and Mag Repulsor show on
+//   arsenal  ARSENAL vs ARSENAL: the guest HOLDING Space keeps its Mag Discs hitting the host 6 m ahead (held keys
+//            travel in the input packet); its turret stays locked forward; the host's discs and Mag Repulsor show on
 //            the guest's puppet; the guest's Mag Repulsor and Polarity Burst land on the host.
 // Each session runs in a fresh Chrome (the sandbox kills long-lived headless Chrome). The duel clock is sim time, so
 // both pages are fast-forwarded in lockstep (render loops paused except for screenshots).
@@ -397,7 +397,7 @@ await session('arsenal', async (host, guest) => {
   await toFight(host, guest);
   const [h] = await until(host, guest, (h, g) => h.phase === 'fight' && g.phase === 'fight', 8, 0.25);
   check(h.stats[0].plowKind === 'arsenal' && h.stats[1].plowKind === 'arsenal', 'both drive ARSENAL', h.stats.map((s) => s.plowKind));
-  // Guest at (0, -2) facing +z; host at (0, 4): 6 m dead ahead (the shotgun is fixed forward, ~10 m reach).
+  // Guest at (0, -2) facing +z; host at (0, 4): 6 m dead ahead (the discs fly forward, ~10 m reach).
   const park = () => host.evaluate(() => {
     const me = window.__game.ctx.plow, op = window.__game.duel.opponent;
     me.position.set(0, 0, 4 + PZ); me.heading = Math.PI; me.hp = me.maxHp;
@@ -414,24 +414,26 @@ await session('arsenal', async (host, guest) => {
   await guest.keyboard.up('Space');
   await run(host, guest, 0.3);
   let b1 = await hostHits();
-  log('guest shotgun (held 2s)', { blasts: b1.other - b0.other, hostHp: [Math.round(b0.hp), Math.round(b1.hp)], guestTurret: +aim.toFixed(2) });
-  check(b1.other - b0.other >= 3, 'guest holding SPACE keeps the shotgun blasting the host (not a single blast)', { b0, b1 });
+  log('guest discs (held 2s)', { blasts: b1.other - b0.other, hostHp: [Math.round(b0.hp), Math.round(b1.hp)], guestTurret: +aim.toFixed(2) });
+  check(b1.other - b0.other >= 3, 'guest holding SPACE keeps the discs hitting the host (not a single hit)', { b0, b1 });
   check(Math.abs(aim) < 1e-6, "the guest's turret stays locked forward", aim);
-  // A single tap is one blast.
+  // A single tap launches a disc or two (GUN_BURST), each hitting once out and once back: 1-4 hits. Wait out the
+  // discs still flying from the hold first (they live up to 3 s).
+  await run(host, guest, 3.2);
   await park();
   await run(host, guest, 0.3);
   b0 = await hostHits();
   await guest.keyboard.press('Space');
   await run(host, guest, 1.5);
   b1 = await hostHits();
-  check(b1.other - b0.other >= 1 && b1.other - b0.other <= 2, 'a tap fires one blast', { b0, b1 });
+  check(b1.other - b0.other >= 1 && b1.other - b0.other <= 4, 'a tap launches a disc or two (1-4 hits)', { b0, b1 });
   // Host fires: the guest's puppet shows the guns, then the laser.
   await park();
   await host.keyboard.down('Space');
   await run(host, guest, 0.6);
   const seen = await guest.evaluate(() => ({ fire: window.__game.duel.opponentCombat.arsenal.netFire, turret: window.__game.duel.opponentCombat.arsenal.netTurret }));
   await host.keyboard.up('Space');
-  check((seen.fire & 1) === 1, "the guest sees the host's shotgun firing", seen);
+  check((seen.fire & 1) === 1, "the guest sees the host's discs firing", seen);
   // Host Mag Repulsor (a 0.3 s wave): the guest's puppet plays it too.
   await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(-3, 0, -4 + PZ); });
   await run(host, guest, 0.2);

@@ -222,7 +222,7 @@ describe('heaviness: knockResist', () => {
     };
     expect(kx('brute') / kx('volt')).toBeCloseTo(0.5, 6);
     // Every move goes through the one rule: the Classic's swipe ('ram') and rush slam ('slam'), ARSENAL's disc tug.
-    const moves: DamageOpts[] = [{ source: 'slam' }, { source: 'ram', direct: 'round', tug: true }];
+    const moves: DamageOpts[] = [{ source: 'slam' }, { source: 'ram', direct: 'round' }];
     for (const o of moves) for (const k of ['brute', 'classic', 'isotope'] as const) expect(kx(k, o) / kx('volt', o)).toBeCloseTo(knockScale(k), 6);
   });
 });

@@ -460,9 +460,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   }
 
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (disc hits), see
-   *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it; `tug`: that pull is a Mag
-   *  Discs tug (DamageOpts.tug: the Duel scales it by the victim's knockback resistance). Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false, tug = false): number {
+   *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it (bots divide it by their mass;
+   *  a plow scales it by its heaviness, knockScale in Combat.hitPlow, like every push). Returns damage dealt. */
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -476,7 +476,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       direct,
       pierce: true,
       ult: ult || undefined,
-      tug: tug || undefined,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);
@@ -726,7 +725,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private discStrike(d: Disc, e: EnemyHandle): void {
     const plow = this.b.plow;
     const knock = !d.back ? DISC_KNOCK : -(this.b.pvp ? DISC_DUEL_TUG : DISC_TUG * (e.isBoss ? DISC_TUG_BOSS : 1));
-    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round', 1, false, d.back);
+    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round');
     _fwd.set(-d.dx, 0.35, -d.dz).normalize();
     this.ctx.fx.sparks(d.pos, _fwd, { count: 4, color: d.back ? 0xd8ffff : CYAN, speed: 8, spread: 0.7, size: 0.05, life: 0.18, gravity: 6 });
     if (dealt > 0 && Math.random() < 0.5) this.b.audio.play('zap', { volume: 0.1, pitch: d.back ? 2.2 : 1.8 });

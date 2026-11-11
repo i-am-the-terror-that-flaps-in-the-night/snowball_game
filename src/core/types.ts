@@ -423,9 +423,6 @@ export interface DamageOpts {
    *  damage / kind / power scaling; the area-ability diminishing returns still apply), then the victim's own
    *  defences. Bots ignore it. */
   hpShare?: boolean;
-  /** The knockback is a tug toward the attacker (ARSENAL's Mag Discs on their way back). Bots take it like any
-   *  knockback (divided by mass); a plow takes it scaled by its heaviness (knockScale, in Combat.hitPlow). */
-  tug?: boolean;
 }
 
 export interface EnemyManagerAPI {

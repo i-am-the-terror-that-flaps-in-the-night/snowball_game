@@ -301,9 +301,9 @@ describe('MAG DISCS in the Duel: the return tug is resisted by heavier vehicles'
       let cd: ReturnType<typeof pilot> | null = null;
       const target = new OpponentTarget(new PlowHandle(2, pd as unknown as Plow), () => cd!.c, () => sa, () => pa as unknown as Plow, () => sd);
       target.enabled = true;
-      // The disc's return-leg hit, as the kit sends it: a negative knock (toward ARSENAL), flagged as a tug.
+      // The disc's return-leg hit, as the kit sends it: a negative knock (toward ARSENAL).
       cd = pilot(ctx, sd, pd, { query: (_x: number, _z: number, _r: number, o: EnemyHandle[] = []) => ((o.length = 0), o), damage: () => false }, true);
-      target.damage(target.handle, 5, { knockback: new THREE.Vector3(0, 0, -3), fromX: 0, fromZ: 8, direct: 'round', tug: true });
+      target.damage(target.handle, 5, { knockback: new THREE.Vector3(0, 0, -3), fromX: 0, fromZ: 8, direct: 'round' });
       return pz;
     };
     const brute = pull('brute');
