@@ -473,40 +473,58 @@ interface Bolt {
   to: THREE.Vector3;
   /** Impact flash scale at the end point (0: the bolt ran out of reach into empty air: a small fizzle). */
   impact: number;
-  sheath: THREE.Mesh;
-  outer: THREE.Mesh;
+  /** Hit half-width (m) at the emitter and at the end point: the crescent grows from one to the other. */
+  nearW: number;
+  farW: number;
+  heading: number;
   core: THREE.Mesh;
+  glow: THREE.Mesh;
+  arc: THREE.Mesh;
+  arcEdge: THREE.Mesh;
   muzzle: THREE.Mesh;
   hitTint: THREE.Mesh;
   hitCore: THREE.Mesh;
-  /** Far-end radius (m) of the widening pulse. */
-  farR: number;
 }
 
-/** How long one laser bolt stays on screen (s). */
-export const LASER_LIFE = 0.075;
-/** White-hot core radius (m); the cyan pulse and its navy sheath are cones sized per bolt (LaserFx.fire farR). */
-const CORE_R = 0.11;
-/** The widening pulse's radius at the emitter, as a share of its far radius. */
-const CONE_NEAR = 0.15;
+/** How long one pulse lives (s): the crescent flies from the nose to the end point in this time. */
+export const LASER_LIFE = 0.12;
+/** The core beam shows for this share of the life (a flash), the crescent for all of it. */
+const CORE_SHARE = 0.55;
+const CORE_R = 0.2;
+const GLOW_R = 0.42;
+/** Crescent: a 100° arc, its chord the beam's hit width at that distance. */
+const ARC_HALF = (50 * Math.PI) / 180;
+const ARC_SIN = Math.sin(ARC_HALF);
 
-/** MAG LASER: a small fixed pool of short-lived FAT bolts that read on white snow as well as at night: a dark-navy
- *  sheath (an outline), a solid normal-blended saturated-cyan beam (additive light vanishes on sunlit snow), a
- *  white-hot additive core, a muzzle flash at the emitter and an impact flash at the end point. Each bolt slams on at
- *  full width, then thins and fades over LASER_LIFE. fire() takes the oldest free slot; update() animates them.
- *  Nothing allocates per shot or per frame. */
+/** MAG LASER: a small fixed pool of FAT PULSES that read on white snow and at night. Each shot is a white-hot core
+ *  beam flash with a cyan glow along the line, plus a solid (normal-blended: additive light vanishes on sunlit snow)
+ *  cyan CRESCENT with a dark-navy edge that shoots from the nose to the end point, widening as it goes so its chord
+ *  always matches the beam's hit width there (the pulse shows exactly what it covers). A muzzle flash at the emitter
+ *  and an impact flash at the end. fire() takes the oldest free slot; update() animates. Nothing allocates per shot
+ *  or per frame. */
+/** Put a crescent mesh `e` (0..1) of the way along bolt `b`, facing its heading, ring radius `R`. */
+function placeArc(m: THREE.Mesh, b: Bolt, e: number, R: number): void {
+  m.visible = true;
+  m.position.lerpVectors(b.from, b.to, e);
+  m.rotation.set(0, b.heading, 0);
+  m.scale.set(R, 1, R);
+}
+
 export class LaserFx {
   private bolts: Bolt[] = [];
 
   constructor(scene: THREE.Scene, n: number, beam: THREE.BufferGeometry) {
     const ball = new THREE.SphereGeometry(1, 12, 8);
-    // A widening pulse: a unit cone along +Z (0..1), radius CONE_NEAR at the emitter, 1 at the far end.
-    const cone = new THREE.CylinderGeometry(1, CONE_NEAR, 1, 18, 1, true);
-    cone.rotateX(Math.PI / 2);
-    cone.translate(0, 0, 0.5);
-    const sheathMat = () => paintMat(0x06243a, 0.75);
-    const outerMat = () => paintMat(0x12d2ff, 1);
-    const coreMat = () => addMat(0xf6ffff, 1);
+    // Unit crescent: a 100° arc of a radius-1 ring in the XZ plane, its apex at the origin, bulging toward +Z.
+    const arcGeo = (tube: number) => {
+      const g = new THREE.TorusGeometry(1, tube, 6, 20, ARC_HALF * 2);
+      g.rotateZ(Math.PI / 2 - ARC_HALF);
+      g.rotateX(Math.PI / 2);
+      g.translate(0, 0, -1);
+      return g;
+    };
+    const arcG = arcGeo(0.17);
+    const edgeG = arcGeo(0.26);
     const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, order: number) => {
       const m = new THREE.Mesh(geo, mat);
       m.visible = false;
@@ -522,19 +540,23 @@ export class LaserFx {
         from: new THREE.Vector3(),
         to: new THREE.Vector3(),
         impact: 0,
-        farR: 1,
-        sheath: mk(cone, sheathMat(), 2),
-        outer: mk(cone, outerMat(), 3),
-        core: mk(beam, coreMat(), 5),
-        muzzle: mk(ball, coreMat(), 5),
+        nearW: 0.8,
+        farW: 1,
+        heading: 0,
+        glow: mk(beam, paintMat(0x12d2ff, 0.55), 3),
+        core: mk(beam, addMat(0xf6ffff, 1), 5),
+        arcEdge: mk(edgeG, paintMat(0x06243a, 0.85), 3),
+        arc: mk(arcG, paintMat(0x19dcff, 1), 4),
+        muzzle: mk(ball, addMat(0xf6ffff, 1), 5),
         hitTint: mk(ball, paintMat(0x2ad8ff, 0.8), 4),
-        hitCore: mk(ball, coreMat(), 5),
+        hitCore: mk(ball, addMat(0xf6ffff, 1), 5),
       });
     }
   }
 
-  /** One bolt from `from` to `to`; `impact` (0..1+) sizes the end flash (it struck something). */
-  fire(from: THREE.Vector3, to: THREE.Vector3, impact: number, farR = 1): void {
+  /** One pulse from `from` to `to` along `heading`; `impact` (0..1+) sizes the end flash; `nearW` / `farW`: the hit
+   *  half-width (m) at the emitter and at the end point. */
+  fire(from: THREE.Vector3, to: THREE.Vector3, impact: number, nearW = 0.8, farW = 1, heading = 0): void {
     let b = this.bolts[0];
     for (const x of this.bolts) {
       if (x.t >= LASER_LIFE) {
@@ -547,7 +569,9 @@ export class LaserFx {
     b.from.copy(from);
     b.to.copy(to);
     b.impact = impact;
-    b.farR = farR;
+    b.nearW = nearW;
+    b.farW = farW;
+    b.heading = heading;
     this.draw(b);
   }
 
@@ -555,34 +579,48 @@ export class LaserFx {
     for (const b of this.bolts) {
       if (b.t >= LASER_LIFE) continue;
       b.t += dt;
-      if (b.t >= LASER_LIFE) hide(b.sheath, b.outer, b.core, b.muzzle, b.hitTint, b.hitCore);
+      if (b.t >= LASER_LIFE) hide(b.core, b.glow, b.arc, b.arcEdge, b.muzzle, b.hitTint, b.hitCore);
       else this.draw(b);
     }
   }
 
   private draw(b: Bolt): void {
     const k = b.t / LASER_LIFE;
-    // Slams on at full width (a touch over), then thins to a needle as it fades.
-    const w = k < 0.2 ? 1.15 : 1.15 - 0.75 * ((k - 0.2) / 0.8);
-    const fade = 1 - k * k;
-    aimBeam(b.sheath, b.from, b.to, b.farR * 1.08 * w);
-    aimBeam(b.outer, b.from, b.to, b.farR * w);
-    aimBeam(b.core, b.from, b.to, CORE_R * (0.6 + 0.4 * w));
-    (b.sheath.material as THREE.MeshBasicMaterial).opacity = 0.35 * fade;
-    (b.outer.material as THREE.MeshBasicMaterial).opacity = 0.6 * fade;
-    (b.core.material as THREE.MeshBasicMaterial).opacity = fade;
-    b.muzzle.visible = true;
+    // Core flash: fat at once, thinning out over the first CORE_SHARE of the life.
+    const kc = Math.min(1, k / CORE_SHARE);
+    if (kc < 1) {
+      const w = 1.1 - 0.8 * kc;
+      aimBeam(b.core, b.from, b.to, CORE_R * w);
+      aimBeam(b.glow, b.from, b.to, GLOW_R * w);
+      (b.core.material as THREE.MeshBasicMaterial).opacity = 1 - kc * kc;
+      (b.glow.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - kc);
+    } else {
+      b.core.visible = b.glow.visible = false;
+    }
+    // Crescent: flies from the nose to the end point (eased out), widening with the beam.
+    const e = 1 - (1 - k) * (1 - k);
+    const hw = b.nearW + (b.farW - b.nearW) * e;
+    const R = hw / ARC_SIN;
+    const fade = k < 0.75 ? 1 : 1 - (k - 0.75) / 0.25;
+    placeArc(b.arcEdge, b, e, R);
+    placeArc(b.arc, b, e, R);
+    (b.arc.material as THREE.MeshBasicMaterial).opacity = fade;
+    (b.arcEdge.material as THREE.MeshBasicMaterial).opacity = 0.85 * fade;
+    b.muzzle.visible = k < 0.35;
     b.muzzle.position.copy(b.from);
-    b.muzzle.scale.setScalar(0.42 * (1 - k) + 0.05);
-    (b.muzzle.material as THREE.MeshBasicMaterial).opacity = fade;
+    b.muzzle.scale.setScalar(0.45 * (1 - k / 0.35) + 0.05);
     const r = 0.25 + 0.4 * b.impact;
-    b.hitTint.visible = b.hitCore.visible = true;
-    b.hitTint.position.copy(b.to);
-    b.hitCore.position.copy(b.to);
-    b.hitTint.scale.setScalar(r * (0.6 + 0.6 * k));
-    b.hitCore.scale.setScalar(r * 0.55 * (1 - 0.5 * k));
-    (b.hitTint.material as THREE.MeshBasicMaterial).opacity = 0.8 * fade;
-    (b.hitCore.material as THREE.MeshBasicMaterial).opacity = fade;
+    const show = k > 0.45;
+    b.hitTint.visible = b.hitCore.visible = show;
+    if (show) {
+      const kk = (k - 0.45) / 0.55;
+      b.hitTint.position.copy(b.to);
+      b.hitCore.position.copy(b.to);
+      b.hitTint.scale.setScalar(r * (0.6 + 0.6 * kk));
+      b.hitCore.scale.setScalar(r * 0.55 * (1 - 0.5 * kk));
+      (b.hitTint.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - kk);
+      (b.hitCore.material as THREE.MeshBasicMaterial).opacity = 1 - kk;
+    }
   }
 
   /** Bolts on screen right now (tests / probes). */
@@ -595,7 +633,7 @@ export class LaserFx {
   clear(): void {
     for (const b of this.bolts) {
       b.t = LASER_LIFE;
-      hide(b.sheath, b.outer, b.core, b.muzzle, b.hitTint, b.hitCore);
+      hide(b.core, b.glow, b.arc, b.arcEdge, b.muzzle, b.hitTint, b.hitCore);
     }
   }
 }

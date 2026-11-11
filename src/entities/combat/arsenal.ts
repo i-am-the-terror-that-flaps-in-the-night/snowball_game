@@ -584,7 +584,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     }
     _tip.set(S.x + fx * end, S.y + (hitY - S.y) * (end / reach), S.z + fz * end);
     // Drawn as a widening pulse: its far radius matches the hit width at the end point (a touch inside it).
-    this.laserFx.fire(S, _tip, impact, (tankBeamRadius(st) + LASER_WIDEN * end) * 0.85);
+    this.laserFx.fire(S, _tip, impact, tankBeamRadius(st), tankBeamRadius(st) + LASER_WIDEN * end, Math.atan2(fx, fz));
     this.flashK = 1;
     if (blocked) {
       _fwd.set(-fx, 0.5, -fz).normalize();
