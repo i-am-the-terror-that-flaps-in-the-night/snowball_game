@@ -473,38 +473,48 @@ interface DiscMesh {
 }
 const _t0 = new THREE.Vector3();
 
-/** MAG DISCS: a small fixed pool of bright spinning cyan rings (an additive ring with a white-hot core line, a spinning
- *  cross-bar so the spin reads, a faint painted halo for contrast on sunlit snow) and a short light trail each. The kit
- *  drives it: show(i, ...) every frame a disc is out, hide(i) when it is recycled. Nothing allocates per frame. */
+/** MAG DISCS: a small fixed pool of big, bright spinning cyan rings that read on white snow as well as at night: a dark
+ *  navy outline ring under a solid (not additive: additive light vanishes on sunlit snow) saturated-cyan ring, a
+ *  white-hot additive core line, a translucent cyan fill with a spinning cross-bar so the spin reads, and a thick
+ *  two-layer trail (solid cyan sheath + additive white core). The kit drives it: show(i, ...) every frame a disc is
+ *  out, hide(i) when it is recycled. Nothing allocates per frame. */
 export class DiscFx {
   private discs: DiscMesh[] = [];
 
   constructor(scene: THREE.Scene, n: number, beam: THREE.BufferGeometry) {
     // Flat in the XZ plane (a torus is built in XY).
-    const ringGeo = new THREE.TorusGeometry(0.42, 0.06, 6, 28);
+    const R = 0.72;
+    const outlineGeo = new THREE.TorusGeometry(R, 0.17, 6, 32);
+    outlineGeo.rotateX(Math.PI / 2);
+    const ringGeo = new THREE.TorusGeometry(R, 0.12, 8, 32);
     ringGeo.rotateX(Math.PI / 2);
-    const coreGeo = new THREE.TorusGeometry(0.42, 0.024, 4, 28);
+    const coreGeo = new THREE.TorusGeometry(R, 0.045, 4, 32);
     coreGeo.rotateX(Math.PI / 2);
-    const barGeo = new THREE.BoxGeometry(0.8, 0.03, 0.07);
-    const haloGeo = new THREE.CircleGeometry(0.62, 24);
-    haloGeo.rotateX(-Math.PI / 2);
-    const ringMat = addMat(CYAN, 1);
-    const coreMat = addMat(0xf0feff, 1);
-    const haloMat = paintMat(DEEP, 0.28);
-    haloMat.side = THREE.DoubleSide;
-    const trailMat = addMat(0x7ff4ff, 0.75);
-    const sheathMat = paintMat(0x10c0f2, 0.35);
+    const barGeo = new THREE.BoxGeometry(R * 2, 0.06, 0.13);
+    const fillGeo = new THREE.CircleGeometry(R, 28);
+    fillGeo.rotateX(-Math.PI / 2);
+    const outlineMat = paintMat(0x06243a, 0.85);
+    const ringMat = paintMat(0x19dcff, 1);
+    const coreMat = addMat(0xf4ffff, 1);
+    const fillMat = paintMat(0x2ad8ff, 0.32);
+    fillMat.side = THREE.DoubleSide;
+    const barMat = paintMat(0xbff6ff, 0.95);
+    const trailMat = addMat(0xeaffff, 0.9);
+    const sheathMat = paintMat(0x14c8f5, 0.6);
     for (let i = 0; i < n; i++) {
       const root = new THREE.Group();
+      const outline = new THREE.Mesh(outlineGeo, outlineMat);
       const ring = new THREE.Mesh(ringGeo, ringMat);
       const core = new THREE.Mesh(coreGeo, coreMat);
-      const bar = new THREE.Mesh(barGeo, coreMat);
-      const bar2 = new THREE.Mesh(barGeo, ringMat);
+      const fill = new THREE.Mesh(fillGeo, fillMat);
+      const bar = new THREE.Mesh(barGeo, barMat);
+      const bar2 = new THREE.Mesh(barGeo, barMat);
       bar2.rotation.y = Math.PI / 2;
-      const halo = new THREE.Mesh(haloGeo, haloMat);
-      halo.renderOrder = 2;
-      ring.renderOrder = core.renderOrder = bar.renderOrder = bar2.renderOrder = 4;
-      root.add(halo, ring, core, bar, bar2);
+      outline.renderOrder = 2;
+      fill.renderOrder = 3;
+      ring.renderOrder = bar.renderOrder = bar2.renderOrder = 4;
+      core.renderOrder = 5;
+      root.add(outline, fill, ring, bar, bar2, core);
       for (const m of root.children) m.frustumCulled = false;
       root.visible = false;
       scene.add(root);
@@ -530,8 +540,8 @@ export class DiscFx {
     d.root.rotation.set(bank, spin, 0);
     d.root.scale.setScalar(Math.max(0.01, scale));
     _t0.set(pos.x - dx * trail, pos.y, pos.z - dz * trail);
-    aimBeam(d.trail, _t0, pos, 0.07 * scale);
-    aimBeam(d.sheath, _t0, pos, 0.16 * scale);
+    aimBeam(d.trail, _t0, pos, 0.11 * scale);
+    aimBeam(d.sheath, _t0, pos, 0.3 * scale);
   }
 
   hide(i: number): void {

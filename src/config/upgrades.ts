@@ -216,10 +216,11 @@ export const FX = {
   chainBlast: (L: number) => (L <= 0 ? 0 : 35 + 18 * grow(L - 1, 4)),
   // ---- ARSENAL line (weapons are free at level 0; upgrades strengthen them)
   /** Mag Discs (SPACE, hold; off the nose emitter): damage per disc hit (x your damage mult; every disc can hit a
-   *  target twice, out and back), discs per second (~0.25 s apart), reach (m). Sized so ARSENAL's single-target and
-   *  cluster DPS in the balance sim match the old Mag Shotgun's at every tier (docs/balance.md). */
-  gunDamage: (L: number) => 4.3 + 1.4 * grow(L, 5, 0.5),
-  gunRate: (L: number) => 4 + 0.25 * soft(L, 5),
+   *  target twice, out and back), discs per second (~0.33 s apart), reach (m). Sized so ARSENAL's single-target and
+   *  cluster DPS in the balance sim match the old Mag Shotgun's at every tier (docs/balance.md). Fewer, heavier discs
+   *  (3/s at 4/3 the damage, was 4/s) so each hit lands with weight. */
+  gunDamage: (L: number) => (4.3 + 1.4 * grow(L, 5, 0.5)) * (4 / 3),
+  gunRate: (L: number) => 3 + 0.19 * soft(L, 5),
   gunRange: (L: number) => 10 + 0.5 * soft(L, 5),
   /** Mag Repulsor (E): damage scale (one wave deals 1.5 s of it to every bot it reaches, x your damage mult; the old
    *  Grav Lance's lone-bot damage), reach of the forward wedge (m), recharge (s). */

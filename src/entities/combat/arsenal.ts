@@ -11,6 +11,10 @@ const UPDATE_SCRAP_BURST = { color: 0x8fb4c6, count: 1, speed: 0.5, size: 0.12, 
 const UPDATE_SCRAP_BURST_2 = { color: 0xd8f4ff, count: 3, speed: 4, size: 0.1, gravity: 6, life: 0.2 };
 const LAUNCH_BURST = { color: 0xbff6ff, count: 2, speed: 4, size: 0.1, gravity: 0, life: 0.12 };
 const CATCH_BURST = { color: 0xd8ffff, count: 3, speed: 3, size: 0.08, gravity: 0, life: 0.12 };
+/** Disc impact: a chunky cyan pop (out) / white-hot magnetic snap (back), sparks and a flash burst. */
+const DISC_HIT_SPARKS = { count: 12, color: 0x38e8ff, speed: 11, spread: 0.9, size: 0.08, life: 0.26, gravity: 6 };
+const DISC_HIT_SPARKS_BACK = { count: 12, color: 0xeaffff, speed: 11, spread: 0.9, size: 0.08, life: 0.26, gravity: 6 };
+const DISC_HIT_BURST = { color: 0x7ff4ff, count: 8, speed: 5, size: 0.22, gravity: 0, life: 0.18 };
 const TICK_BURST_SPARKS = { count: 3, color: 0xbff8ff, speed: 14, spread: 0.2, size: 0.05, life: 0.4, gravity: 0, length: 0.08 };
 
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
@@ -64,7 +68,7 @@ const DEG = Math.PI / 180;
  *  (DISC_KNOCK), on the way back with a TUG toward ARSENAL (DISC_TUG m/s divided by the bot's mass, bosses
  *  DISC_TUG_BOSS x; in the Duel DISC_DUEL_TUG, scaled by the victim's DUEL_KNOCK_TAKEN). Launches cycle through
  *  DISC_YAW so the stream fans a touch. A disc that meets a prop (it breaks) or the ground turns back early. */
-const DISC_SPEED = 22;
+const DISC_SPEED = 30;
 const DISC_OVERCLOCK = 0.25;
 // LIGHT homing (by request: "light homing, not doing a 360 to track" a mobile target): a slow turn, a narrow lock-on
 // cone, a cap on the total bend per disc, and only targets near the disc's own height (no climbing onto decks).
@@ -658,7 +662,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       }
       if (!this.puppet) this.discHit(d, d.back ? rad * DISC_BACK_WIDE : rad);
       const pop = Math.min(1, d.t / DISC_POP);
-      this.discFx.show(i, d.pos, d.dx, d.dz, d.spin, 0.22 * Math.sin(d.t * 9), pop, Math.min(1.4, d.speed * 0.045) * pop);
+      this.discFx.show(i, d.pos, d.dx, d.dz, d.spin, 0.22 * Math.sin(d.t * 9), pop, Math.min(2.6, d.speed * 0.085) * pop);
     }
   }
 
@@ -741,8 +745,15 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const knock = !d.back ? DISC_KNOCK : -(this.b.pvp ? DISC_DUEL_TUG : DISC_TUG * (e.isBoss ? DISC_TUG_BOSS : 1));
     const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round', 1, false, d.back);
     _fwd.set(-d.dx, 0.35, -d.dz).normalize();
-    this.ctx.fx.sparks(d.pos, _fwd, { count: 4, color: d.back ? 0xd8ffff : CYAN, speed: 8, spread: 0.7, size: 0.05, life: 0.18, gravity: 6 });
-    if (dealt > 0 && Math.random() < 0.5) this.b.audio.play('zap', { volume: 0.1, pitch: d.back ? 2.2 : 1.8 });
+    const fx = this.ctx.fx;
+    fx.sparks(d.pos, _fwd, d.back ? DISC_HIT_SPARKS_BACK : DISC_HIT_SPARKS);
+    fx.burst(d.pos, DISC_HIT_BURST);
+    if (dealt > 0) {
+      // A meaty electric clang on every hit (out: a cut; back: a lower magnetic snap as it tugs).
+      this.b.audio.play('zap', { volume: 0.32, pitch: (d.back ? 1.25 : 1.6) + Math.random() * 0.15 });
+      this.b.audio.play('block', { volume: 0.16, pitch: d.back ? 0.9 : 1.2 });
+      if (this.b.local) this.shake(0.05);
+    }
   }
 
   /** A disc back at the emitter (`snap`: a clank and a spark; false: timed out somewhere, it just winks out). */
