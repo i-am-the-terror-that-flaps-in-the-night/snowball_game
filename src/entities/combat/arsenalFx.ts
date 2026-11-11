@@ -490,8 +490,13 @@ interface Bolt {
 export const LASER_LIFE = 0.12;
 /** The core beam shows for this share of the life (a flash), the crescent for all of it. */
 const CORE_SHARE = 0.55;
-const CORE_R = 0.2;
-const GLOW_R = 0.42;
+/** The beam WIDENS along its length (by request): a tapered cone, CORE_R / GLOW_R at the far end and BEAM_NEAR of
+ *  that at the emitter. Solid and bright (not a translucent fill), narrower than the full hit width, so it reads as a
+ *  laser, not a puddle. The far radius also grows a little with the beam's hit width (BEAM_WIDEN_K). */
+const CORE_R = 0.3;
+const GLOW_R = 0.62;
+const BEAM_NEAR = 0.3;
+const BEAM_WIDEN_K = 0.12;
 /** Crescent: a 100° arc, its chord the beam's hit width at that distance. */
 const ARC_HALF = (50 * Math.PI) / 180;
 const ARC_SIN = Math.sin(ARC_HALF);
@@ -515,6 +520,10 @@ export class LaserFx {
 
   constructor(scene: THREE.Scene, n: number, beam: THREE.BufferGeometry) {
     const ball = new THREE.SphereGeometry(1, 12, 8);
+    // Tapered beam: a unit cone along +Z (0..1), radius BEAM_NEAR at the emitter, 1 at the far end.
+    const taper = new THREE.CylinderGeometry(1, BEAM_NEAR, 1, 14, 1, true);
+    taper.rotateX(Math.PI / 2);
+    taper.translate(0, 0, 0.5);
     // Unit crescent: a 100° arc of a radius-1 ring in the XZ plane, its apex at the origin, bulging toward +Z.
     const arcGeo = (tube: number) => {
       const g = new THREE.TorusGeometry(1, tube, 6, 20, ARC_HALF * 2);
@@ -543,8 +552,8 @@ export class LaserFx {
         nearW: 0.8,
         farW: 1,
         heading: 0,
-        glow: mk(beam, paintMat(0x12d2ff, 0.55), 3),
-        core: mk(beam, addMat(0xf6ffff, 1), 5),
+        glow: mk(taper, paintMat(0x12d2ff, 0.8), 3),
+        core: mk(taper, addMat(0xf6ffff, 1), 5),
         arcEdge: mk(edgeG, paintMat(0x06243a, 0.85), 3),
         arc: mk(arcG, paintMat(0x19dcff, 1), 4),
         muzzle: mk(ball, addMat(0xf6ffff, 1), 5),
@@ -590,10 +599,11 @@ export class LaserFx {
     const kc = Math.min(1, k / CORE_SHARE);
     if (kc < 1) {
       const w = 1.1 - 0.8 * kc;
-      aimBeam(b.core, b.from, b.to, CORE_R * w);
-      aimBeam(b.glow, b.from, b.to, GLOW_R * w);
+      const far = 1 + BEAM_WIDEN_K * Math.max(0, b.farW - b.nearW);
+      aimBeam(b.core, b.from, b.to, CORE_R * far * w);
+      aimBeam(b.glow, b.from, b.to, GLOW_R * far * w);
       (b.core.material as THREE.MeshBasicMaterial).opacity = 1 - kc * kc;
-      (b.glow.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - kc);
+      (b.glow.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - kc);
     } else {
       b.core.visible = b.glow.visible = false;
     }
