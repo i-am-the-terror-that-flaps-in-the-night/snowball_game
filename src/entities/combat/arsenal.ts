@@ -16,6 +16,7 @@ const TICK_BURST_SPARKS = { count: 3, color: 0xbff8ff, speed: 14, spread: 0.2, s
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
  *  Duel victim path), so it stays valid across the nested victim hit. */
 const _kb = new THREE.Vector3();
+const _r = new THREE.Vector3();
 
 /* ARSENAL: a magnetic vehicle (two huge front wheels, a hovering gyro core at the back). Like every plow, it fights
  * up close and aims by steering: both main weapons fire straight off the nose.
@@ -66,8 +67,14 @@ const DEG = Math.PI / 180;
  *  DISC_YAW so the stream fans a touch. A disc that meets a prop (it breaks) or the ground turns back early. */
 const DISC_SPEED = 22;
 const DISC_OVERCLOCK = 0.25;
-const DISC_HOME = 1.75;
-const DISC_HOME_CONE = 70 * DEG;
+// LIGHT homing (by request: "light homing, not doing a 360 to track" a mobile target): a slow turn, a narrow lock-on
+// cone, a cap on the total bend per disc, and only targets near the disc's own height (no climbing onto decks).
+const DISC_HOME = 0.8;
+const DISC_HOME_CONE = 25 * DEG;
+/** Most a disc may bend (rad) toward targets on its way out; past it, it flies straight. */
+const DISC_HOME_MAX = 30 * DEG;
+/** A disc only homes on a target whose chest is within this many metres of its own height. */
+const DISC_HOME_DY = 1.5;
 const DISC_BACK_TURN = 14;
 /** Speed (m/s) a disc snaps round at the far end (a boomerang's stall) before it accelerates home. */
 const DISC_APEX = 6;
@@ -128,6 +135,8 @@ interface Disc {
   dz: number;
   speed: number;
   travelled: number;
+  /** Total homing bend so far (rad, capped at DISC_HOME_MAX). */
+  bent: number;
   range: number;
   t: number;
   spin: number;
@@ -445,7 +454,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const ball = new THREE.SphereGeometry(1, 14, 10);
     // Mag Discs: a fixed pool of discs (state + spinning ring visuals) and the nose flash.
     for (let i = 0; i < DISC_POOL; i++) {
-      this.discs.push({ on: false, back: false, pos: new THREE.Vector3(), prev: new THREE.Vector3(), dx: 0, dz: 1, speed: 0, travelled: 0, range: 0, t: 0, spin: 0, hitOut: new Set(), hitBack: new Set() });
+      this.discs.push({ on: false, back: false, pos: new THREE.Vector3(), prev: new THREE.Vector3(), dx: 0, dz: 1, speed: 0, travelled: 0, bent: 0, range: 0, t: 0, spin: 0, hitOut: new Set(), hitBack: new Set() });
     }
     this.discFx = new DiscFx(scene, DISC_POOL, beam);
     this.flashCore = mk(glowMat(0xe8ffff, 1), 4, ball);
@@ -572,6 +581,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     d.back = false;
     d.t = 0;
     d.travelled = 0;
+    d.bent = 0;
     d.speed = DISC_SPEED;
     d.dx = Math.sin(yaw);
     d.dz = Math.cos(yaw);
@@ -611,8 +621,10 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       d.prev.copy(d.pos);
       if (!d.back) {
         // Out: gentle homing on the nearest target ahead (a swerve or a dash slips it), level otherwise.
-        if (this.homeTarget(d, plow.position.x, plow.position.z, _q)) {
-          this.steer(d, Math.atan2(_q.x - d.pos.x, _q.z - d.pos.z), DISC_HOME * dt);
+        if (d.bent < DISC_HOME_MAX && this.homeTarget(d, plow.position.x, plow.position.z, _q)) {
+          const before = Math.atan2(d.dx, d.dz);
+          this.steer(d, Math.atan2(_q.x - d.pos.x, _q.z - d.pos.z), Math.min(DISC_HOME * dt, DISC_HOME_MAX - d.bent));
+          d.bent += Math.abs(wrapAngle(Math.atan2(d.dx, d.dz) - before));
           d.pos.y += THREE.MathUtils.clamp(_q.y - d.pos.y, -DISC_CLIMB * dt, DISC_CLIMB * dt);
         }
         const step = d.speed * dt;
@@ -674,8 +686,10 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       const dist = Math.hypot(tx, tz);
       if (dist >= bestD || dist < 1e-3 || (tx * d.dx + tz * d.dz) / dist < cone) continue;
       if (Math.hypot(e.position.x - px, e.position.z - pz) > d.range + e.radius) continue;
+      this.chest(e, _r);
+      if (Math.abs(_r.y - d.pos.y) > DISC_HOME_DY) continue;
       bestD = dist;
-      this.chest(e, out);
+      out.copy(_r);
     }
     this.clearTargets();
     if (bestD < Infinity) return true;

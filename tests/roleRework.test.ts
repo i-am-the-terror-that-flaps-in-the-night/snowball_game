@@ -7,7 +7,7 @@ import type { PilotBinding } from '../src/entities/pilot';
 import type { Plow } from '../src/entities/Plow';
 import type { PlowKind } from '../src/config/plows';
 import { PLOWS, knockScale } from '../src/config/plows';
-import { ARC_CLOSE_MULT, arcCloseMult, arcRange } from '../src/entities/combat/volt';
+import { ARC_CLOSE_MULT, ARC_CLOSE_MULT_BOT, arcCloseMult, arcRange } from '../src/entities/combat/volt';
 import { TANK_BUSTER, TANK_BUSTER_BOT_HP, tankBusterTick, type IsotopeKit } from '../src/entities/combat/isotope';
 import { REV_SPEED, VOLT_KITE_REV, reverseCap } from '../src/entities/plow/constants';
 import { OpponentTarget, PlowHandle, type DuelHit } from '../src/duel/opponent';
@@ -103,12 +103,12 @@ describe('VOLT-9: true ranged', () => {
     expect(arcCloseMult(12)).toBe(1);
   });
 
-  it('the penalty only bites in the Duel: a target bumper to bumper takes 0.6x of a target at range; bots take full', () => {
+  it('close-range penalty: bumper to bumper a Duel target takes 0.6x of one at range, a bot 0.7x (VOLT has to keep moving)', () => {
     // Gap = centre distance - rover hull (1.6) - target radius (1): z 4 -> 1.4 m gap (x0.6), z 9 -> 6.4 m (x1).
     const near = arcOn(4, true);
     const far = arcOn(9, true);
     expect(near / far).toBeCloseTo(ARC_CLOSE_MULT, 2);
-    expect(arcOn(4, false) / arcOn(9, false)).toBeCloseTo(1, 2);
+    expect(arcOn(4, false) / arcOn(9, false)).toBeCloseTo(ARC_CLOSE_MULT_BOT, 2);
   });
 
   it('kiting: reverse top speed is 0.8 x max while VOLT-9 holds the lance, 0.45 x otherwise and for every other plow', () => {

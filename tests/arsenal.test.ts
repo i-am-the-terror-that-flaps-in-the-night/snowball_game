@@ -227,7 +227,7 @@ describe('MAG DISCS (SPACE)', () => {
   });
 
   it('homing: a disc turns gently toward a bot ahead off its line (and hits it), but not sharply', () => {
-    const e = bot(3, 8, 1e6);
+    const e = bot(2, 8, 1e6); // ~18° off the nose: inside the 25° lock-on cone
     const r = gravRig([e]);
     r.held.add('Space');
     r.run(1 / 60);
@@ -236,7 +236,7 @@ describe('MAG DISCS (SPACE)', () => {
     expect(d.dx).toBeLessThan(0.04); // launched straight off the nose (one frame of homing so far)
     r.run(0.1);
     expect(d.dx).toBeGreaterThan(0.05); // turning toward the bot
-    expect(Math.asin(d.dx)).toBeLessThan(2 * 0.12); // at most ~2 rad/s
+    expect(Math.asin(d.dx)).toBeLessThan(1 * 0.12); // light: at most ~1 rad/s
     r.run(1.5);
     expect(e.hp).toBeLessThan(e.maxHp);
     // Without a target the same disc flies dead straight.
@@ -246,6 +246,26 @@ describe('MAG DISCS (SPACE)', () => {
     const d2 = kit(r2.c).discs.find((x) => x.on)!;
     r2.run(0.2);
     expect(d2.dx).toBeCloseTo(0, 5);
+  });
+
+  it('light homing: a disc bends at most 30° in total, then flies straight (no circling after a dodger)', () => {
+    const e = bot(2, 8, 1e6);
+    const r = gravRig([e]);
+    r.held.add('Space');
+    r.run(1 / 60);
+    r.held.delete('Space');
+    const d = kit(r.c).discs.find((x) => x.on)! as unknown as { bent: number; back: boolean };
+    // The bot sidesteps hard after the launch: the disc may chase only until its bend budget runs out.
+    e.position.set(9, 0, 4);
+    r.run(0.6);
+    expect(d.bent).toBeLessThanOrEqual((30 * Math.PI) / 180 + 1e-6);
+  });
+
+  it('light homing ignores a target well above or below the disc (no climbing onto decks)', () => {
+    const high = bot(2, 8, 1e6);
+    high.position.y = 4;
+    const { log } = oneDisc([high]);
+    expect(log.length).toBe(0);
   });
 
   it('a bot well off the nose (past the homing cone) is never chased', () => {
@@ -270,7 +290,7 @@ describe('MAG DISCS (SPACE)', () => {
       getForward: (o: THREE.Vector3) => o.set(0, 0, 1),
       mountWorld: (_k: string, _i: number, o: THREE.Vector3) => o.set(0, 1, 1.5),
     };
-    const foe = { position: new THREE.Vector3(3, 0, 8), dead: false };
+    const foe = { position: new THREE.Vector3(2, 0, 8), dead: false };
     const ctx = { scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop } as unknown as GameContext;
     const held = new Set<string>(['Space']);
     const input = { throttle: 0, steer: 0, wasPressed: () => false, isDown: (k: string) => held.has(k) };

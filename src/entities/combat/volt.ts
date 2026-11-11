@@ -50,15 +50,17 @@ const ARC_CONE = 0.5;
 /** ARC LANCE reach (role rework: VOLT-9 is the true ranged pilot): 14 m base, + 2.5 m per metre of Mega Hopper ball
  *  radius above 1.2 m (~20 m late). Was 9 m. Measured centre to centre (plus the target's radius, Reach.Body). */
 export const arcRange = (ballR: number) => 14 + 2.5 * Math.max(0, ballR - 1.2);
-/** CLOSE-RANGE PENALTY (Duel only, this.b.pvp): an arc hit on a target whose gap to the rover is under ARC_CLOSE_NEAR m
- *  deals ARC_CLOSE_MULT x, ramping linearly back to x1 at ARC_CLOSE_FAR m. The gap is centre to centre minus both
- *  radii (rover hull 1.6 m + target radius), i.e. bumper to bumper. A diver who reaches VOLT-9 has done the hard part;
- *  bots are unaffected (the lance is still VOLT's PvE crowd weapon at any range). */
+/** CLOSE-RANGE PENALTY: an arc hit on a target whose gap to the rover is under ARC_CLOSE_NEAR m deals ARC_CLOSE_MULT x
+ *  (a human in the Duel) or ARC_CLOSE_MULT_BOT x (bots), ramping linearly back to x1 at ARC_CLOSE_FAR m. The gap is
+ *  centre to centre minus both radii (rover hull 1.6 m + target radius), i.e. bumper to bumper. VOLT-9 is the true
+ *  ranged pilot: a diver who reaches it has done the hard part, and a VOLT that lets bots swarm it loses damage, so it
+ *  has to keep moving (by request: "force moving so that it doesn't get swarmed"). */
 export const ARC_CLOSE_NEAR = 3;
 export const ARC_CLOSE_FAR = 5;
 export const ARC_CLOSE_MULT = 0.6;
-export const arcCloseMult = (gap: number) =>
-  gap <= ARC_CLOSE_NEAR ? ARC_CLOSE_MULT : gap >= ARC_CLOSE_FAR ? 1 : ARC_CLOSE_MULT + ((1 - ARC_CLOSE_MULT) * (gap - ARC_CLOSE_NEAR)) / (ARC_CLOSE_FAR - ARC_CLOSE_NEAR);
+export const ARC_CLOSE_MULT_BOT = 0.7;
+export const arcCloseMult = (gap: number, near = ARC_CLOSE_MULT) =>
+  gap <= ARC_CLOSE_NEAR ? near : gap >= ARC_CLOSE_FAR ? 1 : near + ((1 - near) * (gap - ARC_CLOSE_NEAR)) / (ARC_CLOSE_FAR - ARC_CLOSE_NEAR);
 /** Sideways jitter of the tower bolt: ARC_JAG up to ARC_JAG_NEAR m, growing ARC_JAG_PER_M per metre past it (capped at
  *  ARC_JAG_MAX), so a 14-20 m bolt still crackles instead of reading as a straight line. */
 const ARC_JAG = 1.0;
@@ -241,7 +243,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         if (this.paraReady.size > 64) for (const [id, t] of this.paraReady) if (t < ctx.time) this.paraReady.delete(id);
       }
       let share = hop === 0 ? (grounded ? ARC_BOSS : solo ? ARC_SOLO : 1) : frac * ARC_HOP_DECAY ** (hop - 1);
-      if (this.b.pvp) share *= arcCloseMult(cd - (plow.radius ?? HULL_R) - hit.radius);
+      share *= arcCloseMult(cd - (plow.radius ?? HULL_R) - hit.radius, this.b.pvp ? ARC_CLOSE_MULT : ARC_CLOSE_MULT_BOT);
       const killed = this.b.enemies.damage(hit, dmg * share * this.hitMult(hit), {
         source: 'other',
         weapon: 'arcLance',

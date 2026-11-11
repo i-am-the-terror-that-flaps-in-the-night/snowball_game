@@ -282,6 +282,9 @@ export class Rotation {
 export const DT = 1 / 60;
 /** Ahead of the plow: inside every melee / F-ability reach (whirl 4 m + bot radius). */
 const NEAR = 4.5;
+/** Where VOLT-9's single-target dummy stands: at the edge of its Static Field (6.5 m + the dummy) and mostly past the
+ *  Arc Lance's close-range penalty (gap 4.4 m: x0.91 on bots), where a kiting VOLT fights from. */
+const VOLT_NEAR = 7;
 
 function botRig(kind: PlowKind, tier: Tier, bots: Dummy[], ult: 'hold' | 'use' = 'hold', decoys: Dummy[] = []) {
   const ctx = newCtx();
@@ -319,8 +322,10 @@ const total = (bots: Dummy[]) => bots.reduce((s, b) => s + b.dealt, 0);
  *  Lance's nearest-bot lock): the dummy is no longer alone, so VOLT-9's GROUNDED ARC (1.75x on a lone bot) stays off,
  *  as on a typical bot in a wave. Only the dummy's damage counts. */
 export function singleDps(kind: PlowKind, tier: Tier, seconds = 60, grounded = true): number {
-  const bots = [dummy(0, NEAR)];
-  const r = botRig(kind, tier, bots, 'hold', grounded ? [] : [dummy(0, NEAR + 7)]);
+  // VOLT-9 fights from range (its Arc Lance is weak bumper to bumper, ARC_CLOSE_*): its dummy stands at VOLT_NEAR.
+  const at = kind === 'volt' ? VOLT_NEAR : NEAR;
+  const bots = [dummy(0, at)];
+  const r = botRig(kind, tier, bots, 'hold', grounded ? [] : [dummy(0, at + 7)]);
   r.run(seconds);
   return total(bots) / seconds;
 }

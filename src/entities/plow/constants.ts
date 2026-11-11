@@ -27,7 +27,7 @@ export const _haloHot = new THREE.Color(0xff3010);
 /** Reverse top speed as a share of maxSpeed; VOLT-9 backs off much faster while the Arc Lance is held (KITING: the
  *  true ranged pilot can keep a diver at lance range). */
 export const REV_SPEED = 0.45;
-export const VOLT_KITE_REV = 0.8;
+export const VOLT_KITE_REV = 0.7;
 /** Reverse top speed (m/s) for this kind: VOLT_KITE_REV x maxSpeed for VOLT-9 while its Arc Lance fires, else REV_SPEED. */
 export const reverseCap = (maxSpeed: number, kind: string, arcHeld: boolean): number =>
   maxSpeed * (kind === 'volt' && arcHeld ? VOLT_KITE_REV : REV_SPEED);
