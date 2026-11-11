@@ -124,9 +124,10 @@ export const DUEL_ULT_CHARGE = 2.5;
 /** Per-vehicle factor on DUEL_ULT_CHARGE (others 1), evening the fill out: ISOTOPE's Critical Mass counts only part of
  *  its damage (radiation shares), BRUTUS deals the most plow-vs-plow. Overclock (cooldownMult < 1: abilities more
  *  often, so more damage) grows the meter by 1 / sqrt(cooldownMult), as it grows the off-line one by 1 / cooldownMult.
- *  The Classic's factor is its DUEL_KIND_DAMAGE, so that Duel damage trim does not also delay FIRESTORM; the
+ *  The Classic's FIRESTORM fills from fire damage only, and since the role rework most of its damage is BLADE SWIPEs
+ *  (no fire), so its factor is 0.8 (it was its DUEL_KIND_DAMAGE, 0.97, so that trim did not delay FIRESTORM). The
  *  victim's DUEL_KIND_TAKEN is folded into the HP the meter is sized in (OpponentTarget.duelFoeMaxHp). */
-export const DUEL_ULT_KIND_CHARGE: Partial<Record<string, number>> = { isotope: 0.65, brute: 1.25, classic: DUEL_KIND_DAMAGE.classic };
+export const DUEL_ULT_KIND_CHARGE: Partial<Record<string, number>> = { isotope: 0.65, brute: 1.25, classic: 0.8 };
 /** ...and an ultimate landing on a human is a big swing, never a one-shot: on top of the usual Duel path (scales,
  *  power damp, hit cap, i-frames, shields), ultimate damage (the blast and its aftermath: SUPERCELL strikes,
  *  EARTHQUAKE rings, SINGULARITY pull + detonation, FIRESTORM nova + burning ground, NUKE blast + its fallout pool) is
