@@ -10,9 +10,9 @@ import {
 } from './constants';
 import { _fwd, _a, _c, _dir } from './scratch';
 import { deckById } from './assets';
-import { floorTop, waveFloor } from '../combat/shared';
+import { floorTop } from '../combat/shared';
 import {
-  MOMENTUM_SECONDS, RUSH_DROP, RUSH_MAX, RUSH_MIN_SLAM_R, RUSH_SPEED, SWIPE_COOLDOWN, SWIPE_TAP, rushAffordable, rushCharge,
+  MOMENTUM_SECONDS, RUSH_MAX, RUSH_MIN_SLAM_R, RUSH_SPEED, SWIPE_COOLDOWN, SWIPE_TAP, rushAffordable, rushCharge,
   rushPlan,
 } from '../combat/classicRush';
 
@@ -102,6 +102,11 @@ export abstract class PlowMotion extends PlowVisuals {
     const tx = this.position.x + _fwd.x * (TIP_Z - 0.4);
     const tz = this.position.z + _fwd.z * (TIP_Z - 0.4);
     const q = enemies.query(tx, tz, this.bladeWidth / 2 + 0.4, this.queryOut);
+    // PLOW RUSH: the first bot / opponent the blade meets ends the rush in the slam right there.
+    if (this.rushLeft > 0) {
+      for (let i = 0; i < q.length; i++) if (q[i].alive) this.rushStop = true;
+      return;
+    }
     const list = this.dashTargets;
     list.length = 0;
     for (let i = 0; i < q.length; i++) list.push(q[i]);
@@ -253,17 +258,12 @@ export abstract class PlowMotion extends PlowVisuals {
     this.b.audio.play('ram', { volume: 0.6, pitch: 0.7 });
   }
 
-  /** Is the floor `step` m past the blade a drop (a deck edge) the rush should stop at? */
-  protected rushDropAhead(step: number): boolean {
-    const t = this.ctx.terrain;
-    if (!t.active || this.vert.airborne) return false;
-    this.getForward(_fwd);
-    const x = this.position.x + _fwd.x * (TIP_Z + step);
-    const z = this.position.z + _fwd.z * (TIP_Z + step);
-    return waveFloor(t, this.vert.y, x, z) < this.vert.surfaceY - RUSH_DROP;
+  /** A body contact while rushing (a bot driving into the hull, Combat.playerRam): the rush ends in the slam there. */
+  rushContact(): void {
+    if (this.rushLeft > 0) this.rushStop = true;
   }
 
-  /** End the rush (distance done, blocked, a wall, a drop or a jump): slow down and slam at the blade. */
+  /** End the rush (first contact, distance done, blocked, a wall or a launch): slow down and slam at the blade. */
   protected finishRush(): void {
     this.rushLeft = 0;
     this.rushStop = false;

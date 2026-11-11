@@ -31,16 +31,17 @@ up late game. It still plows snow into a ball: the ball grows as you plow and st
   most; ❄ pips under the snowball gauge). 0.35 s between swipes (a tap during it is kept and fires when it ends).
   **Momentum:** every swipe that lands gives +20% top speed for 1 s (refreshes, doesn't stack).
 - **SPACE hold, then let go: PLOW RUSH.** Holding past the tap window charges the rush over ~1 s (V8 Engine, Nitro
-  Dash and Mega Hopper shorten the charge a little, never below 0.55 s). While charging the plow is slowed to half
-  speed, its blade sparks, a glowing ring sits under it and an icy **line on the ground runs from the blade to the
+  Dash and Mega Hopper shorten the charge a little, never below 0.55 s). While charging the plow keeps its full
+  speed and steering (the line turns with it), its blade sparks, a glowing ring sits under it and an icy **line on the ground runs from the blade to the
   landing point** with a ring the size of the slam (the other pilot sees it too). Let go and the plow rushes there in a
   straight, committed line (no steering, 28 m/s): **1.5 m** at the smallest charge up to a **hard cap of 20 m** at full
-  charge, at every upgrade level. Bots in the path take a light hit and are shoved aside. It **ends in the ball slam**
+  charge, at every upgrade level. It **ends in the ball slam**, and **the first bot or pilot it touches triggers the slam
+  right there**
   (the old slam: zone and damage from the held ball, Snow Reserve, Slam Combo, Shatter Slam, Frost / Avalanche Core
   all apply; with no ball it is a small 0.6 m slam). **Cash-in:** the slam spends every snow chunk: zone x(1 + 0.05 n)
-  and damage x(1 + 0.04 n) for n chunks (x1.5 / x1.4 at 10), shown as a big ❄×n AVALANCHE! from 5. The rush stops
-  early (and slams there) at a wall, a big obstacle, a boss or the other pilot in the way, on the brink of a deck edge,
-  or if it is launched off a ramp lip.
+  and damage x(1 + 0.04 n) for n chunks (x1.5 / x1.4 at 10), shown as a big ❄×n AVALANCHE! from 5. The rush also stops
+  early (and slams there) at a wall or a big obstacle, or if it is launched up off a ramp lip. Off a deck edge it
+  carries on through the drop.
 - **Shared meter.** The rush and the SHIFT dash run on the same meter: a rush costs max(0.25, distance / 20) of a full
   charge (5 m or less = a quarter, 20 m = all of it), and the telegraph never runs past what the meter can pay for.
   With less than a quarter, holding SPACE gives one error buzz and no telegraph, and letting go **swipes instead** (so

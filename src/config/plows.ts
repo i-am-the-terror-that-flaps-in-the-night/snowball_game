@@ -50,7 +50,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     traits: [
       '+15% HP · sturdy: takes 20% less knockback · full slam damage, +5.5% more per Packed Ice level past 4',
       'SPACE tap: BLADE SWIPE, a 100° sweep; every hit packs a ❄ snow chunk (max 10) and gives +20% speed for 1 s',
-      'SPACE hold + release: PLOW RUSH, 1.5-20 m in a straight line (shares the dash meter), ending in your ball slam; the chunks cash in for +5% radius / +4% damage each',
+      'SPACE hold + release: PLOW RUSH, 1.5-20 m in a straight line (shares the dash meter), ending in your ball slam (at the first bot it touches); the chunks cash in for +5% radius / +4% damage each',
       'F: Inferno fire cone (10 m) + fireball finisher (free) · fire damage builds FIRESTORM: full = 360° fire nova on F',
     ],
     hpMult: 1.15,

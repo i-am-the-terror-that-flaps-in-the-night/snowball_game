@@ -36,20 +36,14 @@ export const RUSH_MAX = 20;
  *  (rushChargeTime), never below RUSH_CHARGE_MIN. They never raise the cap. */
 export const RUSH_CHARGE_BASE = 1;
 export const RUSH_CHARGE_MIN = 0.55;
-/** Top speed while charging, as a share of the normal one. */
-export const RUSH_CHARGE_SLOW = 0.5;
+/** Top speed while charging, as a share of the normal one (1: by request, charging doesn't slow the plow). */
+export const RUSH_CHARGE_SLOW = 1;
 /** Rush speed (m/s): 20 m takes ~0.7 s. Straight line, no steering. */
 export const RUSH_SPEED = 28;
 /** Shared dash meter: a rush costs max(RUSH_COST_MIN, distance / RUSH_MAX) of a full charge. */
 export const RUSH_COST_MIN = 0.25;
-/** Bots in the rush's path take this much (+ ramDamage x RUSH_HIT_RAM), x damageMult: a light hit, one per bot. */
-export const RUSH_HIT = 8;
-export const RUSH_HIT_RAM = 0.4;
-export const RUSH_HIT_KNOCK = 9;
 /** The end slam with no ball (or a crumb under 0.2 m) uses this radius. */
 export const RUSH_MIN_SLAM_R = 0.6;
-/** A drop of more than this (m) ahead (a deck edge) stops the rush on the brink. */
-export const RUSH_DROP = 1;
 
 const clamp01 = (v: number) => (v <= 0 ? 0 : v >= 1 ? 1 : v);
 

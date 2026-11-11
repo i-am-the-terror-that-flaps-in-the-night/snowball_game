@@ -9,7 +9,7 @@ import { Terrain } from '../src/world/Terrain';
 import { NP, NET_PLOW_LEN } from '../src/net/protocol';
 import { PLOWS } from '../src/config/plows';
 import { FX } from '../src/config/upgrades';
-import {
+import { RUSH_CHARGE_SLOW,
   CHUNK_MAX, MOMENTUM_SECONDS, RUSH_CHARGE_BASE, RUSH_CHARGE_MIN, RUSH_COST_MIN, RUSH_MAX, RUSH_MIN, RUSH_MIN_SLAM_R, SWIPE_TAP,
   addChunks, cashIn, rushAffordable, rushCharge, rushCost, rushDistance, rushPlan,
 } from '../src/entities/combat/classicRush';
@@ -255,6 +255,35 @@ describe('Classic SPACE input (Plow.updateClassicSpace)', () => {
     expect(p.rushLeft).toBeCloseTo(dist);
     expect(p.dashCharge as number).toBeCloseTo(1 - dist / 20);
     expect(p.rushChargeK).toBe(-1);
+  });
+
+  it('the first bot or opponent the rushing blade meets ends the rush (slam there); no contact keeps it going', () => {
+    const { p, hold, release } = spacePlow();
+    hold(5);
+    release();
+    // dashHits: nothing in front -> keeps rushing.
+    const q: { alive: boolean }[] = [];
+    Object.assign(p, {
+      position: new THREE.Vector3(), speed: 28, bladeWidth: 2.6, queryOut: [], dashTargets: [],
+      b: { ...(p.b as object), enemies: { query: () => q } },
+    });
+    const dashHits = (p.dashHits as () => void).bind(p);
+    dashHits();
+    expect(p.rushStop).toBe(false);
+    q.push({ alive: false });
+    dashHits();
+    expect(p.rushStop).toBe(false);
+    q.push({ alive: true });
+    dashHits();
+    expect(p.rushStop).toBe(true);
+    // A body contact through Combat.playerRam does the same.
+    p.rushStop = false;
+    (p.rushContact as () => void).call(p);
+    expect(p.rushStop).toBe(true);
+  });
+
+  it('charging does not slow the plow (full top speed while the line is up)', () => {
+    expect(RUSH_CHARGE_SLOW).toBe(1);
   });
 
   it('a full hold rushes exactly 20 m and empties the meter', () => {

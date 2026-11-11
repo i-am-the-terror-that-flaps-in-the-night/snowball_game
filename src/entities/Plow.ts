@@ -46,7 +46,7 @@ export class Plow extends PlowMotion implements PlowAPI {
   get whirling(): boolean {
     return this.whirlT >= 0;
   }
-  /** Classic Plow PLOW RUSH in progress (committed straight line; bots in the path take a light hit). */
+  /** Classic Plow PLOW RUSH in progress (committed straight line; the first bot / opponent it touches triggers the slam). */
   get rushing(): boolean {
     return this.rushLeft > 0;
   }
@@ -678,11 +678,6 @@ export class Plow extends PlowMotion implements PlowAPI {
 
     // ---- integrate
     this.getForward(_fwd);
-    // A deck edge right ahead stops the rush on the brink (it slams there instead of flying off).
-    if (rushing && this.rushDropAhead(this.speed * dt + 0.3)) {
-      this.speed = 0;
-      this.rushStop = true;
-    }
     const vf = this.speed + this.lungeVel;
     const rx0 = this.position.x;
     const rz0 = this.position.z;
@@ -718,13 +713,15 @@ export class Plow extends PlowMotion implements PlowAPI {
     if (this.dashT > 0 || rushing) this.dashHits();
     this.terrainStep(dt);
     if (rushing && this.rushLeft > 0) {
-      // Progress along the rush line; blocked (a boss, a pillar, the opponent) for a moment, a wall thud, a drop, a
-      // real launch off a ramp lip (not a hop over a bump), the distance done or a safety time-out: it ends in the slam.
+      // Progress along the rush line. It ends in the slam on: first contact with a bot / the opponent (rushStop, set by
+      // dashHits / Combat), blocked for a moment (a pillar), a wall thud, a real launch UP off a ramp lip (not a hop
+      // over a bump, and not a drop off a deck edge: the rush carries on through the fall), the distance done or a
+      // safety time-out.
       const moved = (this.position.x - rx0) * _fwd.x + (this.position.z - rz0) * _fwd.z;
       this.rushLeft -= Math.max(0, moved);
       this.rushT += dt;
       this.rushStall = moved < vf * dt * 0.35 ? this.rushStall + dt : 0;
-      if (this.rushLeft <= 0.02 || this.rushStop || this.rushStall > 0.06 || (this.vert.airborne && this.vert.y - this.vert.surfaceY > 0.8) || this._dead || this.rushT > RUSH_MAX / RUSH_SPEED + 0.5) {
+      if (this.rushLeft <= 0.02 || this.rushStop || this.rushStall > 0.06 || (this.vert.airborne && this.vert.vy > 0 && this.vert.y - this.vert.surfaceY > 0.8) || this._dead || this.rushT > RUSH_MAX / RUSH_SPEED + 0.5) {
         if (this._dead) this.rushLeft = 0;
         else this.finishRush();
       }
