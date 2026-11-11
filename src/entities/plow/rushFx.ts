@@ -25,10 +25,12 @@ export class RushFx {
   private readonly end: THREE.Mesh;
   private readonly auraMat = new THREE.MeshBasicMaterial({ color: 0x2b9bff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
   private readonly aura: THREE.Mesh;
-  /** Swipe: a faint full 100° sector and a bright wedge sweeping across it. */
+  /** Swipe: a faint full 100° sector and a bright wedge sweeping across it. Saturated blue (pale white vanished on the
+   *  snow) and drawn over the held ball and the hull (no depth test): at blade height the ball hides most of it from
+   *  the follow camera otherwise. It lasts 0.3 s, so showing through a prop for that long is harmless. */
   private readonly swipe = new THREE.Group();
-  private readonly sectorMat = new THREE.MeshBasicMaterial({ color: 0x6fbfff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-  private readonly wedgeMat = new THREE.MeshBasicMaterial({ color: 0xf4fbff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+  private readonly sectorMat = new THREE.MeshBasicMaterial({ color: 0x2b9bff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  private readonly wedgeMat = new THREE.MeshBasicMaterial({ color: 0x0f6fff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   private readonly wedge: THREE.Mesh;
   private swipeT = -1;
   private time = 0;
@@ -65,7 +67,7 @@ export class RushFx {
     const fwd = -Math.PI / 2;
     const sector = new THREE.Mesh(new THREE.RingGeometry(0.6, SWIPE_RANGE + 0.3, 20, 1, fwd - SWIPE_HALF, SWIPE_HALF * 2), this.sectorMat);
     sector.rotation.x = -Math.PI / 2;
-    this.wedge = new THREE.Mesh(new THREE.RingGeometry(1.2, SWIPE_RANGE + 0.5, 8, 1, fwd - 0.2, 0.4), this.wedgeMat);
+    this.wedge = new THREE.Mesh(new THREE.RingGeometry(0.9, SWIPE_RANGE + 0.6, 8, 1, fwd - 0.26, 0.52), this.wedgeMat);
     this.wedge.rotation.order = 'YXZ';
     this.wedge.rotation.x = -Math.PI / 2;
     this.swipe.add(sector, this.wedge);
@@ -149,8 +151,8 @@ export class RushFx {
     const fade = this.swipeT <= SWIPE_FX_SECONDS ? 1 : 1 - (this.swipeT - SWIPE_FX_SECONDS) / 0.14;
     // Wedge sweeps from the left edge (-half about Y) to the right edge (+half).
     this.wedge.rotation.y = -SWIPE_HALF + 2 * SWIPE_HALF * k;
-    this.wedgeMat.opacity = 0.9 * fade;
-    this.sectorMat.opacity = 0.4 * fade * Math.min(1, k * 2);
+    this.wedgeMat.opacity = 0.85 * fade;
+    this.sectorMat.opacity = 0.55 * fade * Math.min(1, 0.6 + k);
     const s = 0.75 + 0.25 * k;
     this.swipe.scale.set(s, 1, s);
   }

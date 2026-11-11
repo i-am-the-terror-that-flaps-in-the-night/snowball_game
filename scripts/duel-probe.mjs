@@ -11,6 +11,8 @@
 //   arsenal  ARSENAL vs ARSENAL: the guest HOLDING Space keeps its Mag Discs hitting the host 6 m ahead (held keys
 //            travel in the input packet); its turret stays locked forward; the host's discs and Mag Repulsor show on
 //            the guest's puppet; the guest's Mag Repulsor and Polarity Burst land on the host.
+//   rework   (opt-in: --only=rework) what the guest sees of the reworked kits on the host's puppet: a Classic's PLOW
+//            RUSH telegraph while it charges, then the rush; an ARSENAL's Mag Discs in flight. Screenshots from the guest.
 // Each session runs in a fresh Chrome (the sandbox kills long-lived headless Chrome). The duel clock is sim time, so
 // both pages are fast-forwarded in lockstep (render loops paused except for screenshots).
 import { createServer } from 'vite';
@@ -462,6 +464,47 @@ await session('arsenal', async (host, guest) => {
   check(b1.other > b0.other && b1.hp < b0.hp, 'guest Polarity Burst (F) detonates on the host', { b0, b1 });
   await syncCheck(host, guest, 'arsenal');
 }, undefined, false);
+
+// ================================================================== the reworked kits on the guest's puppet
+for (const [hostPlow, guestPlow] of [['classic', 'arsenal'], ['arsenal', 'classic']]) {
+  await session('rework', async (host, guest) => {
+    await host.evaluate((k) => { window.__game.ctx.progression.data.plow = k; }, hostPlow);
+    await guest.evaluate((k) => { window.__game.ctx.progression.data.plow = k; }, guestPlow);
+    await connect(host, guest);
+    await toFight(host, guest);
+    // Host at (0, 6) facing -z, guest at (0, -6) facing +z: 12 m apart, nose to nose.
+    const park = () => host.evaluate(() => {
+      const me = window.__game.ctx.plow, op = window.__game.duel.opponent;
+      me.position.set(0, 0, 6 + PZ); me.heading = Math.PI; me.hp = me.maxHp; me.velocity?.set?.(0, 0, 0);
+      op.position.set(0, 0, -6 + PZ); op.heading = 0; op.hp = op.maxHp;
+    });
+    await park();
+    await run(host, guest, 0.5);
+    if (hostPlow === 'classic') {
+      await host.keyboard.down('Space');
+      await run(host, guest, 0.8);
+      const seen = await guest.evaluate(() => { const o = window.__game.duel.opponent; return { charge: +o.rushChargeK.toFixed(2), line: o.rushFx.line.visible, ring: o.rushFx.end.visible }; });
+      log('guest sees charge', seen);
+      check(seen.charge > 0 && seen.line && seen.ring, "the guest sees the host's PLOW RUSH telegraph", seen);
+      await shot(guest, '20-guest-sees-rush-telegraph');
+      await host.keyboard.up('Space');
+      await run(host, guest, 0.15);
+      const r = await guest.evaluate(() => window.__game.duel.opponent.rushing);
+      check(r, "the guest sees the host's rush", r);
+      await shot(guest, '21-guest-sees-rush');
+    } else {
+      await host.keyboard.down('Space');
+      await run(host, guest, 0.9);
+      const n = await guest.evaluate(() => window.__game.duel.opponentCombat.arsenal.discs.filter((d) => d.on).length);
+      log('guest sees discs', n);
+      check(n >= 2, "the guest sees the host's Mag Discs in flight", n);
+      await shot(guest, '22-guest-sees-discs');
+      await host.keyboard.up('Space');
+    }
+    await run(host, guest, 1.5);
+    await syncCheck(host, guest, `rework ${hostPlow}`);
+  }, undefined, true);
+}
 
 // ================================================================== real time over a bad link
 /** Wait in real time (pages run their own render loops) until `pred` holds. */
