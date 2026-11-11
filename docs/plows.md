@@ -191,7 +191,7 @@ the laser fires dead straight off the nose, no homing.
 - **Space (hold): Mag Laser.** A rapid fire of **fat laser bolts**: while held, about 12 a second leave the nose
   emitter (faster with levels, a little faster with Overclock, 15 a second at most). Each bolt is **hitscan**, dead
   straight along the hull's heading (no homing, no spread): it hits instantly out to its reach (~10 m, more with levels
-  and Mega Hopper), about 1.6 m wide (Whirlwind Turbine widens it), and **pierces**: every bot on its line within that
+  and Mega Hopper), widening from about 1.6 m at the nose to about 5.6 m at full reach, so it is easy to aim (Whirlwind Turbine widens it more), and **pierces**: every bot on its line within that
   reach and height band takes one hit, and each is **tugged** toward ARSENAL (divided by the bot's mass, bosses barely;
   in the Duel a small pull on the other plow scaled by its heaviness like any push, BRUTUS half). A prop in the way
   breaks and stops the bolt; so does the ground. Bolt hits are direct hits (one armour check each; in the Duel they

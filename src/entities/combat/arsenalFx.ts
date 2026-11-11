@@ -479,14 +479,16 @@ interface Bolt {
   muzzle: THREE.Mesh;
   hitTint: THREE.Mesh;
   hitCore: THREE.Mesh;
+  /** Far-end radius (m) of the widening pulse. */
+  farR: number;
 }
 
 /** How long one laser bolt stays on screen (s). */
 export const LASER_LIFE = 0.075;
-/** Outer cyan beam radius (m): ~0.4 m thick. Sheath (navy outline) and white core radii. */
-const BOLT_R = 0.2;
-const SHEATH_R = 0.27;
-const CORE_R = 0.075;
+/** White-hot core radius (m); the cyan pulse and its navy sheath are cones sized per bolt (LaserFx.fire farR). */
+const CORE_R = 0.11;
+/** The widening pulse's radius at the emitter, as a share of its far radius. */
+const CONE_NEAR = 0.15;
 
 /** MAG LASER: a small fixed pool of short-lived FAT bolts that read on white snow as well as at night: a dark-navy
  *  sheath (an outline), a solid normal-blended saturated-cyan beam (additive light vanishes on sunlit snow), a
@@ -498,6 +500,10 @@ export class LaserFx {
 
   constructor(scene: THREE.Scene, n: number, beam: THREE.BufferGeometry) {
     const ball = new THREE.SphereGeometry(1, 12, 8);
+    // A widening pulse: a unit cone along +Z (0..1), radius CONE_NEAR at the emitter, 1 at the far end.
+    const cone = new THREE.CylinderGeometry(1, CONE_NEAR, 1, 18, 1, true);
+    cone.rotateX(Math.PI / 2);
+    cone.translate(0, 0, 0.5);
     const sheathMat = () => paintMat(0x06243a, 0.75);
     const outerMat = () => paintMat(0x12d2ff, 1);
     const coreMat = () => addMat(0xf6ffff, 1);
@@ -516,8 +522,9 @@ export class LaserFx {
         from: new THREE.Vector3(),
         to: new THREE.Vector3(),
         impact: 0,
-        sheath: mk(beam, sheathMat(), 2),
-        outer: mk(beam, outerMat(), 3),
+        farR: 1,
+        sheath: mk(cone, sheathMat(), 2),
+        outer: mk(cone, outerMat(), 3),
         core: mk(beam, coreMat(), 5),
         muzzle: mk(ball, coreMat(), 5),
         hitTint: mk(ball, paintMat(0x2ad8ff, 0.8), 4),
@@ -527,7 +534,7 @@ export class LaserFx {
   }
 
   /** One bolt from `from` to `to`; `impact` (0..1+) sizes the end flash (it struck something). */
-  fire(from: THREE.Vector3, to: THREE.Vector3, impact: number): void {
+  fire(from: THREE.Vector3, to: THREE.Vector3, impact: number, farR = 1): void {
     let b = this.bolts[0];
     for (const x of this.bolts) {
       if (x.t >= LASER_LIFE) {
@@ -540,6 +547,7 @@ export class LaserFx {
     b.from.copy(from);
     b.to.copy(to);
     b.impact = impact;
+    b.farR = farR;
     this.draw(b);
   }
 
@@ -557,11 +565,11 @@ export class LaserFx {
     // Slams on at full width (a touch over), then thins to a needle as it fades.
     const w = k < 0.2 ? 1.15 : 1.15 - 0.75 * ((k - 0.2) / 0.8);
     const fade = 1 - k * k;
-    aimBeam(b.sheath, b.from, b.to, SHEATH_R * w);
-    aimBeam(b.outer, b.from, b.to, BOLT_R * w);
+    aimBeam(b.sheath, b.from, b.to, b.farR * 1.08 * w);
+    aimBeam(b.outer, b.from, b.to, b.farR * w);
     aimBeam(b.core, b.from, b.to, CORE_R * (0.6 + 0.4 * w));
-    (b.sheath.material as THREE.MeshBasicMaterial).opacity = 0.75 * fade;
-    (b.outer.material as THREE.MeshBasicMaterial).opacity = fade;
+    (b.sheath.material as THREE.MeshBasicMaterial).opacity = 0.35 * fade;
+    (b.outer.material as THREE.MeshBasicMaterial).opacity = 0.6 * fade;
     (b.core.material as THREE.MeshBasicMaterial).opacity = fade;
     b.muzzle.visible = true;
     b.muzzle.position.copy(b.from);

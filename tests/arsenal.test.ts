@@ -217,7 +217,7 @@ describe('MAG LASER (SPACE)', () => {
     const a = bot(0, 4.5, 1e6);
     const b = bot(0, 8, 1e6);
     const edge = bot(1.6, 6, 1e6); // body inside the ~1.6 m beam
-    const wide = bot(2.4, 6, 1e6);
+    const wide = bot(3.6, 6, 1e6); // outside the beam even where it has widened (~1.7 m half-width there)
     const behind = bot(0, -5, 1e6);
     const far = bot(0, 16, 1e6);
     const high = bot(0, 7, 1e6);
@@ -225,6 +225,14 @@ describe('MAG LASER (SPACE)', () => {
     const { log } = oneBolt([a, b, edge, wide, behind, far, high]);
     for (const e of [a, b, edge]) expect(log.filter((h) => h.e === e).length).toBe(1);
     for (const e of [wide, behind, far, high]) expect(e.hp).toBe(e.maxHp);
+  });
+
+  it('the beam widens with distance: 2.4 m off the line is missed near the nose but hit far out', () => {
+    const nearSide = bot(2.4, 3, 1e6);
+    const farSide = bot(2.4, 9.5, 1e6);
+    const { log } = oneBolt([nearSide, farSide]);
+    expect(log.filter((h) => h.e === nearSide).length).toBe(0);
+    expect(log.filter((h) => h.e === farSide).length).toBe(1);
   });
 
   it('follows the hull heading (no homing): a bot off the nose is never hit', () => {

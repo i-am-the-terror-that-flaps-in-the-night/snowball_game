@@ -72,6 +72,9 @@ const RATE_SPLIT = 10 / 12;
 const LASER_OVERCLOCK = 0.25;
 const LASER_W = 0.8;
 const LASER_W_MAX = 1.2;
+/** The beam WIDENS with distance (by request: "fat laser pulses ... or a beam that widens", easy to aim): its hit
+ *  half-width grows LASER_WIDEN m per metre of reach on top of tankBeamRadius (~0.8 m at the nose, ~2.8 m at 10 m). */
+export const LASER_WIDEN = 0.2;
 const WHIRL_LASER_W = 0.1;
 const LASER_TUG = 3.5 * RATE_SPLIT;
 const LASER_TUG_BOSS = 0.2;
@@ -559,7 +562,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const ez = e.position.z - S.z;
         const u = ex * fx + ez * fz;
         if (u < -e.radius * 0.5 || u > end + e.radius) continue;
-        if (Math.abs(ex * fz - ez * fx) > e.radius + rad) continue;
+        if (Math.abs(ex * fz - ez * fx) > e.radius + rad + LASER_WIDEN * Math.max(0, u)) continue;
         if (hitY < e.position.y - LASER_DY || hitY > e.position.y + Math.min(2.4, e.radius * 1.2) + LASER_DY) continue;
         out.push(e);
       }
@@ -574,13 +577,14 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     if (foe && !foe.dead) {
       const u = (foe.position.x - S.x) * fx + (foe.position.z - S.z) * fz;
       const off = Math.abs((foe.position.x - S.x) * fz - (foe.position.z - S.z) * fx);
-      if (u > 0 && u < end + 1.6 && off < 1.6 + tankBeamRadius(st)) {
+      if (u > 0 && u < end + 1.6 && off < 1.6 + tankBeamRadius(st) + LASER_WIDEN * u) {
         end = Math.max(0.3, u - 1);
         impact = 1;
       }
     }
     _tip.set(S.x + fx * end, S.y + (hitY - S.y) * (end / reach), S.z + fz * end);
-    this.laserFx.fire(S, _tip, impact);
+    // Drawn as a widening pulse: its far radius matches the hit width at the end point (a touch inside it).
+    this.laserFx.fire(S, _tip, impact, (tankBeamRadius(st) + LASER_WIDEN * end) * 0.85);
     this.flashK = 1;
     if (blocked) {
       _fwd.set(-fx, 0.5, -fz).normalize();
