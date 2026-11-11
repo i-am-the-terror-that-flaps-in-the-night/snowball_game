@@ -76,6 +76,9 @@ const LASER_W_MAX = 1.2;
  *  reach of the heading line (~0.8 m at the nose, ~2.8 m either side at 10 m), then fires a standard-width beam
  *  straight at it (fireBolt). */
 export const LASER_WIDEN = 0.2;
+/** The turret / emitter hold the last bolt's angle this long (s) between bolts, and tilt at most AIM_PITCH_MAX. */
+const AIM_HOLD = 0.3;
+const AIM_PITCH_MAX = 0.6;
 const WHIRL_LASER_W = 0.1;
 const LASER_TUG = 3.5 * RATE_SPLIT;
 const LASER_TUG_BOSS = 0.2;
@@ -195,6 +198,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private laserHits: EnemyHandle[] = [];
   /** The Mag Laser's auto-aim lock (kept while it stays in the aim wedge). */
   private laserLock: EnemyHandle | null = null;
+  /** The last bolt's world yaw and elevation (rad, + up) and how long ago it fired: the turret and emitter follow it
+   *  while the trigger is held. */
+  private aimYaw = 0;
+  private aimPitch = 0;
+  private aimAge = Infinity;
   /** When the last laser-hit sound / shake played (12 bolts a second land on a target). */
   private lastLaserSfx = -1;
   /** Mag Repulsor time left (s; 0 = idle), where it was cast from, its heading / reach / half-angle, bots already hit. */
@@ -514,6 +522,13 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       if (this.gunT < 0) this.gunT = 0;
       this.fireBolt();
     }
+    // The turret swings and the emitter tilts to the bolt's firing angle (auto-aim) while the trigger is held.
+    this.aimAge += dt;
+    if (firing && this.aimAge < AIM_HOLD) {
+      const d = this.aimYaw - plow.heading;
+      plow.turretAim = Math.atan2(Math.sin(d), Math.cos(d));
+      plow.gunPitch = this.aimPitch;
+    }
     this.drawFlash(dt);
   }
 
@@ -652,6 +667,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       impact = 1;
     }
     _tip.set(S.x + fx * end, S.y + (hitY - S.y) * Math.min(1, end / span), S.z + fz * end);
+    this.aimYaw = Math.atan2(fx, fz);
+    this.aimPitch = Math.max(-AIM_PITCH_MAX, Math.min(AIM_PITCH_MAX, Math.atan2(hitY - S.y, Math.max(0.5, span))));
+    this.aimAge = 0;
     this.laserFx.fire(S, _tip, impact, rad);
     this.flashK = 1;
     if (blocked) {
@@ -1131,6 +1149,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.scrapT = 0;
     this.laserFx.clear();
     this.laserLock = null;
+    this.aimAge = Infinity;
     this.gunT = this.gunBurstT = 0;
     this.gunsOn = false;
     this.flashK = 0;
