@@ -5,7 +5,7 @@ ability, a four-upgrade line in the Garage, and an **ultimate**. ARSENAL is the 
 with magnets and lasers.
 
 **⚙ Settings → Main attacks:** each vehicle can be switched from SPECIAL (its own SPACE / E) to SNOWBALL: it gets a
-blade, plows snow into a ball, slams with a SPACE tap and whirls with E (the Classic's own SPACE is now its swipe /
+blade, plows snow into a ball, slams with a SPACE tap and whirls with E (the Classic's own SPACE adds a held
 rush), and keeps its own F and ultimate.
 It takes effect on the next run; the Duel always uses SPECIAL.
 
@@ -20,16 +20,16 @@ A plow's own moves (dash, Saw Charge) are never scaled.
 
 ## Classic Plow
 
-**The close-range assassin** (Brawl Stars: Nori): chip in with the blade, then commit to a long charged rush that ends
+**The close-range assassin** (Brawl Stars: Nori): slam snow chunks out of them, then commit to a long charged rush that ends
 in your ball slam. +15% HP and full slam damage. Past Packed Ice level 4, each further level adds another +5.5% damage
-on the Classic (about +33% at Packed Ice 10, easing toward +66% at very high levels), so its swipes, slams and fire keep
+on the Classic (about +33% at Packed Ice 10, easing toward +66% at very high levels), so its slams and fire keep
 up late game. It still plows snow into a ball: the ball grows as you plow and still shields frontal hits while held.
 
-- **SPACE tap (let go within 0.2 s): BLADE SWIPE.** A quick ~100° sweep of the blade out to ~3.5 m ahead (a white snow
-  arc and spray). Every bot (or the other pilot) in it takes a moderate hit (16 x your damage mult, so Packed Ice and
-  the Classic's growth scale it like the slam) and a small nudge, and packs one **❄ SNOW CHUNK** onto the blade (10 at
-  most; ❄ pips under the snowball gauge). 0.35 s between swipes (a tap during it is kept and fires when it ends).
-  **Momentum:** every swipe that lands gives +20% top speed for 1 s (refreshes, doesn't stack).
+- **SPACE tap (let go within 0.2 s): SLAM.** The original ball slam, unchanged: the plow winds up, lunges and smashes
+  the held snowball down ahead of the blade (needs a ball, else an error buzz; 0.5 s cooldown, a tap during it is kept;
+  the ball is spent, Snow Reserve keeps its share; Slam Combo, Shatter Slam, Frost / Avalanche Core all apply). Every
+  bot (or the other pilot) it hits packs one **❄ SNOW CHUNK** onto the blade (10 at most; ❄ pips under the snowball
+  gauge). **Momentum:** a tap slam that lands gives +20% top speed for 1 s (refreshes, doesn't stack).
 - **SPACE hold, then let go: PLOW RUSH.** Holding past the tap window charges the rush over ~1 s (V8 Engine, Nitro
   Dash and Mega Hopper shorten the charge a little, never below 0.55 s). While charging the plow keeps its full
   speed and steering (the line turns with it), its blade sparks, a glowing ring sits under it and an icy **line on the ground runs from the blade to the
@@ -39,12 +39,13 @@ up late game. It still plows snow into a ball: the ball grows as you plow and st
   right there**
   (the old slam: zone and damage from the held ball, Snow Reserve, Slam Combo, Shatter Slam, Frost / Avalanche Core
   all apply; with no ball it is a small 0.6 m slam). **Cash-in:** the slam spends every snow chunk: zone x(1 + 0.05 n)
-  and damage x(1 + 0.04 n) for n chunks (x1.5 / x1.4 at 10), shown as a big ❄×n AVALANCHE! from 5. The rush also stops
+  and damage x(1 + 0.04 n) for n chunks (x1.5 / x1.4 at 10), shown as a big ❄×n AVALANCHE! from 5 (the rush slam
+  itself packs no chunks). The rush also stops
   early (and slams there) at a wall or a big obstacle, or if it is launched up off a ramp lip. Off a deck edge it
   carries on through the drop.
 - **Shared meter.** The rush and the SHIFT dash run on the same meter: a rush costs max(0.25, distance / 20) of a full
   charge (5 m or less = a quarter, 20 m = all of it), and the telegraph never runs past what the meter can pay for.
-  With less than a quarter, holding SPACE gives one error buzz and no telegraph, and letting go **swipes instead** (so
+  With less than a quarter, holding SPACE gives one error buzz and no telegraph, and letting go **slams instead** (so
   SPACE never does nothing). A dash, a whirl or a jump during the hold drops the charge; while rushing, SHIFT and E
   wait.
 - In the air SPACE is still the air slam.

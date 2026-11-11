@@ -363,7 +363,7 @@ export interface CombatAPI {
   readonly overloadHeat: number;
   /** Self-damage the NEXT Thunderclap would deal at the current heat (capped so it leaves 1 HP); 0 off VOLT-9. */
   readonly overloadCost: number;
-  /** Classic Plow SNOW CHUNKS on the blade (0..10, BLADE SWIPE hits pack them, a PLOW RUSH slam spends them), -1 on
+  /** Classic Plow SNOW CHUNKS on the blade (0..10, tap slam hits pack them, a PLOW RUSH slam spends them), -1 on
    *  other plows. */
   readonly chunks?: number;
   /** The bound vehicle's SPACE / E HUD slots (combat/shared.ts VehicleKit descriptors), null on the Classic. */

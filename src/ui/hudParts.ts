@@ -157,10 +157,10 @@ export function buildHudDom(hud: HTMLElement, H: HudRefs, bossSlots: BossSlot[])
   const inner = el('div', 'ss-gauge-inner', undefined, H.gauge);
   H.radius = el('div', 'ss-gauge-r', '0.00m', inner);
   H.tier = el('div', 'ss-gauge-tier', 'Snowball', inner);
-  // Classic Plow SNOW CHUNKS: ❄ and 10 pips inside the gauge, under the tier (BLADE SWIPE hits fill them, a PLOW RUSH
+  // Classic Plow SNOW CHUNKS: ❄ and 10 pips inside the gauge, under the tier (tap slam hits fill them, a PLOW RUSH
   // slam cashes in).
   H.chunks = el('div', 'ss-chunks hidden', undefined, inner);
-  H.chunks.title = 'Snow chunks: blade swipe hits pack them; a plow rush slam spends them all (+5% radius, +4% damage each)';
+  H.chunks.title = 'Snow chunks: tap slam hits pack them; a plow rush slam spends them all (+5% radius, +4% damage each)';
   el('span', 'ss-chunks-ico', '❄', H.chunks);
   H.chunkPips = [];
   for (let i = 0; i < 10; i++) H.chunkPips.push(el('span', 'ss-chunk-pip', undefined, H.chunks));

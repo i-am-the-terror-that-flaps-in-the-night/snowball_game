@@ -225,8 +225,8 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   const KIT_REACH = kitReach() > 0;
   // ARSENAL's Mag Discs reach (tankGunRange: gunRange + 1.5 m per extra metre of max ball radius).
   const discReach = () => (c.stats.gunRange || 0) + 1.5 * hopR();
-  // Classic Plow: BLADE SWIPE reach past the blade (SWIPE_RANGE) and PLOW RUSH limits (classicRush.ts).
-  const SWIPE_RANGE = 3.5, RUSH_MAX = 20, rushCost = (d) => Math.max(0.25, Math.min(RUSH_MAX, d) / RUSH_MAX);
+  // Classic Plow: tap-slam reach (centre distance, as the snowball kit's slam below) and PLOW RUSH limits (classicRush.ts).
+  const SLAM_D = 5.5, RUSH_MAX = 20, rushCost = (d) => Math.max(0.25, Math.min(RUSH_MAX, d) / RUSH_MAX);
   wrap(cb.air, 'update', 'air');
   wrap(cb.classic, 'updateFlame', 'F');
   wrap(cb.classic, 'updateBurns', 'F');
@@ -425,26 +425,26 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
     // Vehicle kits: hold the primary while the target is in reach and roughly ahead.
     if (KIT_REACH) set('Space', sameT && bd < kitReach() + (best.radius || 1) * 0.5 && Math.abs(bdiff) < 0.7);
     if (plow === 'classic') {
-      // BLADE SWIPE when the target is inside the sweep; lined up at range with meter for a rush that reaches it,
+      // Tap the ball slam when the target is inside slam reach with a ball on the blade (plowing a new one in between);
+      // lined up at range with meter for a rush that reaches it,
       // hold SPACE to charge a PLOW RUSH and let go once the telegraph reaches the target (or the charge is full); the
       // rush slams at the first bot it touches, so a longer line only costs meter.
-      const swipeD = SWIPE_RANGE + p.radius + (best.radius || 1);
       if (AP.rush) {
         const k = p.rushCharge;
-        if (!sameT || routed || Math.abs(bdiff) > 0.6 || bd < swipeD || (k >= 0 && (p.rushPreview >= bd - 2 || k >= 1)) || c.time - AP.rushT > 2.5) {
+        if (!sameT || routed || Math.abs(bdiff) > 0.6 || bd < SLAM_D || (k >= 0 && (p.rushPreview >= bd - 2 || k >= 1)) || c.time - AP.rushT > 2.5) {
           AP.rush = false;
           set('Space', false);
         }
         return;
       }
       if (usedF || p.rushing) return;
-      if (sameT && !routed && bd > swipeD + 1 && bd < RUSH_MAX + 1 && Math.abs(bdiff) < 0.2 && p.dashReady >= rushCost(bd - 2)) {
+      if (sameT && !routed && bd > SLAM_D + 1 && bd < RUSH_MAX + 1 && Math.abs(bdiff) < 0.2 && p.dashReady >= rushCost(bd - 2)) {
         AP.rush = true;
         AP.rushT = c.time;
         tap('Space');
         return;
       }
-      if (sameT && bd < swipeD && Math.abs(bdiff) < 0.75) tap('Space');
+      if (p.heldBallRadius >= 0.5 && sameT && bd < SLAM_D && Math.abs(bdiff) < 0.45) tap('Space');
       else if (p.dashReady >= 1 && !routed && sameT && bd > RUSH_MAX + 1 && bd < 28 && Math.abs(diffA) < 0.15) tap('ShiftLeft');
       else if (p.whirlReady >= 1 && near >= 1 && bd < 5) tap('KeyE');
       return;

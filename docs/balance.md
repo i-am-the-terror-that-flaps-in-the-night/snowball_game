@@ -609,8 +609,14 @@ and Inferno's base reach from 8.5 to 10 m (`src/entities/combat/classicRush.ts`,
 (`scripts/balance/sim.ts`, `duel2.ts`) still schedules the Classic's damage as timed slams: it does not model the
 swipe, the rush or the chunks yet, so its Classic rows (and the Duel factors tuned on them) predate the rework. The
 minigun invariant in `tests/balance.test.ts` is now measured against the Classic's HP at its old x1.25, the same
-absolute cap as before. Re-tune with the browser matrix (`scripts/duel-matrix.mjs`, whose AutoPilot swipes up close
+absolute cap as before. Re-tune with the browser matrix (`scripts/duel-matrix.mjs`, whose AutoPilot slams up close
 and charges / releases rushes) once the other vehicles' reworks land.
+
+**Player correction: the tap is the slam, not a swipe.** "They're not swipes, they're slams like the OG plow": the
+BLADE SWIPE is gone. A SPACE tap is the original ball slam again (wind-up, lunge, ball spent, 0.5 s cooldown), and
+every bot / opponent a tap slam hits packs the snow chunk (+20% speed for 1 s when it lands). The hold is still the
+PLOW RUSH that cashes the chunks in. The sim's Classic model tap-slams (Combat.tapSlam) every slam cycle and turns the
+slam into a rush slam once it holds 5 chunks and the meter pays a short rush (MELEE.RUSH_CHUNKS).
 
 ## Role rework: VOLT-9 true ranged, ISOTOPE tank-buster
 
