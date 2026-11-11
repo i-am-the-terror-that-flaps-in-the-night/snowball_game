@@ -217,10 +217,11 @@ export const FX = {
   // ---- ARSENAL line (weapons are free at level 0; upgrades strengthen them)
   /** Mag Discs (SPACE, hold; off the nose emitter): damage per disc hit (x your damage mult; every disc can hit a
    *  target twice, out and back), discs per second (~0.33 s apart), reach (m). Sized so ARSENAL's single-target and
-   *  cluster DPS in the balance sim match the old Mag Shotgun's at every tier (docs/balance.md). Fewer, heavier discs
-   *  (3/s at 4/3 the damage, was 4/s) so each hit lands with weight. */
-  gunDamage: (L: number) => (4.3 + 1.4 * grow(L, 5, 0.5)) * (4 / 3),
-  gunRate: (L: number) => 3 + 0.19 * soft(L, 5),
+   *  cluster DPS in the balance sim match the old Mag Shotgun's at every tier (docs/balance.md). AERIAL CHAINSAW (by
+   *  request): a rapid, dead-straight stream, 10 discs/s at 0.4x the per-disc damage of the original 4/s cycle (same
+   *  DPS). */
+  gunDamage: (L: number) => (4.3 + 1.4 * grow(L, 5, 0.5)) * 0.4,
+  gunRate: (L: number) => 10 + 0.6 * soft(L, 5),
   gunRange: (L: number) => 10 + 0.5 * soft(L, 5),
   /** Mag Repulsor (E): damage scale (one wave deals 1.5 s of it to every bot it reaches, x your damage mult; the old
    *  Grav Lance's lone-bot damage), reach of the forward wedge (m), recharge (s). */

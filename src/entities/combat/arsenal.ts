@@ -67,7 +67,7 @@ const DEG = Math.PI / 180;
  *  body (tankDiscRadius) passes through, each at most once per leg, for gunDamage: on the way out with a nudge
  *  (DISC_KNOCK), on the way back with a TUG toward ARSENAL (DISC_TUG m/s divided by the bot's mass, bosses
  *  DISC_TUG_BOSS x; in the Duel DISC_DUEL_TUG, scaled by the victim's DUEL_KNOCK_TAKEN). Launches cycle through
- *  DISC_YAW so the stream fans a touch. A disc that meets a prop (it breaks) or the ground turns back early. */
+ *  DISC_YAW (one entry: dead straight). A disc that meets a prop (it breaks) or the ground turns back early. */
 const DISC_SPEED = 30;
 const DISC_OVERCLOCK = 0.25;
 // LIGHT homing (by request: "light homing, not doing a 360 to track" a mobile target): a slow turn, a narrow lock-on
@@ -96,18 +96,21 @@ const DISC_KNOCK = 1.2;
 const DISC_TUG = 3.5;
 const DISC_TUG_BOSS = 0.2;
 const DISC_DUEL_TUG = 3;
-const DISC_YAW = [0, -15 * DEG, 15 * DEG, -8 * DEG, 8 * DEG];
+/** No fan: the stream flies dead straight off the nose (an aerial chainsaw, by request). */
+const DISC_YAW = [0];
 /** Discs out at once at most (the pool: ~1 s round trip x the fastest cycle). */
-const DISC_POOL = 12;
+const DISC_POOL = 18;
 /** Height slack (m) round a target's body a disc must be inside to hit it; a disc climbs / dives toward its homing
  *  target at up to DISC_CLIMB m/s (slopes, ramps). */
 const DISC_DY = 0.6;
 const DISC_CLIMB = 4;
 /** Spin (rad/s), pop-in time (s), the rising hum's ramp (s) and the snap-back clank's minimum spacing (s). */
-const DISC_SPIN = 22;
+const DISC_SPIN = 45;
 const DISC_POP = 0.06;
 const HUM_RISE = 1.5;
 const CLANK_GAP = 0.07;
+/** Minimum seconds between disc-hit sounds / shakes. */
+const DISC_SFX_GAP = 0.09;
 /** Nose flash decay (1/s). */
 const FLASH_DECAY = 14;
 /** A press without held-key reporting keeps the trigger down this long (one disc, maybe two). */
@@ -231,6 +234,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   /** Per-step scratch: targets one disc touched this frame (reused). */
   private discHits: EnemyHandle[] = [];
   private lastClank = -1;
+  /** When the last disc-hit sound / shake played (the chainsaw stream lands ~20 hits a second on a target). */
+  private lastDiscSfx = -1;
   /** Mag Repulsor time left (s; 0 = idle), where it was cast from, its heading / reach / half-angle, bots already hit. */
   laserT = 0;
   private repAt = new THREE.Vector3();
@@ -662,7 +667,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       }
       if (!this.puppet) this.discHit(d, d.back ? rad * DISC_BACK_WIDE : rad);
       const pop = Math.min(1, d.t / DISC_POP);
-      this.discFx.show(i, d.pos, d.dx, d.dz, d.spin, 0.22 * Math.sin(d.t * 9), pop, Math.min(2.6, d.speed * 0.085) * pop);
+      this.discFx.show(i, d.pos, d.dx, d.dz, d.spin, 0, pop, Math.min(2.6, d.speed * 0.085) * pop);
     }
   }
 
@@ -748,11 +753,13 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const fx = this.ctx.fx;
     fx.sparks(d.pos, _fwd, d.back ? DISC_HIT_SPARKS_BACK : DISC_HIT_SPARKS);
     fx.burst(d.pos, DISC_HIT_BURST);
-    if (dealt > 0) {
-      // A meaty electric clang on every hit (out: a cut; back: a lower magnetic snap as it tugs).
-      this.b.audio.play('zap', { volume: 0.32, pitch: (d.back ? 1.25 : 1.6) + Math.random() * 0.15 });
-      this.b.audio.play('block', { volume: 0.16, pitch: d.back ? 0.9 : 1.2 });
-      if (this.b.local) this.shake(0.05);
+    const now = this.ctx.time;
+    if (dealt > 0 && now - this.lastDiscSfx >= DISC_SFX_GAP) {
+      // A buzzing grind while the stream chews into a target (out: a cut; back: a lower magnetic snap as it tugs).
+      this.lastDiscSfx = now;
+      this.b.audio.play('zap', { volume: 0.28, pitch: (d.back ? 1.25 : 1.7) + Math.random() * 0.2 });
+      this.b.audio.play('block', { volume: 0.12, pitch: d.back ? 0.9 : 1.3 });
+      if (this.b.local) this.shake(0.04);
     }
   }
 

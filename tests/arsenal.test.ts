@@ -191,14 +191,16 @@ describe('MAG DISCS (SPACE)', () => {
     expect(kit(c).discsOut).toBe(0); // snapped back in and recycled
   });
 
-  it('a steady cycle while held: one disc every 1/gunRate s, about four in the air at once', () => {
+  it('a rapid stream while held (aerial chainsaw): one disc every 1/gunRate s, dead straight, many in the air', () => {
     const r = shoot([], 3);
     const k = kit(r.c);
-    expect(r.stats.gunRate).toBeCloseTo(4, 5);
+    expect(r.stats.gunRate).toBeCloseTo(10, 5);
     expect(k.discN).toBeGreaterThanOrEqual(Math.floor(3 * r.stats.gunRate));
     expect(k.discN).toBeLessThanOrEqual(Math.ceil(3 * r.stats.gunRate) + 1);
-    expect(k.discsOut).toBeGreaterThanOrEqual(3);
-    expect(k.discsOut).toBeLessThanOrEqual(6);
+    expect(k.discsOut).toBeGreaterThanOrEqual(5);
+    expect(k.discsOut).toBeLessThanOrEqual(18);
+    // No fan: every disc in the air flies straight off the nose.
+    for (const d of (k as unknown as { discs: { on: boolean; back: boolean; dx: number }[] }).discs) if (d.on && !d.back) expect(Math.abs(d.dx)).toBeLessThan(1e-6);
   });
 
   it('hits each target at most once per leg: one disc hits a bot on the way out and again on the way back', () => {
