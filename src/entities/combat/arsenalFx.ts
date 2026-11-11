@@ -490,13 +490,11 @@ interface Bolt {
 export const LASER_LIFE = 0.12;
 /** The core beam shows for this share of the life (a flash), the crescent for all of it. */
 const CORE_SHARE = 0.55;
-/** The beam WIDENS along its length (by request): a tapered cone, CORE_R / GLOW_R at the far end and BEAM_NEAR of
- *  that at the emitter. Solid and bright (not a translucent fill), narrower than the full hit width, so it reads as a
- *  laser, not a puddle. The far radius also grows a little with the beam's hit width (BEAM_WIDEN_K). */
-const CORE_R = 0.3;
-const GLOW_R = 0.62;
+/** The beam WIDENS along its length exactly like the crescent (by request): a tapered cone whose glow reaches the hit
+ *  half-width at the end point (farW) and BEAM_NEAR of it at the emitter (~ the hit half-width there); the white-hot
+ *  core is CORE_SHARE_W of the glow. */
 const BEAM_NEAR = 0.3;
-const BEAM_WIDEN_K = 0.12;
+const CORE_SHARE_W = 0.35;
 /** Crescent: a 100° arc, its chord the beam's hit width at that distance. */
 const ARC_HALF = (50 * Math.PI) / 180;
 const ARC_SIN = Math.sin(ARC_HALF);
@@ -599,9 +597,9 @@ export class LaserFx {
     const kc = Math.min(1, k / CORE_SHARE);
     if (kc < 1) {
       const w = 1.1 - 0.8 * kc;
-      const far = 1 + BEAM_WIDEN_K * Math.max(0, b.farW - b.nearW);
-      aimBeam(b.core, b.from, b.to, CORE_R * far * w);
-      aimBeam(b.glow, b.from, b.to, GLOW_R * far * w);
+      // The beam widens exactly like the crescent: the glow's far radius is the hit half-width at the end point.
+      aimBeam(b.core, b.from, b.to, b.farW * CORE_SHARE_W * w);
+      aimBeam(b.glow, b.from, b.to, b.farW * w);
       (b.core.material as THREE.MeshBasicMaterial).opacity = 1 - kc * kc;
       (b.glow.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - kc);
     } else {
