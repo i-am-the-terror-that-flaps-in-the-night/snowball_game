@@ -994,6 +994,15 @@
 .ss-gauge.ready .ss-gauge-svg { filter: drop-shadow(0 0 8px var(--tc)); }
 .ss-gauge.full { animation: ss-throb 0.9s ease-in-out infinite; }
 .ss-gauge.tierup { animation: ss-bump 0.45s cubic-bezier(0.2, 1.8, 0.4, 1); }
+.ss-chunks { display: flex; align-items: center; gap: 1px; margin-top: 3px; white-space: nowrap; }
+.ss-chunks.hidden { display: none; }
+.ss-chunks-ico { font-size: 10px; line-height: 1; margin-right: 2px; color: #bfeaff; }
+.ss-chunk-pip { width: 4px; height: 7px; background: rgba(191, 234, 255, 0.2); }
+.ss-chunk-pip.on { background: #bfeaff; box-shadow: 0 0 4px rgba(191, 234, 255, 0.8); }
+.ss-chunks.big .ss-chunk-pip.on { background: #e8f8ff; }
+.ss-chunks.full .ss-chunk-pip.on { background: #ffffff; box-shadow: 0 0 6px #ffffff; }
+.ss-chunks.bump { animation: ss-chunk-bump 0.3s ease-out; }
+@keyframes ss-chunk-bump { 0% { transform: scale(1); } 40% { transform: scale(1.2); } 100% { transform: scale(1); } }
 .ss-slam-hint { font-family: var(--display); font-size: 15px; font-weight: 900; letter-spacing: 0.08em; color: var(--hazard); background: var(--ink-inv); padding: 2px 9px; text-shadow: none; opacity: 0; transform: translateY(6px); transition: opacity 0.2s, transform 0.2s; }
 .ss-slam-hint.show { opacity: 1; transform: none; animation: ss-blink 1.2s ease-in-out infinite; }
 .ss-shield {

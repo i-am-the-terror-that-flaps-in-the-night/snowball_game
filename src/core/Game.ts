@@ -1244,6 +1244,7 @@ export class Game {
     hud.fAbility = PLOWS[ctx.stats.plowKind].fAbility;
     hud.shield = ctx.combat.shieldFrac;
     hud.critMass = ctx.combat.critMass;
+    hud.chunks = ctx.combat.chunks ?? -1;
     hud.overload = ctx.combat.overloadHeat;
     hud.overloadCost = ctx.combat.overloadCost;
     hud.snowFraction = ctx.snow.totalSnowFraction();

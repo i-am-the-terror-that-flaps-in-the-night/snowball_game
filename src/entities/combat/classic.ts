@@ -5,6 +5,7 @@ import { FX } from '../../config/upgrades';
 import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultMeter } from './ultimates';
+import { CHUNK_BIG, CHUNK_MAX, SWIPE_DAMAGE, SWIPE_HALF, SWIPE_KNOCK, SWIPE_RANGE, addChunks, cashIn } from './classicRush';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const UPDATE_FLAME_BURST = { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 };
@@ -45,6 +46,10 @@ const FIRE_FIELD_TICK = 0.3;
 /** Fire-field contact damage per second, as a share of storm dps (on top of the burn it keeps lit). */
 const FIRE_FIELD_DPS = 0.35;
 
+/** BLADE SWIPE cone origin: this far behind the blade tip, so bots against the blade's corners are inside the cone. */
+const SWIPE_BACK = 1.2;
+const SWIPE_COS = Math.cos(SWIPE_HALF);
+
 /** FIRESTORM damage per second before the damage multiplier: fresh burn dps x the Inferno part of ultPower. */
 const stormDps = (st: PlayerStats) => FX.flameDps(0) * Math.max(1, (st.ultPower || 1) / (st.damageMult || 1));
 
@@ -66,6 +71,8 @@ export class ClassicKit extends Kit {
   private readonly fireFrom: CastOrigin = { y: 0, deck: -1 };
   private fireFieldTickT = 0;
   readonly flameCone: FlameCone;
+  /** SNOW CHUNKS packed by BLADE SWIPE hits (0..CHUNK_MAX); a PLOW RUSH slam spends them all. */
+  chunks = 0;
 
   constructor(h: CombatHost) {
     super(h);
@@ -158,6 +165,75 @@ export class ClassicKit extends Kit {
       this.onPlayerHit(dealt, killed, e, false);
     }
     this.clearTargets();
+  }
+
+  /** BLADE SWIPE (Classic SPACE tap): every bot in a ~100° cone out to SWIPE_RANGE past the blade takes a moderate
+   *  hit (x damageMult, so Packed Ice and the Classic's iceGrowth scale it like the slam) and a nudge; each one packs a
+   *  SNOW CHUNK. Returns the number of bots hit. */
+  swipe(): number {
+    const plow = this.b.plow;
+    const st = this.b.stats;
+    if (!plow || plow.dead) return 0;
+    const ctx = this.ctx;
+    plow.getForward(_fwd);
+    plow.getBladeTip(_tip);
+    const ox = _tip.x - _fwd.x * SWIPE_BACK;
+    const oz = _tip.z - _fwd.z * SWIPE_BACK;
+    const reach = SWIPE_RANGE + SWIPE_BACK;
+    this.smashProps(_tip.x + _fwd.x * SWIPE_RANGE * 0.5, _tip.z + _fwd.z * SWIPE_RANGE * 0.5, SWIPE_RANGE * 0.6);
+    const hits = this.collect(ox, oz, reach + 1, Reach.Body);
+    let n = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const e = hits[i];
+      if (!e.alive) continue;
+      const dx = e.position.x - ox;
+      const dz = e.position.z - oz;
+      const d = Math.hypot(dx, dz);
+      if (d > reach + e.radius || (d > e.radius && (dx * _fwd.x + dz * _fwd.z) / d < SWIPE_COS)) continue;
+      const nd = d || 1;
+      const hp0 = e.hp;
+      const killed = this.b.enemies.damage(e, SWIPE_DAMAGE * st.damageMult * this.hitMult(e), {
+        source: 'ram',
+        knockback: _kb.set((dx / nd) * SWIPE_KNOCK, 0, (dz / nd) * SWIPE_KNOCK),
+        fromX: plow.position.x,
+        fromZ: plow.position.z,
+      });
+      const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.onPlayerHit(dealt, killed, e);
+      _q.set(e.position.x, e.position.y + 1, e.position.z);
+      ctx.fx.burst(_q, { color: 0xffffff, count: 10, speed: 6, size: 0.2, gravity: 14, life: 0.5 });
+      if (dealt > 0) {
+        _q.y = e.position.y + e.radius + 1.1;
+        ctx.fx.floatText(_q, `${Math.round(dealt)}`, killed ? '#fff3a0' : '#e8f6ff', 0.85);
+      }
+      n++;
+    }
+    this.clearTargets();
+    if (n > 0) {
+      const was = this.chunks;
+      this.chunks = addChunks(this.chunks, n);
+      this.b.audio.play('ram', { volume: 0.6, pitch: 1.35 });
+      this.shake(0.12);
+      if (this.chunks !== was && this.b.local) {
+        _q.set(plow.position.x, plow.position.y + 3.4, plow.position.z);
+        ctx.fx.floatText(_q, this.chunks >= CHUNK_MAX ? '❄ 10 · FULL' : `❄ ${this.chunks}`, '#bfeaff', this.chunks >= CHUNK_MAX ? 1 : 0.75);
+      }
+    }
+    return n;
+  }
+
+  /** PLOW RUSH cash-in: the multipliers for the chunks held (then they reset to 0). Big float text from CHUNK_BIG. */
+  takeChunks(x: number, z: number): { radius: number; damage: number; n: number } {
+    const n = this.chunks;
+    this.chunks = 0;
+    const m = cashIn(n);
+    if (n >= CHUNK_BIG) {
+      const plow = this.b.plow;
+      _q.set(x, (plow?.surfaceY || 0) + 4, z);
+      this.ctx.fx.floatText(_q, `❄×${n} AVALANCHE!`, n >= CHUNK_MAX ? '#ffffff' : '#bfeaff', 1.2 + 0.05 * n);
+      this.b.audio.play('freeze', { volume: 0.7, pitch: 0.8 });
+    }
+    return { radius: m.radius, damage: m.damage, n };
   }
 
   /** Fire damage fills the Classic Plow's FIRESTORM meter (shares ISOTOPE's Critical Mass slot + net field). */
@@ -359,6 +435,7 @@ export class ClassicKit extends Kit {
   }
 
   clear(): void {
+    this.chunks = 0;
     this.flameCone.hide();
     this.flameT = 0;
     this.flameCharge = 1;

@@ -19,6 +19,7 @@ import {
   SLOPE_BOOST_DECAY,
 } from './plow/constants';
 import { _fwd, _right, _a, _b, _dir } from './plow/scratch';
+import { MOMENTUM_BOOST, RUSH_CHARGE_SLOW, RUSH_MAX, RUSH_SPEED } from './combat/classicRush';
 
 /* The player / pilot plow. The class is layered over ./plow/ (PlowBase -> PlowVisuals -> PlowMotion -> Plow; see
  * plow/PlowBase.ts); this top layer holds the public API, the duel netcode, reset and the per-frame update. */
@@ -44,6 +45,22 @@ export class Plow extends PlowMotion implements PlowAPI {
   }
   get whirling(): boolean {
     return this.whirlT >= 0;
+  }
+  /** Classic Plow PLOW RUSH in progress (committed straight line; bots in the path take a light hit). */
+  get rushing(): boolean {
+    return this.rushLeft > 0;
+  }
+  /** Classic Plow rush charge 0..1 while SPACE is held past the tap window (-1 = not charging). */
+  get rushCharge(): number {
+    return this.rushChargeK;
+  }
+  /** Telegraphed rush distance (m) while charging. */
+  get rushPreview(): number {
+    return this.rushChargeK >= 0 ? this.rushDist : 0;
+  }
+  /** MOMENTUM: seconds of the landed-swipe speed boost left. */
+  get momentum(): number {
+    return this.momentumT;
   }
   get sawHalo(): number {
     return this._sawHalo;
@@ -115,6 +132,7 @@ export class Plow extends PlowMotion implements PlowAPI {
       this.glow.visible = false;
       this.tornado.visible = false;
       this.whirlRing.visible = false;
+      this.rushFx.hide();
       this.ballWasVisible = false;
       for (const g of this.ghosts) {
         g.active = false;
@@ -158,6 +176,11 @@ export class Plow extends PlowMotion implements PlowAPI {
     out[o + NP.y] = this.position.y;
     out[o + NP.vy] = this.vert.vy;
     out[o + NP.air] = this.vert.airborne ? 1 : 0;
+    // Classic Plow SPACE kit: 0 idle / 1 charging / 2 rushing, the charge, the telegraph (or metres left), swipes.
+    out[o + NP.rushState] = this.rushLeft > 0 ? 2 : this.rushChargeK >= 0 ? 1 : 0;
+    out[o + NP.rushCharge] = Math.max(0, this.rushChargeK);
+    out[o + NP.rushDist] = this.rushLeft > 0 ? this.rushLeft : this.rushChargeK >= 0 ? this.rushDist : 0;
+    out[o + NP.swipeN] = this.swipeN;
   }
 
   /**
@@ -259,6 +282,18 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.slamPhase = s[o + NP.slamPhase] as 0 | 1 | 2;
     this.slamT = s[o + NP.slamT];
     this.lungeVel = 0;
+    // Classic Plow SPACE kit: telegraph while the host charges, launch fx + trail while it rushes, a swipe arc for
+    // every swipe the counter went up by (the end slam replays from the duel's slam event).
+    const rs = Math.round(s[o + NP.rushState]);
+    this.rushChargeK = rs === 1 ? Math.min(1, Math.max(0, s[o + NP.rushCharge])) : -1;
+    this.rushDist = rs === 1 ? s[o + NP.rushDist] : 0;
+    const rushingNow = rs === 2;
+    if (rushingNow && !this.puppetRush) this.rushLaunchFx();
+    this.puppetRush = rushingNow;
+    this.rushLeft = rushingNow ? Math.max(0.01, s[o + NP.rushDist]) : 0;
+    const sn = Math.round(s[o + NP.swipeN]);
+    if (sn > this.swipeN) this.swipeFx();
+    this.swipeN = sn;
     // Dash: replay the launch once, then follow the host's timers (flame, ghosts and streaks key off them).
     const dT = s[o + NP.dashT];
     if (dT > 0 && this.dashT <= 0 && dT > DASH_SECONDS - 0.3) {
@@ -290,7 +325,9 @@ export class Plow extends PlowMotion implements PlowAPI {
     const turn = dt > 0 ? dh / dt : 0;
     const throttle = s[o + NP.throttle];
     this.updateVisuals(dt, turn, throttle);
-    if (this.dashT > 0 || Math.abs(this.speed) > TRAIL_MIN_SPEED) this.emitTrail(dt, this.dashT > 0);
+    this.updateRushVisuals(dt);
+    const burst = this.dashT > 0 || this.rushLeft > 0;
+    if (burst || Math.abs(this.speed) > TRAIL_MIN_SPEED) this.emitTrail(dt, burst);
   }
 
   /** Freeze the plow for `seconds` (impact hit-stop). */
@@ -395,6 +432,17 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.slamHit = false;
     this.slamBuffer = 0;
     this.lungeVel = 0;
+    this.cancelSpace();
+    this.swipeCd = 0;
+    this.swipeBuffer = 0;
+    this.swipeN = 0;
+    this.rushLeft = 0;
+    this.rushT = 0;
+    this.rushStall = 0;
+    this.rushStop = false;
+    this.puppetRush = false;
+    this.momentumT = 0;
+    this.rushFx.hide();
     this.dashCharge = 1;
     this.dashT = 0;
     this.whirlCharge = 1;
@@ -490,7 +538,13 @@ export class Plow extends PlowMotion implements PlowAPI {
     // Impact hit-stop: hold everything still for a few frames.
     if (this.hitStopT > 0) {
       this.hitStopT -= dt;
-      if (b.input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
+      // The Classic's SPACE hold keeps counting through a hit-stop (a press starts it); the release acts after.
+      if (this.kind === 'classic') {
+        if (b.input.wasPressed('Space') && this.rushLeft <= 0 && this.spaceT < 0) {
+          this.spaceT = 0;
+          this.rushNoMeter = false;
+        } else if (this.spaceT >= 0 && b.input.isDown?.('Space')) this.spaceT += dt;
+      } else if (b.input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
       this.jitter = Math.max(this.jitter, 0.1);
       return;
     }
@@ -520,13 +574,17 @@ export class Plow extends PlowMotion implements PlowAPI {
     const steer = input.steer;
 
     // ---- abilities
-    if (input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
+    // The Classic Plow (not a vehicle on the snowball kit): tap = BLADE SWIPE, hold = PLOW RUSH (combat/classicRush.ts).
+    const classicKit = this.kind === 'classic';
+    const high = this.vert.airborne && this.vert.y - this.vert.surfaceY >= AIR_SLAM_MIN_HEIGHT;
+    if (classicKit) this.updateClassicSpace(dt, high);
+    else if (input.wasPressed('Space')) this.slamBuffer = INPUT_BUFFER;
     // Only the Classic plows snow, holds a ball and slams / whirls: every other vehicle's SPACE / E belong to its
     // combat kit (Combat.updateVehicle routes them to VehicleKit.primary / secondary).
     const armed = this.vehicle;
     // Airborne and clear of the surface, SPACE is the air slam (Combat's AirKit dives, ball or not): no ground slam,
     // and no 'error' buzz for a missing ball.
-    if (armed || (this.vert.airborne && this.vert.y - this.vert.surfaceY >= AIR_SLAM_MIN_HEIGHT)) this.slamBuffer = 0;
+    if (armed || classicKit || high) this.slamBuffer = 0;
     if (this.slamBuffer > 0 && this.slamPhase === 0 && this.slamCd <= 0 && this.whirlT < 0) {
       this.slamBuffer = 0;
       if (this.heldBallRadius >= MIN_BALL_RADIUS) {
@@ -537,8 +595,10 @@ export class Plow extends PlowMotion implements PlowAPI {
         b.audio.play('error');
       }
     }
-    if (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight')) this.tryDash();
-    if (!armed && input.wasPressed('KeyE')) this.tryWhirl();
+    const rushing = this.rushLeft > 0;
+    if ((input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight')) && !rushing) this.tryDash();
+    if (!armed && !rushing && input.wasPressed('KeyE')) this.tryWhirl();
+    if (this.momentumT > 0) this.momentumT = Math.max(0, this.momentumT - dt);
 
     // ---- slam state machine
     this.lungeVel = 0;
@@ -559,7 +619,8 @@ export class Plow extends PlowMotion implements PlowAPI {
 
     // ---- longitudinal
     const heldR = this.heldBallRadius;
-    const maxF = stats.maxSpeed * (1 - 0.2 * Math.min(1, heldR / maxBallR)) * (this.whirlT >= 0 ? WHIRL_SPEED : 1);
+    const maxF = stats.maxSpeed * (1 - 0.2 * Math.min(1, heldR / maxBallR)) * (this.whirlT >= 0 ? WHIRL_SPEED : 1) *
+      (this.rushChargeK >= 0 ? RUSH_CHARGE_SLOW : 1) * (this.momentumT > 0 ? 1 + MOMENTUM_BOOST : 1);
     const accel = stats.accel;
     const maxRev = stats.maxSpeed * 0.45;
     // Terrain: no traction in the air (speed carries), less on ice (spinning wheels, long braking, long coasting).
@@ -568,7 +629,10 @@ export class Plow extends PlowMotion implements PlowAPI {
     const accK = 1 - (1 - ICE_ACCEL) * iceK;
     const brakeK = 1 - (1 - ICE_BRAKE) * iceK;
     const dragK = 1 - (1 - ICE_DRAG) * iceK;
-    if (this.dashT > 0) {
+    if (rushing) {
+      // PLOW RUSH: committed straight line at rush speed, the last frame trimmed to land on the telegraphed point.
+      this.speed = Math.min(RUSH_SPEED, this.rushLeft / Math.max(dt, 1e-4));
+    } else if (this.dashT > 0) {
       // Committed lunge: full burst speed, no cap.
       this.speed = this.dashSpeed;
     } else if (air) {
@@ -585,7 +649,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     }
     // Slopes: gravity along the slope (faster into dips, slower climbing out). Speed gained downhill past the cap is
     // kept as slopeBoost (it bleeds off slowly) instead of being settled away like a dash.
-    if (!air && this.ctx.terrain.active && this.dashT <= 0) {
+    if (!air && this.ctx.terrain.active && this.dashT <= 0 && !rushing) {
       this.getForward(_fwd);
       const sa = slopeAccel(this.ctx.terrain, this.surf, _fwd.x, _fwd.z);
       if (sa !== 0) {
@@ -597,7 +661,7 @@ export class Plow extends PlowMotion implements PlowAPI {
       this.slopeBoost = Math.max(0, Math.min(this.slopeBoost - SLOPE_BOOST_DECAY * dt, this.speed - maxF));
     }
     // Over cap (dash ended / ball got heavier / whirl): settle back — fast ease right after a dash.
-    if (!this.dashing && this.speed > maxF + this.slopeBoost && !air) {
+    if (!this.dashing && !rushing && this.speed > maxF + this.slopeBoost && !air) {
       const cap = maxF + this.slopeBoost;
       const rate = this.dashEase > 0 ? Math.max(14, (this.speed - cap) / Math.max(0.06, this.dashEase)) : 14;
       this.speed = Math.max(cap, this.speed - rate * dt);
@@ -607,19 +671,27 @@ export class Plow extends PlowMotion implements PlowAPI {
     const absS = Math.abs(this.speed);
     const f = 0.35 + 0.65 * Math.min(1, absS / 4);
     const reversing = this.speed < -0.2 || (absS <= 0.2 && throttle < 0);
-    const turn = steer * stats.turnRate * f * (reversing ? -1 : 1) * (this.dashing ? DASH_STEER : this.whirlT >= 0 ? WHIRL_STEER : 1) * (air ? AIR_STEER : 1);
+    const turn = rushing ? 0 : steer * stats.turnRate * f * (reversing ? -1 : 1) * (this.dashing ? DASH_STEER : this.whirlT >= 0 ? WHIRL_STEER : 1) * (air ? AIR_STEER : 1);
     this.heading += turn * dt;
 
     // ---- integrate
     this.getForward(_fwd);
+    // A deck edge right ahead stops the rush on the brink (it slams there instead of flying off).
+    if (rushing && this.rushDropAhead(this.speed * dt + 0.3)) {
+      this.speed = 0;
+      this.rushStop = true;
+    }
     const vf = this.speed + this.lungeVel;
+    const rx0 = this.position.x;
+    const rz0 = this.position.z;
     // Grip: on normal ground the velocity IS forward * speed (as always); on ice it swings toward it slowly (drifts);
     // in the air it keeps its course while the hull turns.
     const wantX = _fwd.x * vf;
     const wantZ = _fwd.z * vf;
     if (air) {
       // keep velX / velZ
-    } else if (iceK > 0) {
+    } else if (iceK > 0 && !rushing) {
+      // (A PLOW RUSH keeps full grip on ice: its line is committed.)
       const grip = ICE_GRIP + (1 - iceK) * 30;
       const k = 1 - Math.exp(-grip * dt);
       this.velX += (wantX - this.velX) * k;
@@ -641,8 +713,20 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.clampToArena(vf, dt);
     this.collideObstacles(vf, dt);
     if (terr.decks.length) this.collideDecks(vf, dt);
-    if (this.dashT > 0) this.dashHits();
+    if (this.dashT > 0 || rushing) this.dashHits();
     this.terrainStep(dt);
+    if (rushing && this.rushLeft > 0) {
+      // Progress along the rush line; blocked (a boss, a pillar, the opponent) for a moment, a wall thud, a drop, a
+      // real launch off a ramp lip (not a hop over a bump), the distance done or a safety time-out: it ends in the slam.
+      const moved = (this.position.x - rx0) * _fwd.x + (this.position.z - rz0) * _fwd.z;
+      this.rushLeft -= Math.max(0, moved);
+      this.rushT += dt;
+      this.rushStall = moved < vf * dt * 0.35 ? this.rushStall + dt : 0;
+      if (this.rushLeft <= 0.02 || this.rushStop || this.rushStall > 0.06 || (this.vert.airborne && this.vert.y - this.vert.surfaceY > 0.8) || this._dead || this.rushT > RUSH_MAX / RUSH_SPEED + 0.5) {
+        if (this._dead) this.rushLeft = 0;
+        else this.finishRush();
+      }
+    }
 
     // ---- plowing
     let plowIntensity = 0;
@@ -701,7 +785,9 @@ export class Plow extends PlowMotion implements PlowAPI {
 
     // ---- visuals
     this.updateVisuals(dt, turn, throttle);
-    if (this.dashT > 0 || Math.abs(this.speed) > TRAIL_MIN_SPEED) this.emitTrail(dt, this.dashT > 0);
+    this.updateRushVisuals(dt);
+    const burst = this.dashT > 0 || this.rushLeft > 0;
+    if (burst || Math.abs(this.speed) > TRAIL_MIN_SPEED) this.emitTrail(dt, burst);
   }
 
 }

@@ -64,5 +64,9 @@ by hand before or after, and then keep buying with your own coins.
   e.g. a free Metered Open Relay account, or your own coturn), and rebuild / restart `npm run dev`. Both players
   must run a build that has the relay. Relay credentials end up in the page, so use relay-only ones. Quick
   workaround without a relay: one player switches network (a phone hotspot usually works).
+- The opponent is a puppet on the guest's screen: every move replays from snapshot fields. The Classic's SPACE kit
+  rides in five of them (protocol v7): the rush state (charging / rushing), its charge and telegraph distance (the
+  ground line and landing ring replay), a swipe counter (one snow arc per increment) and the snow chunk count; the
+  rush's end slam replays from the slam event, with its chunk-enlarged zone.
 - The wire format is in `src/net/protocol.ts`. Both sides must run the same `PROTOCOL_VERSION`; a mismatch is
   refused with a message.

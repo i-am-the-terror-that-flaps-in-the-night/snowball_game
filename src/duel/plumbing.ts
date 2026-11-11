@@ -108,7 +108,7 @@ export class PuppetInput implements InputSource {
 const AUTO_HULL = 1.6;
 /** Centre distance (m) within which the AutoPilot holds SPACE: the plow's real held-primary reach from its kit (VOLT-9
  *  Arc Lance, ISOTOPE Rad Sprayer, ARSENAL Mag Shotgun, all with Mega Hopper; BRUTUS Wrecking Fist), and the old 9 m
- *  for the Classic (its snowball ignores the hold). Before, every plow held at 9 m, so the three ranged primaries
+ *  for the Classic (its SPACE is AutoPilot.classicSpace's swipe / rush, which doesn't use this). Before, every plow held at 9 m, so the three ranged primaries
  *  (12-17 m late) never fired at their reach. AutoPilot only: probes / testing, not gameplay. */
 export function autoHoldRange(st: PlayerStats): number {
   switch (st.plowKind) {
@@ -133,6 +133,8 @@ export class AutoPilot implements InputSource {
   steer = 0;
   private pressed = new Set<string>();
   private holdSpace = false;
+  /** Classic: SPACE held to charge a PLOW RUSH. */
+  private rushHold = false;
   private t = 0;
   private fT = 1.5;
   constructor(private me: () => Plow, private opp: () => Plow) {}
@@ -146,6 +148,7 @@ export class AutoPilot implements InputSource {
     if (me.dead) {
       this.throttle = this.steer = 0;
       this.holdSpace = false;
+      this.rushHold = false;
       return;
     }
     const st = me.pilot.stats;
@@ -165,9 +168,12 @@ export class AutoPilot implements InputSource {
     this.steer = Math.max(-1, Math.min(1, err * 2.2));
     this.throttle = Math.abs(err) > 2.2 ? -0.4 : 1;
     const facing = Math.abs(err) < 0.35;
-    if (facing && d < 6.5 && me.heldBallRadius > 0.5) this.pressed.add('Space');
-    this.holdSpace = Math.abs(err) < 0.6 && d < reach;
-    if (facing && d > 6 && d < 15 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
+    if (st.plowKind === 'classic') this.classicSpace(me, d, err, facing);
+    else {
+      if (facing && d < 6.5 && me.heldBallRadius > 0.5) this.pressed.add('Space');
+      this.holdSpace = Math.abs(err) < 0.6 && d < reach;
+      if (facing && d > 6 && d < 15 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
+    }
     const arsenal = st.plowKind === 'arsenal';
     if (d < (arsenal ? st.laserRange * 0.9 : 5.5) && (!arsenal || facing) && me.whirlReady >= 1) this.pressed.add('KeyE');
     this.fT -= dt;
@@ -175,6 +181,22 @@ export class AutoPilot implements InputSource {
       this.fT = 2.5;
       this.pressed.add('KeyF');
     }
+  }
+  /** The Classic Plow's SPACE: tap BLADE SWIPEs up close; lined up at range with meter for it, hold to charge a PLOW
+   *  RUSH and let go once the telegraph reaches the opponent (or the charge is full). Its dash shares that meter, so
+   *  it only dashes when the opponent is past rush reach. */
+  private classicSpace(me: Plow, d: number, err: number, facing: boolean): void {
+    if (this.rushHold) {
+      const k = me.rushCharge;
+      if (Math.abs(err) > 0.6 || (k >= 0 && (me.rushPreview >= d - 2.5 || k >= 1))) this.rushHold = false;
+    } else if (!me.rushing) {
+      if (facing && d > 6.5 && d < 21 && me.dashReady >= 0.5) {
+        this.rushHold = true;
+        this.pressed.add('Space');
+      } else if (facing && d < 6) this.pressed.add('Space');
+      else if (facing && d > 21 && d < 28 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
+    }
+    this.holdSpace = this.rushHold;
   }
   wasPressed(code: string): boolean {
     return this.pressed.has(code);

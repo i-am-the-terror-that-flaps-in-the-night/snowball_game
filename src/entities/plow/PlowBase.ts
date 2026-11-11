@@ -28,6 +28,7 @@ import {
   BLADE_Z, TIP_Z, WHEEL_R, MAX_GHOSTS, MAX_STREAKS, REMOTE_SHAKE, DASH_SECONDS, DASH_IFRAMES,
 } from './constants';
 import { _m, _col } from './scratch';
+import { RushFx } from './rushFx';
 import { type Streak, getTornadoTexture, makeTornadoGeometry, type Ghost, type Debris } from './assets';
 
 /*
@@ -76,6 +77,29 @@ export abstract class PlowBase {
   protected dashTargets: EnemyHandle[] = [];
   protected spinAngle = 0;
   protected wallCd = 0;
+  // Classic Plow SPACE kit (combat/classicRush.ts): tap = BLADE SWIPE, hold = charge a PLOW RUSH.
+  /** Seconds SPACE has been held since the press (-1 = not held / consumed). */
+  protected spaceT = -1;
+  /** The hold passed the tap window with too little dash meter for a rush (buzzed once; release swipes). */
+  protected rushNoMeter = false;
+  protected swipeCd = 0;
+  /** A tap during the swipe cooldown, fired when it ends (s left). */
+  protected swipeBuffer = 0;
+  /** Swipes so far (snapshot field: the Duel puppet replays the arc on every increment). */
+  protected swipeN = 0;
+  /** Rush charge 0..1 while charging (-1 = not charging) and the telegraphed distance (m). */
+  protected rushChargeK = -1;
+  protected rushDist = 0;
+  /** Rush in progress: metres left (0 = not rushing), seconds since launch, stalled time, a wall ended it. */
+  protected rushLeft = 0;
+  protected rushT = 0;
+  protected rushStall = 0;
+  protected rushStop = false;
+  /** Puppet: the host's plow was rushing at the last snapshot (launch fx edge). */
+  protected puppetRush = false;
+  /** MOMENTUM: seconds of the landed-swipe speed boost left. */
+  protected momentumT = 0;
+  protected rushFx!: RushFx;
 
   // terrain (world/Terrain.ts via ctx.terrain; shared vertical model in world/terrainMotion.ts)
   protected vert = makeVert();
@@ -523,6 +547,8 @@ export abstract class PlowBase {
     this.whirlRing.renderOrder = 2;
     this.whirlRing.visible = false;
     ctx.scene.add(this.whirlRing);
+
+    this.rushFx = new RushFx(ctx.scene);
 
     ctx.scene.add(this.object);
     this.applyStats(this.b.stats);
