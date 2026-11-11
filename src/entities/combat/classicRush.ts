@@ -14,6 +14,10 @@ export const CHUNK_DAMAGE = 0.04;
 /** A cash-in of at least this many chunks gets the big float text. */
 export const CHUNK_BIG = 5;
 
+/** The Classic's slams (tap and rush end) hit this much harder than the snowball kit's: its role is spread-out,
+ *  powerful hits (by request), and it ran slowest in the Hard sweeps after the swipe went. */
+export const CLASSIC_SLAM_POWER = 1.25;
+
 /** MOMENTUM: a landed tap slam gives +MOMENTUM_BOOST top speed for MOMENTUM_SECONDS (refreshes, doesn't stack). */
 export const MOMENTUM_BOOST = 0.2;
 export const MOMENTUM_SECONDS = 1;

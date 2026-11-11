@@ -12,7 +12,7 @@ import { FX } from '../src/config/upgrades';
 import type { PlowKind } from '../src/config/plows';
 import { INPUT_BUFFER } from '../src/entities/plow/constants';
 import { ballVolume } from '../src/core/types';
-import { RUSH_CHARGE_SLOW,
+import { CLASSIC_SLAM_POWER, RUSH_CHARGE_SLOW,
   CHUNK_MAX, MOMENTUM_SECONDS, RUSH_CHARGE_BASE, RUSH_CHARGE_MIN, RUSH_COST_MIN, RUSH_MAX, RUSH_MIN, RUSH_MIN_SLAM_R, TAP_WINDOW,
   addChunks, cashIn, rushAffordable, rushCharge, rushCost, rushDistance, rushPlan,
 } from '../src/entities/combat/classicRush';
@@ -160,7 +160,8 @@ describe('Tap BALL SLAM packs SNOW CHUNKS (Combat.tapSlam)', () => {
     for (let i = 0; i < 4; i++) loaded.c.tapSlam(0, 5, 1.5, 0);
     loaded.hits.length = 0;
     loaded.c.tapSlam(0, 5, 1.5, 0);
-    expect(loaded.hits[0].amount).toBeCloseTo(plain.hits[0].amount);
+    // (the Classic's slams hit CLASSIC_SLAM_POWER x the snowball kit's plain slamAt)
+    expect(loaded.hits[0].amount).toBeCloseTo(plain.hits[0].amount * CLASSIC_SLAM_POWER);
     expect(loaded.slams.every((e) => e.zoneMult === undefined)).toBe(true);
     expect(loaded.c.chunks).toBe(10);
   });

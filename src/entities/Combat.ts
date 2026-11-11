@@ -14,7 +14,7 @@ import { IsotopeKit, LEAD_LINING, RAD_VULN } from './combat/isotope';
 import { ArsenalKit } from './combat/arsenal';
 import { MeleeKit } from './combat/melee';
 import { AirKit } from './combat/air';
-import { cashIn } from './combat/classicRush';
+import { CLASSIC_SLAM_POWER, cashIn } from './combat/classicRush';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const HIT_PLOW_BURST = { color: 0xbfe6ff, count: 6, speed: 3, size: 0.14, gravity: 8, life: 0.5 };
@@ -522,8 +522,9 @@ export class Combat implements CombatAPI {
   /** The Classic Plow's tap BALL SLAM (PlowMotion.slamImpact): slamAt, and every bot / opponent it hits packs a
    *  SNOW CHUNK (ClassicKit.packChunks). Vehicles on the snowball kit slam without chunks. Returns the bots hit. */
   tapSlam(x: number, z: number, r: number, volume: number): number {
-    const hits = this.melee.slamAt(x, z, r, volume);
-    if (hits > 0 && this.b.stats.plowKind === 'classic') this.classic.packChunks(hits);
+    const classic = this.b.stats.plowKind === 'classic';
+    const hits = this.melee.slamAt(x, z, r, volume, 1, classic ? CLASSIC_SLAM_POWER : 1);
+    if (hits > 0 && classic) this.classic.packChunks(hits);
     return hits;
   }
 
@@ -531,7 +532,7 @@ export class Combat implements CombatAPI {
    *  every SNOW CHUNK (zone x1.05 and damage x1.04 per chunk), which then reset. Returns the bots hit. */
   rushSlam(x: number, z: number, r: number, volume: number): number {
     const m = this.classic.takeChunks(x, z);
-    return this.melee.slamAt(x, z, r, volume, m.radius, m.damage);
+    return this.melee.slamAt(x, z, r, volume, m.radius, m.damage * CLASSIC_SLAM_POWER);
   }
 
   /** SNOW CHUNKS on the Classic's blade (0..10), -1 on other plows / the snowball kit (HUD). */
