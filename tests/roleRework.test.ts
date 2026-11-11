@@ -209,7 +209,7 @@ describe('heaviness: knockResist', () => {
   });
 
   it('the Duel replays the scaled push on the guest (DuelHit kx / kz)', () => {
-    const kx = (kind: PlowKind) => {
+    const kx = (kind: PlowKind, o: DamageOpts = { source: 'ram' }) => {
       let h: DuelHit | null = null;
       const victim = { position: new THREE.Vector3(0, 0, 3), radius: 1.6, hp: 540, maxHp: 540, dead: false, hitStop() {} } as unknown as Plow;
       const attacker = { position: new THREE.Vector3() } as unknown as Plow;
@@ -217,9 +217,12 @@ describe('heaviness: knockResist', () => {
       const t = new OpponentTarget(new PlowHandle(2, victim), () => combat, () => computeStatsFor({}, 'classic'), () => attacker, () => computeStatsFor({}, kind));
       t.enabled = true;
       t.onHit = (d) => (h = { ...d });
-      t.damage(t.handle, 10, { source: 'ram', knockback: new THREE.Vector3(0, 0, 10) });
+      t.damage(t.handle, 10, { ...o, knockback: new THREE.Vector3(0, 0, 10) });
       return Math.hypot(h!.kx, h!.kz);
     };
     expect(kx('brute') / kx('volt')).toBeCloseTo(0.5, 6);
+    // Every move goes through the one rule: the Classic's swipe ('ram') and rush slam ('slam'), ARSENAL's disc tug.
+    const moves: DamageOpts[] = [{ source: 'slam' }, { source: 'ram', direct: 'round', tug: true }];
+    for (const o of moves) for (const k of ['brute', 'classic', 'isotope'] as const) expect(kx(k, o) / kx('volt', o)).toBeCloseTo(knockScale(k), 6);
   });
 });
