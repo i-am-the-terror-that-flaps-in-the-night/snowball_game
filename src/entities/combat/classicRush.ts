@@ -31,6 +31,9 @@ export const RUSH_CHARGE_BASE = 1;
 export const RUSH_CHARGE_MIN = 0.55;
 /** Top speed while charging, as a share of the normal one (1: by request, charging doesn't slow the plow). */
 export const RUSH_CHARGE_SLOW = 1;
+/** ...in the online Duel: 80%, so a kiting VOLT-9 (80% reverse while firing) can hold its gap while the rush charges
+ *  (the full-speed charge took the Classic to 88% over VOLT-9 at high in the browser matrix). */
+export const RUSH_CHARGE_SLOW_PVP = 0.8;
 /** Rush speed (m/s): 20 m takes ~0.7 s. Straight line, no steering. */
 export const RUSH_SPEED = 28;
 /** Shared dash meter: a rush costs max(RUSH_COST_MIN, distance / RUSH_MAX) of a full charge. */
