@@ -417,12 +417,12 @@ export function duelTtk(atk: PlowKind, def: PlowKind, tier: Tier, cap = 60, only
   return Infinity;
 }
 
-/** Duel: HP the ARSENAL Mag Discs alone take off a same-tier `def` plow in `seconds` of held fire (the default Classic
+/** Duel: HP the ARSENAL Mag Laser alone takes off a same-tier `def` plow in `seconds` of held fire (the default Classic
  *  has no shield to soak the first rounds). */
-export function duelDiscDamage(tier: Tier, seconds = 2, def: PlowKind = 'classic'): number {
+export function duelLaserDamage(tier: Tier, seconds = 2, def: PlowKind = 'classic'): number {
   const ctx = newCtx();
   const sa = statsFor('arsenal', tier);
-  sa.scrapMax = sa.scrapDps = sa.scrapHit = 0; // the discs ALONE: Scrap Magnet off
+  sa.scrapMax = sa.scrapDps = sa.scrapHit = 0; // the laser ALONE: Scrap Magnet off
   const sd = statsFor(def, tier);
   const pa = fakePlow(sa, 0, 0, 0);
   const pd = fakePlow(sd, 0, NEAR + 0.6, Math.PI);

@@ -10,7 +10,7 @@ export interface InputSource {
   readonly throttle: number;
   readonly steer: number;
   wasPressed(code: string): boolean;
-  /** Held right now (optional: network inputs only know presses; ARSENAL's Mag Discs then launch a disc or two per press). */
+  /** Held right now (optional: network inputs only know presses; ARSENAL's Mag Laser then fires a few bolts per press). */
   isDown?(code: string): boolean;
 }
 
@@ -55,7 +55,7 @@ export interface PilotBinding {
    *  locally (VOLT-9's Arc Lance bolt). Null / absent everywhere else. */
   readonly visualFoe?: EnemyHandle | null;
   /** Online Duel: the other pilot's plow. A guest's Combats hit nothing locally (the host decides), so visual-only
-   *  homing (ARSENAL's Mag Discs) aims at this instead. Unset outside the Duel. */
+   *  visuals (ARSENAL's Mag Laser bolts stopping on the other plow) aim at this instead. Unset outside the Duel. */
   readonly foe?: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly dead: boolean; readonly radius?: number } | null;
 }
 

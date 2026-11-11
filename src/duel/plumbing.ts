@@ -92,7 +92,7 @@ export class NetInput implements InputSource {
     const i = CODE_ACTION.get(code);
     return i !== undefined && this.now[i];
   }
-  /** Held keys travel as a bitmask in every input packet (ARSENAL's Mag Discs cycle while SPACE is held). */
+  /** Held keys travel as a bitmask in every input packet (ARSENAL's Mag Laser fires while SPACE is held). */
   isDown(code: string): boolean {
     const i = CODE_ACTION.get(code);
     return i !== undefined && this.enabled && (this.tracker.held & HELD_BIT(i)) !== 0;
@@ -116,10 +116,10 @@ const AUTO_HULL = 1.6;
 const AUTO_SLAM = 6.5;
 /** AutoPilot VOLT-9: centre distance (m) inside which it reverses flat out. */
 const AUTO_KITE = 6;
-/** AutoPilot ARSENAL: share of the disc reach it closes to, then holds (its mid-range role; duel2.ts uses 0.75). */
+/** AutoPilot ARSENAL: share of the laser reach it closes to, then holds (its mid-range role; duel2.ts uses 0.75). */
 const AUTO_MID = 0.7;
 /** Centre distance (m) within which the AutoPilot holds SPACE: the plow's real held-primary reach from its kit (VOLT-9
- *  Arc Lance, ISOTOPE Rad Sprayer, ARSENAL Mag Discs, all with Mega Hopper; BRUTUS Wrecking Fist), and the old 9 m
+ *  Arc Lance, ISOTOPE Rad Sprayer, ARSENAL Mag Laser, all with Mega Hopper; BRUTUS Wrecking Fist), and the old 9 m
  *  for the Classic (its SPACE is AutoPilot.classicSpace's tap slam / rush, which doesn't use this). Before, every plow held at 9 m, so the three ranged primaries
  *  (12-17 m late) never fired at their reach. AutoPilot only: probes / testing, not gameplay. */
 export function autoHoldRange(st: PlayerStats): number {
@@ -139,7 +139,7 @@ export function autoHoldRange(st: PlayerStats): number {
 
 /** A dumb but aggressive autopilot (probes, idle testing): drive at the opponent, slam / dash / whirl / F, and hold
  *  SPACE when facing within the held primary's real reach (autoHoldRange: Arc Lance, Wrecking Fist, Rad Sprayer, Mag
- *  Discs; snowball plows ignore the hold). ARSENAL fires its Mag Repulsor (E) when facing within its wave's reach.
+ *  Laser; snowball plows ignore the hold). ARSENAL fires its Mag Repulsor (E) when facing within its wave's reach.
  *  Each kit plays its role: the Classic tap-slams up close (plowing a ball between slams) and rushes in from range, VOLT-9 kites at the Arc Lance's
  *  reach, ARSENAL holds mid range, BRUTUS and ISOTOPE drive in. */
 export class AutoPilot implements InputSource {
@@ -187,7 +187,7 @@ export class AutoPilot implements InputSource {
       if (facing && d < AUTO_SLAM && me.heldBallRadius > 0.5) this.pressed.add('Space');
       this.holdSpace = Math.abs(err) < 0.6 && d < reach;
       // Ranged kits keep their range instead of ramming in (each kit's role): VOLT-9 kites at 0.7-0.9 x the Arc
-      // Lance's reach (backing off with the lance up, AUTO_KITE), ARSENAL stops closing at AUTO_MID x disc reach.
+      // Lance's reach (backing off with the lance up, AUTO_KITE), ARSENAL stops closing at AUTO_MID x laser reach.
       // Forward dashes only to close a gap the kit wants closed.
       if (st.plowKind === 'volt' && hunting) this.kite(err, d, reach);
       else if (st.plowKind === 'arsenal' && hunting && d < reach * AUTO_MID && Math.abs(err) < 0.6) this.throttle = 0.15;

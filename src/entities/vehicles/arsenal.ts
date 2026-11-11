@@ -7,7 +7,7 @@ import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
 export interface ArsenalRigState {
   /** Ground speed along the nose (m/s, + forward). */
   speed: number;
-  /** Mag Discs cycling (spins the gyro rings and the emitter coils up). */
+  /** Mag Laser firing (spins the gyro rings and the emitter coils up). */
   firing: boolean;
   /** 0..1: the gyro rings fold flat into one spinning disc (Polarity Burst). */
   flat: number;
@@ -573,8 +573,8 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   box(0.04, 0.04, 0.04, glowMat, -0.3, 1.21, -0.58, 0, 0, 0, turret, false);
 
   // Emitter: an angled mantlet, a heavy barrel with a thermal sleeve and square cooling fins, three cyan focusing
-  // coils (they spin while the discs cycle), a hex muzzle shroud with vent slots and a crystal tip, and a flat cyan
-  // launch collar round the shroud: the Mag Discs leave the nose through it, flat, and snap back into it.
+  // coils (they spin while the laser fires), a hex muzzle shroud with vent slots and a crystal tip, and a flat cyan
+  // launch collar round the shroud: the Mag Laser bolts leave the nose through it.
   const GY = 0.2;
   const GZ = 0.3;
   const gun = new THREE.Group();

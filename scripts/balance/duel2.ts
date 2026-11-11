@@ -11,7 +11,7 @@
  *  - Preferred range: each plow wants the centre distance where its main weapon works best, read from the real kit
  *    numbers (preferredRange below): Classic = where its slam lands (TIP_Z + ball + 0.5), BRUTUS = its fist zone
  *    (FIST_REACH x fistSize + Piston Fists reach), VOLT-9 / ISOTOPE = REACH_MARGIN of arcRange / sprayRange (+ line
- *    reach), ARSENAL = REACH_MARGIN of the Mag Discs' reach (tankGunRange: the discs hit a target there both ways).
+ *    reach), ARSENAL = REACH_MARGIN of the Mag Laser's reach (tankGunRange: the bolts hit a target there).
  *  - Closing: every tick each plow moves toward its preferred range at MANEUVER x its real maxSpeed (backing off,
  *    still facing the enemy, at REVERSE of that), holding within HOLD m of it. When both pull opposite ways the
  *    faster plow wins the tug and the fight settles near ITS preferred range. Plows cannot overlap (CONTACT), and a
@@ -23,7 +23,7 @@
  *    whose preferred range is within dash reach DASH STRIKES when the enemy is in dash reach (it dashes in and the
  *    real dash strike lands on contact).
  *  - Jukes: a per-tick chance (JUKE_RATE /s) that a plow slips out of the enemy's forward cone: the enemy's heading is
- *    off by JUKE_ANGLE (past every forward cone: disc homing, arc lock, flame, spray, fists, ball shield) until it turns
+ *    off by JUKE_ANGLE (past every forward cone: the laser line, arc lock, flame, spray, fists, ball shield) until it turns
  *    back at its real turnRate. Radius attacks (whirl, auras, fields, pools, ultimates) still land.
  *  - Both pilots open fire after a seeded reaction delay (0..REACTION s) and who acts first alternates every tick from a
  *    seeded coin flip, so mirrors do not replay one fixed script.

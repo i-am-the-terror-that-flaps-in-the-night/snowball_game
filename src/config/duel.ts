@@ -72,7 +72,7 @@ export const DUEL_REMATCH_GARAGE_SECONDS = 60;
 /** Every player-vs-player hit is scaled by this before the Brawl hit cap (brawlHit). Bot-tuned kits (Thunderclap
  *  storms, Inferno burn, saw / aura ticks) shred a single human target, so PvP runs at a fraction of PvE damage. */
 export const DUEL_DAMAGE_SCALE = 0.45;
-/** ARSENAL Mag Disc hits skip the i-frames and the ability diminishing returns (they land faster than either), so
+/** ARSENAL Mag Laser hits skip the i-frames and the ability diminishing returns (they land faster than either), so
  *  they take this extra scale against a human plow on top of DUEL_DAMAGE_SCALE. */
 export const DUEL_ROUND_SCALE = 0.7;
 /** Upgrades multiply damage far faster than HP (a late garage hits ~20x harder on ~3x the HP), so PvP damage is
@@ -87,8 +87,8 @@ export const DUEL_POWER_DAMP = 0.4;
  *  Tuned on the real browser matrix (scripts/duel-matrix.mjs, docs/balance.md "Duel balance at high").
  *  DUEL_KIND_DAMAGE scales every hit the vehicle DEALS to a human plow: VOLT-9's kit is tuned for crowds (its grounded
  *  arc is off against a lone human), BRUTUS's fists and saws out-trade everything up close, the Classic's slams / rams
- *  topped every tier of the matrix. ARSENAL stays below 1 because its Mag Discs ('round' hits) already skip i-frames and
- *  ability diminishing returns: 0.85 is the most that keeps the discs alone under a fifth of a same-tier Classic in
+ *  topped every tier of the matrix. ARSENAL stays below 1 because its Mag Laser ('round' hits) already skip i-frames and
+ *  ability diminishing returns: 0.85 is the most that keeps the laser alone under a fifth of a same-tier Classic in
  *  2 s of held fire (tests/balance.test.ts), so the rest of its help comes from DUEL_KIND_TAKEN. */
 export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 2.15, brute: 0.56, arsenal: 0.85, classic: 0.97 };
 /** DUEL_KIND_TAKEN scales every hit the vehicle TAKES from a human plow (an effective-HP lever: the HP bar, the hit caps

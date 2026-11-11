@@ -3,7 +3,7 @@
 //                                [--runs 2] [--par 2] [--cap 240] [--out DIR] [--resume] [--report-only]
 // An autopilot plays a full campaign arena (all rounds + the boss) with a chosen plow at a chosen upgrade tier and logs
 // per round: clear time (s), HP lost, deaths (the plow is revived in place and the death counted), damage dealt by
-// source (basic = rams / slams / whirls / dash, air = stomps / air slams, F, ult, passive auras; ARSENAL: discs /
+// source (basic = rams / slams / whirls / dash, air = stomps / air slams, F, ult, passive auras; ARSENAL: laser /
 // shotgun / repulsor / burst / singularity), the share of bot-time spent on another level than the player (|dy| > 2 m), time stuck
 // (moving < 1 m/s while throttling for > 1 s; "free" = no bot within 6 m, i.e. not a shoving match) and the boss fight
 // length. Each round is capped at --cap s (then force-cleared and flagged).
@@ -223,8 +223,10 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
     return 0;
   };
   const KIT_REACH = kitReach() > 0;
-  // ARSENAL's Mag Discs reach (tankGunRange: gunRange + 1.5 m per extra metre of max ball radius).
-  const discReach = () => (c.stats.gunRange || 0) + 1.5 * hopR();
+  // ARSENAL's Mag Laser reach (tankGunRange: gunRange + 1.5 m per extra metre of max ball radius) and beam half-width
+  // (tankBeamRadius: 0.8 m + 0.1 per extra metre of spin radius, 1.2 at most).
+  const laserReach = () => (c.stats.gunRange || 0) + 1.5 * hopR();
+  const laserHalfW = () => Math.min(1.2, 0.8 + 0.1 * Math.max(0, (c.stats.whirlRadius || 4) - 4));
   // Classic Plow: tap-slam reach (centre distance, as the snowball kit's slam below) and PLOW RUSH limits (classicRush.ts).
   const SLAM_D = 5.5, RUSH_MAX = 20, rushCost = (d) => Math.max(0.25, Math.min(RUSH_MAX, d) / RUSH_MAX);
   wrap(cb.air, 'update', 'air');
@@ -244,7 +246,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   wrap(cb.isotope, 'armNuke', 'ult');
   wrap(cb.isotope, 'updateAura', 'passive');
   wrap(cb.isotope, 'updateRads', 'passive');
-  wrap(cb.arsenal, 'updateGuns', 'discs');
+  wrap(cb.arsenal, 'updateGuns', 'laser');
   wrap(cb.arsenal, 'updateLaser', 'lance');
   wrap(cb.arsenal, 'updateBurst', 'burst');
   wrap(cb.ult, 'update', isArs ? 'singularity' : 'ult');
@@ -295,7 +297,8 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
     if (!isArs && !KIT_REACH && keys.Space && !AP.rush) set('Space', false);
     if (p.dead) { AP.rush = false; for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'Space']) set(k, false); return; }
     const px = p.position.x, py = p.position.y, pz = p.position.z;
-    const dReach = isArs ? discReach() : 0;
+    const dReach = isArs ? laserReach() : 0;
+    const fx = Math.sin(p.heading), fz = Math.cos(p.heading), halfW = isArs ? laserHalfW() : 0;
     let best = null, bScore = 1e9, bd = 1e9, near = 0, inF = 0, anyIn = 0, gunIn = 0, laserIn = 0, bossNear = 0;
     const fR = plow === 'volt' ? s.clapRadius * 0.8 : plow === 'brute' ? s.poundRadius * 0.7 : plow === 'isotope' ? s.meltRadius * 0.7 : plow === 'arsenal' ? 14 : s.flameRange * 0.9;
     for (const e of en.list) {
@@ -307,7 +310,11 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
       if (same && d < 7) near++;
       if (same && d < fR) inF++;
       if (d < 45) anyIn++;
-      if (d < dReach) gunIn++;
+      // Mag Laser: dead straight off the nose, so only a bot on the beam's line (ahead, inside its width and reach).
+      if (same && d < dReach + (e.radius || 1)) {
+        const u = dx * fx + dz * fz;
+        if (u > 0 && Math.abs(dx * fz - dz * fx) < (e.radius || 1) + halfW) gunIn++;
+      }
       if (d < (s.laserRange || 0) && d > 0.5) {
         const a = Math.atan2(dx, dz) - p.heading;
         if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 1.2) laserIn++;
@@ -417,7 +424,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
       if (useF) { tap('KeyF'); usedF = true; }
     }
     if (isArs) {
-      set('Space', gunIn >= 1); // Mag Discs: hold while anything is in reach (they home on the nearest bot ahead)
+      set('Space', gunIn >= 1); // Mag Laser: hold while a bot is on the beam's line (it fires dead straight)
       if (!usedF && p.whirlReady >= 1 && laserIn >= 1) tap('KeyE');
       else if (!usedF && p.dashReady >= 1 && !routed && bd > 8 && bd < 16 && Math.abs(diffA) < 0.15) tap('ShiftLeft');
       return;

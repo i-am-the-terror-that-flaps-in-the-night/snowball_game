@@ -135,7 +135,7 @@ export interface PlayerStats {
   /** A vehicle set to the snowball kit (⚙ Settings): it plows, rolls a ball, slams and whirls like the Classic
    *  instead of its own SPACE / E (its F and ultimate stay). Never set in the Duel. */
   snowKit?: boolean;
-  /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = Mag Discs, off the nose (dmg per disc hit, discs/s,
+  /** ARSENAL (gunDamage 0 on other plows): no snowball. Space = Mag Laser, off the nose (dmg per bolt hit, bolts/s,
    *  reach m), E = Mag Repulsor (damage scale: 1.5 s of it per bot, wedge reach m; recharge is whirlCooldown),
    *  F = Polarity Burst (missileCount x missileDamage per bot caught, recharge missileCooldown). */
   gunDamage: number;
@@ -408,12 +408,12 @@ export interface DamageOpts {
   /** Radius of the player's slammed ball (for Frostbyte's ball CLASH). */
   ballRadius?: number;
   /** Rapid weapon fire: against a plow both kinds skip the hit i-frames (they land faster than the window).
-   *  'round' (ARSENAL Mag Disc hits) also skips the Duel's area-ability diminishing returns; 'beam' (rapid beam
+   *  'round' (ARSENAL Mag Laser hits) also skips the Duel's area-ability diminishing returns; 'beam' (rapid beam
    *  ticks) keeps them. Against bots both face only part of the armour (Enemies). */
   direct?: 'round' | 'beam';
   /** Bots only: face half the flat armour, like `direct`, with none of its plow / Duel effects (BRUTUS's jabs). */
   crackArmor?: boolean;
-  /** Magnetic hits (ARSENAL's Mag Discs / Repulsor) mostly pierce frontal plates: the Brute Dozer's plate and
+  /** Magnetic hits (ARSENAL's Mag Laser / Repulsor) mostly pierce frontal plates: the Brute Dozer's plate and
    *  Frostbyte's ball block only cut them to PLATE_PIERCE instead of 30% / 50%. */
   pierce?: boolean;
   /** An ultimate's damage (the blast and its aftermath). Bots ignore it; the online Duel soft-caps it per ultimate
@@ -618,7 +618,7 @@ export type SoundName =
   | 'streak' | 'shutdown' | 'respawn' | 'heal' | 'dashStrike' | 'whirlTick'
   // VOLT-9
   | 'zap' | 'thunder'
-  // ARSENAL (the Mag Discs' hum)
+  // ARSENAL (the Mag Laser's zap)
   | 'pulse'
   // BRUTUS
   | 'thud'

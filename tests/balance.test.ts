@@ -1,6 +1,6 @@
 import { PVE_MULT } from '../src/entities/combat/arsenal';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { KINDS, clusterDps, duelDiscDamage, duelTtk, fakePlow, newCtx, pilot, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
+import { KINDS, clusterDps, duelLaserDamage, duelTtk, fakePlow, newCtx, pilot, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
 import { PLOWS, type PlowKind } from '../src/config/plows';
 import { computeStatsFor } from '../src/core/Progression';
 import { ultCharge, ultMeter } from '../src/entities/combat/ultimates';
@@ -71,11 +71,11 @@ describe('sustained damage', () => {
 });
 
 describe('duel', () => {
-  it('the Mag Discs alone take under a fifth of a same-tier plow in 2 s of held fire', () => {
+  it('the Mag Laser alone takes under a fifth of a same-tier plow in 2 s of held fire', () => {
     // Measured against the Classic's HP at its old +25% (the role rework took it to +15%): the same absolute cap as
     // before, so the Classic's HP trim neither loosens nor tightens it.
     for (const tier of ['fresh', 'mid', 'high'] as const) {
-      expect(duelDiscDamage(tier, 2) / ((statsFor('classic', tier).maxHp / PLOWS.classic.hpMult) * 1.25)).toBeLessThan(0.2);
+      expect(duelLaserDamage(tier, 2) / ((statsFor('classic', tier).maxHp / PLOWS.classic.hpMult) * 1.25)).toBeLessThan(0.2);
     }
   });
 

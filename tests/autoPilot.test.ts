@@ -6,7 +6,7 @@ import type { PlowKind } from '../src/config/plows';
 import type { Plow } from '../src/entities/Plow';
 
 /* The Duel AutoPilot (probes / duel-matrix) plays each kit's role: Classic tap-slams close and rushes from range, VOLT-9
- * kites at the Arc Lance's reach, ARSENAL holds mid range inside its disc reach. */
+ * kites at the Arc Lance's reach, ARSENAL holds mid range inside its laser reach. */
 
 type Fake = {
   dead: boolean; position: THREE.Vector3; heading: number; heldBallRadius: number; dashReady: number; whirlReady: number;
@@ -75,7 +75,7 @@ describe('Duel AutoPilot', () => {
     expect(at(R * 1.2).isDown('Space')).toBe(false);
   });
 
-  it('ARSENAL: holds the discs inside their reach and stops closing at mid range', () => {
+  it('ARSENAL: holds the laser inside its reach and stops closing at mid range', () => {
     const R = autoHoldRange(computeStatsFor({}, 'arsenal'));
     const { ap } = setup('arsenal', R * 0.5);
     ap.think(1 / 60);

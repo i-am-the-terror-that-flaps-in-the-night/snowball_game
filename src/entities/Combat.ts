@@ -192,7 +192,7 @@ export class Combat implements CombatAPI {
   private updateVehicle(dt: number): void {
     const v = this.vehicle;
     if (!v) {
-      // Snowball kit on ARSENAL: the Mag Discs' trigger must not stay latched from before the switch.
+      // Snowball kit on ARSENAL: the Mag Laser's trigger must not stay latched from before the switch.
       if (this.b.stats.plowKind === 'arsenal') this.arsenal.primary(dt, false, false);
       return;
     }
@@ -263,7 +263,7 @@ export class Combat implements CombatAPI {
     out[o + NP.chunks] = this.classic.chunks;
   }
 
-  /** Duel guest, the opponent's puppet: follow the host's Mag Discs / Mag Repulsor (visuals only). */
+  /** Duel guest, the opponent's puppet: follow the host's Mag Laser / Mag Repulsor (visuals only). */
   readPuppet(s: Float32Array, o: number): void {
     const ar = this.arsenal;
     const bits = Math.round(s[o + NP.fire]);

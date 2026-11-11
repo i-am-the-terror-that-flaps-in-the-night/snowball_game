@@ -7,7 +7,7 @@ import type { Combat } from '../entities/Combat';
 
 /** A human plow seen through the bot interface, so every player attack in Combat (slam, ram, dash strike, whirl,
  *  Inferno, Thunderclap, Ground Pound, Meltdown, NUKE, auras, chains) can target it unchanged. */
-/** See damage(): 'round' hits (direct weapon fire: ARSENAL's Mag Disc hits) are soft-capped as if ROUND_CAP_GROUP
+/** See damage(): 'round' hits (direct weapon fire: ARSENAL's Mag Laser hits) are soft-capped as if ROUND_CAP_GROUP
  *  times as big, so no single round, however upgraded, takes more than half of the hit cap. */
 const ROUND_CAP_GROUP = 2;
 
@@ -73,7 +73,7 @@ const KNOCK_SCALE = 0.7;
 
 /**
  * The "enemy manager" a duel pilot's Combat attacks: just the opponent's plow. Damage is scaled by DUEL_DAMAGE_SCALE
- * (Mag Disc hits also by DUEL_ROUND_SCALE), by the attacker's DUEL_KIND_DAMAGE and the victim's DUEL_KIND_TAKEN, and
+ * (Mag Laser hits also by DUEL_ROUND_SCALE), by the attacker's DUEL_KIND_DAMAGE and the victim's DUEL_KIND_TAKEN, and
  * damped by the attacker's power (DUEL_POWER_DAMP), then takes the
  * Brawl hit cap (BRAWL_HIT_CAP, the same for both pilots) so nothing one-shots, then goes through
  * the VICTIM's Combat.hitPlow, which applies their ball shield, dash / whirl reductions, armour, Iron Hide, Last Stand,
@@ -148,7 +148,7 @@ export class OpponentTarget implements EnemyManagerAPI {
       this.ultRaw += scaled;
       scaled = cap > 0 ? cap * (Math.exp(-before / cap) - Math.exp(-this.ultRaw / cap)) : 0;
     } else if (other) scaled /= 1 + this.burst / (ABILITY_BURST_FRAC * victim.maxHp);
-    // Rounds (Mag Disc hits) are capped in pairs: one can never take more than half of BRAWL_HIT_CAP of the victim,
+    // Rounds (Mag Laser hits) are capped in pairs: one can never take more than half of BRAWL_HIT_CAP of the victim,
     // however upgraded the attacker.
     const pair = opts?.direct === 'round' ? ROUND_CAP_GROUP : 1;
     const raw = brawlHit(scaled * pair, victim.maxHp, BRAWL_HIT_CAP) / pair;
@@ -169,7 +169,7 @@ export class OpponentTarget implements EnemyManagerAPI {
         fromZ = a.z;
       }
     }
-    // Heaviness: Combat.hitPlow scales every push and tug (Mag Discs pulling the victim in) by the victim's
+    // Heaviness: Combat.hitPlow scales every push and tug (the Mag Laser pulling the victim in) by the victim's
     // knockScale (PlowDef.knockResist: BRUTUS 0.5), so nothing extra here.
     const kb = kmag > 0.1 ? kmag * KNOCK_SCALE : 2;
     const hp0 = victim.hp;

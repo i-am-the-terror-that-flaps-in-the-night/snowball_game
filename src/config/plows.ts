@@ -30,7 +30,7 @@ export interface PlowDef {
 
 /** Share of a knockback, shove or pull a plow of this kind takes (PlowDef.knockResist; 1 for an unknown kind). Every
  *  source that moves a plow scales by it: Combat.hitPlow (bots, Brawl rivals, the Duel opponent), boss pulls
- *  (enemies/bosses.ts), and any Duel pull on the other plow (ARSENAL's disc). */
+ *  (enemies/bosses.ts), and any Duel pull on the other plow (ARSENAL's laser). */
 export function knockScale(kind: PlowKind | undefined): number {
   const k = kind ? PLOWS[kind]?.knockResist : undefined;
   return k ?? 1;
@@ -114,8 +114,8 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     id: 'arsenal',
     name: 'ARSENAL',
     icon: '🎯',
-    tagline: 'Two giant front wheels, a hovering gyro core and a magnetic disc emitter on the nose. No blade, no snowball: a mid-range disruptor that keeps the fight at the end of its stream.',
-    traits: ['No snowball: SPACE = Mag Discs (hold: a stream of homing magnetic discs out to ~10 m that boomerang back, hitting both ways and tugging targets in)', 'E = Mag Repulsor (forward wave, big hit + knockback) · F = Polarity Burst', '+10% speed, -10% HP', 'Damage builds SINGULARITY: a black hole that swallows the fight, 40 m pull'],
+    tagline: 'Two giant front wheels, a hovering gyro core and a magnetic laser emitter on the nose. No blade, no snowball: a mid-range disruptor that keeps the fight at the end of its beam.',
+    traits: ['No snowball: SPACE = Mag Laser (hold: ~12 fat laser bolts a second straight off the nose, out to ~10 m, piercing every bot in line and tugging them in)', 'E = Mag Repulsor (forward wave, big hit + knockback) · F = Polarity Burst', '+10% speed, -10% HP', 'Damage builds SINGULARITY: a black hole that swallows the fight, 40 m pull'],
     hpMult: 0.9,
     speedMult: 1.1,
     accelMult: 1.1,

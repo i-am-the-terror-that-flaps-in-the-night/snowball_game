@@ -14,7 +14,7 @@ it do run in `npm test`: `tests/balance.test.ts`.
 The sim builds the real `Combat` (every plow kit, the ultimates and the Duel damage path) on fake plows, with no
 browser, and drives it at 60 Hz:
 
-- **Rotation.** Every F ability goes off when it is ready, ARSENAL holds its SPACE weapon (now the Mag Discs) and fires its E (now the Mag Repulsor) on cooldown.
+- **Rotation.** Every F ability goes off when it is ready, ARSENAL holds its SPACE weapon (now the Mag Laser) and fires its E (now the Mag Repulsor) on cooldown.
   The Plow drives slam, whirl and dash, and the sim has no snow field or driving, so these three are scheduled from an
   engagement model (`MELEE` in sim.ts). The blade gathers 5 m³/s of snow while fighting (about half the open-field
   rate) times Snow Compactor. You slam once the ball reaches 80% of max radius, whirl on every recharge holding a
@@ -662,6 +662,28 @@ at high vs Classic / VOLT-9 / BRUTUS / ISOTOPE / ARSENAL 5.9 / 6.1 / 5.9 / 5.9 /
 8.3). The return tug in the Duel is scaled by the victim's heaviness like every push (knockScale: BRUTUS 0.5, Classic 0.8, ISOTOPE 0.85; integration replaced the builder's tug-only table). The real
 matrix (scripts/duel-matrix.mjs) has not been re-run for the discs: the kept range now matters more there than in
 this parked-target sim.
+
+## Follow-up: ARSENAL Mag Laser replaces the Mag Discs
+
+By request ("the disks didn't work out"): SPACE is now the **Mag Laser**, ~12 fat hitscan bolts a second dead straight
+off the nose (no homing, no spread), out to the same reach, ~1.6 m wide, piercing every target on the line once per
+bolt and tugging it in. Same DPS and pull per second as the discs: they did 10 discs/s, each hitting a target twice, so
+a bolt hits for 2 x the old disc hit x 10/12 and tugs with the old return tug x 10/12 (3.5 m/s / bot mass, bosses x0.2;
+Duel 3). The rate is 12 + 0.7 x soft(L, 5) a second, x cooldownMult^-0.25 (Overclock), capped at 15: the discs' pool of
+18 held their real late-garage rate to about that, and without the cap the high tier ran 9% over them. `npm run
+balance`, same seed, before (discs, 5e97844) and after (laser):
+
+| tier | 1-target DPS before / after | cluster DPS before / after | ult fill fight / boss (s) before / after | Duel: laser alone 2 s vs Classic |
+|---|---|---|---|---|
+| fresh | 113 / 113 | 312 / 261 (-16%) | 17.7 / 18.7 -> 26.8 / 18.7 | 16 -> 18 HP |
+| mid | 564 / 565 | 2020 / 1666 (-18%) | 17.4 / 16.0 -> 21.6 / 16.0 | 38 -> 48 HP |
+| high | 2351 / 2347 | 6552 / 5943 (-9%) | 22.9 / 17.9 -> 25.1 / 17.9 | 71 -> 84 HP |
+
+Single target matches. The cluster drop is the shape: the sim's dummies at (+-2.5, 6) and (+-3, 3) sit off the nose,
+where the discs' return leg (a 2 m sweep each side, homing back to the emitter) caught them and a straight 1.6 m beam
+does not; aim by steering. The Duel 2-second number rises because a hitscan bolt lands from the first frame where a
+disc spent its first ~1 s flying out and back; the steady rate is the same (fresh 9.1 vs 9.2 HP/s, high 42 vs 44), and
+it stays under the 20% cap in tests/balance.test.ts (12 / 15 / 17%).
 
 ## Limits of the model
 

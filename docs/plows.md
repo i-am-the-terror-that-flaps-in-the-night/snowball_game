@@ -181,25 +181,24 @@ weapon hits bots 1.5x as hard** (Campaign, Survival, Brawl); in the Duel it figh
 off-road wheels carry the nose (armoured hubs, glowing cyan rims, they spin with the ground speed); there are no
 wheels at the back: the rear hovers on a **gyro core**, three thin armoured rings nested like a gyroscope, each
 spinning on its own axis round a small white-hot crystal, held in an armoured cradle between two short struts and
-throwing faint light rings onto the snow. The rings spin up with speed and while the discs cycle, and the rear
-bobs gently. A sloped dark gunmetal hull sits between, with a low turret carrying the disc emitter (locked facing
-forward, a flat cyan launch collar round its tip) and the repulsor lens in the nose. Snow slows it like any other
-vehicle; DASH is shared. Its role is the **mid-range magnetic disruptor**: it wants the fight at the end of its disc
-stream (~10 m), not in a brawler's face, and tugs targets around rather than shoving them away. It aims by steering:
-the discs only home lightly.
+throwing faint light rings onto the snow. The rings spin up with speed and while the laser fires, and the rear
+bobs gently. A sloped dark gunmetal hull sits between, with a low turret carrying the laser emitter (locked facing
+forward, a flat cyan collar round its tip) and the repulsor lens in the nose. Snow slows it like any other
+vehicle; DASH is shared. Its role is the **mid-range magnetic disruptor**: it wants the fight at the end of its laser
+(~10 m), not in a brawler's face, and tugs targets around rather than shoving them away. It aims by steering:
+the laser fires dead straight off the nose, no homing.
 
-- **Space (hold): Mag Discs.** A steady cycle, not bursts: while held, a bright spinning cyan disc leaves the nose
-  emitter about every 0.25 s (faster with levels, a little faster with Overclock), so about four are in the air at
-  once, streaming out and back. Each disc flies out at 22 m/s to its reach (~10 m, more with levels and Mega Hopper),
-  steering **gently** toward the nearest bot ahead of it (about 1.75 rad/s, so a swerve or a dash slips it), then
-  stalls, whips round and flies back to the emitter wherever ARSENAL has driven, snapping back in with a clank. It
-  hits everything it passes through **on the way out and again on the way back** (each target at most once per leg;
-  the way back sweeps a field twice as wide). A hit on the way out nudges the target away; a hit on the way back
-  **tugs** it toward ARSENAL (divided by the bot's mass, bosses barely; in the Duel a small pull on the other plow
-  scaled by its heaviness like any push, BRUTUS half). Discs that miss still boomerang home. A disc that meets a prop breaks
-  it and turns back early. Disc hits are direct hits (one armour check each; in the Duel they skip the i-frames, at
-  the reduced 'round' scale). A soft magnetic hum rises while the cycle runs. In the Duel the other player sees your
-  discs fly too.
+- **Space (hold): Mag Laser.** A rapid fire of **fat laser bolts**: while held, about 12 a second leave the nose
+  emitter (faster with levels, a little faster with Overclock, 15 a second at most). Each bolt is **hitscan**, dead
+  straight along the hull's heading (no homing, no spread): it hits instantly out to its reach (~10 m, more with levels
+  and Mega Hopper), about 1.6 m wide (Whirlwind Turbine widens it), and **pierces**: every bot on its line within that
+  reach and height band takes one hit, and each is **tugged** toward ARSENAL (divided by the bot's mass, bosses barely;
+  in the Duel a small pull on the other plow scaled by its heaviness like any push, BRUTUS half). A prop in the way
+  breaks and stops the bolt; so does the ground. Bolt hits are direct hits (one armour check each; in the Duel they
+  skip the i-frames, at the reduced 'round' scale). Each bolt is a short (~0.08 s) flash of a solid saturated-cyan beam
+  with a dark navy outline and a white-hot core, a muzzle flash and an impact flash, so it reads on sunlit snow and at
+  night alike; a quick zap per bolt and a meatier crackle on hits. It replaced the Mag Discs at the same DPS and pull
+  per second (12 bolts a second, each worth two disc hits x 10/12). In the Duel the other player sees your bolts too.
 - **E: Mag Repulsor.** A magnetic wave bursts out of the nose across a 60° wedge (Snow Compactor widens it, 90° at
   most) and sweeps out to ~13 m in 0.3 s: a cyan arc wall racing over the snow, field-line streaks and a gyro flare.
   Every bot in the wedge takes one big hit as the front passes (full damage out to half its reach, 70% at the edge;
@@ -212,10 +211,10 @@ the discs only home lightly.
   takes missile count x missile damage (the old salvo's worth); with more caught each share is thinner but the total
   bigger.
 
-Line: Mag Discs, Mag Repulsor, Polarity Burst, Energy Barrier (a recharging shield, since there's no ball to hide
+Line: Mag Laser, Mag Repulsor, Polarity Burst, Energy Barrier (a recharging shield, since there's no ball to hide
 behind), Scrap Magnet (passive: a magnetic field, 7 m and wider with levels, does a
 trickle of damage to bots inside, about a quarter of Rad Aura before the PvE bonus. **Strip scrap:** the ring doesn't
-depend on wrecking cannon fodder: every 20% of a target's max HP your weapons tear off (discs, repulsor, burst,
+depend on wrecking cannon fodder: every 20% of a target's max HP your weapons tear off (laser, repulsor, burst,
 singularity) rips a shard off it, bosses every 6% (at most 2 per hit), and every bot you wreck sheds one too; the ring's
 own shard hits and the field count at a quarter rate (a ring grinding a boss slowly tops itself up, but stays full only
 while you fight). A shard torn off within 12 m flies in and orbits the vehicle 3.5 m out for 15 s, up to 4 + level
@@ -223,8 +222,8 @@ shards (12 at most); each shard that passes through a bot hits it, each bot at m
 gets the 1.5x PvE bonus against bots. In the Duel the opponent sheds shards the same way.) The line ids are the old ones (armCannon,
 armLaser, armMissiles, ...), so saved levels carry over.
 
-The snowball lines still pay off: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds disc
-reach (+1.5 m per extra metre of max ball radius), Whirlwind Turbine makes the discs wider (+0.1 m per extra metre of
+The snowball lines still pay off: Packed Ice is the damage multiplier for every weapon, Mega Hopper adds laser
+reach (+1.5 m per extra metre of max ball radius), Whirlwind Turbine makes the beam wider (+0.1 m per extra metre of
 spin radius) and Snow Compactor widens the Mag Repulsor's wedge.
 
 **Ultimate: SINGULARITY.** Any damage fills the meter. A black hole opens over the densest crowd within 40 m (or

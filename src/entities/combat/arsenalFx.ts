@@ -464,92 +464,130 @@ export class ArcWaves {
   }
 }
 
-/* ------------------------------------------------------------------ mag discs */
+/* ------------------------------------------------------------------ mag laser */
 
-interface DiscMesh {
-  root: THREE.Group;
-  trail: THREE.Mesh;
+interface Bolt {
+  /** Seconds since the shot (>= LASER_LIFE: free). */
+  t: number;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  /** Impact flash scale at the end point (0: the bolt ran out of reach into empty air: a small fizzle). */
+  impact: number;
   sheath: THREE.Mesh;
+  outer: THREE.Mesh;
+  core: THREE.Mesh;
+  muzzle: THREE.Mesh;
+  hitTint: THREE.Mesh;
+  hitCore: THREE.Mesh;
 }
-const _t0 = new THREE.Vector3();
 
-/** MAG DISCS: a small fixed pool of big, bright spinning cyan rings that read on white snow as well as at night: a dark
- *  navy outline ring under a solid (not additive: additive light vanishes on sunlit snow) saturated-cyan ring, a
- *  white-hot additive core line, a translucent cyan fill with a spinning cross-bar so the spin reads, and a thick
- *  two-layer trail (solid cyan sheath + additive white core). The kit drives it: show(i, ...) every frame a disc is
- *  out, hide(i) when it is recycled. Nothing allocates per frame. */
-export class DiscFx {
-  private discs: DiscMesh[] = [];
+/** How long one laser bolt stays on screen (s). */
+export const LASER_LIFE = 0.075;
+/** Outer cyan beam radius (m): ~0.4 m thick. Sheath (navy outline) and white core radii. */
+const BOLT_R = 0.2;
+const SHEATH_R = 0.27;
+const CORE_R = 0.075;
+
+/** MAG LASER: a small fixed pool of short-lived FAT bolts that read on white snow as well as at night: a dark-navy
+ *  sheath (an outline), a solid normal-blended saturated-cyan beam (additive light vanishes on sunlit snow), a
+ *  white-hot additive core, a muzzle flash at the emitter and an impact flash at the end point. Each bolt slams on at
+ *  full width, then thins and fades over LASER_LIFE. fire() takes the oldest free slot; update() animates them.
+ *  Nothing allocates per shot or per frame. */
+export class LaserFx {
+  private bolts: Bolt[] = [];
 
   constructor(scene: THREE.Scene, n: number, beam: THREE.BufferGeometry) {
-    // Flat in the XZ plane (a torus is built in XY).
-    const R = 0.72;
-    const outlineGeo = new THREE.TorusGeometry(R, 0.17, 6, 32);
-    outlineGeo.rotateX(Math.PI / 2);
-    const ringGeo = new THREE.TorusGeometry(R, 0.12, 8, 32);
-    ringGeo.rotateX(Math.PI / 2);
-    const coreGeo = new THREE.TorusGeometry(R, 0.045, 4, 32);
-    coreGeo.rotateX(Math.PI / 2);
-    const barGeo = new THREE.BoxGeometry(R * 2, 0.06, 0.13);
-    const fillGeo = new THREE.CircleGeometry(R, 28);
-    fillGeo.rotateX(-Math.PI / 2);
-    const outlineMat = paintMat(0x06243a, 0.85);
-    const ringMat = paintMat(0x19dcff, 1);
-    const coreMat = addMat(0xf4ffff, 1);
-    const fillMat = paintMat(0x2ad8ff, 0.32);
-    fillMat.side = THREE.DoubleSide;
-    const barMat = paintMat(0xbff6ff, 0.95);
-    const trailMat = addMat(0xeaffff, 0.9);
-    const sheathMat = paintMat(0x14c8f5, 0.6);
+    const ball = new THREE.SphereGeometry(1, 12, 8);
+    const sheathMat = () => paintMat(0x06243a, 0.75);
+    const outerMat = () => paintMat(0x12d2ff, 1);
+    const coreMat = () => addMat(0xf6ffff, 1);
+    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, order: number) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.visible = false;
+      m.frustumCulled = false;
+      m.renderOrder = order;
+      scene.add(m);
+      return m;
+    };
     for (let i = 0; i < n; i++) {
-      const root = new THREE.Group();
-      const outline = new THREE.Mesh(outlineGeo, outlineMat);
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      const core = new THREE.Mesh(coreGeo, coreMat);
-      const fill = new THREE.Mesh(fillGeo, fillMat);
-      const bar = new THREE.Mesh(barGeo, barMat);
-      const bar2 = new THREE.Mesh(barGeo, barMat);
-      bar2.rotation.y = Math.PI / 2;
-      outline.renderOrder = 2;
-      fill.renderOrder = 3;
-      ring.renderOrder = bar.renderOrder = bar2.renderOrder = 4;
-      core.renderOrder = 5;
-      root.add(outline, fill, ring, bar, bar2, core);
-      for (const m of root.children) m.frustumCulled = false;
-      root.visible = false;
-      scene.add(root);
-      const mk = (mat: THREE.Material, order: number) => {
-        const m = new THREE.Mesh(beam, mat);
-        m.visible = false;
-        m.frustumCulled = false;
-        m.renderOrder = order;
-        scene.add(m);
-        return m;
-      };
-      this.discs.push({ root, trail: mk(trailMat, 3), sheath: mk(sheathMat, 2) });
+      // Own materials per bolt: each fades on its own clock.
+      this.bolts.push({
+        t: LASER_LIFE,
+        from: new THREE.Vector3(),
+        to: new THREE.Vector3(),
+        impact: 0,
+        sheath: mk(beam, sheathMat(), 2),
+        outer: mk(beam, outerMat(), 3),
+        core: mk(beam, coreMat(), 5),
+        muzzle: mk(ball, coreMat(), 5),
+        hitTint: mk(ball, paintMat(0x2ad8ff, 0.8), 4),
+        hitCore: mk(ball, coreMat(), 5),
+      });
     }
   }
 
-  /** Disc `i` at `pos`, flying along (dx, dz) (unit), spun to `spin` rad, banked `bank` rad, at `scale` (pop-in /
-   *  snap-back), with a trail `trail` m long behind it. */
-  show(i: number, pos: THREE.Vector3, dx: number, dz: number, spin: number, bank: number, scale: number, trail: number): void {
-    const d = this.discs[i];
-    if (!d) return;
-    d.root.visible = true;
-    d.root.position.copy(pos);
-    d.root.rotation.set(bank, spin, 0);
-    d.root.scale.setScalar(Math.max(0.01, scale));
-    _t0.set(pos.x - dx * trail, pos.y, pos.z - dz * trail);
-    aimBeam(d.trail, _t0, pos, 0.11 * scale);
-    aimBeam(d.sheath, _t0, pos, 0.3 * scale);
+  /** One bolt from `from` to `to`; `impact` (0..1+) sizes the end flash (it struck something). */
+  fire(from: THREE.Vector3, to: THREE.Vector3, impact: number): void {
+    let b = this.bolts[0];
+    for (const x of this.bolts) {
+      if (x.t >= LASER_LIFE) {
+        b = x;
+        break;
+      }
+      if (x.t > b.t) b = x;
+    }
+    b.t = 0;
+    b.from.copy(from);
+    b.to.copy(to);
+    b.impact = impact;
+    this.draw(b);
   }
 
-  hide(i: number): void {
-    const d = this.discs[i];
-    if (d) hide(d.root, d.trail, d.sheath);
+  update(dt: number): void {
+    for (const b of this.bolts) {
+      if (b.t >= LASER_LIFE) continue;
+      b.t += dt;
+      if (b.t >= LASER_LIFE) hide(b.sheath, b.outer, b.core, b.muzzle, b.hitTint, b.hitCore);
+      else this.draw(b);
+    }
+  }
+
+  private draw(b: Bolt): void {
+    const k = b.t / LASER_LIFE;
+    // Slams on at full width (a touch over), then thins to a needle as it fades.
+    const w = k < 0.2 ? 1.15 : 1.15 - 0.75 * ((k - 0.2) / 0.8);
+    const fade = 1 - k * k;
+    aimBeam(b.sheath, b.from, b.to, SHEATH_R * w);
+    aimBeam(b.outer, b.from, b.to, BOLT_R * w);
+    aimBeam(b.core, b.from, b.to, CORE_R * (0.6 + 0.4 * w));
+    (b.sheath.material as THREE.MeshBasicMaterial).opacity = 0.75 * fade;
+    (b.outer.material as THREE.MeshBasicMaterial).opacity = fade;
+    (b.core.material as THREE.MeshBasicMaterial).opacity = fade;
+    b.muzzle.visible = true;
+    b.muzzle.position.copy(b.from);
+    b.muzzle.scale.setScalar(0.42 * (1 - k) + 0.05);
+    (b.muzzle.material as THREE.MeshBasicMaterial).opacity = fade;
+    const r = 0.25 + 0.4 * b.impact;
+    b.hitTint.visible = b.hitCore.visible = true;
+    b.hitTint.position.copy(b.to);
+    b.hitCore.position.copy(b.to);
+    b.hitTint.scale.setScalar(r * (0.6 + 0.6 * k));
+    b.hitCore.scale.setScalar(r * 0.55 * (1 - 0.5 * k));
+    (b.hitTint.material as THREE.MeshBasicMaterial).opacity = 0.8 * fade;
+    (b.hitCore.material as THREE.MeshBasicMaterial).opacity = fade;
+  }
+
+  /** Bolts on screen right now (tests / probes). */
+  get live(): number {
+    let n = 0;
+    for (const b of this.bolts) if (b.t < LASER_LIFE) n++;
+    return n;
   }
 
   clear(): void {
-    for (let i = 0; i < this.discs.length; i++) this.hide(i);
+    for (const b of this.bolts) {
+      b.t = LASER_LIFE;
+      hide(b.sheath, b.outer, b.core, b.muzzle, b.hitTint, b.hitCore);
+    }
   }
 }
