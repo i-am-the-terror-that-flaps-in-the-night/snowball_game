@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Lightning } from '../fx/Lightning';
 import { ballVolume, type CombatAPI, type EnemyHandle, type GameContext, type ImpactKind, type ImpactOpts } from '../core/types';
 import { LAST_STAND_HP } from '../config/upgrades';
+import { knockScale } from '../config/plows';
 import { ctxPilot, type PilotBinding } from './pilot';
 import { NP } from '../net/protocol';
 import { NET_LATCH, Reach, Threat, _fwd, _p, _q, _tip, bodyBand, heightOk, waveHits, BLAST_BAND, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './combat/shared';
@@ -13,6 +14,7 @@ import { IsotopeKit, LEAD_LINING, RAD_VULN } from './combat/isotope';
 import { ArsenalKit } from './combat/arsenal';
 import { MeleeKit } from './combat/melee';
 import { AirKit } from './combat/air';
+import { CLASSIC_SLAM_POWER, cashIn } from './combat/classicRush';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const HIT_PLOW_BURST = { color: 0xbfe6ff, count: 6, speed: 3, size: 0.14, gravity: 8, life: 0.5 };
@@ -258,6 +260,7 @@ export class Combat implements CombatAPI {
     out[o + NP.fire] = this.vehicleBits();
     out[o + NP.turret] = this.b.plow ? this.b.plow.turretAim : 0;
     out[o + NP.laser] = ar.laserOff; // the Mag Repulsor fires straight ahead: always 0 (layout kept)
+    out[o + NP.chunks] = this.classic.chunks;
   }
 
   /** Duel guest, the opponent's puppet: follow the host's Mag Discs / Mag Repulsor (visuals only). */
@@ -269,6 +272,8 @@ export class Combat implements CombatAPI {
     this.netBits = bits;
     ar.netFire = bits;
     ar.netTurret = s[o + NP.turret];
+    // The opponent's SNOW CHUNKS size its rush telegraph's landing ring.
+    this.classic.chunks = Math.max(0, Math.round(s[o + NP.chunks]));
   }
 
   /** Duel guest, own plow: adopt the host's meters. `keepF`: the pilot just pressed F locally (keep the prediction). */
@@ -287,6 +292,8 @@ export class Combat implements CombatAPI {
     this.critCharge = s[o + NP.crit];
     this.volt.clapHeat = s[o + NP.heat];
     this.volt.lastClapAt = this.ctx.time;
+    // SNOW CHUNKS come from the host's tap slam hits (the guest hits nothing locally).
+    this.classic.chunks = Math.max(0, Math.round(s[o + NP.chunks]));
     // The guest hits nothing locally, so its turret follows the host's aim.
     this.arsenal.netTurret = s[o + NP.turret];
   }
@@ -444,8 +451,8 @@ export class Combat implements CombatAPI {
       }
     }
 
-    // Knockback away from the attacker (shield absorbs some of it).
-    const kb = (opts?.knockback ?? 6) * (blocked > 0 ? 0.75 : 1);
+    // Knockback away from the attacker (shield absorbs some of it; heavy plows take less, PlowDef.knockResist).
+    const kb = (opts?.knockback ?? 6) * (blocked > 0 ? 0.75 : 1) * knockScale(stats.plowKind);
     plow.push(-dx * kb, -dz * kb);
 
     // Feedback.
@@ -508,8 +515,34 @@ export class Combat implements CombatAPI {
 
   /** SPACE slam impact centered at (x, z) with a ball of radius `r` (volume `volume` m^3, already consumed
    *  by the plow). Damages every bot in the zone, shatters the ball. Returns the number of bots hit. */
-  slamAt(x: number, z: number, r: number, volume: number): number {
-    return this.melee.slamAt(x, z, r, volume);
+  slamAt(x: number, z: number, r: number, volume: number, zoneMult = 1, dmgMult = 1): number {
+    return this.melee.slamAt(x, z, r, volume, zoneMult, dmgMult);
+  }
+
+  /** The Classic Plow's tap BALL SLAM (PlowMotion.slamImpact): slamAt, and every bot / opponent it hits packs a
+   *  SNOW CHUNK (ClassicKit.packChunks). Vehicles on the snowball kit slam without chunks. Returns the bots hit. */
+  tapSlam(x: number, z: number, r: number, volume: number): number {
+    const classic = this.b.stats.plowKind === 'classic';
+    const hits = this.melee.slamAt(x, z, r, volume, 1, classic ? CLASSIC_SLAM_POWER : 1);
+    if (hits > 0 && classic) this.classic.packChunks(hits);
+    return hits;
+  }
+
+  /** Classic Plow PLOW RUSH end: the slam at (x, z) (ball radius `r`, `volume` already taken off the plow), cashing in
+   *  every SNOW CHUNK (zone x1.05 and damage x1.04 per chunk), which then reset. Returns the bots hit. */
+  rushSlam(x: number, z: number, r: number, volume: number): number {
+    const m = this.classic.takeChunks(x, z);
+    return this.melee.slamAt(x, z, r, volume, m.radius, m.damage * CLASSIC_SLAM_POWER);
+  }
+
+  /** SNOW CHUNKS on the Classic's blade (0..10), -1 on other plows / the snowball kit (HUD). */
+  get chunks(): number {
+    return this.b.stats.plowKind === 'classic' ? this.classic.chunks : -1;
+  }
+
+  /** Slam-zone multiplier the chunks held would give a rush slam right now (the telegraph's landing ring). */
+  get chunkRadiusMult(): number {
+    return this.b.stats.plowKind === 'classic' ? cashIn(this.classic.chunks).radius : 1;
   }
 
   /** One damage tick of the E whirl (see MeleeKit.whirlTick). Returns the number of bots hit this tick. */

@@ -416,7 +416,10 @@ export class Tutorial {
       {
         title: 'Slam a bot',
         keys: [['slam']],
-        text: 'A training bot rolled in. Face it and slam your snowball into it.',
+        text:
+          ctx.stats.plowKind === 'classic'
+            ? 'A training bot rolled in. Face it and tap slam to smash your snowball into it (every hit packs a snow chunk). Then back off, HOLD slam to aim a plow rush (the line shows where you land) and let go: you charge in and slam your snowball into it.'
+            : 'A training bot rolled in. Face it and slam your snowball into it.',
         enter: () => {
           this.slammed = false;
           this.ensureDummies(1);

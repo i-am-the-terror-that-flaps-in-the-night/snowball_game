@@ -5,6 +5,7 @@ import { FX } from '../../config/upgrades';
 import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultMeter } from './ultimates';
+import { CHUNK_BIG, CHUNK_MAX, addChunks, cashIn } from './classicRush';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const UPDATE_FLAME_BURST = { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 };
@@ -45,6 +46,7 @@ const FIRE_FIELD_TICK = 0.3;
 /** Fire-field contact damage per second, as a share of storm dps (on top of the burn it keeps lit). */
 const FIRE_FIELD_DPS = 0.35;
 
+
 /** FIRESTORM damage per second before the damage multiplier: fresh burn dps x the Inferno part of ultPower. */
 const stormDps = (st: PlayerStats) => FX.flameDps(0) * Math.max(1, (st.ultPower || 1) / (st.damageMult || 1));
 
@@ -66,6 +68,8 @@ export class ClassicKit extends Kit {
   private readonly fireFrom: CastOrigin = { y: 0, deck: -1 };
   private fireFieldTickT = 0;
   readonly flameCone: FlameCone;
+  /** SNOW CHUNKS packed by tap BALL SLAM hits (0..CHUNK_MAX); a PLOW RUSH slam spends them all. */
+  chunks = 0;
 
   constructor(h: CombatHost) {
     super(h);
@@ -158,6 +162,34 @@ export class ClassicKit extends Kit {
       this.onPlayerHit(dealt, killed, e, false);
     }
     this.clearTargets();
+  }
+
+  /** SNOW CHUNKS from a Classic tap BALL SLAM that hit `hits` bots / opponents: one each, up to CHUNK_MAX (float
+   *  text over the plow). Returns the chunks now held. */
+  packChunks(hits: number): number {
+    const plow = this.b.plow;
+    if (hits <= 0 || !plow) return this.chunks;
+    const was = this.chunks;
+    this.chunks = addChunks(this.chunks, hits);
+    if (this.chunks !== was && this.b.local) {
+      _q.set(plow.position.x, plow.position.y + 3.4, plow.position.z);
+      this.ctx.fx.floatText(_q, this.chunks >= CHUNK_MAX ? '❄ 10 · FULL' : `❄ ${this.chunks}`, '#bfeaff', this.chunks >= CHUNK_MAX ? 1 : 0.75);
+    }
+    return this.chunks;
+  }
+
+  /** PLOW RUSH cash-in: the multipliers for the chunks held (then they reset to 0). Big float text from CHUNK_BIG. */
+  takeChunks(x: number, z: number): { radius: number; damage: number; n: number } {
+    const n = this.chunks;
+    this.chunks = 0;
+    const m = cashIn(n);
+    if (n >= CHUNK_BIG) {
+      const plow = this.b.plow;
+      _q.set(x, (plow?.surfaceY || 0) + 4, z);
+      this.ctx.fx.floatText(_q, `❄×${n} AVALANCHE!`, n >= CHUNK_MAX ? '#ffffff' : '#bfeaff', 1.2 + 0.05 * n);
+      this.b.audio.play('freeze', { volume: 0.7, pitch: 0.8 });
+    }
+    return { radius: m.radius, damage: m.damage, n };
   }
 
   /** Fire damage fills the Classic Plow's FIRESTORM meter (shares ISOTOPE's Critical Mass slot + net field). */
@@ -359,6 +391,7 @@ export class ClassicKit extends Kit {
   }
 
   clear(): void {
+    this.chunks = 0;
     this.flameCone.hide();
     this.flameT = 0;
     this.flameCharge = 1;

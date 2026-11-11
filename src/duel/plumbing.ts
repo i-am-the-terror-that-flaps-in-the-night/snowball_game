@@ -1,5 +1,5 @@
 import type { GameEvents } from '../core/events';
-import type { AudioAPI, EnemyManagerAPI, GameContext, PlayerStats, SnowFieldAPI, SoundName, ZoneDef } from '../core/types';
+import type { AudioAPI, EnemyHandle, EnemyManagerAPI, GameContext, PlayerStats, SnowFieldAPI, SoundName, ZoneDef } from '../core/types';
 import type { CosmeticSlot } from '../config/cosmetics';
 import type { Plow } from '../entities/Plow';
 import type { Combat } from '../entities/Combat';
@@ -10,6 +10,7 @@ import { arcRange } from '../entities/combat/volt';
 import { sprayRange } from '../entities/combat/isotope';
 import { tankGunRange } from '../entities/combat/arsenal';
 import { FIST_REACH, fistSize } from '../entities/combat/brute';
+import { RUSH_MAX, rushCost } from '../entities/combat/classicRush';
 
 /** Code -> press-action index (0 slam, 1 dash, 2 whirl, 3 ability). */
 const CODE_ACTION = new Map<string, number>();
@@ -31,6 +32,8 @@ export class DuelPilot implements PilotBinding {
   /** The other pilot's plow (PilotBinding.foe: a guest's visual-only homing). */
   foe: Plow | null = null;
   readonly pvp = true;
+  /** Duel guest: the other plow, for visuals only (PilotBinding.visualFoe). */
+  visualFoe: EnemyHandle | null = null;
 
   constructor(
     readonly local: boolean,
@@ -108,9 +111,16 @@ export class PuppetInput implements InputSource {
 
 /** Hull half-length (m) the AutoPilot adds to a fist's reach past the hull (as scripts/balance/duel2.ts HULL). */
 const AUTO_HULL = 1.6;
+/** Centre distance (m) inside which the AutoPilot taps the ball slam (the old slam reach; the Classic and the vehicles
+ *  on the snowball kit alike). */
+const AUTO_SLAM = 6.5;
+/** AutoPilot VOLT-9: centre distance (m) inside which it reverses flat out. */
+const AUTO_KITE = 6;
+/** AutoPilot ARSENAL: share of the disc reach it closes to, then holds (its mid-range role; duel2.ts uses 0.75). */
+const AUTO_MID = 0.7;
 /** Centre distance (m) within which the AutoPilot holds SPACE: the plow's real held-primary reach from its kit (VOLT-9
  *  Arc Lance, ISOTOPE Rad Sprayer, ARSENAL Mag Discs, all with Mega Hopper; BRUTUS Wrecking Fist), and the old 9 m
- *  for the Classic (its snowball ignores the hold). Before, every plow held at 9 m, so the three ranged primaries
+ *  for the Classic (its SPACE is AutoPilot.classicSpace's tap slam / rush, which doesn't use this). Before, every plow held at 9 m, so the three ranged primaries
  *  (12-17 m late) never fired at their reach. AutoPilot only: probes / testing, not gameplay. */
 export function autoHoldRange(st: PlayerStats): number {
   switch (st.plowKind) {
@@ -129,12 +139,16 @@ export function autoHoldRange(st: PlayerStats): number {
 
 /** A dumb but aggressive autopilot (probes, idle testing): drive at the opponent, slam / dash / whirl / F, and hold
  *  SPACE when facing within the held primary's real reach (autoHoldRange: Arc Lance, Wrecking Fist, Rad Sprayer, Mag
- *  Discs; snowball plows ignore the hold). ARSENAL fires its Mag Repulsor (E) when facing within its wave's reach. */
+ *  Discs; snowball plows ignore the hold). ARSENAL fires its Mag Repulsor (E) when facing within its wave's reach.
+ *  Each kit plays its role: the Classic tap-slams up close (plowing a ball between slams) and rushes in from range, VOLT-9 kites at the Arc Lance's
+ *  reach, ARSENAL holds mid range, BRUTUS and ISOTOPE drive in. */
 export class AutoPilot implements InputSource {
   throttle = 0;
   steer = 0;
   private pressed = new Set<string>();
   private holdSpace = false;
+  /** Classic: SPACE held to charge a PLOW RUSH. */
+  private rushHold = false;
   private t = 0;
   private fT = 1.5;
   constructor(private me: () => Plow, private opp: () => Plow) {}
@@ -148,6 +162,7 @@ export class AutoPilot implements InputSource {
     if (me.dead) {
       this.throttle = this.steer = 0;
       this.holdSpace = false;
+      this.rushHold = false;
       return;
     }
     const st = me.pilot.stats;
@@ -167,9 +182,18 @@ export class AutoPilot implements InputSource {
     this.steer = Math.max(-1, Math.min(1, err * 2.2));
     this.throttle = Math.abs(err) > 2.2 ? -0.4 : 1;
     const facing = Math.abs(err) < 0.35;
-    if (facing && d < 6.5 && me.heldBallRadius > 0.5) this.pressed.add('Space');
-    this.holdSpace = Math.abs(err) < 0.6 && d < reach;
-    if (facing && d > 6 && d < 15 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
+    if (st.plowKind === 'classic') this.classicSpace(me, d, err, facing);
+    else {
+      if (facing && d < AUTO_SLAM && me.heldBallRadius > 0.5) this.pressed.add('Space');
+      this.holdSpace = Math.abs(err) < 0.6 && d < reach;
+      // Ranged kits keep their range instead of ramming in (each kit's role): VOLT-9 kites at 0.7-0.9 x the Arc
+      // Lance's reach (backing off with the lance up, AUTO_KITE), ARSENAL stops closing at AUTO_MID x disc reach.
+      // Forward dashes only to close a gap the kit wants closed.
+      if (st.plowKind === 'volt' && hunting) this.kite(err, d, reach);
+      else if (st.plowKind === 'arsenal' && hunting && d < reach * AUTO_MID && Math.abs(err) < 0.6) this.throttle = 0.15;
+      const dashFrom = st.plowKind === 'volt' ? reach * 0.95 : st.plowKind === 'arsenal' ? reach * AUTO_MID + 2 : 6;
+      if (facing && d > dashFrom && d < dashFrom + 9 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
+    }
     const arsenal = st.plowKind === 'arsenal';
     if (d < (arsenal ? st.laserRange * 0.9 : 5.5) && (!arsenal || facing) && me.whirlReady >= 1) this.pressed.add('KeyE');
     this.fT -= dt;
@@ -177,6 +201,34 @@ export class AutoPilot implements InputSource {
       this.fT = 2.5;
       this.pressed.add('KeyF');
     }
+  }
+  /** VOLT-9: hold 0.7-0.9 x the Arc Lance's reach. Too close, reverse away (VOLT-9 reverses at 0.8 x top speed while
+   *  the lance fires), still steering the nose at the opponent (steering is mirrored in reverse); full reverse inside
+   *  AUTO_KITE m, where the lance's close-range penalty bites. In the band, creep to stay facing. */
+  private kite(err: number, d: number, reach: number): void {
+    if (d < reach * 0.7) {
+      this.throttle = d < AUTO_KITE ? -1 : -0.6;
+      this.steer = Math.max(-1, Math.min(1, -err * 2.2));
+    } else if (d < reach * 0.9) this.throttle = Math.abs(err) > 0.35 ? 0.25 : 0;
+  }
+  /** The Classic Plow's SPACE: tap the BALL SLAM when facing within the old slam reach (AUTO_SLAM) with a ball on the
+   *  blade (it plows snow for the next one in between: think()'s gathering); lined up at ~7-21 m with meter for a rush
+   *  that reaches them (rushCost), hold to charge a PLOW RUSH and let go once the telegraph reaches them (2.5 m short of
+   *  their centre: the blade touches them there, and the first contact ends the rush in the slam) or the charge is
+   *  full. Charging doesn't slow the plow, so it keeps closing. Its dash shares that meter, so it only dashes when the
+   *  opponent is past rush reach. */
+  private classicSpace(me: Plow, d: number, err: number, facing: boolean): void {
+    if (this.rushHold) {
+      const k = me.rushCharge;
+      if (Math.abs(err) > 0.6 || d < AUTO_SLAM || (k >= 0 && (me.rushPreview >= d - 2.5 || k >= 1))) this.rushHold = false;
+    } else if (!me.rushing) {
+      if (facing && d > AUTO_SLAM + 0.5 && d < RUSH_MAX + 1 && me.dashReady >= rushCost(d - 2.5)) {
+        this.rushHold = true;
+        this.pressed.add('Space');
+      } else if (facing && d < AUTO_SLAM && me.heldBallRadius > 0.5) this.pressed.add('Space');
+      else if (facing && d > RUSH_MAX + 1 && d < 28 && me.dashReady >= 1) this.pressed.add('ShiftLeft');
+    }
+    this.holdSpace = this.rushHold;
   }
   wasPressed(code: string): boolean {
     return this.pressed.has(code);

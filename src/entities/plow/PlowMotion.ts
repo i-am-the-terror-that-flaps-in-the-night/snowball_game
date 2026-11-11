@@ -6,10 +6,15 @@ import { STEP_UP, type Deck } from '../../world/Terrain';
 import { LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, stepVertical } from '../../world/terrainMotion';
 import {
   TIP_Z, PROP_SMASH_SPEED, REAR_Z, SLAM_COOLDOWN, DASH_SECONDS, WHIRL_SECONDS, WHIRL_TICKS, WHIRL_TURNS,
-  PLOW_HEIGHT, ICE_LINGER, LAVA_SFX_GAP, LAVA_EVENT_GAP,
+  PLOW_HEIGHT, ICE_LINGER, LAVA_SFX_GAP, LAVA_EVENT_GAP, INPUT_BUFFER,
 } from './constants';
 import { _fwd, _a, _c, _dir } from './scratch';
 import { deckById } from './assets';
+import { bodyBand, heightOk } from '../combat/shared';
+import {
+  MOMENTUM_SECONDS, RUSH_MAX, RUSH_MIN_SLAM_R, RUSH_SPEED, TAP_WINDOW, rushAffordable, rushCharge,
+  rushPlan,
+} from '../combat/classicRush';
 
 /* Layer 3 of the Plow class (see PlowBase.ts): slam / dash / whirl, terrain step and hazards, arena / obstacle /
  * deck collisions, death and the wreck. */
@@ -50,7 +55,10 @@ export abstract class PlowMotion extends PlowVisuals {
     const cx = _c.x + _fwd.x * (r + 0.5);
     const cz = _c.z + _fwd.z * (r + 0.5);
     this.kick = 1;
-    this.b.combat.slamAt(cx, cz, r, volume);
+    // The Classic Plow's tap slam packs a SNOW CHUNK per bot / opponent hit and, when it lands, starts MOMENTUM.
+    if (this.kind === 'classic') {
+      if (this.b.combat.tapSlam(cx, cz, r, volume) > 0) this.momentumT = MOMENTUM_SECONDS;
+    } else this.b.combat.slamAt(cx, cz, r, volume);
   }
 
   protected tryDash(): void {
@@ -97,6 +105,16 @@ export abstract class PlowMotion extends PlowVisuals {
     const tx = this.position.x + _fwd.x * (TIP_Z - 0.4);
     const tz = this.position.z + _fwd.z * (TIP_Z - 0.4);
     const q = enemies.query(tx, tz, this.bladeWidth / 2 + 0.4, this.queryOut);
+    // PLOW RUSH: the first bot / opponent the blade meets ends the rush in the slam right there. Through
+    // Combat.playerRam (-> rushContact) so the body height rule applies: a bot on a deck above / below, or one the plow
+    // flies over off a deck edge, doesn't stop it.
+    if (this.rushLeft > 0) {
+      for (let i = 0; i < q.length && !this.rushStop; i++) if (q[i].alive) this.b.combat.playerRam(q[i], this.speed);
+      // Duel guest: its targets are empty (the host decides), so its predicted rush stops on the other plow the
+      // same way the host's does, instead of running on past it and snapping back.
+      if (!this.rushStop && !this.b.authoritative) this.rushFoeContact(tx, tz);
+      return;
+    }
     const list = this.dashTargets;
     list.length = 0;
     for (let i = 0; i < q.length; i++) list.push(q[i]);
@@ -122,6 +140,167 @@ export abstract class PlowMotion extends PlowVisuals {
     // Cancel a pending slam (the whirl takes over the blade).
     this.slamPhase = 0;
     this.whirlFx();
+  }
+
+  /* ------------------------------------------------------------------ Classic Plow SPACE: tap slam / rush */
+
+  /** The Classic Plow's SPACE (combat/classicRush.ts): a tap is the ball slam (slamBuffer -> the slam state machine in
+   *  Plow.update, as it always was), a hold charges a PLOW RUSH released on key-up.
+   *  `high`: airborne clear of the surface (SPACE is the air slam there: AirKit). Runs every non-hit-stop frame. */
+  protected updateClassicSpace(dt: number, high: boolean): void {
+    const input = this.b.input;
+    // Mid-rush the plow is committed: presses are ignored (no buffered rush / slam out of a rush).
+    if (this.rushLeft > 0 || this.rushLanding) {
+      this.spaceT = -1;
+      this.rushChargeK = -1;
+      return;
+    }
+    if (input.wasPressed('Space') && !high && this.whirlT < 0) {
+      this.spaceT = 0;
+      this.rushNoMeter = false;
+    }
+    if (this.spaceT < 0) return;
+    // Whirl, dash or a jump interrupt the hold.
+    if (high || this.whirlT >= 0 || this.dashT > 0) {
+      this.cancelSpace();
+      return;
+    }
+    // Inputs that only know presses (no isDown) tap.
+    const down = !!input.isDown?.('Space');
+    this.spaceT += dt;
+    if (down) {
+      if (this.spaceT >= TAP_WINDOW) {
+        if (rushAffordable(this.dashCharge) <= 0) {
+          // Not enough dash meter for even the shortest rush: buzz once; the release slams instead.
+          if (!this.rushNoMeter) this.b.audio.play('error', { volume: 0.5 });
+          this.rushNoMeter = true;
+          this.rushChargeK = -1;
+        } else {
+          const was = this.rushChargeK;
+          this.rushChargeK = rushCharge(this.spaceT, this.b.stats.rushChargeTime ?? 1);
+          this.rushDist = rushPlan(this.rushChargeK, this.dashCharge).dist;
+          if (was < 0) this.b.audio.play('charge', { volume: 0.45, pitch: 1.5 });
+          else if (was < 1 && this.rushChargeK >= 1) this.b.audio.play('charge', { volume: 0.55, pitch: 2 });
+        }
+      }
+      return;
+    }
+    // Released.
+    this.spaceT = -1;
+    const k = this.rushChargeK;
+    this.rushChargeK = -1;
+    if (k >= 0) {
+      const plan = rushPlan(k, this.dashCharge);
+      if (plan.dist > 0) {
+        this.dashCharge = Math.max(0, this.dashCharge - plan.cost);
+        this.startRush(plan.dist);
+        return;
+      }
+    }
+    // A tap (or a hold the meter can't pay for): the ball slam, buffered through its cooldown like any slam press.
+    this.slamBuffer = INPUT_BUFFER;
+  }
+
+  /** Drop a SPACE hold / charge (whirl, dash, jump, death, reset). */
+  protected cancelSpace(): void {
+    this.spaceT = -1;
+    this.rushChargeK = -1;
+    this.rushNoMeter = false;
+  }
+
+  /** Launch a PLOW RUSH of `dist` m: straight ahead, no steering, ends in the slam (finishRush). */
+  protected startRush(dist: number): void {
+    this.rushLeft = Math.min(RUSH_MAX, dist);
+    this.rushT = 0;
+    this.rushStall = 0;
+    this.rushStop = false;
+    this.speed = RUSH_SPEED;
+    this.pushVel.multiplyScalar(0.3);
+    // The rush's end slam takes over the blade: drop a tap slam still winding up / buffered.
+    this.slamPhase = 0;
+    this.slamBuffer = 0;
+    this.rushLaunchFx();
+  }
+
+  /** Rush launch feedback (also replayed for a duel opponent's puppet). */
+  protected rushLaunchFx(): void {
+    this.ghostT = 0;
+    this.streakT = 0;
+    this.kick = Math.max(this.kick, 0.9);
+    this.dashFx();
+    this.b.audio.play('ram', { volume: 0.6, pitch: 0.7 });
+  }
+
+  /** Duel guest prediction: the blade query of dashHits against the other plow (PilotBinding.foe), with the body
+   *  height band (Combat.playerRam's Reach.Body). */
+  private rushFoeContact(tx: number, tz: number): void {
+    const foe = this.b.foe;
+    if (!foe || foe.dead) return;
+    const fr = typeof foe.radius === 'number' ? foe.radius : this.radius;
+    if (Math.hypot(foe.position.x - tx, foe.position.z - tz) >= this.bladeWidth / 2 + 0.4 + fr) return;
+    if (heightOk(this.position.y, foe.position.y, bodyBand(fr))) this.rushStop = true;
+  }
+
+  /** A body contact while rushing (a bot driving into the hull, Combat.playerRam): the rush ends in the slam there. */
+  rushContact(): void {
+    if (this.rushLeft > 0) this.rushStop = true;
+  }
+
+  /** End the rush (first contact, distance done, blocked, a wall or a launch): slow down and slam at the blade. */
+  protected finishRush(launched = false): void {
+    this.rushLeft = 0;
+    this.rushStop = false;
+    this.rushStall = 0;
+    this.speed = Math.min(Math.max(0, this.speed), this.b.stats.maxSpeed * 0.45);
+    // Still in the air (it rode off a deck edge, or over a bump) and not launched up a ramp lip: the slam waits for
+    // the touchdown (Plow.update), so it lands on the floor the plow lands on instead of going off mid-air at the
+    // wrong height. A launch up off a lip slams right there, on the lip (as designed).
+    if (this.vert.airborne && !launched) this.rushLanding = true;
+    else this.rushSlam();
+  }
+
+  /** The rush's end slam: the held ball (Snow Reserve keeps its share) or a small snow-chunk slam without one; the
+   *  chunks cash in inside Combat.rushSlam. */
+  protected rushSlam(): void {
+    const r0 = this.heldBallRadius;
+    let r = RUSH_MIN_SLAM_R;
+    let volume = 0;
+    if (r0 >= 0.2) {
+      r = Math.max(r0, RUSH_MIN_SLAM_R);
+      volume = this.heldVolume * (1 - this.b.stats.reserveFrac);
+      this.heldVolume -= volume;
+      if (this.heldBallRadius < 0.2) {
+        this.heldVolume = 0;
+        this.ballR = 0;
+        this.ball.visible = false;
+        this.glow.visible = false;
+        this.ballWasVisible = false;
+      }
+    }
+    this.getBladeTip(_c);
+    this.getForward(_fwd);
+    const cx = _c.x + _fwd.x * (r + 0.5);
+    const cz = _c.z + _fwd.z * (r + 0.5);
+    this.kick = 1;
+    this.slamPose = 1;
+    this.b.combat.rushSlam(cx, cz, r, volume);
+  }
+
+  /** Rush telegraph / charge aura (own plow and Duel puppet alike). */
+  protected updateRushVisuals(dt: number): void {
+    if (this._dead || this.rushChargeK < 0) {
+      this.rushFx.telegraph(dt, -1, 0, 0, 0, 0, 0, 0, 0, 0, undefined, null);
+      return;
+    }
+    this.getBladeTip(_c);
+    const r = Math.max(this.heldBallRadius, RUSH_MIN_SLAM_R);
+    const ringR = (r * 1.3 + this.bladeWidth * 0.35) * (this.b.stats.avalancheCore ? 1.5 : 1) * this.b.combat.chunkRadiusMult;
+    this.rushFx.telegraph(dt, this.rushChargeK, this.rushDist, ringR, this.heading, this.position.x, this.position.z, _c.x, _c.z, this.vert.y, this.ctx.terrain, this.b.snow);
+    // Icy sparks off the blade while it winds up.
+    if (Math.random() < dt * (6 + 14 * this.rushChargeK)) {
+      _a.set(_c.x + (Math.random() - 0.5) * this.bladeWidth, this.vert.surfaceY + 0.5 + Math.random() * 0.6, _c.z);
+      this.ctx.fx.burst(_a, { color: this.rushChargeK >= 1 ? 0xffffff : 0x9fe6ff, count: 2, speed: 2.5, size: 0.12, gravity: -3, life: 0.35 });
+    }
   }
 
   /** Whirl start feedback (also replayed for a duel opponent's puppet). */
@@ -384,7 +563,7 @@ export abstract class PlowMotion extends PlowVisuals {
     const bladeR = Math.max(0.9, this.bladeWidth * 0.38);
     const bladeOff = TIP_Z - 0.55;
     // Rams at speed and dashes smash straight through destructible props (they stop nothing).
-    const smashes = b.authoritative && (this.dashT > 0 || Math.abs(vf) > PROP_SMASH_SPEED);
+    const smashes = b.authoritative && (this.dashT > 0 || this.rushLeft > 0 || Math.abs(vf) > PROP_SMASH_SPEED);
     for (let i = 0; i < obs.length; i++) {
       const o = obs[i];
       const p = this.position;
@@ -444,9 +623,10 @@ export abstract class PlowMotion extends PlowVisuals {
       this.pushVel.x -= pIn * nx;
       this.pushVel.z -= pIn * nz;
     }
-    const dashing = this.dashT > 0;
+    const dashing = this.dashT > 0 || this.rushLeft > 0;
     if (dashing && fwdInto > 0.45 && into > 4) {
-      // Dash straight into a wall: heavy thud, dash over.
+      // Dash (or PLOW RUSH) straight into a wall: heavy thud, dash over (the rush slams where it stopped).
+      if (this.rushLeft > 0) this.rushStop = true;
       this.dashT = 0;
       this.dashEase = 0;
       this.speed *= 0.2;
@@ -491,6 +671,11 @@ export abstract class PlowMotion extends PlowVisuals {
     this.wreckT = 0;
     this.slamPhase = 0;
     this.dashT = 0;
+    this.rushLeft = 0;
+    this.rushLanding = false;
+    this.momentumT = 0;
+    this.cancelSpace();
+    this.rushFx.hide();
     this.dashEase = 0;
     this.hitStopT = 0;
     this.spawnProt = 0;

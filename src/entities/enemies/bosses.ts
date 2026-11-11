@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ballRadius, ballVolume } from '../../core/types';
 import type { EnemyType } from '../../config/enemies';
+import { knockScale } from '../../config/plows';
 import { Bot, Vuln, type Host } from './Bot';
 import { clamp, face, goTo } from './ai';
 import { donaldProps, type WallLine } from './donaldProps';
@@ -577,7 +578,8 @@ function grinder(h: Host, e: Bot, dt: number): void {
       const inRange = d < R + h.pr * 0.5 && plowInWave(h, e);
       const plow = h.ctx.plow;
       if (inRange && !plow.dead) {
-        const k = 15 * dt;
+        // The auger's suck-in: heavy plows resist it (PlowDef.knockResist).
+        const k = 15 * dt * knockScale(h.ctx.stats?.plowKind);
         plow.push(-h.ux * k, -h.uz * k);
       }
       if (e.cd3 <= 0) {

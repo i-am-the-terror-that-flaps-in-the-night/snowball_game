@@ -8,7 +8,7 @@ const CONTROLS: [string[], string][] = [
   [['forward'], 'Accelerate'],
   [['back'], 'Brake / reverse'],
   [['left', 'right'], 'Steer'],
-  [['slam'], 'SLAM snowball'],
+  [['slam'], 'SLAM snowball (Classic: tap = slam, hold + release = PLOW RUSH into a slam)'],
   [['dash'], 'DASH STRIKE (long burst)'],
   [['whirl'], 'Whirlwind tornado'],
   [['ability'], 'Inferno (Classic) / Thunderclap (VOLT-9) / Ground Pound (BRUTUS)'],

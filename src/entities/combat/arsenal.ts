@@ -66,7 +66,8 @@ const DEG = Math.PI / 180;
  *  DISC_BACK_MAX m/s; it snaps back in within DISC_CATCH m (or is recycled after DISC_LIFE s). It hits every target its
  *  body (tankDiscRadius) passes through, each at most once per leg, for gunDamage: on the way out with a nudge
  *  (DISC_KNOCK), on the way back with a TUG toward ARSENAL (DISC_TUG m/s divided by the bot's mass, bosses
- *  DISC_TUG_BOSS x; in the Duel DISC_DUEL_TUG, scaled by the victim's DUEL_KNOCK_TAKEN). Launches cycle through
+ *  DISC_TUG_BOSS x; in the Duel DISC_DUEL_TUG, scaled by the victim plow's
+ *  heaviness, knockScale(kind), in Combat.hitPlow). Launches cycle through
  *  DISC_YAW (one entry: dead straight). A disc that meets a prop (it breaks) or the ground turns back early. */
 const DISC_SPEED = 30;
 const DISC_OVERCLOCK = 0.25;
@@ -477,9 +478,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   }
 
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (disc hits), see
-   *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it; `tug`: that pull is a Mag
-   *  Discs tug (DamageOpts.tug: the Duel scales it by the victim's knockback resistance). Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false, tug = false): number {
+   *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it (bots divide it by their mass;
+   *  a plow scales it by its heaviness, knockScale in Combat.hitPlow, like every push). Returns damage dealt. */
+  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -493,7 +494,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       direct,
       pierce: true,
       ult: ult || undefined,
-      tug: tug || undefined,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);
@@ -748,7 +748,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private discStrike(d: Disc, e: EnemyHandle): void {
     const plow = this.b.plow;
     const knock = !d.back ? DISC_KNOCK : -(this.b.pvp ? DISC_DUEL_TUG : DISC_TUG * (e.isBoss ? DISC_TUG_BOSS : 1));
-    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round', 1, false, d.back);
+    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round');
     _fwd.set(-d.dx, 0.35, -d.dz).normalize();
     const fx = this.ctx.fx;
     fx.sparks(d.pos, _fwd, d.back ? DISC_HIT_SPARKS_BACK : DISC_HIT_SPARKS);

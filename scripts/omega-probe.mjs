@@ -3,7 +3,7 @@
 //                                [--runs 2] [--par 2] [--cap 240] [--out DIR] [--resume] [--report-only]
 // An autopilot plays a full campaign arena (all rounds + the boss) with a chosen plow at a chosen upgrade tier and logs
 // per round: clear time (s), HP lost, deaths (the plow is revived in place and the death counted), damage dealt by
-// source (basic = rams / slams / whirls / dash, air = stomps / air slams, F, ult, passive auras; ARSENAL: minigun /
+// source (basic = rams / slams / whirls / dash, air = stomps / air slams, F, ult, passive auras; ARSENAL: discs /
 // shotgun / repulsor / burst / singularity), the share of bot-time spent on another level than the player (|dy| > 2 m), time stuck
 // (moving < 1 m/s while throttling for > 1 s; "free" = no bot within 6 m, i.e. not a shoving match) and the boss fight
 // length. Each round is capped at --cap s (then force-cleared and flagged).
@@ -212,8 +212,21 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   };
   const isArs = plow === 'arsenal';
   // Held SPACE primaries of the vehicle kits (no snowball to slam): Arc Lance, Wrecking Fist, Rad Sprayer reach (m,
-  // centre to centre, before the target's radius).
-  const KIT_REACH = { volt: 9, brute: 5.6, isotope: 8.5 }[plow] ?? 0;
+  // centre to centre, before the target's radius), with Mega Hopper (as src/duel/plumbing.ts autoHoldRange: arcRange,
+  // FIST_REACH x fistSize + hull, sprayRange + Long Nozzle). Read live: Mega Hopper changes it mid-run.
+  const hopR = () => Math.max(0, c.stats.maxBallRadius - 1.2);
+  const kitReach = () => {
+    const s = c.stats;
+    if (plow === 'volt') return 14 + 2.5 * hopR();
+    if (plow === 'brute') return 1.6 + 4 * Math.max(1, s.maxBallRadius / 1.2) + (s.fistReach || 0);
+    if (plow === 'isotope') return 8.5 + 2 * hopR() + (s.sprayReach || 0);
+    return 0;
+  };
+  const KIT_REACH = kitReach() > 0;
+  // ARSENAL's Mag Discs reach (tankGunRange: gunRange + 1.5 m per extra metre of max ball radius).
+  const discReach = () => (c.stats.gunRange || 0) + 1.5 * hopR();
+  // Classic Plow: tap-slam reach (centre distance, as the snowball kit's slam below) and PLOW RUSH limits (classicRush.ts).
+  const SLAM_D = 5.5, RUSH_MAX = 20, rushCost = (d) => Math.max(0.25, Math.min(RUSH_MAX, d) / RUSH_MAX);
   wrap(cb.air, 'update', 'air');
   wrap(cb.classic, 'updateFlame', 'F');
   wrap(cb.classic, 'updateBurns', 'F');
@@ -231,7 +244,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   wrap(cb.isotope, 'armNuke', 'ult');
   wrap(cb.isotope, 'updateAura', 'passive');
   wrap(cb.isotope, 'updateRads', 'passive');
-  wrap(cb.arsenal, 'updateGuns', 'minigun');
+  wrap(cb.arsenal, 'updateGuns', 'discs');
   wrap(cb.arsenal, 'updateLaser', 'lance');
   wrap(cb.arsenal, 'updateBurst', 'burst');
   wrap(cb.ult, 'update', isArs ? 'singularity' : 'ult');
@@ -278,9 +291,11 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
   const ap = () => {
     const p = c.plow, s = c.stats, en = c.enemies, nav = en.nav;
     for (const k of ['ShiftLeft', 'KeyE', 'KeyF']) if (keys[k]) set(k, false);
-    if (!isArs && !KIT_REACH && keys.Space) set('Space', false);
-    if (p.dead) { for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'Space']) set(k, false); return; }
+    // Classic: SPACE stays down only while charging a PLOW RUSH (AP.rush).
+    if (!isArs && !KIT_REACH && keys.Space && !AP.rush) set('Space', false);
+    if (p.dead) { AP.rush = false; for (const k of ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'Space']) set(k, false); return; }
     const px = p.position.x, py = p.position.y, pz = p.position.z;
+    const dReach = isArs ? discReach() : 0;
     let best = null, bScore = 1e9, bd = 1e9, near = 0, inF = 0, anyIn = 0, gunIn = 0, laserIn = 0, bossNear = 0;
     const fR = plow === 'volt' ? s.clapRadius * 0.8 : plow === 'brute' ? s.poundRadius * 0.7 : plow === 'isotope' ? s.meltRadius * 0.7 : plow === 'arsenal' ? 14 : s.flameRange * 0.9;
     for (const e of en.list) {
@@ -292,7 +307,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
       if (same && d < 7) near++;
       if (same && d < fR) inF++;
       if (d < 45) anyIn++;
-      if (d < (s.gunRange || 0)) gunIn++;
+      if (d < dReach) gunIn++;
       if (d < (s.laserRange || 0) && d > 0.5) {
         const a = Math.atan2(dx, dz) - p.heading;
         if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 1.2) laserIn++;
@@ -325,6 +340,7 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
       // Only ignored bots left: wander, then forget the ignores.
       if (AP.wanderT <= 0) AP.ignore.clear();
       const dd = Math.atan2(AP.wander.x - px, AP.wander.z - pz) - p.heading, da = Math.atan2(Math.sin(dd), Math.cos(dd));
+      AP.rush = false;
       set('KeyS', false); set('Space', false); set('KeyW', AP.wanderT > 0); set('KeyA', da > 0.08); set('KeyD', da < -0.08);
       return;
     }
@@ -401,13 +417,38 @@ async function pageSetup({ arena, plow, tier, tiers, cap, hard }) {
       if (useF) { tap('KeyF'); usedF = true; }
     }
     if (isArs) {
-      set('Space', gunIn >= 1); // minigun: hold while anything is in range (the turret picks its own target)
+      set('Space', gunIn >= 1); // Mag Discs: hold while anything is in reach (they home on the nearest bot ahead)
       if (!usedF && p.whirlReady >= 1 && laserIn >= 1) tap('KeyE');
       else if (!usedF && p.dashReady >= 1 && !routed && bd > 8 && bd < 16 && Math.abs(diffA) < 0.15) tap('ShiftLeft');
       return;
     }
     // Vehicle kits: hold the primary while the target is in reach and roughly ahead.
-    if (KIT_REACH) set('Space', sameT && bd < KIT_REACH + (best.radius || 1) * 0.5 && Math.abs(bdiff) < 0.7);
+    if (KIT_REACH) set('Space', sameT && bd < kitReach() + (best.radius || 1) * 0.5 && Math.abs(bdiff) < 0.7);
+    if (plow === 'classic') {
+      // Tap the ball slam when the target is inside slam reach with a ball on the blade (plowing a new one in between);
+      // lined up at range with meter for a rush that reaches it,
+      // hold SPACE to charge a PLOW RUSH and let go once the telegraph reaches the target (or the charge is full); the
+      // rush slams at the first bot it touches, so a longer line only costs meter.
+      if (AP.rush) {
+        const k = p.rushCharge;
+        if (!sameT || routed || Math.abs(bdiff) > 0.6 || bd < SLAM_D || (k >= 0 && (p.rushPreview >= bd - 2 || k >= 1)) || c.time - AP.rushT > 2.5) {
+          AP.rush = false;
+          set('Space', false);
+        }
+        return;
+      }
+      if (usedF || p.rushing) return;
+      if (sameT && !routed && bd > SLAM_D + 1 && bd < RUSH_MAX + 1 && Math.abs(bdiff) < 0.2 && p.dashReady >= rushCost(bd - 2)) {
+        AP.rush = true;
+        AP.rushT = c.time;
+        tap('Space');
+        return;
+      }
+      if (p.heldBallRadius >= 0.5 && sameT && bd < SLAM_D && Math.abs(bdiff) < 0.45) tap('Space');
+      else if (p.dashReady >= 1 && !routed && sameT && bd > RUSH_MAX + 1 && bd < 28 && Math.abs(diffA) < 0.15) tap('ShiftLeft');
+      else if (p.whirlReady >= 1 && near >= 1 && bd < 5) tap('KeyE');
+      return;
+    }
     if (usedF) return;
     if (p.heldBallRadius >= 0.5 && sameT && bd < 5.5 && Math.abs(bdiff) < 0.45) tap('Space');
     else if (p.dashReady >= 1 && !routed && sameT && bd > 6 && bd < 14 && Math.abs(diffA) < 0.15) tap('ShiftLeft');

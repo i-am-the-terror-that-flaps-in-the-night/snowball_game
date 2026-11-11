@@ -123,6 +123,9 @@ export interface PlayerStats {
   reserveFrac: number;
   /** Slam Combo: extra slam damage per combo stack. */
   comboStep: number;
+  /** Classic Plow PLOW RUSH: seconds of SPACE hold for a full charge (Engine / Nitro / Mega Hopper shorten it; the 20 m
+   *  cap never moves). Absent = combat/classicRush.ts RUSH_CHARGE_BASE. */
+  rushChargeTime?: number;
   /** Inferno flame attack (F, free on the Classic Plow): reach m, burn dps (0 = not the Classic Plow), recharge s. */
   flameRange: number;
   flameDps: number;
@@ -360,6 +363,9 @@ export interface CombatAPI {
   readonly overloadHeat: number;
   /** Self-damage the NEXT Thunderclap would deal at the current heat (capped so it leaves 1 HP); 0 off VOLT-9. */
   readonly overloadCost: number;
+  /** Classic Plow SNOW CHUNKS on the blade (0..10, tap slam hits pack them, a PLOW RUSH slam spends them), -1 on
+   *  other plows. */
+  readonly chunks?: number;
   /** The bound vehicle's SPACE / E HUD slots (combat/shared.ts VehicleKit descriptors), null on the Classic. */
   readonly abilityHud?: AbilityHud | null;
   /** Reset combat state. `betweenRounds` (round / wave cleared mid-run) keeps run-long meters like ISOTOPE's
@@ -413,9 +419,10 @@ export interface DamageOpts {
   /** An ultimate's damage (the blast and its aftermath). Bots ignore it; the online Duel soft-caps it per ultimate
    *  (duel/opponent.ts, DUEL_ULT_HP_CAP). */
   ult?: boolean;
-  /** The knockback is a tug toward the attacker (ARSENAL's Mag Discs on their way back). Bots take it like any
-   *  knockback (divided by mass); the online Duel scales it by the victim's DUEL_KNOCK_TAKEN (BRUTUS resists most). */
-  tug?: boolean;
+  /** A share of the target's own max HP (ISOTOPE's TANK-BUSTER burn): the online Duel lands it as dealt (no Duel
+   *  damage / kind / power scaling; the area-ability diminishing returns still apply), then the victim's own
+   *  defences. Bots ignore it. */
+  hpShare?: boolean;
 }
 
 export interface EnemyManagerAPI {
@@ -674,6 +681,8 @@ export interface HudState {
   shield: number;
   /** ISOTOPE Critical Mass 0..1 (1 = NUKE ready), or -1 on other plows. */
   critMass?: number;
+  /** Classic Plow SNOW CHUNKS 0..10 (pips under the snowball gauge), -1 / absent elsewhere. */
+  chunks?: number;
   /** Thunderclap Overload heat (CombatAPI.overloadHeat; -1 = hidden) and the next clap's predicted self-damage. */
   overload?: number;
   overloadCost?: number;

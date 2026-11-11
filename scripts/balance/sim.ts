@@ -1,5 +1,5 @@
 /* Headless balance sim: drives the real Combat kits (no browser) against dummy bots and duel opponents.
- * Plow-driven attacks (the Classic's slam / whirl, everyone's dash strike) are scheduled from a simple engagement
+ * Plow-driven attacks (the Classic's tap / rush slams and whirl, everyone's dash strike) are scheduled from a simple engagement
  * model (see MELEE below); everything Combat owns (F abilities, ultimates, auras, burns, the vehicles' SPACE / E
  * kits via held keys, ARSENAL's grav weapons) runs for real. */
 import * as THREE from 'three';
@@ -12,6 +12,7 @@ import { OpponentTarget, PlowHandle } from '../../src/duel/opponent';
 import type { PilotBinding } from '../../src/entities/pilot';
 import type { Plow } from '../../src/entities/Plow';
 import type { PlowKind } from '../../src/config/plows';
+import { RUSH_COST_MIN } from '../../src/entities/combat/classicRush';
 
 export const KINDS: PlowKind[] = ['classic', 'volt', 'brute', 'isotope', 'arsenal'];
 export type Tier = 'fresh' | 'mid' | 'high';
@@ -55,10 +56,13 @@ export function statsFor(kind: PlowKind, tier: Tier): PlayerStats {
 
 /** Engagement model for the Plow-driven attacks (the sim has no snow field or driving):
  *  - the blade moves SNOW_INTAKE m^3/s of snow while fighting (about half the open-field rate), x collectRate;
- *  - slams use a ball of SLAM_BALL x max radius once it has grown (slam cycle >= SLAM_CYCLE s);
+ *  - the Classic slams a ball of SLAM_BALL x max radius once it has grown (slam cycle >= SLAM_CYCLE s): a tap slam
+ *    (Combat.tapSlam: every hit packs a SNOW CHUNK) until it holds RUSH_CHUNKS chunks, then a PLOW RUSH slam
+ *    (Combat.rushSlam, cashing them in) when the meter pays a short rush (RUSH_COST_MIN of the dash meter it shares
+ *    with the dash; a dash strike needs a full meter), landing on the target (the rush slams at first contact);
  *  - whirls go off every recharge (+ the 0.9s spin) holding a ball of WHIRL_BALL x max radius;
  *  - dashes go off every recharge (+0.5s dash) and DASH_CONNECT of them land a dash strike. */
-export const MELEE = { SNOW_INTAKE: 5, SLAM_BALL: 0.8, SLAM_CYCLE: 0.82, WHIRL_BALL: 0.5, DASH_CONNECT: 0.5 } as const;
+export const MELEE = { SNOW_INTAKE: 5, SLAM_BALL: 0.8, SLAM_CYCLE: 0.82, WHIRL_BALL: 0.5, DASH_CONNECT: 0.5, RUSH_CHUNKS: 5 } as const;
 const WHIRL_TICKS = [0.1, 0.35, 0.6, 0.85];
 
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
@@ -170,6 +174,8 @@ export class Rotation {
   private hits = new Set<number>();
   private dashT = 0;
   private dashN = 0;
+  /** The Classic's shared rush / dash meter (0..1, refilled over dashCooldown). */
+  private meter = 1;
   t = 0;
   fills: number[] = [];
   private fillStart = 0;
@@ -211,12 +217,16 @@ export class Rotation {
     } else {
       this.ball_ = Math.min(ballVolume(st.maxBallRadius), this.ball_ + MELEE.SNOW_INTAKE * st.collectRate * dt);
       const want = ballVolume(st.maxBallRadius * MELEE.SLAM_BALL);
+      this.meter = Math.min(1, this.meter + dt / Math.max(0.1, st.dashCooldown));
       this.slamT -= dt;
       if (this.slamT <= 0 && this.ball_ >= want && tgt && this.whirlAt < 0) {
         const r = st.maxBallRadius * MELEE.SLAM_BALL;
         const at = this.hooks.slamPoint ? this.hooks.slamPoint(r) : tgt.position;
         if (at) {
-          p.c.slamAt(at.x, at.z, r, want);
+          if (p.c.chunks >= MELEE.RUSH_CHUNKS && this.meter >= RUSH_COST_MIN) {
+            p.c.rushSlam(at.x, at.z, r, want);
+            this.meter -= RUSH_COST_MIN;
+          } else p.c.tapSlam(at.x, at.z, r, want);
           this.ball_ -= want * (1 - st.reserveFrac);
           this.slamT = MELEE.SLAM_CYCLE;
         }
@@ -244,7 +254,8 @@ export class Rotation {
     this.dashT -= dt;
     if (this.dashT <= 0 && this.hooks.dash) {
       if (this.hooks.dash()) this.dashT = st.dashCooldown + 0.5;
-    } else if (this.dashT <= 0) {
+    } else if (this.dashT <= 0 && (vehicle || this.meter >= 1)) {
+      if (!vehicle) this.meter = 0;
       this.dashT = st.dashCooldown + 0.5;
       this.dashN++;
       if (tgt && this.dashN * MELEE.DASH_CONNECT >= 1) {
@@ -271,6 +282,9 @@ export class Rotation {
 export const DT = 1 / 60;
 /** Ahead of the plow: inside every melee / F-ability reach (whirl 4 m + bot radius). */
 const NEAR = 4.5;
+/** Where VOLT-9's single-target dummy stands: at the edge of its Static Field (6.5 m + the dummy) and mostly past the
+ *  Arc Lance's close-range penalty (gap 4.4 m: x0.91 on bots), where a kiting VOLT fights from. */
+const VOLT_NEAR = 7;
 
 function botRig(kind: PlowKind, tier: Tier, bots: Dummy[], ult: 'hold' | 'use' = 'hold', decoys: Dummy[] = []) {
   const ctx = newCtx();
@@ -308,8 +322,10 @@ const total = (bots: Dummy[]) => bots.reduce((s, b) => s + b.dealt, 0);
  *  Lance's nearest-bot lock): the dummy is no longer alone, so VOLT-9's GROUNDED ARC (1.75x on a lone bot) stays off,
  *  as on a typical bot in a wave. Only the dummy's damage counts. */
 export function singleDps(kind: PlowKind, tier: Tier, seconds = 60, grounded = true): number {
-  const bots = [dummy(0, NEAR)];
-  const r = botRig(kind, tier, bots, 'hold', grounded ? [] : [dummy(0, NEAR + 7)]);
+  // VOLT-9 fights from range (its Arc Lance is weak bumper to bumper, ARC_CLOSE_*): its dummy stands at VOLT_NEAR.
+  const at = kind === 'volt' ? VOLT_NEAR : NEAR;
+  const bots = [dummy(0, at)];
+  const r = botRig(kind, tier, bots, 'hold', grounded ? [] : [dummy(0, at + 7)]);
   r.run(seconds);
   return total(bots) / seconds;
 }

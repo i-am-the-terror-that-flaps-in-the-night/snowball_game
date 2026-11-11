@@ -1,7 +1,8 @@
 import { PLOW_MASS, type DamageOpts, type EnemyHandle, type EnemyManagerAPI, type EnemyType, type PlayerStats } from '../core/types';
 import { BRAWL_HIT_CAP, brawlHit } from '../config/brawl';
-import { DUEL_DAMAGE_SCALE, DUEL_KIND_DAMAGE, DUEL_KNOCK_TAKEN, DUEL_KIND_DAMAGE_FRESH, DUEL_KIND_TAKEN, DUEL_KIND_TAKEN_FRESH, duelKindFactor, DUEL_POWER_DAMP, DUEL_ROUND_SCALE, DUEL_ULT_CAP_SECONDS, DUEL_ULT_HP_CAP } from '../config/duel';
+import { DUEL_DAMAGE_SCALE, DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, DUEL_KIND_TAKEN, DUEL_KIND_TAKEN_FRESH, duelKindFactor, DUEL_POWER_DAMP, DUEL_ROUND_SCALE, DUEL_ULT_CAP_SECONDS, DUEL_ULT_HP_CAP } from '../config/duel';
 import type { Plow } from '../entities/Plow';
+import { knockScale } from '../config/plows';
 import type { Combat } from '../entities/Combat';
 
 /** A human plow seen through the bot interface, so every player attack in Combat (slam, ram, dash strike, whirl,
@@ -133,6 +134,9 @@ export class OpponentTarget implements EnemyManagerAPI {
     const v = this.victimStats();
     const kind = duelKindFactor(DUEL_KIND_DAMAGE, DUEL_KIND_DAMAGE_FRESH, a.plowKind, a.ultPower) * duelKindFactor(DUEL_KIND_TAKEN, DUEL_KIND_TAKEN_FRESH, v.plowKind, v.ultPower);
     let scaled = (amount * kind * DUEL_DAMAGE_SCALE * (opts?.direct === 'round' ? DUEL_ROUND_SCALE : 1)) / power ** DUEL_POWER_DAMP;
+    // A share of the victim's max HP (ISOTOPE's tank-buster burn) is already sized to this victim: no Duel damage /
+    // kind / power scaling (it still takes the area-ability diminishing returns below, like every burn).
+    if (opts?.hpShare) scaled = amount;
     // Area kits tuned for crowds (Thunderclap's storm strikes, burns, fallout pools, auras) all land on the one
     // human target: repeated ability damage in a short window has diminishing returns.
     const other = (!opts?.source || opts.source === 'other') && opts?.direct !== 'round';
@@ -165,8 +169,9 @@ export class OpponentTarget implements EnemyManagerAPI {
         fromZ = a.z;
       }
     }
-    // A tug (Mag Discs pulling the victim in) is resisted by heavier vehicles (DUEL_KNOCK_TAKEN: BRUTUS most).
-    const kb = (kmag > 0.1 ? kmag * KNOCK_SCALE : 2) * (opts?.tug ? (DUEL_KNOCK_TAKEN[v.plowKind] ?? 1) : 1);
+    // Heaviness: Combat.hitPlow scales every push and tug (Mag Discs pulling the victim in) by the victim's
+    // knockScale (PlowDef.knockResist: BRUTUS 0.5), so nothing extra here.
+    const kb = kmag > 0.1 ? kmag * KNOCK_SCALE : 2;
     const hp0 = victim.hp;
     const final = this.victimCombat().hitPlow(raw, fromX, fromZ, { knockback: kb, unblockable: opts?.source === 'whirl', direct: opts?.direct });
     if (other) this.burst += final;
@@ -188,8 +193,10 @@ export class OpponentTarget implements EnemyManagerAPI {
       const d = Math.hypot(dx, dz) || 1;
       dx /= d;
       dz /= d;
-      h.kx = dx * kb;
-      h.kz = dz * kb;
+      // The push Combat.hitPlow applied on the host (heavy plows take less), replayed on the guest's own plow.
+      const kv = kb * knockScale(v.plowKind);
+      h.kx = dx * kv;
+      h.kz = dz * kv;
       h.stop = stop;
       this.onHit?.(h);
     }

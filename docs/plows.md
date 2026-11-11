@@ -5,14 +5,52 @@ ability, a four-upgrade line in the Garage, and an **ultimate**. ARSENAL is the 
 with magnets and lasers.
 
 **⚙ Settings → Main attacks:** each vehicle can be switched from SPECIAL (its own SPACE / E) to SNOWBALL: it gets a
-blade, plows snow into a ball, slams with SPACE and whirls with E like the Classic, and keeps its own F and ultimate.
+blade, plows snow into a ball, slams with a SPACE tap and whirls with E (the Classic's own SPACE adds a held
+rush), and keeps its own F and ultimate.
 It takes effect on the next run; the Duel always uses SPECIAL.
+
+**Roles** (in Brawl Stars terms): BRUTUS is the close tank (El Primo), the Classic the close-range assassin (Nori),
+VOLT-9 the true ranged pilot (Colt), ARSENAL the mid-range magnetic disruptor and ISOTOPE the specialist (zone, damage
+over time, tank-buster).
+
+**Heaviness.** Every knockback, shove or pull a plow takes (bots' rams and attacks, boss shockwaves and the GRINDER's
+auger suck-in, Brawl rivals, the Duel opponent's hits) is scaled by its weight: BRUTUS takes half, the Classic 80%,
+ISOTOPE 85%, VOLT-9 and ARSENAL the full push (`PlowDef.knockResist`, `knockScale(kind)` in `src/config/plows.ts`).
+A plow's own moves (dash, Saw Charge) are never scaled.
 
 ## Classic Plow
 
-+25% HP and full slam damage. Past Packed Ice level 4, each further level adds another +5.5% damage on the Classic
-(about +33% at Packed Ice 10, easing toward +66% at very high levels), so its slams and fire keep up late game. **F: Inferno**, a free fire cone that
-burns bots and ends in a fireball.
+**The close-range assassin** (Brawl Stars: Nori): slam snow chunks out of them, then commit to a long charged rush that ends
+in your ball slam. +15% HP and full slam damage. Past Packed Ice level 4, each further level adds another +5.5% damage
+on the Classic (about +33% at Packed Ice 10, easing toward +66% at very high levels), so its slams and fire keep
+up late game. It still plows snow into a ball: the ball grows as you plow and still shields frontal hits while held.
+
+- **SPACE tap (let go within 0.2 s): SLAM.** The original ball slam, unchanged: the plow winds up, lunges and smashes
+  the held snowball down ahead of the blade (needs a ball, else an error buzz; 0.5 s cooldown, a tap during it is kept;
+  the ball is spent, Snow Reserve keeps its share; Slam Combo, Shatter Slam, Frost / Avalanche Core all apply). Every
+  bot (or the other pilot) it hits packs one **❄ SNOW CHUNK** onto the blade (10 at most; ❄ pips under the snowball
+  gauge). **Momentum:** a tap slam that lands gives +20% top speed for 1 s (refreshes, doesn't stack).
+- **SPACE hold, then let go: PLOW RUSH.** Holding past the tap window charges the rush over ~1 s (V8 Engine, Nitro
+  Dash and Mega Hopper shorten the charge a little, never below 0.55 s). While charging the plow keeps its full
+  speed and steering (the line turns with it), its blade sparks, a glowing ring sits under it and an icy **line on the ground runs from the blade to the
+  landing point** with a ring the size of the slam (the other pilot sees it too). Let go and the plow rushes there in a
+  straight, committed line (no steering, 28 m/s): **1.5 m** at the smallest charge up to a **hard cap of 20 m** at full
+  charge, at every upgrade level. It **ends in the ball slam**, and **the first bot or pilot it touches triggers the slam
+  right there**
+  (the old slam: zone and damage from the held ball, Snow Reserve, Slam Combo, Shatter Slam, Frost / Avalanche Core
+  all apply; with no ball it is a small 0.6 m slam). **Cash-in:** the slam spends every snow chunk: zone x(1 + 0.05 n)
+  and damage x(1 + 0.04 n) for n chunks (x1.5 / x1.4 at 10), shown as a big ❄×n AVALANCHE! from 5 (the rush slam
+  itself packs no chunks). The rush also stops
+  early (and slams there) at a wall or a big obstacle, or if it is launched up off a ramp lip. Off a deck edge it
+  carries on through the drop.
+- **Shared meter.** The rush and the SHIFT dash run on the same meter: a rush costs max(0.25, distance / 20) of a full
+  charge (5 m or less = a quarter, 20 m = all of it), and the telegraph never runs past what the meter can pay for.
+  With less than a quarter, holding SPACE gives one error buzz and no telegraph, and letting go **slams instead** (so
+  SPACE never does nothing). A dash, a whirl or a jump during the hold drops the charge; while rushing, SHIFT and E
+  wait.
+- In the air SPACE is still the air slam.
+
+**F: Inferno**, a free fire cone (10 m base reach, more with Inferno Exhaust) that burns bots and ends in a fireball.
 
 Line: Inferno Exhaust (hotter, faster fire), Shatter Slam (slams throw ice shards at bots around the impact), Snow
 Reserve (keep part of your ball after a slam), Slam Combo (back-to-back slams hit harder, stacking up to 3 times; +24% per stack at level 3, +39% at level 8).
@@ -20,15 +58,18 @@ Reserve (keep part of your ball after a slam), Slam Combo (back-to-back slams hi
 **Ultimate: FIRESTORM.** Fire damage fills the meter; when it's full, F fires a 360° fire nova that leaves burning
 ground.
 
+Vehicles switched to the SNOWBALL kit (⚙ Settings) keep the old SPACE: a tap slams the held ball.
+
 ## VOLT-9
 
-In the Duel its attacks hit 1.8x as hard (its kit is built for crowds).
+In the Duel its attacks hit 1.8x as hard (its kit is built for crowds). **The true ranged pilot:** the Arc Lance
+reaches 14 m, it backs off fast while firing (kiting), and in the Duel it is weak bumper to bumper.
 
 No blade: a low, wide rover under a crackling coil tower. It doesn't plow snow or carry a snowball, though deep
 snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% damage, but -5% HP.
 
 - **SPACE (hold): Arc Lance.** Every 0.15 s an arc jumps from the tower to the nearest bot within 60° of the nose and
-  9 m (Mega Hopper adds reach), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
+  14 m (+2.5 m per metre of Mega Hopper ball radius above 1.2 m: about 20 m late; it was 9 m), then **chains a long way**: 6 more hops (plus one per Chain Lightning arc), each to the
   nearest unhit bot within 8 m, the first hop at 60% damage and each one after keeping 90% of the one before. Every
   arc hit (any hop) has a 7% chance to **PARALYSE** the bot for 1.2 s (a stun; bosses half); a paralysed bot can't be
   paralysed again for 2.5 s after. **GROUNDED ARC:** when the locked bot is a boss, or has nothing within 8 m to chain to
@@ -37,7 +78,14 @@ snow still slows it down. +12% speed, +25% acceleration and +20% dash, +15% dama
   that forks down through the bot into the floor, a lower buzz, and a **GROUNDED** pop (GROUNDED ×2.6 on a boss) with a
   deep zap when it first grounds, repeated at most every 1.6 s. A paralysed bot crackles with a blue-white outline of
   short arcs for as long as the lock lasts, so frozen bots read at a glance. It stays locked onto its target
-  while that bot stays in reach. Overclock speeds the arc up.
+  while that bot stays in reach. Overclock speeds the arc up. Past 9 m the bolt jitters wider so a 14-20 m shot still
+  crackles.
+  **Kiting:** while the lance fires, VOLT-9 reverses at up to 80% of its top speed (every other plow, and VOLT-9
+  when not firing: 45%), so it can back off a diver and keep the lance on it.
+  **Close-range penalty (Duel only):** an arc on an opponent whose gap is under 3 m hits for 0.6x, ramping linearly
+  back to full at 5 m. The gap is bumper to bumper: centre-to-centre distance minus both hull radii (1.6 m each for
+  plows). Bots take full damage at any range. On the Duel guest the bolt is drawn onto the opponent's hull (visual
+  only; the host deals the damage).
 - **E: Static Field.** An electrified field rides with the rover for 2.5 s (6.5 m, wider with Tesla Field). It pulses
   every 0.5 s, the first pulse a bigger burst: each pulse damages and stuns every bot inside for 0.7 s, so bots caught in
   it stay locked down while you drive through a pack. It recharges on the E timer (Whirlwind Turbine and Overclock
@@ -83,11 +131,18 @@ it).
 
 ## ISOTOPE ☢️
 
+**The specialist:** zone control (Fallout Trail, Meltdown pools), damage over time (RAD DOSE) and tank-buster.
+
 A long, low nuclear flatbed: a stubby armoured cab, a big glowing reactor capsule lying on the bed with control rods
 bobbing out of it, twin cooling stacks, a spinning vent fan and a sprayer nozzle over the nose. No blade, no snowball
 (deep snow still slows it). +5% speed and +20% HP; bots it irradiates glow green, take +30% damage from you
 and burn (radiation damage every 0.5 s while it lasts, 3 s after the last dose, or for as long as a RAD DOSE is
-still soaking in). **Lead lining:** a bot it has irradiated hits ISOTOPE 20% softer (bots only; Duel and Brawl
+still soaking in). **Tank-buster:** every burn tick also takes 0.5% of the target's max HP per second of burn, as true
+damage on top (no damage mult, vulnerability or armour, no lifesteal). Bots count their max HP only up to 1500 (just
+above the base campaign bosses, below THE DONALD / MEGAPLOW and Hard / Survival-scaled bosses), so a fresh run's boss
+loses about 7.5 HP/s but a huge late boss doesn't melt; Duel plows count in full (BRUTUS's 540 HP burns ~2.7 HP/s,
+ARSENAL's 360 ~1.8 HP/s; the Duel lands it unscaled, with the usual area-ability diminishing returns). Sim: ISOTOPE
+1-target DPS fresh 80 -> 87, mid 363 -> 371, high 1799 -> 1806. **Lead lining:** a bot it has irradiated hits ISOTOPE 20% softer (bots only; Duel and Brawl
 unchanged), so dosing a pack before wading into it pays off.
 
 - **SPACE (hold): Rad Sprayer.** Every 0.12 s (faster with Overclock) the nozzle hoses a glowing cone (about 100°
@@ -141,7 +196,7 @@ the discs only home lightly.
   hits everything it passes through **on the way out and again on the way back** (each target at most once per leg;
   the way back sweeps a field twice as wide). A hit on the way out nudges the target away; a hit on the way back
   **tugs** it toward ARSENAL (divided by the bot's mass, bosses barely; in the Duel a small pull on the other plow
-  that heavier vehicles resist, BRUTUS most). Discs that miss still boomerang home. A disc that meets a prop breaks
+  scaled by its heaviness like any push, BRUTUS half). Discs that miss still boomerang home. A disc that meets a prop breaks
   it and turns back early. Disc hits are direct hits (one armour check each; in the Duel they skip the i-frames, at
   the reduced 'round' scale). A soft magnetic hum rises while the cycle runs. In the Duel the other player sees your
   discs fly too.

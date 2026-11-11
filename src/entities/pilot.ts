@@ -1,5 +1,5 @@
 import type { GameEvents } from '../core/events';
-import type { EnemyManagerAPI, GameContext, PlayerStats, SnowFieldAPI, SoundName } from '../core/types';
+import type { EnemyHandle, EnemyManagerAPI, GameContext, PlayerStats, SnowFieldAPI, SoundName } from '../core/types';
 import type { CosmeticSlot } from '../config/cosmetics';
 import type { Plow } from './Plow';
 import type { Combat } from './Combat';
@@ -51,9 +51,12 @@ export interface PilotBinding {
   readonly gear?: readonly string[] | null;
   /** True for the online Duel's pilots (plow vs plow), where PvE-only damage bonuses don't apply. */
   readonly pvp?: boolean;
+  /** Duel guest only: the other pilot's plow, for visuals that should land on it although the guest hits nothing
+   *  locally (VOLT-9's Arc Lance bolt). Null / absent everywhere else. */
+  readonly visualFoe?: EnemyHandle | null;
   /** Online Duel: the other pilot's plow. A guest's Combats hit nothing locally (the host decides), so visual-only
    *  homing (ARSENAL's Mag Discs) aims at this instead. Unset outside the Duel. */
-  readonly foe?: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly dead: boolean } | null;
+  readonly foe?: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly dead: boolean; readonly radius?: number } | null;
 }
 
 /** The single-player pilot: everything comes from the GameContext (read lazily, so systems built later work). */

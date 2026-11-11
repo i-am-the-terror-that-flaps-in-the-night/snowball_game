@@ -40,6 +40,12 @@ export class MeleeKit extends Kit {
     const plow = this.b.plow;
     const stats = this.b.stats;
     if (!plow || plow.dead || !enemy.alive) return 0;
+    // PLOW RUSH: first contact ends the rush in the ball slam right there (the slam does the damage). Before the ram
+    // cooldown: a bot rammed a moment ago still stops the rush.
+    if ((plow as { rushing?: boolean }).rushing) {
+      (plow as { rushContact?: () => void }).rushContact?.();
+      return 0;
+    }
     const until = this.ramCd.get(enemy.id);
     if (until !== undefined && until > ctx.time) return 0;
     const dashing = plow.dashing;
@@ -149,18 +155,19 @@ export class MeleeKit extends Kit {
   }
 
   /** SPACE slam impact centered at (x, z) with a ball of radius `r` (volume `volume` m^3, already consumed
-   *  by the plow). Damages every bot in the zone, shatters the ball. Returns the number of bots hit. */
-  slamAt(x: number, z: number, r: number, volume: number): number {
+   *  by the plow). Damages every bot in the zone, shatters the ball. Returns the number of bots hit. `zoneMult` /
+   *  `dmgMult` scale the zone radius and the damage (the Classic's PLOW RUSH cashing in SNOW CHUNKS). */
+  slamAt(x: number, z: number, r: number, volume: number, zoneMult = 1, dmgMult = 1): number {
     const ctx = this.ctx;
     const stats = this.b.stats;
     const plow = this.b.plow;
     const fx = ctx.fx;
     const avalanche = stats.avalancheCore;
-    const zone = (r * 1.3 + stats.bladeWidth * 0.35) * (avalanche ? 1.5 : 1);
+    const zone = (r * 1.3 + stats.bladeWidth * 0.35) * (avalanche ? 1.5 : 1) * zoneMult;
     // Slam Combo (Classic Plow): stacks from slams that landed recently.
     if (ctx.time - this.lastSlamHitAt > COMBO_WINDOW) this.comboStacks = 0;
     const combo = stats.comboStep > 0 ? this.comboStacks : 0;
-    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo);
+    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo) * dmgMult;
     const knockMag = (10 + 6 * r) * (avalanche ? 1.6 : 1);
     const freeze = stats.frostCore ? 3 : 0;
 
@@ -235,7 +242,7 @@ export class MeleeKit extends Kit {
     }
 
     const position = new THREE.Vector3(x, ground, z);
-    this.b.events.emit('slam', { hits: count, radius: r, position });
+    this.b.events.emit('slam', zoneMult !== 1 ? { hits: count, radius: r, position, zoneMult } : { hits: count, radius: r, position });
     if (count >= 3) {
       this.b.events.emit('strike', { count, position: position.clone() });
       this.b.audio.play('strike');

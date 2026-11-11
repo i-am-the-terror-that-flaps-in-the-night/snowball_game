@@ -600,6 +600,40 @@ fresh (was 0.75: 34% at mid) and takes x1.18 late (was 1.15); ARSENAL takes x0.6
 (33% at fresh). VOLT-9 and ISOTOPE unchanged. Each step is a few percent of one side's damage, inside the matrix's noise
 for a single run; re-run `scripts/duel-matrix.mjs` when convenient to confirm.
 
+## Follow-up: Classic role rework (close-range assassin)
+
+The Classic's SPACE became a tap BLADE SWIPE (16 x damage mult, ~100° to 3.5 m, packs a snow chunk per hit, max 10,
++20% speed for 1 s) and a held PLOW RUSH (1.5-20 m, shares the dash meter at max(0.25, d / 20), ends in the old ball
+slam, which cashes the chunks in for x(1 + 0.05 n) zone and x(1 + 0.04 n) damage). Its HP went from x1.25 to x1.15
+and Inferno's base reach from 8.5 to 10 m (`src/entities/combat/classicRush.ts`, docs/plows.md). The headless sim
+(`scripts/balance/sim.ts`, `duel2.ts`) still schedules the Classic's damage as timed slams: it does not model the
+swipe, the rush or the chunks yet, so its Classic rows (and the Duel factors tuned on them) predate the rework. The
+minigun invariant in `tests/balance.test.ts` is now measured against the Classic's HP at its old x1.25, the same
+absolute cap as before. Re-tune with the browser matrix (`scripts/duel-matrix.mjs`, whose AutoPilot slams up close
+and charges / releases rushes) once the other vehicles' reworks land.
+
+**Player correction: the tap is the slam, not a swipe.** "They're not swipes, they're slams like the OG plow": the
+BLADE SWIPE is gone. A SPACE tap is the original ball slam again (wind-up, lunge, ball spent, 0.5 s cooldown), and
+every bot / opponent a tap slam hits packs the snow chunk (+20% speed for 1 s when it lands). The hold is still the
+PLOW RUSH that cashes the chunks in. The sim's Classic model tap-slams (Combat.tapSlam) every slam cycle and turns the
+slam into a rush slam once it holds 5 chunks and the meter pays a short rush (MELEE.RUSH_CHUNKS).
+
+## Role rework: VOLT-9 true ranged, ISOTOPE tank-buster
+
+`npm run balance`, before -> after (1-target DPS / cluster DPS / duel TTK avg):
+
+| plow | fresh | mid | high |
+|---|---|---|---|
+| volt | 87 / 293 / 7.0 -> 88 / 286 / 7.2 | 421 / 1650 / 8.3 -> 417 / 1662 / 8.8 | 2327 / 8765 / 7.7 -> 2365 / 8832 / 8.0 |
+| isotope | 80 / 320 / 8.5 -> 87 / 365 / 8.4 | 363 / 1697 / 9.9 -> 371 / 1742 / 9.7 | 1799 / 8969 / 8.2 -> 1806 / 9014 / 8.1 |
+
+- VOLT-9's Arc Lance reach 9 -> 14 m barely moves its PvE numbers (the dummies stand inside 9 m); its Duel TTK rises a
+  little because the parked victim sits inside the new 3-5 m close-range penalty (x0.6-1, Duel only).
+- ISOTOPE's tank-buster (0.5% of max HP per second of burn, bots counted up to 1500 HP) adds ~7 DPS on a big target:
+  +9% fresh, +2% mid, +0.4% high on one target. The cluster gain (+14% fresh) is a dummy artefact: every sim dummy has
+  1e7 HP, so all eight count the full 1500 HP; real pack bots have 30-140 HP and gain under 1 HP/s each. Boss ult fill
+  (fresh) 36.0 -> 33.2 s. Duel: BRUTUS loses ~2.7 HP/s of burn, ARSENAL ~1.8 HP/s.
+
 ## Follow-up: ARSENAL Mag Discs replace the Mag Shotgun
 
 ARSENAL's role moved from a close-range blaster to a **mid-range magnetic disruptor**: SPACE is now the Mag Discs (a
@@ -625,7 +659,7 @@ Duel: the discs stay 'round' hits (skip i-frames, DUEL_ROUND_SCALE). The discs a
 12 / 16% of a same-tier Classic (fresh / mid / high; the shotgun took 12 / 15 / 20%, the cap in tests/balance.test.ts
 is 20%): a stream ramps up where a blast front-loaded. Time to kill a parked plow (full rotation) barely moved: e.g.
 at high vs Classic / VOLT-9 / BRUTUS / ISOTOPE / ARSENAL 5.9 / 6.1 / 5.9 / 5.9 / 8.4 s (was 6.0 / 6.5 / 6.0 / 6.0 /
-8.3). The return tug in the Duel is scaled by DUEL_KNOCK_TAKEN (BRUTUS 0.4, ISOTOPE 0.75, Classic 0.85). The real
+8.3). The return tug in the Duel is scaled by the victim's heaviness like every push (knockScale: BRUTUS 0.5, Classic 0.8, ISOTOPE 0.85; integration replaced the builder's tug-only table). The real
 matrix (scripts/duel-matrix.mjs) has not been re-run for the discs: the kept range now matters more there than in
 this parked-target sim.
 

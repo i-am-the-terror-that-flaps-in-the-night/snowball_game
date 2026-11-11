@@ -90,21 +90,17 @@ export const DUEL_POWER_DAMP = 0.4;
  *  topped every tier of the matrix. ARSENAL stays below 1 because its Mag Discs ('round' hits) already skip i-frames and
  *  ability diminishing returns: 0.85 is the most that keeps the discs alone under a fifth of a same-tier Classic in
  *  2 s of held fire (tests/balance.test.ts), so the rest of its help comes from DUEL_KIND_TAKEN. */
-export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 1.95, brute: 0.56, arsenal: 0.85, classic: 0.97 };
+export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 2.15, brute: 0.56, arsenal: 0.85, classic: 0.97 };
 /** DUEL_KIND_TAKEN scales every hit the vehicle TAKES from a human plow (an effective-HP lever: the HP bar, the hit caps
  *  and the ultimate meter sizes stay on the real max HP). VOLT-9 and ARSENAL carry ~75% of the others' HP at every
  *  tier (light, fast vehicles) and lost most even trades; ISOTOPE fell furthest once the others were evened out (its
  *  spray range and radiation want kiting the fight never gives it); BRUTUS (the most HP) still won most of its trades
  *  after its damage trim, so it takes a little more. */
-export const DUEL_KIND_TAKEN: Partial<Record<PlowKind, number>> = { volt: 0.77, arsenal: 0.6, isotope: 0.9, brute: 1.18 };
-/** Knockback resistance in the Duel: how much of a TUG (DamageOpts.tug: ARSENAL's Mag Discs pulling the other plow in on
- *  their way back) a vehicle takes, by its heaviness (missing = 1). BRUTUS (the heavy mech) resists most, ISOTOPE's
- *  long flatbed and the bladed Classic a little; the light VOLT-9 and ARSENAL take it all. */
-export const DUEL_KNOCK_TAKEN: Partial<Record<PlowKind, number>> = { brute: 0.4, isotope: 0.75, classic: 0.85 };
+export const DUEL_KIND_TAKEN: Partial<Record<PlowKind, number>> = { volt: 0.77, arsenal: 0.65, isotope: 0.9, brute: 1.18 };
 /** Fresh-garage overrides (vehicles not listed use the late value at every tier). BRUTUS grows strongest with upgrades
  *  (the matrix had it ~30% fresh / mid but ~65% at high under one flat trim), and VOLT-9 needs its full boost only late. */
-export const DUEL_KIND_DAMAGE_FRESH: Partial<Record<PlowKind, number>> = { volt: 1.8, brute: 0.78, classic: 0.9 };
-export const DUEL_KIND_TAKEN_FRESH: Partial<Record<PlowKind, number>> = { brute: 1, arsenal: 0.58 };
+export const DUEL_KIND_DAMAGE_FRESH: Partial<Record<PlowKind, number>> = { volt: 2.0, brute: 0.78, classic: 0.9 };
+export const DUEL_KIND_TAKEN_FRESH: Partial<Record<PlowKind, number>> = { brute: 1, arsenal: 0.68 };
 /** Garage ultPower at which the late values are fully in (fresh = 1, mid ~4, high ~10-13). In between the factor eases
  *  by log(ultPower) / log(DUEL_KIND_POWER_LATE): about 60% of the way at mid. */
 export const DUEL_KIND_POWER_LATE = 10;
@@ -128,9 +124,10 @@ export const DUEL_ULT_CHARGE = 2.5;
 /** Per-vehicle factor on DUEL_ULT_CHARGE (others 1), evening the fill out: ISOTOPE's Critical Mass counts only part of
  *  its damage (radiation shares), BRUTUS deals the most plow-vs-plow. Overclock (cooldownMult < 1: abilities more
  *  often, so more damage) grows the meter by 1 / sqrt(cooldownMult), as it grows the off-line one by 1 / cooldownMult.
- *  The Classic's factor is its DUEL_KIND_DAMAGE, so that Duel damage trim does not also delay FIRESTORM; the
+ *  The Classic's FIRESTORM fills from fire damage only, and since the role rework most of its damage is slams (tap
+ *  and rush; no fire), so its factor is 0.8 (it was its DUEL_KIND_DAMAGE, 0.97, so that trim did not delay FIRESTORM). The
  *  victim's DUEL_KIND_TAKEN is folded into the HP the meter is sized in (OpponentTarget.duelFoeMaxHp). */
-export const DUEL_ULT_KIND_CHARGE: Partial<Record<string, number>> = { isotope: 0.65, brute: 1.25, classic: DUEL_KIND_DAMAGE.classic };
+export const DUEL_ULT_KIND_CHARGE: Partial<Record<string, number>> = { isotope: 0.65, brute: 1.25, classic: 0.8 };
 /** ...and an ultimate landing on a human is a big swing, never a one-shot: on top of the usual Duel path (scales,
  *  power damp, hit cap, i-frames, shields), ultimate damage (the blast and its aftermath: SUPERCELL strikes,
  *  EARTHQUAKE rings, SINGULARITY pull + detonation, FIRESTORM nova + burning ground, NUKE blast + its fallout pool) is

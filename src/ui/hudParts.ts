@@ -58,6 +58,7 @@ export interface HudRefs {
   hpBox: HTMLElement; hpNum: HTMLElement; hpFill: HTMLElement; hpChip: HTMLElement;
   batt: HTMLElement; battFill: HTMLElement; crit: HTMLElement; critFill: HTMLElement;
   gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
+  chunks: HTMLElement; chunkPips: HTMLElement[];
   slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
   dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement; primary: HTMLElement;
   heat: HTMLElement; heatFill: HTMLElement; heatTxt: HTMLElement;
@@ -71,7 +72,7 @@ export function hudLast() {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
+    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
   };
 }
 export type HudLast = ReturnType<typeof hudLast>;
@@ -156,6 +157,13 @@ export function buildHudDom(hud: HTMLElement, H: HudRefs, bossSlots: BossSlot[])
   const inner = el('div', 'ss-gauge-inner', undefined, H.gauge);
   H.radius = el('div', 'ss-gauge-r', '0.00m', inner);
   H.tier = el('div', 'ss-gauge-tier', 'Snowball', inner);
+  // Classic Plow SNOW CHUNKS: ❄ and 10 pips inside the gauge, under the tier (tap slam hits fill them, a PLOW RUSH
+  // slam cashes in).
+  H.chunks = el('div', 'ss-chunks hidden', undefined, inner);
+  H.chunks.title = 'Snow chunks: tap slam hits pack them; a plow rush slam spends them all (+5% radius, +4% damage each)';
+  el('span', 'ss-chunks-ico', '❄', H.chunks);
+  H.chunkPips = [];
+  for (let i = 0; i < 10; i++) H.chunkPips.push(el('span', 'ss-chunk-pip', undefined, H.chunks));
   // Non-Classic vehicles: their SPACE ability takes the snowball gauge's place (icon / name from the kit).
   H.primary = buildAbility(row, '⚡', 'FIRE', 'SPACE', 'primary');
   H.primary.style.display = 'none';
@@ -352,6 +360,19 @@ export function updateHudPanels(ui: { h: HudRefs; last: HudLast; hud: HTMLElemen
       L.full = full;
       H.gauge.classList.toggle('full', full);
     }
+  }
+
+  // Classic Plow SNOW CHUNKS (hidden on the other plows and the snowball kit).
+  const ck = s.chunks === undefined || s.chunks < 0 || s.abilities ? -1 : Math.round(s.chunks);
+  if (ck !== L.chunks) {
+    // The Classic's slam is the PLOW RUSH's end (hold SPACE); a vehicle on the snowball kit still taps to slam.
+    if ((ck < 0) !== (L.chunks < 0) || L.chunks === -2) H.slam.innerHTML = ck >= 0 ? '<kbd class="ss-kbd">HOLD SPACE</kbd> RUSH SLAM!' : '<kbd class="ss-kbd">SPACE</kbd> SLAM!';
+    H.chunks.classList.toggle('hidden', ck < 0);
+    for (let i = 0; i < H.chunkPips.length; i++) H.chunkPips[i].classList.toggle('on', i < ck);
+    H.chunks.classList.toggle('full', ck >= 10);
+    H.chunks.classList.toggle('big', ck >= 5);
+    if (ck > L.chunks && L.chunks >= 0) restart(H.chunks, 'bump');
+    L.chunks = ck;
   }
 
   // abilities

@@ -12,9 +12,12 @@
  *            Depth is quantised to a byte over 0..SNOW_Q_MAX metres. flags & 1 = full-field keyframe.
  * ---------------------------------------------------------------------------------------------- */
 
-/** v6: the Duel moved to the shrunk Snowdome (venue list, arena size and spawns changed: peers on v5 would build a
+/** v8: the Classic's tap is the ball slam again (no BLADE SWIPE): the swipe counter left, chunks moved to 38 (39 floats).
+ *  v7: the Classic Plow's SPACE kit (BLADE SWIPE / PLOW RUSH / SNOW CHUNKS) added five plow fields (rushState ..
+ *  chunks), so the snapshot grew to 40 floats.
+ *  v6: the Duel moved to the shrunk Snowdome (venue list, arena size and spawns changed: peers on v5 would build a
  *  different arena from the same room code) and its ultimate meters carry over between rounds. Wire layout as v5. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 8;
 
 export const MSG_INPUT = 1;
 export const MSG_SNAP = 2;
@@ -62,13 +65,20 @@ export const NP = {
   y: 32,
   vy: 33,
   air: 34,
+  // Classic Plow SPACE kit (Plow.writeNet): 0 idle / 1 charging a rush / 2 rushing; the charge 0..1; the telegraphed
+  // distance while charging, metres left while rushing (a tap slam rides slamPhase / slamT like any slam).
+  rushState: 35,
+  rushCharge: 36,
+  rushDist: 37,
+  /** SNOW CHUNKS on the blade (Combat.writeNet; the guest's HUD and its predicted cash-in read it). */
+  chunks: 38,
 } as const;
-export const NET_PLOW_LEN = 35;
+export const NET_PLOW_LEN = 39;
 
 /** Fields that are angles (interpolated the short way round) / discrete (never blended: they switch to the newer
  *  snapshot's value when the guest's clock reaches it). */
 export const NP_ANGLE = NP.heading;
-export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase, NP.fire, NP.air];
+export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase, NP.fire, NP.air, NP.rushState, NP.chunks];
 
 /* ------------------------------------------------------------------ input */
 

@@ -73,7 +73,8 @@ export class GameHud {
     this.h.hint.textContent = ab
       ? `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  ${k('slam')} ${ab.primary.hint ?? ab.primary.label}  ·  ` +
         `${k('dash')} dash strike  ·  ${k('whirl')} ${ab.secondary.hint ?? ab.secondary.label}  ·  ${k('ability')} F-ability  ·  ESC pause`
-      : `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ${k('slam')} slam  ·  ` +
+      : `${k('forward')}/${k('back')} drive  ·  ${k('left')}/${k('right')} steer  ·  plow snow to grow a ball  ·  ` +
+        `${k('slam')} ${this.ctx.stats.plowKind === 'classic' ? 'tap: slam, hold: plow rush' : 'slam'}  ·  ` +
         `${k('dash')} dash strike  ·  ${k('whirl')} whirlwind  ·  ${k('ability')} F-ability  ·  ESC pause`;
   }
 

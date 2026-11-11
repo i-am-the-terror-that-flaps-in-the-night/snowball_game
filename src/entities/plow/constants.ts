@@ -24,6 +24,17 @@ export const SAW_FURY_DRAIN = 0.15;
 export const _haloCool = new THREE.Color(0xffc040);
 export const _haloHot = new THREE.Color(0xff3010);
 
+/** Reverse top speed as a share of maxSpeed; VOLT-9 backs off much faster while the Arc Lance is held (KITING: the
+ *  true ranged pilot can keep a diver at lance range). */
+export const REV_SPEED = 0.45;
+export const VOLT_KITE_REV = 0.7;
+/** ...in the online Duel (pvp): divers (the Classic's rush, BRUTUS) must not simply walk a kiting VOLT-9 down. */
+export const VOLT_KITE_REV_PVP = 0.8;
+/** Reverse top speed (m/s) for this kind: VOLT_KITE_REV (VOLT_KITE_REV_PVP in the Duel) x maxSpeed for VOLT-9 while
+ *  its Arc Lance fires, else REV_SPEED. */
+export const reverseCap = (maxSpeed: number, kind: string, arcHeld: boolean, pvp = false): number =>
+  maxSpeed * (kind === 'volt' && arcHeld ? (pvp ? VOLT_KITE_REV_PVP : VOLT_KITE_REV) : REV_SPEED);
+
 export const SLAM_WINDUP = 0.12;
 export const SLAM_LUNGE = 0.2;
 export const SLAM_IMPACT_AT = 0.05;
