@@ -380,11 +380,13 @@ export class Plow extends PlowMotion implements PlowAPI {
   }
 
   /** Duel grav pull (ARSENAL's Polarity Burst / Singularity on a human): steer the push velocity toward (dirX, dirZ)
-   *  (unit) at `frac` x this plow's top speed, softened by heaviness (TOW_HEAVY share of knockScale), so driving
-   *  straight out only gains (1 - pull) of top speed; a dash still breaks free. Call every frame while pulling. */
-  tow(dirX: number, dirZ: number, frac: number, dt: number): void {
+   *  (unit) at `frac` x this plow's top speed, softened by heaviness (TOW_HEAVY share of knockScale) unless `heavy` is
+   *  false (the Singularity pulls everything alike), so driving straight out only gains (1 - pull) of top speed.
+   *  Call every frame while pulling. */
+  tow(dirX: number, dirZ: number, frac: number, dt: number, heavy = true): void {
     if (this._dead || !(dt > 0) || !(frac > 0) || !Number.isFinite(dirX) || !Number.isFinite(dirZ)) return;
-    const v = frac * this.b.stats.maxSpeed * (1 - TOW_HEAVY + TOW_HEAVY * knockScale(this.b.stats.plowKind));
+    const resist = heavy ? 1 - TOW_HEAVY + TOW_HEAVY * knockScale(this.b.stats.plowKind) : 1;
+    const v = frac * this.b.stats.maxSpeed * resist;
     const k = 1 - Math.exp(-10 * dt);
     this.pushVel.x += (dirX * v - this.pushVel.x) * k;
     this.pushVel.z += (dirZ * v - this.pushVel.z) * k;

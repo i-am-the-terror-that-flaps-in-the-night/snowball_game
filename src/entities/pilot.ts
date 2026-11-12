@@ -61,7 +61,7 @@ export interface PilotBinding {
     readonly dead: boolean;
     readonly radius?: number;
     /** Plow.tow: a guest's replay of the opponent's grav pull drags its own predicted plow the way the host does. */
-    tow?(dirX: number, dirZ: number, frac: number, dt: number): void;
+    tow?(dirX: number, dirZ: number, frac: number, dt: number, heavy?: boolean): void;
   } | null;
 }
 

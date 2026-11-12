@@ -448,7 +448,7 @@ export interface EnemyManagerAPI {
   pull?(e: EnemyHandle, vx: number, vz: number, dt: number): void;
   /** Optional (the Duel's OpponentTarget): drag a human plow toward (dirX, dirZ) (unit) at `frac` of ITS OWN top speed
    *  (Plow.tow), so a grav pull holds a pilot however fast they are. */
-  tow?(e: EnemyHandle, dirX: number, dirZ: number, frac: number, dt: number): void;
+  tow?(e: EnemyHandle, dirX: number, dirZ: number, frac: number, dt: number, heavy?: boolean): void;
   /** Optional level routing consulted by the last-bot hunt (Enemies.ts sets / clears nothing itself: arena code
    *  assigns it, e.g. The Omega Works' NavGraph, and sets it back to null on leaving). */
   nav?: BotNav | null;

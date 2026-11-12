@@ -136,11 +136,11 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}, pvp =
       e.position.z += vz * dt;
     },
     // Duel: a human is towed at a share of its own top speed (logged, not moved).
-    tow: (e: EnemyHandle, dx: number, dz: number, frac: number) => {
-      tows.push({ t: ctx.time, e, dx, dz, frac });
+    tow: (e: EnemyHandle, dx: number, dz: number, frac: number, _dt: number, heavy = true) => {
+      tows.push({ t: ctx.time, e, dx, dz, frac, heavy });
     },
   };
-  const tows: { t: number; e: EnemyHandle; dx: number; dz: number; frac: number }[] = [];
+  const tows: { t: number; e: EnemyHandle; dx: number; dz: number; frac: number; heavy: boolean }[] = [];
   let f = false;
   const held = new Set<string>();
   const input = { throttle: 0, steer: 0, wasPressed: (k: string) => k === 'KeyF' && f, isDown: (k: string) => held.has(k) };
@@ -414,14 +414,14 @@ describe('POLARITY BURST (F)', () => {
 });
 
 describe('Duel grav pulls on a human', () => {
-  it('POLARITY BURST tows the other plow toward the point at 85% of its own top speed until the detonation', () => {
+  it('POLARITY BURST tows the other plow lightly toward the point (60% of its own top speed) until the detonation', () => {
     const foe = bot(8, 10, 1e6);
     const { run, pressF, tows } = gravRig([foe], {}, true);
     pressF();
     run(1.0);
     expect(tows.length).toBeGreaterThan(30);
     const last = tows[tows.length - 1];
-    expect(last.frac).toBeCloseTo(0.85, 5);
+    expect(last.frac).toBeCloseTo(0.6, 5);
     const d = Math.hypot(0 - 8, 4 - 10); // toward the point 4 m ahead of the plow
     expect(last.dx).toBeCloseTo(-8 / d, 3);
     expect(last.dz).toBeCloseTo(-6 / d, 3);
@@ -431,7 +431,7 @@ describe('Duel grav pulls on a human', () => {
     expect(tows.length).toBe(n); // nothing after it
   });
 
-  it('SINGULARITY tows harder as it builds (45% to 100% of top speed)', () => {
+  it('SINGULARITY is a full black hole: 80% rising to 280% of top speed (past a dash), heaviness ignored', () => {
     const foe = bot(5, 25, 1e6);
     const far = bot(5, 15, 1e6);
     const { c, run, pressF, tows } = gravRig([foe, far], {}, true);
@@ -440,8 +440,9 @@ describe('Duel grav pulls on a human', () => {
     run(3.2);
     const mine = tows.filter((t) => t.e === far);
     expect(mine.length).toBeGreaterThan(60);
-    expect(Math.max(...mine.map((t) => t.frac))).toBeGreaterThan(0.95);
-    expect(mine[0].frac).toBeLessThan(0.6);
+    expect(Math.max(...mine.map((t) => t.frac))).toBeGreaterThan(2.7);
+    expect(mine[0].frac).toBeLessThan(0.9);
+    expect(mine.every((t) => !t.heavy)).toBe(true);
   });
 });
 

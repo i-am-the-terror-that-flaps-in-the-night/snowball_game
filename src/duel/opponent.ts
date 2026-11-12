@@ -117,10 +117,10 @@ export class OpponentTarget implements EnemyManagerAPI {
 
   /** ARSENAL's grav pulls on the victim (Plow.tow; the guest's replay of the attacker does the same to its own
    *  predicted plow, so it does not rubber-band). */
-  tow(e: EnemyHandle, dirX: number, dirZ: number, frac: number, dt: number): void {
+  tow(e: EnemyHandle, dirX: number, dirZ: number, frac: number, dt: number, heavy = true): void {
     if (!this.enabled || e !== this.handle || !this.handle.alive) return;
     // (Headless balance sims stand in a simpler plow without tow.)
-    this.handle.plow.tow?.(dirX, dirZ, frac, dt);
+    this.handle.plow.tow?.(dirX, dirZ, frac, dt, heavy);
   }
 
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[] {

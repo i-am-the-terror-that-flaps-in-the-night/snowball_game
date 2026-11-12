@@ -146,9 +146,9 @@ const BURST_BOSS = 0.3;
 const BURST_DET_R = 7;
 const BURST_KNOCK = 12;
 const BURST_SPREAD = 0.7;
-/** Duel: a human inside the horizon is dragged at this share of ITS OWN top speed (Plow.tow; bots use BURST_PULL m/s),
- *  so driving straight out barely gains ground and only a dash breaks free before the detonation. */
-const BURST_DUEL_PULL = 0.85;
+/** Duel: a human inside the horizon is dragged at this share of ITS OWN top speed (Plow.tow; bots use BURST_PULL m/s):
+ *  a light pull, it slows a getaway but driving straight out still escapes. */
+const BURST_DUEL_PULL = 0.6;
 
 /** SINGULARITY (ultimate): opens at the densest bot cluster within SING_SEEK m (bots within SING_CLUSTER m of each
  *  other count together), else SING_AHEAD m ahead. Drags every bot within SING_R m toward it for SING_PULL_T s
@@ -171,10 +171,11 @@ const SING_SPREAD = 0.85;
 const SING_CORE = 12;
 const SING_KNOCK = 18;
 const SING_END = 3.6;
-/** Duel: a human within SING_R is dragged at a share of its own top speed rising from SING_DUEL_PULL0 to
- *  SING_DUEL_PULL1 over the pull (Plow.tow), so the black hole holds them for the collapse unless they dash out. */
-const SING_DUEL_PULL0 = 0.45;
-const SING_DUEL_PULL1 = 1;
+/** Duel: a FULL black hole. A human within SING_R is dragged at a share of its own top speed rising from
+ *  SING_DUEL_PULL0 to SING_DUEL_PULL1 over the pull (Plow.tow), heaviness ignored: past 1 nothing drives out, and from
+ *  ~2.4 (a dash is 2.2-2.7x top speed) not even a dash breaks free, so only an early dash escapes. */
+const SING_DUEL_PULL0 = 0.8;
+const SING_DUEL_PULL1 = 2.8;
 /** Visual radius handed to SingularityFx.open (m). */
 const SING_VIS_R = 2.6;
 
@@ -485,9 +486,9 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   /** Drag `e` toward (x, z) at up to `speed` m/s (slower when close, so it settles instead of overshooting). In the
    *  Duel a human is dragged at `duelFrac` of its own top speed instead (EnemyManagerAPI.tow on the host). */
-  private pullBot(e: EnemyHandle, x: number, z: number, speed: number, dt: number, duelFrac = 0): void {
+  private pullBot(e: EnemyHandle, x: number, z: number, speed: number, dt: number, duelFrac = 0, heavy = true): void {
     if (this.b.pvp) {
-      if (duelFrac > 0 && e.alive) this.towAt(e.position.x, e.position.z, x, z, duelFrac, dt, (dx, dz, f) => this.b.enemies.tow?.(e, dx, dz, f, dt));
+      if (duelFrac > 0 && e.alive) this.towAt(e.position.x, e.position.z, x, z, duelFrac, dt, (dx, dz, f) => this.b.enemies.tow?.(e, dx, dz, f, dt, heavy));
       return;
     }
     const pull = this.b.enemies.pull;
@@ -512,11 +513,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   /** Duel guest, replaying the opponent's grav pull: drag its own predicted plow the way the host drags it (the host's
    *  snapshot corrections then agree instead of rubber-banding). `r`: the pull radius round (x, z). */
-  private towFoe(x: number, z: number, r: number, frac: number, dt: number): void {
+  private towFoe(x: number, z: number, r: number, frac: number, dt: number, heavy = true): void {
     const foe = this.b.foe;
     if (!this.b.pvp || this.b.authoritative || !this.puppet || !foe?.tow || foe.dead) return;
     if (Math.hypot(foe.position.x - x, foe.position.z - z) > r + (foe.radius ?? 1.5)) return;
-    this.towAt(foe.position.x, foe.position.z, x, z, frac, dt, (dx, dz, f) => foe.tow!(dx, dz, f, dt));
+    this.towAt(foe.position.x, foe.position.z, x, z, frac, dt, (dx, dz, f) => foe.tow!(dx, dz, f, dt, heavy));
   }
 
   /* ------------------------------------------------------------------ SPACE: Mag Laser */
@@ -1091,7 +1092,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       const k = t / SING_PULL_T;
       const v = SING_V0 + (SING_V1 - SING_V0) * k * k;
       const duelPull = SING_DUEL_PULL0 + (SING_DUEL_PULL1 - SING_DUEL_PULL0) * k;
-      this.towFoe(C.x, C.z, SING_R, duelPull, dt);
+      this.towFoe(C.x, C.z, SING_R, duelPull, dt, false);
       const hits = this.collect(C.x, C.z, SING_R);
       const tick = (this.singTickT -= dt) <= 0;
       if (tick) this.singTickT += SING_TICK;
@@ -1100,7 +1101,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const e = hits[i];
         if (!e.alive) continue;
         if (Math.hypot(e.position.x - C.x, e.position.z - C.z) > SING_R + e.radius) continue;
-        this.pullBot(e, C.x, C.z, v * (e.isBoss ? SING_BOSS : 1), dt, duelPull);
+        this.pullBot(e, C.x, C.z, v * (e.isBoss ? SING_BOSS : 1), dt, duelPull, false);
         if (streak && Math.random() < 0.3) {
           this.chest(e, _tip);
           _fwd.subVectors(C, _tip).normalize();
