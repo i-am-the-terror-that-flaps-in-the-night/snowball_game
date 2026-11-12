@@ -146,6 +146,9 @@ const BURST_BOSS = 0.3;
 const BURST_DET_R = 7;
 const BURST_KNOCK = 12;
 const BURST_SPREAD = 0.7;
+/** Duel: a human inside the horizon is dragged at this share of ITS OWN top speed (Plow.tow; bots use BURST_PULL m/s),
+ *  so driving straight out barely gains ground and only a dash breaks free before the detonation. */
+const BURST_DUEL_PULL = 0.85;
 
 /** SINGULARITY (ultimate): opens at the densest bot cluster within SING_SEEK m (bots within SING_CLUSTER m of each
  *  other count together), else SING_AHEAD m ahead. Drags every bot within SING_R m toward it for SING_PULL_T s
@@ -168,6 +171,10 @@ const SING_SPREAD = 0.85;
 const SING_CORE = 12;
 const SING_KNOCK = 18;
 const SING_END = 3.6;
+/** Duel: a human within SING_R is dragged at a share of its own top speed rising from SING_DUEL_PULL0 to
+ *  SING_DUEL_PULL1 over the pull (Plow.tow), so the black hole holds them for the collapse unless they dash out. */
+const SING_DUEL_PULL0 = 0.45;
+const SING_DUEL_PULL1 = 1;
 /** Visual radius handed to SingularityFx.open (m). */
 const SING_VIS_R = 2.6;
 
@@ -476,16 +483,40 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return !!this.b.enemies.pull && !this.b.pvp;
   }
 
-  /** Drag `e` toward (x, z) at up to `speed` m/s (slower when close, so it settles instead of overshooting). */
-  private pullBot(e: EnemyHandle, x: number, z: number, speed: number, dt: number): void {
+  /** Drag `e` toward (x, z) at up to `speed` m/s (slower when close, so it settles instead of overshooting). In the
+   *  Duel a human is dragged at `duelFrac` of its own top speed instead (EnemyManagerAPI.tow on the host). */
+  private pullBot(e: EnemyHandle, x: number, z: number, speed: number, dt: number, duelFrac = 0): void {
+    if (this.b.pvp) {
+      if (duelFrac > 0 && e.alive) this.towAt(e.position.x, e.position.z, x, z, duelFrac, dt, (dx, dz, f) => this.b.enemies.tow?.(e, dx, dz, f, dt));
+      return;
+    }
     const pull = this.b.enemies.pull;
-    if (!pull || this.b.pvp || !e.alive) return;
+    if (!pull || !e.alive) return;
     const dx = x - e.position.x;
     const dz = z - e.position.z;
     const d = Math.hypot(dx, dz);
     if (d < 0.05) return;
     const v = speed * Math.min(1, d / 3);
     pull.call(this.b.enemies, e, (dx / d) * v, (dz / d) * v, dt);
+  }
+
+  /** Duel: a direction and strength from (px, pz) toward (x, z) for a grav pull of `frac` (eased off inside 3 m so the
+   *  victim settles at the point), handed to `apply`. */
+  private towAt(px: number, pz: number, x: number, z: number, frac: number, dt: number, apply: (dx: number, dz: number, f: number) => void): void {
+    const dx = x - px;
+    const dz = z - pz;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.05 || !(dt > 0)) return;
+    apply(dx / d, dz / d, frac * Math.min(1, d / 3));
+  }
+
+  /** Duel guest, replaying the opponent's grav pull: drag its own predicted plow the way the host drags it (the host's
+   *  snapshot corrections then agree instead of rubber-banding). `r`: the pull radius round (x, z). */
+  private towFoe(x: number, z: number, r: number, frac: number, dt: number): void {
+    const foe = this.b.foe;
+    if (!this.b.pvp || this.b.authoritative || !this.puppet || !foe?.tow || foe.dead) return;
+    if (Math.hypot(foe.position.x - x, foe.position.z - z) > r + (foe.radius ?? 1.5)) return;
+    this.towAt(foe.position.x, foe.position.z, x, z, frac, dt, (dx, dz, f) => foe.tow!(dx, dz, f, dt));
   }
 
   /* ------------------------------------------------------------------ SPACE: Mag Laser */
@@ -908,7 +939,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       for (let i = 0; i < hits.length; i++) {
         const e = hits[i];
         if (!e.alive) continue;
-        this.pullBot(e, S.x, S.z, BURST_PULL * (e.isBoss ? BURST_BOSS : 1), dt);
+        this.pullBot(e, S.x, S.z, BURST_PULL * (e.isBoss ? BURST_BOSS : 1), dt, BURST_DUEL_PULL);
         this.chest(e, _tip);
         hz.tether(nt++, _tip, 0.05 * (0.8 + 0.4 * Math.random()));
         if (streak) {
@@ -917,6 +948,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         }
       }
       this.clearTargets();
+      this.towFoe(S.x, S.z, r, BURST_DUEL_PULL, dt);
       // Streaks of light (and snow) rushing in from the rim.
       this.burstStreakT -= dt;
       while (this.burstStreakT <= 0) {
@@ -1000,7 +1032,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         best = i;
       }
     }
-    if (best < 0) out.set(x + Math.sin(heading) * SING_AHEAD, 0, z + Math.cos(heading) * SING_AHEAD);
+    const foe = this.b.pvp && !this.b.authoritative ? this.b.foe : null;
+    if (best < 0 && foe && !foe.dead && Math.hypot(foe.position.x - x, foe.position.z - z) <= SING_SEEK) {
+      // A duel guest hits nothing locally: open on the other plow, as the host does (its one-plow "cluster").
+      out.set(foe.position.x, 0, foe.position.z);
+    } else if (best < 0) out.set(x + Math.sin(heading) * SING_AHEAD, 0, z + Math.cos(heading) * SING_AHEAD);
     else {
       const a = hits[best];
       let sx = 0;
@@ -1054,6 +1090,8 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     if (t < SING_PULL_T) {
       const k = t / SING_PULL_T;
       const v = SING_V0 + (SING_V1 - SING_V0) * k * k;
+      const duelPull = SING_DUEL_PULL0 + (SING_DUEL_PULL1 - SING_DUEL_PULL0) * k;
+      this.towFoe(C.x, C.z, SING_R, duelPull, dt);
       const hits = this.collect(C.x, C.z, SING_R);
       const tick = (this.singTickT -= dt) <= 0;
       if (tick) this.singTickT += SING_TICK;
@@ -1062,7 +1100,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const e = hits[i];
         if (!e.alive) continue;
         if (Math.hypot(e.position.x - C.x, e.position.z - C.z) > SING_R + e.radius) continue;
-        this.pullBot(e, C.x, C.z, v * (e.isBoss ? SING_BOSS : 1), dt);
+        this.pullBot(e, C.x, C.z, v * (e.isBoss ? SING_BOSS : 1), dt, duelPull);
         if (streak && Math.random() < 0.3) {
           this.chest(e, _tip);
           _fwd.subVectors(C, _tip).normalize();

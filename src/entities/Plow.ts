@@ -19,10 +19,14 @@ import {
   SLOPE_BOOST_DECAY, reverseCap,
 } from './plow/constants';
 import { _fwd, _right, _a, _b, _dir } from './plow/scratch';
+import { knockScale } from '../config/plows';
 import { MOMENTUM_BOOST, RUSH_CHARGE_SLOW, RUSH_CHARGE_SLOW_PVP, RUSH_MAX, RUSH_SPEED } from './combat/classicRush';
 
 /* The player / pilot plow. The class is layered over ./plow/ (PlowBase -> PlowVisuals -> PlowMotion -> Plow; see
  * plow/PlowBase.ts); this top layer holds the public API, the duel netcode, reset and the per-frame update. */
+
+/** Share of a plow's heaviness (knockScale) that resists a Duel grav pull: BRUTUS (0.5) feels 75% of it. */
+const TOW_HEAVY = 0.5;
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const DASH_WAKE_BURST = { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 };
@@ -373,6 +377,17 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.heldVolume -= v;
     if (this.heldVolume < 1e-4) this.heldVolume = 0;
     return v;
+  }
+
+  /** Duel grav pull (ARSENAL's Polarity Burst / Singularity on a human): steer the push velocity toward (dirX, dirZ)
+   *  (unit) at `frac` x this plow's top speed, softened by heaviness (TOW_HEAVY share of knockScale), so driving
+   *  straight out only gains (1 - pull) of top speed; a dash still breaks free. Call every frame while pulling. */
+  tow(dirX: number, dirZ: number, frac: number, dt: number): void {
+    if (this._dead || !(dt > 0) || !(frac > 0) || !Number.isFinite(dirX) || !Number.isFinite(dirZ)) return;
+    const v = frac * this.b.stats.maxSpeed * (1 - TOW_HEAVY + TOW_HEAVY * knockScale(this.b.stats.plowKind));
+    const k = 1 - Math.exp(-10 * dt);
+    this.pushVel.x += (dirX * v - this.pushVel.x) * k;
+    this.pushVel.z += (dirZ * v - this.pushVel.z) * k;
   }
 
   push(vx: number, vz: number): void {

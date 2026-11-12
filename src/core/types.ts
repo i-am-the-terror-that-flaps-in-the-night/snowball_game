@@ -446,6 +446,9 @@ export interface EnemyManagerAPI {
   /** Optional: drag a bot along at (vx, vz) m/s (its knockback velocity eases toward that this frame; ARSENAL's grav
    *  weapons call it every frame while pulling). Managers without it (the Duel's OpponentTarget) aren't pulled. */
   pull?(e: EnemyHandle, vx: number, vz: number, dt: number): void;
+  /** Optional (the Duel's OpponentTarget): drag a human plow toward (dirX, dirZ) (unit) at `frac` of ITS OWN top speed
+   *  (Plow.tow), so a grav pull holds a pilot however fast they are. */
+  tow?(e: EnemyHandle, dirX: number, dirZ: number, frac: number, dt: number): void;
   /** Optional level routing consulted by the last-bot hunt (Enemies.ts sets / clears nothing itself: arena code
    *  assigns it, e.g. The Omega Works' NavGraph, and sets it back to null on leaving). */
   nav?: BotNav | null;

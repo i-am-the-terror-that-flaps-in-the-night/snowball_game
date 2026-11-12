@@ -108,7 +108,7 @@ describe('ARSENAL: the snowball shop lines still pay off', () => {
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
 
 /** Full Combat rig against bots that can be pulled (the manager moves them at the pull velocity) and logs damage. */
-function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
+function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}, pvp = false) {
   const stats = computeStatsFor(levels, 'arsenal');
   const plow = {
     position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, turretAim: 0, turretHeading: 0, hop: 0, surfaceY: 0,
@@ -135,11 +135,16 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
       e.position.x += vx * dt;
       e.position.z += vz * dt;
     },
+    // Duel: a human is towed at a share of its own top speed (logged, not moved).
+    tow: (e: EnemyHandle, dx: number, dz: number, frac: number) => {
+      tows.push({ t: ctx.time, e, dx, dz, frac });
+    },
   };
+  const tows: { t: number; e: EnemyHandle; dx: number; dz: number; frac: number }[] = [];
   let f = false;
   const held = new Set<string>();
   const input = { throttle: 0, steer: 0, wasPressed: (k: string) => k === 'KeyF' && f, isDown: (k: string) => held.has(k) };
-  const binding = { stats, plow, enemies, input, audio: noop, snow: noop, events: { emit: () => {} }, local: true, authoritative: true, pvp: false } as unknown as PilotBinding;
+  const binding = { stats, plow, enemies, input, audio: noop, snow: noop, events: { emit: () => {} }, local: true, authoritative: true, pvp } as unknown as PilotBinding;
   const c = new Combat(ctx, binding);
   c.clear();
   const run = (s: number) => {
@@ -153,7 +158,7 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}) {
     run(1 / 60);
     f = false;
   };
-  return { c, stats, log, run, pressF, ctx, held, plow };
+  return { c, stats, log, run, pressF, ctx, held, plow, tows };
 }
 
 const sum = (log: { e: EnemyHandle; n: number }[], e: EnemyHandle) => log.filter((h) => h.e === e).reduce((t, h) => t + h.n, 0);
@@ -405,6 +410,38 @@ describe('POLARITY BURST (F)', () => {
     expect(far.position.z).toBe(40);
     expect(far.hp).toBe(far.maxHp);
     expect(c.flameReady).toBeLessThan(1);
+  });
+});
+
+describe('Duel grav pulls on a human', () => {
+  it('POLARITY BURST tows the other plow toward the point at 85% of its own top speed until the detonation', () => {
+    const foe = bot(8, 10, 1e6);
+    const { run, pressF, tows } = gravRig([foe], {}, true);
+    pressF();
+    run(1.0);
+    expect(tows.length).toBeGreaterThan(30);
+    const last = tows[tows.length - 1];
+    expect(last.frac).toBeCloseTo(0.85, 5);
+    const d = Math.hypot(0 - 8, 4 - 10); // toward the point 4 m ahead of the plow
+    expect(last.dx).toBeCloseTo(-8 / d, 3);
+    expect(last.dz).toBeCloseTo(-6 / d, 3);
+    run(0.4); // past the detonation (1.3 s)
+    const n = tows.length;
+    run(0.5);
+    expect(tows.length).toBe(n); // nothing after it
+  });
+
+  it('SINGULARITY tows harder as it builds (45% to 100% of top speed)', () => {
+    const foe = bot(5, 25, 1e6);
+    const far = bot(5, 15, 1e6);
+    const { c, run, pressF, tows } = gravRig([foe, far], {}, true);
+    (c as unknown as { onPlayerHit(d: number, k: boolean): void }).onPlayerHit(1e9, false);
+    pressF();
+    run(3.2);
+    const mine = tows.filter((t) => t.e === far);
+    expect(mine.length).toBeGreaterThan(60);
+    expect(Math.max(...mine.map((t) => t.frac))).toBeGreaterThan(0.95);
+    expect(mine[0].frac).toBeLessThan(0.6);
   });
 });
 

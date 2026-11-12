@@ -56,7 +56,13 @@ export interface PilotBinding {
   readonly visualFoe?: EnemyHandle | null;
   /** Online Duel: the other pilot's plow. A guest's Combats hit nothing locally (the host decides), so visual-only
    *  visuals (ARSENAL's Mag Laser bolts stopping on the other plow) aim at this instead. Unset outside the Duel. */
-  readonly foe?: { readonly position: { readonly x: number; readonly y: number; readonly z: number }; readonly dead: boolean; readonly radius?: number } | null;
+  readonly foe?: {
+    readonly position: { readonly x: number; readonly y: number; readonly z: number };
+    readonly dead: boolean;
+    readonly radius?: number;
+    /** Plow.tow: a guest's replay of the opponent's grav pull drags its own predicted plow the way the host does. */
+    tow?(dirX: number, dirZ: number, frac: number, dt: number): void;
+  } | null;
 }
 
 /** The single-player pilot: everything comes from the GameContext (read lazily, so systems built later work). */
