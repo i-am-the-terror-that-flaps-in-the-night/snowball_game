@@ -59,7 +59,8 @@ describe('special waves', () => {
       while (w < 13) { sv.nextWave(); w++; }
       const types = new Set(sv.zone.rounds[0].groups.map((g) => g.type));
       const count = sv.zone.rounds[0].groups.reduce((n, g) => n + g.count, 0);
-      expect(sv.zone.enemyHpMult).toBeCloseTo(waveHpMult(13) * def.hp);
+      // wave 13 is also a modifier wave: its hp multiplier stacks on the special's
+      expect(sv.zone.enemyHpMult).toBeCloseTo(waveHpMult(13) * def.hp * (sv.modifier?.hp ?? 1));
       if (def.id === 'swarm') expect([...types]).toEqual(['scrapper']);
       if (def.id === 'swarm') expect(count).toBeGreaterThan(24);
       if (def.id === 'sawStorm') expect([...types]).toEqual(['spinner']);

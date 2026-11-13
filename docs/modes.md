@@ -52,8 +52,30 @@ Unlocked by beating arena 1. Endless waves in arena 3's layout (Rust Basin). Bot
 arrives every 5th wave (cycling the campaign bosses, with escorts on later loops), and you get a short breather plus
 a partial repair between waves. Named special waves (Swarm, Thief Raid, Blitz, Saw Storm, Heavy Metal, Elite Squad)
 break up the mix about twice per boss cycle and pay extra, and the between-wave pit stop previews what's next.
-**🏁 END RUN** at the pit stop banks the run on the wave you just cleared. Your best wave is saved. Boss waves can
-drop gear, with the chance rising the deeper you go.
+**🏁 END RUN** at the pit stop banks the run on the wave you just cleared. Your best wave is saved, overall and per
+plow (the results screen lists every plow's record, the menu tile shows the selected plow's). Boss waves can drop gear,
+with the chance rising the deeper you go.
+
+**Wave modifiers**: from wave 7, every 3rd wave (never a boss or milestone wave) rolls one announced twist, shown
+with a banner at the countdown, previewed at the pit stop and tagged on the HUD while it lasts. They can ride on a
+special wave unless the pair would double up.
+
+| Modifier | From | Effect | Coins |
+|---|---|---|---|
+| 🌨️ Blizzard | 7 | Whiteout gale: fog closes in to ~58 m, dense wind-driven snow; bots drive 15% slower | ×1.2 |
+| ⏩ Overdrive | 7 | Bots drive 25% faster | ×1.25 |
+| 💰 Gold Rush | 7 | Nothing else | ×2 |
+| 🔩 Armored | 10 | Bots +50% HP | ×1.35 |
+| 🐜 Horde | 13 | Twice the spawn budget and bot cap, half HP (never on Swarm / Elite Squad) | ×0.65 per kill |
+| 😡 Frenzy | 13 | Spawns come twice as fast, bots hit 20% harder (never on Blitz) | ×1.3 |
+
+The coin multiplier covers kill coins and the wave bonus. The pick rotates through the table from a per-run offset
+(from the seed on the Daily, so everyone gets the same ones).
+
+**Milestones** (every 10th wave): a campaign boss at 45% HP (FROSTBYTE, BULLDOZA or THE GRINDER, never a copy of the
+wave's own boss) rolls in 8 s after the wave's lineup; twin-boss waves skip it (two boss bars). Clearing a milestone
+pays 150 + 15 × wave coins, repairs 40% of max HP, always drops gear (better odds than a boss wave) and gives an 8 s
+breather into the next wave.
 
 **Daily run** (📅 DAILY, unlocked with Survival): one seeded Survival run per day, with the same wave lineup for
 everyone on that date plus one of 8 modifiers (Deep Snow, Whiteout, Swarm, Thief Night, Boss Rush, Heavy Hitters,

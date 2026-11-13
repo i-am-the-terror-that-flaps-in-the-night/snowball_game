@@ -32,6 +32,8 @@ export interface SaveData {
   plow: PlowKind;
   /** Survival mode: highest wave reached (optional — older saves lack it). */
   survivalBestWave?: number;
+  /** Survival mode: highest wave reached per plow (normal runs; SurvivalManager.recordSurvivalPlow). */
+  survivalBestByPlow?: Partial<Record<PlowKind, number>>;
   // ---- Meta progression (all optional: older saves lack them). Owned by src/meta/*.
   /** Cosmetics (config/cosmetics.ts): owned item ids and the equipped item id per slot. */
   cosmetics?: { owned: string[]; equipped: Record<string, string> };
@@ -194,6 +196,11 @@ function sanitizeSave(raw: unknown): SaveData | null {
   if (p.achievements !== undefined) out.achievements = numMap(p.achievements, 1);
   if (p.lifetime !== undefined) out.lifetime = numMap(p.lifetime);
   if (p.dailyBest !== undefined) out.dailyBest = numMap(p.dailyBest, 9999);
+  if (isObj(p.survivalBestByPlow)) {
+    const m = numMap(p.survivalBestByPlow, 9999);
+    out.survivalBestByPlow = {};
+    for (const k of Object.keys(m)) if (PLOWS[k as PlowKind]) out.survivalBestByPlow[k as PlowKind] = m[k];
+  }
   if (p.gear !== undefined) {
     refundRemovedGear(out, p.gear);
     out.gear = cleanGear(p.gear);

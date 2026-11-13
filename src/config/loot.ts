@@ -1,12 +1,12 @@
 import { GEAR, GEAR_MAX_LEVEL, type GearDef, type Rarity } from './gear';
 
 /* ------------------------------------------------------------------------------------------------
- * Gear loot: bosses, Hard clears, Survival boss waves and Brawl placements can drop gear. A drop rolls a rarity
+ * Gear loot: bosses, Hard clears, Survival boss / milestone waves and Brawl placements can drop gear. A drop rolls a rarity
  * from its source's weights, then an item of that rarity. New item -> owned at level 1; owned -> +1 item level;
  * already ★10 -> coins instead. Works on GEAR generically (by rarity), never on specific ids.
  * ---------------------------------------------------------------------------------------------- */
 
-export type LootSource = 'bossFirst' | 'boss' | 'hard' | 'hardRepeat' | 'survivalBoss' | 'brawl1' | 'brawl2' | 'brawl3';
+export type LootSource = 'bossFirst' | 'boss' | 'hard' | 'hardRepeat' | 'survivalBoss' | 'survivalMilestone' | 'brawl1' | 'brawl2' | 'brawl3';
 
 export interface LootRule {
   /** Chance (0..1) that this source drops anything. */
@@ -24,6 +24,9 @@ export const LOOT_RULES: Record<LootSource, LootRule> = {
   // Repeat Hard clears keep the good odds but don't always drop (otherwise Hard arena 1 is a gear farm).
   hardRepeat: { chance: 0.35, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'Hard clear' },
   survivalBoss: { chance: 0.3, weights: { common: 45, rare: 35, epic: 15, legendary: 5 }, label: 'Boss wave' },
+  // Every 10th Survival wave (SurvivalManager MILESTONE_EVERY): always drops, Hard-clear-like odds. Replaces that wave's
+  // boss-wave roll.
+  survivalMilestone: { chance: 1, weights: { common: 30, rare: 40, epic: 22, legendary: 8 }, label: 'Milestone' },
   brawl1: { chance: 1, weights: { common: 35, rare: 40, epic: 18, legendary: 7 }, label: '1st place' },
   brawl2: { chance: 0.4, weights: { common: 55, rare: 32, epic: 10, legendary: 3 }, label: '2nd place' },
   brawl3: { chance: 0.2, weights: { common: 55, rare: 32, epic: 10, legendary: 3 }, label: '3rd place' },

@@ -332,6 +332,13 @@ export class GameHud {
       H.arena.classList.toggle('last', sv?.arenaIn === 1);
       this.topDirty = true;
     }
+    const tag = sv?.tag ?? '';
+    if (tag !== L.waveTag) {
+      L.waveTag = tag;
+      H.waveTag.textContent = tag;
+      H.waveTag.classList.toggle('hidden', !tag);
+      this.topDirty = true;
+    }
     const en = Math.max(0, Math.round(s.enemiesRemaining));
     if (en !== L.enemies) {
       L.enemies = en;
