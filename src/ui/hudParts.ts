@@ -395,8 +395,9 @@ export function updateHudPanels(ui: { h: HudRefs; last: HudLast; hud: HTMLElemen
     H.streak.classList.toggle('hot', hot);
     H.streakLbl.textContent = hot ? 'ON STREAK!' : 'STREAK';
     if (sk > L.streak && L.streak >= 0) restart(H.streakPipBox, 'bump');
-    // Back to 0: the window ran out (grey drop), or the finisher went off (white burst).
-    else if (sk === 0 && L.streak > 0) restart(H.streak, L.streakLeft > 0.05 ? 'boom' : 'drop', 'boom', 'drop');
+    // Back to 0: the finisher went off (white burst: only ever from ON STREAK with window left), else the window ran
+    // out or the plow went down (grey drop).
+    else if (sk === 0 && L.streak > 0) restart(H.streak, L.streak >= 4 && L.streakLeft > 0.05 ? 'boom' : 'drop', 'boom', 'drop');
     L.streak = sk;
   }
   const sl = sk > 0 ? Math.round(clamp01(s.streakLeft ?? 0) * 100) / 100 : 0;

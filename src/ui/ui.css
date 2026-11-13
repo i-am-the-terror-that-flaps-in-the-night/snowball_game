@@ -1496,7 +1496,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ss-lost-tip::before { animation: none; }
-  .ss-card.afford .ss-buy, .ss-chip.boss, .ss-gauge.full, .ss-boss-preview, .ss-hud-round.boss, .ss-bi-stripes { animation: none; }
+  .ss-card.afford .ss-buy, .ss-chip.boss, .ss-gauge.full, .ss-boss-preview, .ss-hud-round.boss, .ss-bi-stripes, .ss-streak.hot { animation: none; }
 }
 
 /* ---- Starter plow picker (Garage) */

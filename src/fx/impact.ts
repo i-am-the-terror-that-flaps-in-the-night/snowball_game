@@ -123,7 +123,8 @@ export class Impact implements ImpactAPI {
     }
     if (def.kick > 0) this.kick(pos, def.kick * Math.min(1.6, s) * (opts?.falloff ?? 1), def.fov * Math.min(1.5, s));
     if (kind === 'nuke') this.screenFlash(0.9, 0.6);
-    else if (kind === 'finisher') this.screenFlash(0.45, 0.35);
+    // (A rival's finisher, judged remote by stop: false, lights and punches but never flashes the player's screen.)
+    else if (kind === 'finisher' && opts?.stop !== false) this.screenFlash(0.45, 0.35);
   }
 
   /** The player took `damage` from an attacker at (fromX, fromZ): camera punch, plus vignette + hit-stop when heavy. */
