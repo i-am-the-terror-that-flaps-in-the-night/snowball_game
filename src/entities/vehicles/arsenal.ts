@@ -22,7 +22,7 @@ export interface ArsenalVehicleParts {
   /** Emitter elevation pivot (follows gunPitch) and the coil rotor inside it (spins while firing). */
   gunMount: THREE.Group;
   minigun: THREE.Group;
-  /** mountWorld('muzzle' | 'laser' | 'gyro', i) anchors: the disc emitter tip, the Mag Repulsor nose lens, the gyro core. */
+  /** mountWorld('muzzle' | 'laser' | 'gyro', i) anchors: the Mag Laser emitter tip, the Mag Repulsor nose lens, the gyro core. */
   muzzles: THREE.Object3D[];
   laser: THREE.Object3D;
   gyro: THREE.Object3D;

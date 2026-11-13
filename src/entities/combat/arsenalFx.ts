@@ -22,7 +22,7 @@ export function beamGeometry(): THREE.BufferGeometry {
 }
 
 /** Point a unit beam from `from` to `to` with half-width `w` (hidden when degenerate). */
-export function aimBeam(m: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, w: number): void {
+function aimBeam(m: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, w: number): void {
   const len = from.distanceTo(to);
   if (!(len > 1e-3) || !(w > 1e-4)) {
     m.visible = false;
@@ -195,7 +195,7 @@ const _s = new THREE.Vector3();
 const _e = new THREE.Vector3();
 
 /** Thin bright lines rushing inward to a point (accelerating), stretching as they speed up. */
-export class Streaks {
+class Streaks {
   private list: Streak[] = [];
   readonly to = new THREE.Vector3();
 
@@ -484,7 +484,7 @@ interface Bolt {
 }
 
 /** How long one pulse lives (s). */
-export const LASER_LIFE = 0.1;
+const LASER_LIFE = 0.1;
 /** The bolt is hitscan: it reaches the end point at once, then its TAIL races after it (TAIL_SPEED m/s, so a 10 m
  *  shot is gone in ~0.017 s plus the fade): it reads as one very fast fat slug zipping into the target. */
 const TAIL_SPEED = 600;
@@ -497,7 +497,7 @@ const _from = new THREE.Vector3();
 
 /** MAG LASER: a small fixed pool of fat, standard-width hitscan bolts. Each shot is a white-hot core in a cyan glow
  *  with a dark-navy edge (normal-blended so it still reads on sunlit snow), drawn from the emitter straight to the
- *  locked target (auto-aim, CombatArsenal.fireBolt); its tail then races to the end point and the bolt fades. A
+ *  locked target (auto-aim, ArsenalKit.fireBolt); its tail then races to the end point and the bolt fades. A
  *  muzzle flash at the emitter and an impact flash at the end. fire() takes the oldest free slot; update() animates.
  *  Nothing allocates per shot or per frame. */
 export class LaserFx {
@@ -520,7 +520,7 @@ export class LaserFx {
         from: new THREE.Vector3(),
         to: new THREE.Vector3(),
         impact: 0,
-        w: 0.8,
+        w: 0,
         edge: mk(beam, paintMat(0x06243a, 0.75), 3),
         glow: mk(beam, paintMat(0x19dcff, 0.95), 4),
         core: mk(beam, addMat(0xf6ffff, 1), 5),
@@ -532,7 +532,7 @@ export class LaserFx {
   }
 
   /** One bolt from `from` to `to`; `impact` (0..1+) sizes the end flash; `w`: the beam's hit half-width (m). */
-  fire(from: THREE.Vector3, to: THREE.Vector3, impact: number, w = 0.8): void {
+  fire(from: THREE.Vector3, to: THREE.Vector3, impact: number, w: number): void {
     let b = this.bolts[0];
     for (const x of this.bolts) {
       if (x.t >= LASER_LIFE) {
