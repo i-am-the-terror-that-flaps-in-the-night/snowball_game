@@ -20,6 +20,8 @@ interface QueuedSpawn {
   t: number;
   type: EnemyType;
   gate: number;
+  /** SpawnGroup.hpMult (1 = just the zone's). */
+  hp: number;
 }
 
 export class WaveDirector implements WaveDirectorAPI {
@@ -62,7 +64,7 @@ export class WaveDirector implements WaveDirectorAPI {
             }
             gate = order[oi++];
           }
-          this.queue.push({ t: g.delay + i * g.interval, type: g.type, gate });
+          this.queue.push({ t: g.delay + i * g.interval, type: g.type, gate, hp: g.hpMult ?? 1 });
         }
       }
     }
@@ -116,7 +118,7 @@ export class WaveDirector implements WaveDirectorAPI {
   }
 
   private spawn(s: QueuedSpawn): void {
-    if (this.ctx.zone.theme === 'omega') return this.spawnHatch(s.type);
+    if (this.ctx.zone.theme === 'omega') return this.spawnHatch(s.type, s.hp);
     const def = ENEMIES[s.type];
     const g = ENEMY_GATES[s.gate];
     const fx = Math.sin(g.heading);
@@ -129,11 +131,11 @@ export class WaveDirector implements WaveDirectorAPI {
     const lat = def.isBoss ? 0 : (Math.random() - 0.5) * Math.max(0, GATE_WIDTH - 2 * def.radius - 0.8);
     const x = g.x + fz * lat - fx * back;
     const z = g.z - fx * lat - fz * back;
-    this.ctx.enemies.spawn(s.type, x, z, { hpMult: this.hpMult, heading: g.heading });
+    this.ctx.enemies.spawn(s.type, x, z, { hpMult: this.hpMult * s.hp, heading: g.heading });
   }
 
   /** The Omega Works: rise out of a floor hatch near the player (bosses: an open-ground hatch), facing them. */
-  private spawnHatch(type: EnemyType): void {
+  private spawnHatch(type: EnemyType, hp: number): void {
     const ctx = this.ctx;
     const p = ctx.plow.position;
     const boss = ENEMIES[type].isBoss;
@@ -152,6 +154,6 @@ export class WaveDirector implements WaveDirectorAPI {
     const y = h.deck < 0 ? 0 : (OMEGA_TERRAIN.decks!.find((d) => d.id === h.deck)?.top ?? 0);
     const jx = boss ? 0 : (Math.random() - 0.5) * 1.2;
     const jz = boss ? 0 : (Math.random() - 0.5) * 1.2;
-    ctx.enemies.spawn(type, h.x + jx, h.z + jz, { hpMult: this.hpMult, heading: Math.atan2(p.x - h.x, p.z - h.z), y: y + 0.5 });
+    ctx.enemies.spawn(type, h.x + jx, h.z + jz, { hpMult: this.hpMult * hp, heading: Math.atan2(p.x - h.x, p.z - h.z), y: y + 0.5 });
   }
 }

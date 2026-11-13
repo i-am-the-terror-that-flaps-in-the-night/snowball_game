@@ -86,6 +86,7 @@ instead. The drop appears as a card on the results screen (or the Survival pit s
 | Hard mode first clear | 100% | 20% | 40% | 28% | 12% |
 | Hard mode repeat clear | 35% | 20% | 40% | 28% | 12% |
 | Survival boss wave | 30%, +2% per wave past 5 (max 75%) | 45% | 35% | 15% | 5% |
+| Survival milestone (every 10th wave, replaces that wave's boss roll) | 100% | 30% | 40% | 22% | 8% |
 | Brawl 1st place | 100% | 35% | 40% | 18% | 7% |
 | Brawl 2nd place | 40% | 55% | 32% | 10% | 3% |
 | Brawl 3rd place | 20% | 55% | 32% | 10% | 3% |

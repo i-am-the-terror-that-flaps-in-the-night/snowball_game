@@ -53,6 +53,16 @@ export function renderResult(ui: ResultDeps, sum: RunSummary, win: boolean): voi
   stat('⚪', 'Biggest ball', `${sum.biggestBall.toFixed(2)} m`, 340);
   stat('🪙', 'Coins earned', `+${fmt(sum.coinsEarned)}`, 420);
   if (!sum.survival) renderCampaignChallenges(p, sum);
+  // ---- Survival (normal runs): this plow's record, then every plow's best wave.
+  const sv = sum.survival;
+  if (sv?.plow) {
+    el('div', 'ss-sub', `${sv.plow.icon} ${sv.plow.name}: ${sv.plow.newBest ? `🌟 new plow best, wave ${sv.plow.best}!` : `best wave ${sv.plow.best}.`}`, p);
+    const row = el('div', 'ss-sv-plowbests', undefined, p);
+    for (const b of sv.plowBests ?? []) {
+      const c = el('div', `ss-sv-plowbest${b.current ? ' on' : ''}`, `${b.icon} ${b.name} `, row);
+      el('b', '', b.best > 0 ? `${b.best}` : '—', c);
+    }
+  }
 
   // ---- Daily Survival: date, modifier, wave vs today's best, last 7 days (ui/DailyResult.ts).
   const daily = sum.survival && sum.daily ? activeDaily() : null;

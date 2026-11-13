@@ -788,7 +788,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const dh = wrap(e.desHeading - e.heading);
     const mt = e.turnRate * dt * fm * (air ? AIR_STEER : 1);
     e.heading = wrap(e.heading + clamp(dh, -mt, mt));
-    const target = e.desSpeed * fm;
+    // zone.enemySpeedMult: Survival wave modifiers (Blizzard slogs, Overdrive races); unset everywhere else.
+    const target = e.desSpeed * fm * (this.ctx.zone.enemySpeedMult ?? 1);
     const s = Math.sin(e.heading);
     const c = Math.cos(e.heading);
     if (!air) {

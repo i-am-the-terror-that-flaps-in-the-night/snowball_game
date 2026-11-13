@@ -8,7 +8,7 @@ import type { GearSlot } from '../config/gear';
 import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES } from '../config/zones';
 import { SettingsMenu } from './Settings';
-import { survivalBest, survivalUnlocked } from '../survival/SurvivalManager';
+import { survivalBest, survivalBestFor, survivalUnlocked } from '../survival/SurvivalManager';
 import { StyleShop } from './StyleShop';
 import { Trophies } from './Trophies';
 import { Story } from './Story';
@@ -282,7 +282,10 @@ export class UI implements UIAPI {
       `<span>Trophies <b>${ach}/${ACHIEVEMENTS.length}</b></span>`;
     const sb = survivalBest(p);
     const unlocked = survivalUnlocked(p);
-    this.setTile(this.survivalBtn, unlocked ? (sb > 0 ? `Best wave ${sb}` : 'Endless waves') : `Locked · beat ${ZONES[0].name}`, !unlocked);
+    // The selected plow's own record rides along once it has one (save.survivalBestByPlow).
+    const pb = survivalBestFor(p, p.data.plow);
+    const sbText = sb > 0 ? `Best wave ${sb}${pb > 0 ? ` · ${PLOWS[p.data.plow].icon} ${pb}` : ''}` : 'Endless waves';
+    this.setTile(this.survivalBtn, unlocked ? sbText : `Locked · beat ${ZONES[0].name}`, !unlocked);
     this.setTile(this.dailyBtn, unlocked ? dailySubLabel(p) : `Locked · beat ${ZONES[0].name}`, !unlocked);
     const board = this.hubBoard;
     const set = (k: string, v: string) => { const e = board.get(k); if (e) e.innerHTML = v; };
@@ -715,8 +718,16 @@ export class UI implements UIAPI {
     w.classList.remove('hidden');
     w.classList.toggle('boss', !!o.nextBoss);
     const t = el('div', 'ss-rp-title', undefined, w);
-    t.innerHTML = `Wave <b>${next}</b> next${o.nextBoss ? ` · ☠ BOSS: ${o.nextBoss}` : o.nextSpecial ? ` · ${o.nextSpecial.icon} ${o.nextSpecial.name}` : ''}`;
+    t.innerHTML = `Wave <b>${next}</b> next${o.nextMilestone ? ' · 🏆 MILESTONE' : ''}${o.nextBoss ? ` · ☠ BOSS: ${o.nextBoss}` : o.nextSpecial ? ` · ${o.nextSpecial.icon} ${o.nextSpecial.name}` : ''}`;
     if (o.nextSpecial && !o.nextBoss) el('div', 'ss-sv-special', o.nextSpecial.blurb, w);
+    if (o.nextModifier) el('div', 'ss-sv-mod', `+ ${o.nextModifier.icon} ${o.nextModifier.name}: ${o.nextModifier.blurb}`, w);
+    if (o.nextMilestone) el('div', 'ss-sv-special', `${o.nextMiniBoss ? `Mini-boss ${o.nextMiniBoss} joins the wave. ` : ''}Clear it for a milestone reward!`, w);
+    if (o.milestone) {
+      const m = el('div', 'ss-sv-milestone', undefined, w);
+      el('span', '', `🏆 Wave ${o.milestone.wave} milestone`, m);
+      el('span', '', `+${fmt(o.milestone.coins)} coins`, m);
+      if (o.milestone.healed >= 1) el('span', '', `+${fmt(Math.round(o.milestone.healed))} HP repaired`, m);
+    }
     const daily = activeDaily();
     if (daily) renderDailyShopTag(w, daily);
     if (o.loot) renderLoot(w, [o.loot]);

@@ -51,7 +51,7 @@ export const INTRO_MS = 2600;
 
 /** HUD element refs (GameHud's `h`). */
 export interface HudRefs {
-  zone: HTMLElement; round: HTMLElement; best: HTMLElement; enemies: HTMLElement; pips: HTMLElement; arena: HTMLElement;
+  zone: HTMLElement; round: HTMLElement; best: HTMLElement; enemies: HTMLElement; pips: HTMLElement; arena: HTMLElement; waveTag: HTMLElement;
   bosses: HTMLElement;
   coins: HTMLElement; coinBox: HTMLElement;
   combo: HTMLElement; comboN: HTMLElement;
@@ -72,7 +72,7 @@ export function hudLast() {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
+    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '', waveTag: '',
   };
 }
 export type HudLast = ReturnType<typeof hudLast>;
@@ -92,6 +92,8 @@ export function buildHudDom(hud: HTMLElement, H: HudRefs, bossSlots: BossSlot[])
   H.pips = el('div', 'ss-round-pips', undefined, tl);
   // Survival / Daily: the biome rotates every 5 waves; a tag counts down to the next arena.
   H.arena = el('div', 'ss-hud-arena hidden', '', tl);
+  // Survival: the live wave's modifier (Blizzard, Gold Rush, ...) or milestone tag.
+  H.waveTag = el('div', 'ss-hud-wavetag hidden', '', tl);
 
   // top-center: boss bars (1–2)
   H.bosses = el('div', 'ss-bosses', undefined, hud);

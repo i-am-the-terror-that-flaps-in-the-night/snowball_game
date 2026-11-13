@@ -4,7 +4,7 @@ import { ARENA } from '../core/types';
 import { StaticBatch } from '../render/mergeStatic';
 import { makeShadowProxy } from '../render/shadowProxy';
 import type { ShadowProxy } from '../render/shadowProxy';
-import { GLINTS, scaleWeatherLayers, weatherLayers } from './biomes/Weather';
+import { GLINTS, scaleWeatherLayers, weatherLayers, type WeatherLayerDef } from './biomes/Weather';
 import { currentPreset } from '../core/settings';
 import { GroundDecals, lavaTime } from './biomes/GroundDecals';
 import { OmegaWorks } from './omega/OmegaWorks';
@@ -14,7 +14,19 @@ import { TOWER_OFF, DOME_TOWER_OFF, DOME_TOWER_H, STAGE_HALF, brawlMode, domeK, 
 import { chevronTex } from './environment/textures';
 import { VenueScenery } from './environment/VenueScenery';
 
+/** Survival's Blizzard wave (setStorm): fog pulled in to this (or the zone's own, if nearer), tinted toward white. */
+const STORM_FOG_NEAR = 12;
+const STORM_FOG_FAR = 58;
+const STORM_WHITE = new THREE.Color(0xeef4f8);
+/** Share of the way the fog / horizon colour goes toward STORM_WHITE. */
+const STORM_TINT = 0.6;
+/** The gale laid over the zone's own weather: dense, fast, wind-driven flakes (the Blizzard Bowl's look, thicker). */
+const STORM_GALE: WeatherLayerDef = { count: 7000, colors: [0xffffff], size: 0.17, fall: 5, wind: [17, 6], sway: 1.6, opacity: 0.95 };
+
 export class Environment extends VenueScenery implements WorldAPI {
+  /** Survival Blizzard gale on (setStorm); setZone clears it. */
+  private storm = false;
+
   get obstacles(): readonly Obstacle[] {
     return this.obstacleList;
   }
@@ -39,6 +51,7 @@ export class Environment extends VenueScenery implements WorldAPI {
 
   setZone(zone: ZoneDef): void {
     this.zone = zone;
+    this.storm = false;
     // Snowdome mode + scale first: the floodlight aims below read them (buildDecor sets them again).
     setBrawlMode(zone.theme === 'brawl');
     this.ctx.terrain.load(zone.terrain ?? {});
@@ -104,6 +117,22 @@ export class Environment extends VenueScenery implements WorldAPI {
     this.buildDecor(zone);
     this.buildWeather(zone);
     this.ctx.audio?.setAmbience(zone.biome?.ambience ?? (brawl || zone.theme === 'blizzard' ? 'wind' : 'none'));
+  }
+
+  /** Survival's Blizzard wave modifier: a whiteout gale over the current zone (fog pulled in and whitened, a dense
+   *  wind-driven snow layer on top of the zone's own weather), or back to the zone's own look. No re-dress: only the
+   *  fog, the sky horizon and the weather particles change. */
+  setStorm(on: boolean): void {
+    if (!this.zone || on === this.storm) return;
+    this.storm = on;
+    const z = this.zone;
+    this.fog.near = on ? Math.min(z.fogNear, STORM_FOG_NEAR) : z.fogNear;
+    this.fog.far = on ? Math.min(z.fogFar, STORM_FOG_FAR) : z.fogFar;
+    this.fog.color.setHex(z.fogColor);
+    if (on) this.fog.color.lerp(STORM_WHITE, STORM_TINT);
+    (this.ctx.scene.background as THREE.Color).copy(this.fog.color);
+    this.skyMat.uniforms.horizon.value.copy(this.fog.color);
+    this.buildWeather(z);
   }
 
   /** Shadow map size from the quality preset. Brawl trades shadow sharpness for frame rate (HIGH: 1024 there,
@@ -284,16 +313,17 @@ export class Environment extends VenueScenery implements WorldAPI {
     const b = zone.biome;
     // Quality preset (LOW: half the particles, no haze layers); read at build time, so it applies from the next arena.
     const p = currentPreset();
+    let layers: WeatherLayerDef[];
     if (b) {
-      const layers = weatherLayers(b.particles, zone.snowfall);
+      layers = weatherLayers(b.particles, zone.snowfall);
       if (b.key === 'glacier') layers.push(GLINTS);
-      this.weather.set(scaleWeatherLayers(layers, p.weatherScale, p.dropHaze));
-      return;
+    } else {
+      const snow = weatherLayers('snow', zone.snowfall)[0];
+      if (zone.theme === 'blizzard') Object.assign(snow, { wind: [16, 5], fall: 5, sway: 1.5, size: 0.18, opacity: 0.95 });
+      layers = [snow];
     }
-    const blizzard = zone.theme === 'blizzard';
-    const snow = weatherLayers('snow', zone.snowfall)[0];
-    if (blizzard) Object.assign(snow, { wind: [16, 5], fall: 5, sway: 1.5, size: 0.18, opacity: 0.95 });
-    this.weather.set(scaleWeatherLayers([snow], p.weatherScale, p.dropHaze));
+    if (this.storm) layers.push(STORM_GALE);
+    this.weather.set(scaleWeatherLayers(layers, p.weatherScale, p.dropHaze));
   }
 
   /* ------------------------------------------------------------------ update */

@@ -240,6 +240,9 @@ export interface WorldAPI {
   setZone(zone: ZoneDef): void;
   /** Resize the sun's shadow map to the current quality preset (settings.applyQuality; setZone does it too). */
   syncShadowMapSize?(): void;
+  /** Survival Blizzard wave: whiteout gale (fog pulled in, dense wind-driven snow) over the current zone, or off
+   *  (the zone's own fog and weather). Cheap, no re-dress; setZone turns it off. */
+  setStorm?(on: boolean): void;
   /** Falling snow particles, subtle ambient animation, gate lights. */
   update(dt: number): void;
   /** Flash/open the gate with this index (0..2) — call when a bot drives in through it. No-op in Brawl. */
@@ -703,7 +706,8 @@ export interface HudState {
   brawl: BrawlHud | null;
   /** Survival mode wave line (current wave + best), or null/absent outside Survival. `arenaIn` = waves until the biome
    *  rotates (1 = this is the last wave here), `nextArena` = the name of the next one. */
-  survival?: { wave: number; best: number; arenaIn?: number; nextArena?: string } | null;
+  /** `tag`: the live wave's modifier / milestone tag ('' = none). */
+  survival?: { wave: number; best: number; tag?: string; arenaIn?: number; nextArena?: string } | null;
   /** Hide the round / wave counter + pips (Tutorial). */
   hideRound?: boolean;
   /** Campaign / Survival minimap + lost-bot arrows, or null (Brawl, Duel, Tutorial). Game fills it in place. */
@@ -824,7 +828,12 @@ export interface RunSummary {
   hard?: boolean;
   daily?: boolean;
   /** Survival run result (wave reached, best, new record); absent for campaign runs. */
-  survival?: { wave: number; best: number; newBest: boolean; endedEarly?: boolean };
+  survival?: {
+    wave: number; best: number; newBest: boolean; endedEarly?: boolean;
+    /** Normal runs: the best wave with the plow this run used (after this run), and every plow's record. */
+    plow?: { name: string; icon: string; best: number; newBest: boolean };
+    plowBests?: { name: string; icon: string; best: number; current: boolean }[];
+  };
   /** Gear loot this run dropped (boss / Hard clear, Survival boss waves). */
   loot?: LootDrop[];
 }
@@ -836,6 +845,14 @@ export interface SurvivalShopOpts {
   nextBoss: string | null;
   /** Special wave coming next (Swarm, Blitz, ...), if any. */
   nextSpecial: { name: string; icon: string; blurb: string } | null;
+  /** Wave modifier the next wave rolls (Blizzard, Gold Rush, ...), if any. */
+  nextModifier?: { name: string; icon: string; blurb: string } | null;
+  /** True when the next wave is a milestone (mini-boss + reward). */
+  nextMilestone?: boolean;
+  /** Name of the mini-boss joining that milestone (null on a twin-boss milestone: the HUD has two boss bars). */
+  nextMiniBoss?: string | null;
+  /** Reward of the milestone just cleared (coins paid, HP repaired). */
+  milestone?: { wave: number; coins: number; healed: number } | null;
   /** Coins for a Full Repair. */
   repairCost: number;
   /** Gear the boss wave just cleared dropped, if any. */

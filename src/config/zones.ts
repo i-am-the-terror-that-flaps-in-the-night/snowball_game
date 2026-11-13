@@ -14,6 +14,8 @@ export interface SpawnGroup {
   delay: number;
   /** Seconds between spawns within the group. */
   interval: number;
+  /** Extra hp multiplier on this group's bots, on top of zone.enemyHpMult (Survival's milestone mini-boss). */
+  hpMult?: number;
 }
 
 export interface RoundDef {
@@ -52,6 +54,8 @@ export interface ZoneDef {
   enemyHpMult: number;
   /** Multiplier on bot hits against the plow (Survival scales it per wave; default 1). */
   enemyDmgMult?: number;
+  /** Multiplier on bot drive speed (Survival wave modifiers: Blizzard, Overdrive; default 1). */
+  enemySpeedMult?: number;
   coinMult: number;
   /** Initial snow depth (m) on the field. */
   snowDepth: number;

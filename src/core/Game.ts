@@ -18,7 +18,7 @@ import { Combat } from '../entities/Combat';
 import { EnemyManager } from '../entities/Enemies';
 import { WaveDirector } from '../entities/Waves';
 import { BrawlManager } from '../brawl/BrawlManager';
-import { BIOME_EVERY, SurvivalManager, fullRepairCost, survivalUnlocked } from '../survival/SurvivalManager';
+import { BIOME_EVERY, SurvivalManager, fullRepairCost, isMilestone, survivalBestFor, survivalUnlocked } from '../survival/SurvivalManager';
 import { Pickups } from '../fx/Pickups';
 import { Fx } from '../fx/Fx';
 import { CameraRig } from '../fx/CameraRig';
@@ -579,13 +579,23 @@ export class Game {
     const { ctx } = this;
     ctx.pickups.collectAll();
     ctx.combat.clear(true);
-    const bossWave = this.survival.isBossWave;
+    const sv = this.survival;
+    const bossWave = sv.isBossWave;
     if (bossWave) this.run.bossDefeated = true;
-    const bonus = this.survival.waveCleared();
+    const bonus = sv.waveCleared();
     this.run.coins += bonus;
     ctx.audio.play('roundClear');
-    ctx.ui.toast(`WAVE ${this.survival.wave} CLEARED! +${bonus}`, 'good');
-    const loot = bossWave ? ctx.progression.rollLoot('survivalBoss', Math.random, survivalLootChance(this.survival.wave)) : null;
+    ctx.ui.toast(`WAVE ${sv.wave} CLEARED! +${bonus}`, 'good');
+    // Milestone (every 10th wave): its coins + repair were paid by waveCleared; its gear roll is guaranteed and
+    // replaces the boss-wave roll.
+    const ms = sv.milestone;
+    if (ms) {
+      this.run.coins += ms.coins;
+      ctx.ui.toast(`🏆 MILESTONE · WAVE ${ms.wave}! +${ms.coins}${ms.healed >= 1 ? ` · +${Math.round(ms.healed)} HP` : ''}`, 'big');
+    }
+    const loot = ms
+      ? ctx.progression.rollLoot('survivalMilestone')
+      : bossWave ? ctx.progression.rollLoot('survivalBoss', Math.random, survivalLootChance(sv.wave)) : null;
     if (loot) this.run.loot.push(loot);
     this.openSurvivalShop(loot);
   }
@@ -596,6 +606,7 @@ export class Game {
     const sv = this.survival;
     const wave = sv.wave;
     const repairCost = fullRepairCost(wave);
+    const mini = sv.miniBossAt(wave + 1);
     // The wave clear may have moved the run to its next biome (SurvivalManager.switchBiome): a new arena.
     this.warmNow();
     this.state = 'shop';
@@ -606,6 +617,10 @@ export class Game {
       cleared: wave,
       nextBoss: sv.bossNameFor(wave + 1),
       nextSpecial: sv.specialFor(wave + 1),
+      nextModifier: sv.modifierFor(wave + 1),
+      nextMilestone: isMilestone(wave + 1),
+      nextMiniBoss: mini ? ENEMIES[mini].name : null,
+      milestone: sv.milestone,
       repairCost,
       loot,
       canRepair: () => ctx.plow.hp < ctx.plow.maxHp - 0.5,
@@ -656,9 +671,21 @@ export class Game {
       firstClear: false,
       clearReward: 0,
       unlockedZoneName: null,
-      survival: { wave: sv.wave, best: sv.best, newBest, endedEarly },
+      survival: { wave: sv.wave, best: sv.best, newBest, endedEarly, ...this.plowRecords() },
       loot: this.run.loot,
     });
+  }
+
+  /** Survival results: the run plow's record and every plow's best wave (normal runs; the Daily has its own card). */
+  private plowRecords(): { plow?: { name: string; icon: string; best: number; newBest: boolean }; plowBests?: { name: string; icon: string; best: number; current: boolean }[] } {
+    const rec = this.survival.plowRecord;
+    if (!rec) return {};
+    const p = this.ctx.progression;
+    const def = PLOWS[rec.plow];
+    return {
+      plow: { name: def.name, icon: def.icon, best: rec.best, newBest: rec.newBest },
+      plowBests: Object.values(PLOWS).map((d) => ({ name: d.name, icon: d.icon, best: survivalBestFor(p, d.id), current: d.id === rec.plow })),
+    };
   }
 
   private brawlOver(): void {
@@ -691,18 +718,29 @@ export class Game {
     ctx.world.resetProps(this.mode === 'campaign' || this.mode === 'survival', true);
     this.lastCountdownInt = -1;
     if (this.mode === 'survival') {
-      this.countdown = this.survival.nextWave();
-      const boss = this.survival.boss;
-      if (boss) {
-        const sub = bossIntroTitle(boss.types);
-        ctx.ui.bossIntro(boss.name, boss.types.length > 1 ? `Wave ${this.survival.wave}\n${sub}` : `Wave ${this.survival.wave} · ${sub}`);
+      const sv = this.survival;
+      this.countdown = sv.nextWave();
+      const boss = sv.boss;
+      const mini = sv.miniBoss;
+      const head = isMilestone(sv.wave) ? `🏆 MILESTONE · Wave ${sv.wave}` : `Wave ${sv.wave}`;
+      if (boss || mini) {
+        // Boss wave and / or milestone: the lineup's bosses (a milestone's mini-boss joins a few seconds in).
+        const types = sv.lineupBosses;
+        const sub = bossIntroTitle(types);
+        const name = boss ? boss.name + (mini ? ` + ${ENEMIES[mini].name}` : '') : ENEMIES[mini!].name;
+        ctx.ui.bossIntro(name, types.length > 1 ? `${head}\n${sub}` : `${head} · ${sub}`);
         ctx.audio.play('boss');
       } else {
-        const sp = this.survival.special;
+        const sp = sv.special;
+        const mod = sv.modifier;
         if (sp) {
-          ctx.ui.bossIntro(`${sp.icon} ${sp.name}`, `Wave ${this.survival.wave} · ${sp.blurb}`);
+          // A modifier riding a special wave gets a line of its own under the special's blurb.
+          ctx.ui.bossIntro(`${sp.icon} ${sp.name}`, `${head} · ${sp.blurb}${mod ? `\n+ ${mod.icon} ${mod.name}: ${mod.blurb}` : ''}`);
           ctx.audio.play('boss');
-        } else ctx.ui.toast(`Wave ${this.survival.wave} incoming…`, 'info');
+        } else if (mod) {
+          ctx.ui.bossIntro(`${mod.icon} ${mod.name}`, `${head} · ${mod.blurb}`);
+          ctx.audio.play('boss');
+        } else ctx.ui.toast(`${head} incoming…`, 'info');
       }
     } else if (this.isBossRound) {
       this.countdown = BOSS_COUNTDOWN_SECONDS;

@@ -1295,6 +1295,8 @@
 /* Survival / Daily: next-arena countdown under the wave line. */
 .ss-hud-arena { margin-top: 6px; font-family: var(--display); font-weight: 800; font-size: 12px; line-height: 1.25; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cyan); }
 .ss-hud-arena.last { color: var(--hazard); }
+.ss-hud-wavetag { display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px; font-family: var(--display); font-weight: 900; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #1a1300; background: linear-gradient(90deg, #ffd257, #ffb02e); box-shadow: 0 0 10px rgba(255, 196, 64, 0.55); animation: ss-wavetag-pulse 1.6s ease-in-out infinite; }
+@keyframes ss-wavetag-pulse { 50% { box-shadow: 0 0 18px rgba(255, 196, 64, 0.9); } }
 /* Edge arrows: each sits at its edge point (transform set per frame), centred on it. */
 .ss-lost { position: absolute; inset: 0; pointer-events: none; }
 .ss-lost-arrow { --c: var(--red); position: absolute; left: 0; top: 0; width: 0; height: 0; display: none; }
@@ -1386,6 +1388,7 @@
   .ss-round-pips { margin-top: 4px; }
   .ss-rpip { height: 5px; }
   .ss-hud-arena { margin-top: 3px; font-size: 10px; }
+  .ss-hud-wavetag { margin-top: 3px; font-size: 10px; }
   .ss-hud-tr { padding: 5px 12px 5px 8px; gap: 7px; }
   .ss-hud-tr .ss-coin { width: 22px; height: 22px; }
   .ss-hud-tr .ss-coin::after { inset: 5px; }
@@ -1472,7 +1475,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ss-lost-tip::before { animation: none; }
-  .ss-card.afford .ss-buy, .ss-chip.boss, .ss-gauge.full, .ss-boss-preview, .ss-hud-round.boss, .ss-bi-stripes { animation: none; }
+  .ss-card.afford .ss-buy, .ss-chip.boss, .ss-gauge.full, .ss-boss-preview, .ss-hud-round.boss, .ss-bi-stripes, .ss-hud-wavetag { animation: none; }
 }
 
 /* ---- Starter plow picker (Garage) */
@@ -1543,6 +1546,13 @@
 .ss-sv-repair:disabled { opacity: 0.45; cursor: default; }
 .ss-sv-end { font-size: 15px; padding: 8px 14px; margin-left: auto; }
 .ss-sv-special { font-size: 14px; font-weight: 700; color: var(--hazard); margin: -2px 0 6px; }
+.ss-sv-mod { font-size: 14px; font-weight: 700; color: #ffc440; margin: -2px 0 6px; }
+.ss-sv-milestone { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 2px 0 8px; padding: 6px 12px; font-family: var(--display); font-weight: 900; font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; color: #1a1300; background: linear-gradient(90deg, #ffd257, #ffb02e); clip-path: var(--chamfer-sm); }
+/* Survival results: best wave per plow (the run's plow highlighted) */
+.ss-sv-plowbests { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 8px; margin: 10px 0 2px; }
+.ss-sv-plowbest { padding: 3px 10px; font-weight: 800; font-size: 13px; color: var(--ink-soft); background: var(--slab-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer-sm); }
+.ss-sv-plowbest.on { color: var(--ink); box-shadow: inset 0 0 0 2px var(--hazard); }
+.ss-sv-plowbest b { color: var(--hazard); }
 
 /* ------------------------------------------------------------ impact flash + damage vignette (fx/impact.ts) */
 /* Sits between the canvas (#app) and the HUD (#ui, z 30); opacity is driven by element.animate(). */
