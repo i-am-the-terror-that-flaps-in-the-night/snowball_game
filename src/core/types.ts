@@ -416,6 +416,10 @@ export interface DamageOpts {
   /** Magnetic hits (ARSENAL's Mag Laser / Repulsor) mostly pierce frontal plates: the Brute Dozer's plate and
    *  Frostbyte's ball block only cut them to PLATE_PIERCE instead of 30% / 50%. */
   pierce?: boolean;
+  /** Area damage (blasts, shatter shards, shockwaves, ground pounds, sky strikes): goes round the Bulwark's plow-shield,
+   *  and a Slushpile it wrecks takes its slushlings with it. Slams, stomps, air slams and ultimates count as area
+   *  without it (Enemies.damage). Bots only; the Duel ignores it. */
+  area?: boolean;
   /** An ultimate's damage (the blast and its aftermath). Bots ignore it; the online Duel soft-caps it per ultimate
    *  (duel/opponent.ts, DUEL_ULT_HP_CAP). */
   ult?: boolean;

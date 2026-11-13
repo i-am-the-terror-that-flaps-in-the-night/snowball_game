@@ -26,7 +26,7 @@ export function restart(e: HTMLElement, cls: string, ...others: string[]): void 
 export type BtnFn = (label: string, cls: string, onClick: () => void, parent?: HTMLElement, sound?: SoundName | null) => HTMLButtonElement;
 
 export const ENEMY_ICON: Record<EnemyType, string> = {
-  scrapper: '🤖', brute: '🚧', spinner: '🪚', thief: '🦝',
+  scrapper: '🤖', brute: '🚧', spinner: '🪚', thief: '🦝', gunner: '🎯', bulwark: '🛡️', slushpile: '🫧', slushling: '💧',
   bulldoza: '🚜', frostbyte: '👾', grinder: '🔩', slush: '🔴', sleet: '🔵', omega: '💀', rival: '🚜', rallybot: '🧢', donald: '🍊',
 };
 

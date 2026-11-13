@@ -337,7 +337,8 @@ function scrapper(t: EnemyType = 'scrapper'): Tpl {
   // single eye turret
   b.add(G.cyl(10), paint(t), [0, 0.97, -0.22], [0.3, 0.22, 0.3]);
   b.add(G.cyl(12), M.black(), [0, 0.98, 0.04], [0.19, 0.12, 0.19], [PI / 2, 0, 0]);
-  b.add(G.sph(1), eyeMat(t, 0xff3b30), [0, 0.98, 0.1], [0.13, 0.13, 0.08]);
+  const eye = t === 'slushling' ? 0x3fd1a8 : 0xff3b30;
+  b.add(G.sph(1), eyeMat(t, eye), [0, 0.98, 0.1], [0.13, 0.13, 0.08]);
   if (t === 'rallybot') {
     // red rally cap on the eye turret (MAGA front panel + brim)
     b.add(G.taper(0.82, 12), M.capRed(), [0, 1.2, -0.25], [0.36, 0.26, 0.36]);
@@ -353,7 +354,7 @@ function scrapper(t: EnemyType = 'scrapper'): Tpl {
     b.add(G.box(), M.black(), [0, 1.12, 0.02], [0.36, 0.06, 0.12], [0.25, 0, 0]);
     // antenna
     b.add(G.cyl(6), M.black(), [0.26, 1.2, -0.5], [0.02, 0.5, 0.02]);
-    b.add(G.sph(0), eyeMat(t, 0xff3b30), [0.26, 1.46, -0.5], [0.05, 0.05, 0.05]);
+    b.add(G.sph(0), eyeMat(t, eye), [0.26, 1.46, -0.5], [0.05, 0.05, 0.05]);
   }
   // exhaust
   stack(b, stacks, -0.24, 0.85, -0.55, 0.06, 0.24, M.steel(), M.dark());
@@ -829,6 +830,123 @@ function donald(): Tpl {
   return { root, height: 5.9, stacks, front: 3.1 };
 }
 
+/** Flurry Gunner: a spindly four-wheeled snow cannon (tall mast turret, long barrel, cyan muzzle glow, a hopper of
+ *  snowballs on its back). The muzzle sits GUNNER_MUZZLE_Y up, `front` m ahead of the centre. */
+export const GUNNER_MUZZLE_Y = 1.55;
+function gunner(): Tpl {
+  const t: EnemyType = 'gunner';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  base.add(G.box(), M.dark(), [0, 0.4, -0.05], [0.86, 0.16, 1.4]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 0.56, 0.3, sz * 0.5, 0.3, 0.18, accent(t));
+  wheels.flush(root);
+  const { b } = sub(root, 'body', [0, 0, 0]);
+  b.add(G.wedge(0.35), paint(t), [0, 0.7, -0.05], [0.8, 0.4, 1.25]);
+  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.41, 0.7, -0.2], [0.03, 0.18, 0.7], ZERO, [2, 0.5]);
+  // tall mast + turret block
+  b.add(G.cyl(8), M.steel(), [0, 1.12, -0.15], [0.11, 0.6, 0.11]);
+  b.add(G.box(), paint(t), [0, GUNNER_MUZZLE_Y, -0.12], [0.58, 0.42, 0.72]);
+  b.add(G.box(), M.black(), [0, GUNNER_MUZZLE_Y + 0.23, -0.12], [0.62, 0.06, 0.76]);
+  // the long barrel (breech collar, cooling rings) and its glowing muzzle
+  b.add(G.cyl(10), M.dark(), [0, GUNNER_MUZZLE_Y, 0.66], [0.12, 1.1, 0.12], [PI / 2, 0, 0]);
+  b.add(G.cyl(10), M.black(), [0, GUNNER_MUZZLE_Y, 0.28], [0.18, 0.2, 0.18], [PI / 2, 0, 0]);
+  for (const z of [0.55, 0.8]) b.add(G.cyl(10), M.steel(), [0, GUNNER_MUZZLE_Y, z], [0.15, 0.06, 0.15], [PI / 2, 0, 0]);
+  b.add(G.cyl(12), glowMat(t, 0x7fe6ff, 0.35), [0, GUNNER_MUZZLE_Y, 1.2], [0.18, 0.12, 0.18], [PI / 2, 0, 0]);
+  // side scope = the eye
+  b.add(G.cyl(8), M.black(), [0.36, GUNNER_MUZZLE_Y + 0.12, 0.06], [0.08, 0.32, 0.08], [PI / 2, 0, 0]);
+  b.add(G.sph(1), eyeMat(t, 0x7fe6ff, 2.6), [0.36, GUNNER_MUZZLE_Y + 0.12, 0.23], [0.07, 0.07, 0.04]);
+  // snowball hopper on the back
+  b.add(G.taper(1.3, 10), M.steel(), [0, 1.05, -0.58], [0.24, 0.34, 0.24]);
+  for (const [x, y, z] of [[0, 1.3, -0.58], [0.12, 1.42, -0.5], [-0.1, 1.44, -0.66]] as const) b.add(G.sph(1), M.white(), [x, y, z], [0.13, 0.13, 0.13]);
+  // antenna
+  b.add(G.cyl(6), M.black(), [-0.25, 2.0, -0.35], [0.02, 0.5, 0.02]);
+  b.add(G.sph(0), accent(t), [-0.25, 2.26, -0.35], [0.05, 0.05, 0.05]);
+  stack(b, stacks, 0.24, 0.85, -0.55, 0.05, 0.22, M.steel(), M.dark());
+  b.flush();
+  base.flush();
+  return { root, height: 2.0, stacks, front: 1.26 };
+}
+
+/** Bulwark: a squat tread-tank behind a huge curved plow-shield (five steel panels on an arc, an accent rim that
+ *  flashes, a cyan edge strip = the glow, which flares on every BLOCK) with an orange rear vent (its weak spot). */
+function bulwark(): Tpl {
+  const t: EnemyType = 'bulwark';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  treads(base, wheels, 0.92, 2.1, 0.64, 0.48, 4, accent(t));
+  wheels.flush(root);
+  const { b } = sub(root, 'body', [0, 0, 0]);
+  b.add(G.box(), paint(t), [0, 0.98, -0.4], [1.42, 0.66, 1.6]);
+  b.add(G.box(), M.dark(), [0, 0.64, -0.4], [1.34, 0.12, 1.7]);
+  // squat cab with a visor slit
+  b.add(G.box(), paint(t), [0, 1.56, -0.62], [0.96, 0.52, 0.86]);
+  b.add(G.box(), M.black(), [0, 1.85, -0.62], [1.04, 0.08, 0.94]);
+  b.add(G.box(), M.black(), [0, 1.6, -0.18], [0.8, 0.14, 0.04]);
+  b.add(G.box(), eyeMat(t, 0x6fd8ff), [0, 1.6, -0.16], [0.58, 0.06, 0.03]);
+  // rear vent: the weak spot (BULWARK_REAR_MULT)
+  b.add(G.box(), M.black(), [0, 1.0, -1.21], [0.92, 0.5, 0.05]);
+  for (let i = 0; i < 3; i++) b.add(G.box(), M.hazLight(), [0, 0.86 + i * 0.14, -1.24], [0.76, 0.05, 0.03]);
+  // THE SHIELD: five tall panels on an arc, leaning back a touch
+  const R = 1.9;
+  const cz = -0.28;
+  for (let k = -2; k <= 2; k++) {
+    const a = k * 0.3;
+    const x = Math.sin(a) * R;
+    const z = cz + Math.cos(a) * R;
+    b.add(G.box(), M.steel(), [x, 1.12, z], [0.62, 2.0, 0.16], [-0.08, a, 0]);
+    b.add(G.box(), accent(t), [x, 2.16, z - 0.08], [0.64, 0.12, 0.22], [-0.08, a, 0]);
+    b.add(G.box(), glowMat(t, 0x6fd8ff, 0.3), [x, 0.16, z + 0.02], [0.64, 0.08, 0.2], [-0.08, a, 0]);
+    for (const y of [0.55, 1.7]) b.add(G.sph(0), M.chrome(), [x * 1.04, y, z + 0.1], [0.05, 0.05, 0.04]);
+  }
+  b.add(G.box(), M.hazard(), [0, 1.2, cz + R + 0.1], [0.56, 0.5, 0.03], [-0.08, 0, 0], [1.2, 1.2]);
+  // arms bracing the shield
+  for (const sx of [-1, 1]) b.add(G.box(), M.black(), [sx * 0.5, 1.0, 0.85], [0.14, 0.14, 1.0]);
+  stack(b, stacks, -0.45, 1.3, -1.0, 0.08, 0.5, M.chrome(), M.dark());
+  b.flush();
+  base.flush();
+  return { root, height: 2.35, stacks, front: 1.72 };
+}
+
+/** Slushpile: a treaded hopper heaped with lumpy grey slush (paint, so the whole heap flashes), beady teal eyes
+ *  peeking out of the front of the heap and a stubby scoop. */
+function slushpile(): Tpl {
+  const t: EnemyType = 'slushpile';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  treads(base, wheels, 0.74, 1.8, 0.5, 0.38, 3, accent(t));
+  wheels.flush(root);
+  const { b } = sub(root, 'body', [0, 0, 0]);
+  b.add(G.box(), M.dark(), [0, 0.6, 0], [1.24, 0.22, 1.7]);
+  b.add(G.taper(1.4, 10), M.steel(), [0, 0.92, 0], [0.72, 0.46, 0.8]);
+  b.add(G.wedge(0.5), M.steel(), [0, 0.42, 0.98], [1.26, 0.28, 0.34]);
+  const lumps: readonly (readonly [number, number, number, number])[] = [
+    [0, 1.38, 0, 0.82], [0.48, 1.26, 0.3, 0.5], [-0.44, 1.3, -0.24, 0.55], [0.08, 1.8, -0.12, 0.52],
+    [-0.32, 1.22, 0.46, 0.42], [0.36, 1.3, -0.5, 0.45], [-0.1, 2.12, 0.05, 0.3],
+  ];
+  for (const [x, y, z, r] of lumps) b.add(G.sph(1), paint(t), [x, y, z], [r, r * 0.8, r]);
+  // teal meltwater streaks (accent)
+  for (const [x, y, z] of [[0.6, 1.0, 0.1], [-0.55, 1.05, 0.3], [0.2, 0.98, -0.62]] as const) b.add(G.sph(0), accent(t), [x, y, z], [0.14, 0.2, 0.14]);
+  for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0x3fd1a8, 2.6), [sx * 0.22, 1.4, 0.76], [0.1, 0.1, 0.06]);
+  b.flush();
+  base.flush();
+  return { root, height: 2.3, stacks, front: 1.1 };
+}
+
+/** Slushlings are scrappers shrunk to this scale (their radius is ~0.65 of a scrapper's). */
+const SLUSHLING_SCALE = 0.64;
+function slushling(): Tpl {
+  const tpl = scrapper('slushling');
+  tpl.root.scale.setScalar(SLUSHLING_SCALE);
+  for (let i = 0; i < tpl.stacks.length; i++) tpl.stacks[i] *= SLUSHLING_SCALE;
+  return { root: tpl.root, height: tpl.height * SLUSHLING_SCALE, stacks: tpl.stacks, front: tpl.front * SLUSHLING_SCALE };
+}
+
 const BUILDERS: Record<EnemyType, () => Tpl> = {
   scrapper: () => scrapper(),
   brute,
@@ -842,6 +960,10 @@ const BUILDERS: Record<EnemyType, () => Tpl> = {
   slush: () => twin('slush'),
   sleet: () => twin('sleet'),
   omega,
+  gunner,
+  bulwark,
+  slushpile,
+  slushling,
   rival: () => scrapper(), // Brawl rivals use their own models (src/brawl); placeholder for exhaustiveness
 };
 /** One depth-only shadow proxy per rigid group of the template (root base, body, lift, saw rings, auger, ball):

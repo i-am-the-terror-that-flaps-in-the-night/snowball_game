@@ -604,6 +604,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         freezeSeconds: st.clapStun,
         fromX: px,
         fromZ: pz,
+        area: true,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e, true, false);
@@ -686,7 +687,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         const e = hits[i];
         if (!e.alive) continue;
         const hp0 = e.hp;
-        const killed = this.b.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz });
+        const killed = this.b.enemies.damage(e, dmgBase * STORM_STRIKE_FRAC * this.hitMult(e), { source: 'other', freezeSeconds: 0.6, fromX: sx, fromZ: sz, area: true });
         const d = Math.max(0, hp0 - Math.max(0, e.hp));
         this.onPlayerHit(d, killed, e, false, false);
         _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);

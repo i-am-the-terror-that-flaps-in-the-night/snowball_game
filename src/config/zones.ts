@@ -99,7 +99,8 @@ export const BIOMES: Record<Exclude<BiomeKey, 'snowdome'>, BiomeDef> = {
 /* Campaign order (docs/level-overhaul.md "Arenas"). Save ids, rounds, challenges and difficulty multipliers belong to
  * the SLOT, except the Plaza and the Works, whose rallybot rounds / Donald challenges / ids moved with them (5 <-> 6
  * swap). Arenas 1-5 are dressed by their biome (snowTint = biome.snowColor); `theme` only picks the venue structure
- * and SnowField's bare-ground fallback colour. */
+ * and SnowField's bare-ground fallback colour. Regular-bot ramp: arena 1 is scrappers + a brute; Flurry Gunners join
+ * from arena 2 round 2, a Slushpile from arena 2 round 3, Bulwarks from arena 3, and later arenas mix all three in. */
 export const ZONES: ZoneDef[] = [
   {
     index: 0, id: 'yard', name: 'Coldboot Glacier', tagline: 'A rogue AI froze the relay station solid.', bossName: 'FROSTBYTE',
@@ -117,8 +118,8 @@ export const ZONES: ZoneDef[] = [
     index: 1, id: 'junkyard', name: 'Inferno Quarry', tagline: 'The Yard Boss moved somewhere hotter.', bossName: 'BULLDOZA',
     rounds: [
       { groups: [g('scrapper', 4, 0, 1.8), g('thief', 2, 4, 3)] },
-      { groups: [g('spinner', 2, 0, 4), g('scrapper', 3, 3, 2)] },
-      { groups: [g('brute', 2, 0, 5), g('thief', 2, 3, 2), g('spinner', 1, 8, 1)] },
+      { groups: [g('spinner', 2, 0, 4), g('scrapper', 3, 3, 2), g('gunner', 2, 7, 4)] },
+      { groups: [g('brute', 2, 0, 5), g('thief', 2, 3, 2), g('spinner', 1, 8, 1), g('slushpile', 1, 11, 1)] },
       { boss: true, groups: [g('bulldoza', 1, 1, 1)] },
     ],
     enemyHpMult: 1.2, coinMult: 1.2, snowDepth: 0.55, snowRegenMult: 1, clearReward: 300,
@@ -129,9 +130,9 @@ export const ZONES: ZoneDef[] = [
   {
     index: 2, id: 'foundry', name: 'Rust Basin', tagline: 'Something huge is drilling under the red dust.', bossName: 'THE GRINDER',
     rounds: [
-      { groups: [g('spinner', 3, 0, 3), g('scrapper', 4, 2, 1.5)] },
-      { groups: [g('brute', 3, 0, 4), g('thief', 3, 4, 2)] },
-      { groups: [g('spinner', 3, 0, 2.5), g('brute', 2, 3, 4), g('scrapper', 4, 6, 1.2)] },
+      { groups: [g('spinner', 3, 0, 3), g('scrapper', 4, 2, 1.5), g('gunner', 2, 6, 3)] },
+      { groups: [g('brute', 2, 0, 4), g('bulwark', 1, 3, 1), g('thief', 3, 4, 2), g('slushpile', 1, 9, 1)] },
+      { groups: [g('spinner', 3, 0, 2.5), g('brute', 2, 3, 4), g('scrapper', 4, 6, 1.2), g('slushpile', 2, 9, 4), g('gunner', 2, 12, 3)] },
       { boss: true, groups: [g('grinder', 1, 1, 1)] },
     ],
     enemyHpMult: 1.45, coinMult: 1.4, snowDepth: 0.45, snowRegenMult: 0.9, clearReward: 500,
@@ -142,9 +143,9 @@ export const ZONES: ZoneDef[] = [
   {
     index: 3, id: 'bowl', name: 'The Thermal Divide', tagline: 'Twins. One runs hot, one runs cold.', bossName: 'SLUSH & SLEET',
     rounds: [
-      { groups: [g('scrapper', 6, 0, 1), g('thief', 3, 3, 1.5)] },
-      { groups: [g('spinner', 4, 0, 2), g('brute', 2, 4, 3)] },
-      { groups: [g('brute', 3, 0, 3), g('spinner', 3, 3, 2), g('thief', 3, 6, 1.5)] },
+      { groups: [g('scrapper', 6, 0, 1), g('thief', 3, 3, 1.5), g('gunner', 3, 6, 2.5)] },
+      { groups: [g('spinner', 4, 0, 2), g('bulwark', 2, 4, 3), g('slushpile', 2, 8, 3)] },
+      { groups: [g('brute', 2, 0, 3), g('bulwark', 1, 2, 1), g('spinner', 3, 3, 2), g('thief', 3, 6, 1.5), g('gunner', 2, 9, 3)] },
       { boss: true, groups: [g('slush', 1, 1, 1), g('sleet', 1, 1.5, 1)] },
     ],
     enemyHpMult: 1.75, coinMult: 1.6, snowDepth: 0.7, snowRegenMult: 2.2, clearReward: 750,
@@ -155,9 +156,9 @@ export const ZONES: ZoneDef[] = [
   {
     index: 4, id: 'plaza', name: 'Golden Tower Plaza', tagline: 'A very big rally. The biggest. Everybody says so.', bossName: 'THE DONALD',
     rounds: [
-      { groups: [g('rallybot', 7, 0, 0.8), g('brute', 2, 2, 3), g('thief', 3, 5, 1.5)] },
-      { groups: [g('spinner', 4, 0, 1.8), g('rallybot', 6, 2, 0.9), g('brute', 3, 6, 2.5)] },
-      { groups: [g('brute', 4, 0, 2.5), g('spinner', 3, 3, 1.8), g('thief', 3, 5, 1.2), g('rallybot', 7, 7, 0.7)] },
+      { groups: [g('rallybot', 7, 0, 0.8), g('brute', 2, 2, 3), g('thief', 3, 5, 1.5), g('gunner', 2, 8, 3)] },
+      { groups: [g('spinner', 4, 0, 1.8), g('rallybot', 6, 2, 0.9), g('brute', 2, 6, 2.5), g('bulwark', 1, 7, 1), g('slushpile', 2, 10, 3)] },
+      { groups: [g('brute', 2, 0, 2.5), g('bulwark', 2, 1, 3), g('spinner', 3, 3, 1.8), g('thief', 3, 5, 1.2), g('rallybot', 7, 7, 0.7), g('gunner', 3, 10, 2)] },
       { boss: true, groups: [g('donald', 1, 1, 1)] },
     ],
     enemyHpMult: 2.1, coinMult: 1.8, snowDepth: 0.6, snowRegenMult: 1.3, clearReward: 1200,
@@ -168,9 +169,9 @@ export const ZONES: ZoneDef[] = [
   {
     index: 5, id: 'summit', name: 'The Omega Works', tagline: 'The final machine builds itself.', bossName: 'MEGAPLOW Ω',
     rounds: [
-      { groups: [g('brute', 3, 0, 3), g('scrapper', 6, 2, 1)] },
-      { groups: [g('spinner', 4, 0, 2), g('thief', 4, 2, 1.5), g('brute', 2, 6, 3)] },
-      { groups: [g('scrapper', 8, 0, 0.8), g('spinner', 3, 3, 2), g('brute', 3, 6, 2.5)] },
+      { groups: [g('brute', 3, 0, 3), g('scrapper', 6, 2, 1), g('gunner', 3, 5, 2.5)] },
+      { groups: [g('spinner', 4, 0, 2), g('thief', 4, 2, 1.5), g('bulwark', 2, 6, 3), g('slushpile', 2, 9, 3)] },
+      { groups: [g('scrapper', 8, 0, 0.8), g('spinner', 3, 3, 2), g('brute', 2, 6, 2.5), g('bulwark', 2, 7, 3), g('gunner', 3, 9, 2), g('slushpile', 2, 12, 3)] },
       { boss: true, groups: [g('omega', 1, 1, 1)] },
     ],
     enemyHpMult: 2.4, coinMult: 2.0, snowDepth: 0.6, snowRegenMult: 1.4, clearReward: 1600,

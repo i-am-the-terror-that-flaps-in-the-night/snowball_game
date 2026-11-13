@@ -80,6 +80,8 @@ export class Bot implements EnemyHandle {
   cd3 = 0;
   token = false;
   thiefToken = false;
+  /** Gunner holds an aim slot (Host.tryVolley). */
+  volley = false;
   orbitA = 0;
   orbitDir = 1;
   orbitR = 6;
@@ -221,6 +223,10 @@ export interface Host {
   tryToken(e: Bot): boolean;
   releaseToken(e: Bot): void;
   tryThiefToken(e: Bot): boolean;
+  /** Ranged aim slot (at most GUNNER_MAX_AIMING gunners aim at once); releaseToken frees it too. */
+  tryVolley(e: Bot): boolean;
+  /** Fire a gunner snowball bolt from (x, y, z) along the unit direction (dx, dz) (Enemies.ts bolt pool). */
+  shoot(e: Bot, x: number, y: number, z: number, dx: number, dz: number): void;
   stripe(e: Bot, x: number, z: number, dx: number, dz: number, len: number, w: number, color: number, alpha: number): void;
   ring(e: Bot, x: number, z: number, r: number, fill: number, color: number, alpha: number): void;
   clearTele(e: Bot): void;

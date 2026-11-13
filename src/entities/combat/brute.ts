@@ -529,6 +529,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
         stunSeconds: st.poundStun,
         fromX: px,
         fromZ: pz,
+        area: true,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e);

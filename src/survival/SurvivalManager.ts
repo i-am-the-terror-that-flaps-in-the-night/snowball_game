@@ -43,6 +43,10 @@ const MINIONS: { type: EnemyType; cost: number; from: number }[] = [
   { type: 'thief', cost: 1.4, from: 2 },
   { type: 'spinner', cost: 2, from: 3 },
   { type: 'brute', cost: 3, from: 4 },
+  { type: 'gunner', cost: 1.6, from: 4 },
+  // a pile is really four bots (it splits into three slushlings)
+  { type: 'slushpile', cost: 2.6, from: 6 },
+  { type: 'bulwark', cost: 3.2, from: 7 },
 ];
 
 /** Boss cycle (one entry per boss wave); twins come as a pair. Ordered like the campaign, so the first laps meet
@@ -142,7 +146,8 @@ function modEffect(id: DailyModifierId | null, base: ZoneDef): ModEffect {
     case 'swarm':
       return { ...NEUTRAL, hp: 0.6, coins: 0.7, budget: 1.8, maxBots: 34 };
     case 'thiefNight':
-      return { ...NEUTRAL, weights: { thief: 4 }, early: ['thief'] };
+      // 7 extra pool entries: thieves stay over half the draws now that the pool also holds gunners, slushpiles, bulwarks
+      return { ...NEUTRAL, weights: { thief: 7 }, early: ['thief'] };
     case 'bossRush':
       return { ...NEUTRAL, bossEvery: 3 };
     case 'whiteout':

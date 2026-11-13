@@ -2,8 +2,24 @@
 
 ## Campaign
 
-Six walled arenas. Each is a few rounds of bot minions (scrappers, brute dozers, buzzsaws, snow thieves) and then a
-bot boss with telegraphed attacks. Beating a boss unlocks the next arena.
+Six walled arenas. Each is a few rounds of bot minions (scrappers, brute dozers, buzzsaws, snow thieves and, from
+arena 2 on, flurry gunners, slushpiles and bulwarks) and then a bot boss with telegraphed attacks. Beating a boss
+unlocks the next arena.
+
+The three later minions each ask for something different (stats and tuning in `src/config/enemies.ts`, AI in
+`src/entities/enemies/ai.ts`):
+
+- **Flurry Gunner**: the only ranged bot. It strafes 10 to 14 m out, backs off if you close inside 6.5 m, and between
+  shots aims for 0.55 s (cyan barrel glow, a ground stripe along the line) before firing one slow snowball bolt (15
+  m/s, 9 damage) at where you are. Drive sideways and it misses; your ball shield blocks it like any frontal hit.
+  26 HP: close in and it pops.
+- **Bulwark**: a slow tread-tank behind a curved plow-shield. Direct hits inside its front 90° lose 75% (BLOCK
+  sparks); sides take full damage and its rear vent takes ×1.3. Slams, stomps, blasts, shockwaves and ultimates go
+  round the shield. It turns at 1 rad/s, so running rings round it works; up close it shield-bashes for a big shove.
+- **Slushpile**: 70 HP of slush on treads that belly-flops into you. Wrecked, it bursts into 3 slushlings (12 HP,
+  fast, 1 coin each): finish it with area damage to catch the minis too.
+
+Survival draws them as well (gunners from wave 4, slushpiles from 6, bulwarks from 7).
 
 | # | Arena | Boss |
 |---|---|---|
