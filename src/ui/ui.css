@@ -1003,6 +1003,30 @@
 .ss-chunks.full .ss-chunk-pip.on { background: #ffffff; box-shadow: 0 0 6px #ffffff; }
 .ss-chunks.bump { animation: ss-chunk-bump 0.3s ease-out; }
 @keyframes ss-chunk-bump { 0% { transform: scale(1); } 40% { transform: scale(1.2); } 100% { transform: scale(1); } }
+/* Classic Plow STREAK meter (over the ability row): pips in the stack colours, a draining window bar, hot ON STREAK. */
+.ss-streak { --sc: #ffffff; display: flex; align-items: center; gap: 7px; padding: 3px 10px 3px 9px; background: rgba(6, 10, 18, 0.78); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); transform: skewX(-12deg); font-family: var(--display); font-weight: 900; font-size: 11px; letter-spacing: 0.14em; color: rgba(255, 255, 255, 0.5); white-space: nowrap; }
+.ss-streak.hidden { display: none; }
+.ss-streak[data-k="2"] { --sc: #2ee6ff; }
+.ss-streak[data-k="3"] { --sc: #ffc21a; }
+.ss-streak[data-k="4"] { --sc: #ff4a12; }
+.ss-streak:not([data-k="0"]) .ss-streak-lbl { color: var(--sc); text-shadow: 0 0 8px var(--sc); }
+.ss-streak-pips { display: flex; gap: 3px; }
+.ss-streak-pips i { width: 17px; height: 10px; background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22); transition: background 0.12s; }
+.ss-streak-pips i.on:nth-child(1) { background: #ffffff; box-shadow: 0 0 7px #ffffff; }
+.ss-streak-pips i.on:nth-child(2) { background: #2ee6ff; box-shadow: 0 0 7px #2ee6ff; }
+.ss-streak-pips i.on:nth-child(3) { background: #ffc21a; box-shadow: 0 0 7px #ffc21a; }
+.ss-streak-pips i.on:nth-child(4) { background: #ff4a12; box-shadow: 0 0 9px #ff4a12; }
+.ss-streak-pips.bump { animation: ss-chunk-bump 0.3s ease-out; }
+.ss-streak-bar { position: relative; width: 46px; height: 5px; overflow: hidden; background: rgba(255, 255, 255, 0.12); }
+.ss-streak-fill { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: var(--sc); box-shadow: 0 0 6px var(--sc); }
+.ss-streak.low .ss-streak-fill { animation: ss-flash 0.22s steps(2, jump-none) infinite; }
+.ss-streak.hot { color: #fff; background: linear-gradient(90deg, rgba(120, 14, 0, 0.92), rgba(220, 60, 10, 0.88)); animation: ss-streak-hot 0.3s ease-in-out infinite alternate; }
+.ss-streak.hot .ss-streak-lbl { color: #fff; text-shadow: 0 0 10px #ffc21a; }
+.ss-streak.boom { animation: ss-streak-boom 0.45s ease-out; }
+.ss-streak.drop { animation: ss-streak-drop 0.4s ease-out; }
+@keyframes ss-streak-hot { from { box-shadow: 0 0 6px rgba(255, 74, 18, 0.6), inset 0 0 0 1px rgba(255, 194, 26, 0.5); } to { box-shadow: 0 0 20px rgba(255, 194, 26, 0.95), inset 0 0 0 1px #ffc21a; } }
+@keyframes ss-streak-boom { 0% { background: #fff; box-shadow: 0 0 26px #ffc21a; } 100% { background: rgba(6, 10, 18, 0.78); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); } }
+@keyframes ss-streak-drop { 0% { background: rgba(110, 116, 126, 0.9); transform: skewX(-12deg) translateX(-5px); } 40% { transform: skewX(-12deg) translateX(4px); } 100% { background: rgba(6, 10, 18, 0.78); transform: skewX(-12deg); } }
 .ss-slam-hint { font-family: var(--display); font-size: 15px; font-weight: 900; letter-spacing: 0.08em; color: var(--hazard); background: var(--ink-inv); padding: 2px 9px; text-shadow: none; opacity: 0; transform: translateY(6px); transition: opacity 0.2s, transform 0.2s; }
 .ss-slam-hint.show { opacity: 1; transform: none; animation: ss-blink 1.2s ease-in-out infinite; }
 .ss-shield {
@@ -1475,7 +1499,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ss-lost-tip::before { animation: none; }
-  .ss-card.afford .ss-buy, .ss-chip.boss, .ss-gauge.full, .ss-boss-preview, .ss-hud-round.boss, .ss-bi-stripes, .ss-hud-wavetag { animation: none; }
+  .ss-card.afford .ss-buy, .ss-chip.boss, .ss-gauge.full, .ss-boss-preview, .ss-hud-round.boss, .ss-bi-stripes, .ss-hud-wavetag, .ss-streak.hot { animation: none; }
 }
 
 /* ---- Starter plow picker (Garage) */

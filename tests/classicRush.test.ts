@@ -16,6 +16,7 @@ import { CLASSIC_SLAM_POWER, RUSH_CHARGE_SLOW,
   CHUNK_MAX, MOMENTUM_SECONDS, RUSH_CHARGE_BASE, RUSH_CHARGE_MIN, RUSH_COST_MIN, RUSH_MAX, RUSH_MIN, RUSH_MIN_SLAM_R, TAP_WINDOW,
   addChunks, cashIn, rushAffordable, rushCharge, rushCost, rushDistance, rushPlan,
 } from '../src/entities/combat/classicRush';
+import { streakDamage } from '../src/entities/combat/classicStreak';
 
 /* The Classic Plow's SPACE kit: the tap BALL SLAM packs SNOW CHUNKS, PLOW RUSH (hold) runs on the dash meter and ends
  * in the ball slam that cashes the chunks in. */
@@ -160,8 +161,9 @@ describe('Tap BALL SLAM packs SNOW CHUNKS (Combat.tapSlam)', () => {
     for (let i = 0; i < 4; i++) loaded.c.tapSlam(0, 5, 1.5, 0);
     loaded.hits.length = 0;
     loaded.c.tapSlam(0, 5, 1.5, 0);
-    // (the Classic's slams hit CLASSIC_SLAM_POWER x the snowball kit's plain slamAt)
-    expect(loaded.hits[0].amount).toBeCloseTo(plain.hits[0].amount * CLASSIC_SLAM_POWER);
+    // (the Classic's slams hit CLASSIC_SLAM_POWER x the snowball kit's plain slamAt; the first slam's new targets
+    // gave one STREAK stack, held since: the same bots again add none)
+    expect(loaded.hits[0].amount).toBeCloseTo(plain.hits[0].amount * CLASSIC_SLAM_POWER * streakDamage(1));
     expect(loaded.slams.every((e) => e.zoneMult === undefined)).toBe(true);
     expect(loaded.c.chunks).toBe(10);
   });
@@ -192,7 +194,8 @@ describe('PLOW RUSH slam cash-in (Combat.rushSlam)', () => {
     loaded.c.rushSlam(0, 10, RUSH_MIN_SLAM_R, 0);
     const got = loaded.hits.filter((h) => h.e === centre || h.e === edge);
     expect(got.map((h) => h.e)).toEqual([centre, edge]);
-    expect(got[0].amount / plain.hits[0].amount).toBeCloseTo(1.4);
+    // x1.4 from the chunks, and the one STREAK stack the tap slams built (the plain rig's first slam had none)
+    expect(got[0].amount / plain.hits[0].amount).toBeCloseTo(1.4 * streakDamage(1));
     expect(loaded.slams[0].zoneMult).toBeCloseTo(1.5);
     expect(loaded.c.chunks).toBe(0);
   });

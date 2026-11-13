@@ -29,6 +29,8 @@ import {
 } from './constants';
 import { _m, _col } from './scratch';
 import { RushFx } from './rushFx';
+import { StreakFx, hullSilhouette } from './streakFx';
+import { relativeMatrix } from '../../render/mergeStatic';
 import { type Streak, getTornadoTexture, makeTornadoGeometry, type Ghost, type Debris } from './assets';
 
 /*
@@ -97,6 +99,10 @@ export abstract class PlowBase {
   /** MOMENTUM: seconds of the landed-tap-slam speed boost left. */
   protected momentumT = 0;
   protected rushFx!: RushFx;
+  /** Classic STREAK afterimages / hull outline / underglow, and whether its hull silhouette needs rebuilding (the
+   *  blade width or blade scale changed since). */
+  protected streakFx!: StreakFx;
+  protected streakSilDirty = true;
 
   // terrain (world/Terrain.ts via ctx.terrain; shared vertical model in world/terrainMotion.ts)
   protected vert = makeVert();
@@ -546,6 +552,7 @@ export abstract class PlowBase {
     ctx.scene.add(this.whirlRing);
 
     this.rushFx = new RushFx(ctx.scene);
+    this.streakFx = new StreakFx(ctx.scene, this.body, this.streakSilhouette());
 
     ctx.scene.add(this.object);
     this.applyStats(this.b.stats);
@@ -582,6 +589,14 @@ export abstract class PlowBase {
     const s = Math.sin(this.heading);
     const c = Math.cos(this.heading);
     return out.set(this.position.x + s * TIP_Z, this.vert.surfaceY, this.position.z + c * TIP_Z);
+  }
+
+  /** The Classic's hull silhouette in body space (STREAK afterimages + outline): the hull's and blade's shadow proxies,
+   *  the blade sheet and the four tyres. */
+  protected streakSilhouette(): THREE.BufferGeometry {
+    const extra = [{ geometry: this.bladeSheet.geometry, matrix: relativeMatrix(this.bladeSheet, this.body) }];
+    for (const [x, z] of PLOW_WHEEL_POS) extra.push({ geometry: this.wheelMeshes[0].geometry, matrix: new THREE.Matrix4().makeTranslation(x, WHEEL_R, z) });
+    return hullSilhouette([this.classicParts, this.bladeGroup], this.body, extra);
   }
 
   /* ------------------------------------------------------------------ implemented by the later layers */

@@ -676,6 +676,7 @@ export abstract class PlowMotion extends PlowVisuals {
     this.momentumT = 0;
     this.cancelSpace();
     this.rushFx.hide();
+    this.streakFx.hide();
     this.dashEase = 0;
     this.hitStopT = 0;
     this.spawnProt = 0;
