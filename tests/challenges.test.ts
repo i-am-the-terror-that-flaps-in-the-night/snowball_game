@@ -101,8 +101,8 @@ describe('challenge definitions', () => {
     expect(ids(evaluateRun(p, run(0, { bossDamage: 39 })))).toEqual(['bossHp']);
     expect(ids(evaluateRun(p, run(0, { bossDamage: 40 })))).toEqual([]);
     // Inferno Quarry: ISOTOPE burn kills (only the radBurn tally counts), ram kills.
-    expect(ids(evaluateRun(p, run(1, w({ radBurn: 10 }))))).toEqual(['burn']);
-    expect(ids(evaluateRun(p, run(1, w({ radBurn: 9, arcLance: 50 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(1, w({ radBurn: 5 }))))).toEqual(['burn']);
+    expect(ids(evaluateRun(p, run(1, w({ radBurn: 4, arcLance: 50 }))))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { killsBy: { slam: 0, ram: 8, whirl: 0, other: 0 } })))).toEqual(['ram']);
     // Rust Basin: SINGULARITY kills, a quick GRINDER fight.
     expect(ids(evaluateRun(p, run(2, w({ singularity: 3 }))))).toEqual(['sing']);
@@ -110,13 +110,13 @@ describe('challenge definitions', () => {
     expect(ids(evaluateRun(p, run(2, { bossTime: 29.9 })))).toEqual(['blitz']);
     expect(ids(evaluateRun(p, run(2, { bossTime: 30 })))).toEqual([]);
     // The Thermal Divide: Arc Lance and Polarity Burst kills.
-    expect(ids(evaluateRun(p, run(3, w({ arcLance: 15 }))))).toEqual(['arc']);
-    expect(ids(evaluateRun(p, run(3, w({ arcLance: 14 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(3, w({ arcLance: 10 }))))).toEqual(['arc']);
+    expect(ids(evaluateRun(p, run(3, w({ arcLance: 9 }))))).toEqual([]);
     expect(ids(evaluateRun(p, run(3, w({ polarity: 4 }))))).toEqual(['polarity']);
     expect(ids(evaluateRun(p, run(3, w({ polarity: 3, magLaser: 99 }))))).toEqual([]);
     // Golden Tower Plaza: Mag Laser kills, a 1:15 clear.
-    expect(ids(evaluateRun(p, run(4, w({ magLaser: 25 }))))).toEqual(['laser']);
-    expect(ids(evaluateRun(p, run(4, w({ magLaser: 24 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(4, w({ magLaser: 15 }))))).toEqual(['laser']);
+    expect(ids(evaluateRun(p, run(4, w({ magLaser: 14 }))))).toEqual([]);
     expect(ids(evaluateRun(p, run(4, { duration: 74 })))).toEqual(['speed']);
     expect(ids(evaluateRun(p, run(4, { duration: 75 })))).toEqual([]);
     // The Omega Works: BRUTUS tanks 400 HP (only BRUTUS), or any plow keeps it under 150.
@@ -282,7 +282,7 @@ describe('ChallengeTracker: event tallies feed the stars', () => {
   it('kills are tallied per signature weapon; untagged kills count for none', () => {
     const t = tracker();
     t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
-    for (let i = 0; i < 15; i++) t.kill('arcLance');
+    for (let i = 0; i < 10; i++) t.kill('arcLance');
     for (let i = 0; i < 3; i++) t.kill('polarity');
     for (let i = 0; i < 20; i++) t.kill();
     t.finish(3, { plow: 'volt' });
@@ -301,11 +301,11 @@ describe('ChallengeTracker: event tallies feed the stars', () => {
     t.finish(2, { plow: 'arsenal' });
     expect(lastChallengeReport()!.results.find((r) => r.def.id === 'sing')!.isNew).toBe(true);
     t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
-    for (let i = 0; i < 10; i++) t.kill('radBurn');
+    for (let i = 0; i < 5; i++) t.kill('radBurn');
     t.finish(1, { plow: 'isotope' });
     expect(lastChallengeReport()!.results.find((r) => r.def.id === 'burn')!.isNew).toBe(true);
     t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
-    for (let i = 0; i < 25; i++) t.kill('magLaser');
+    for (let i = 0; i < 15; i++) t.kill('magLaser');
     t.finish(4, { plow: 'arsenal' });
     expect(lastChallengeReport()!.results.find((r) => r.def.id === 'laser')!.isNew).toBe(true);
     const p = (t.ctx as unknown as { progression: Progression }).progression;

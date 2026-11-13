@@ -120,7 +120,10 @@
   animation: ss-pop-in 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.2s both;
 }
 
-.ss-chal-result { width: 100%; margin: 0 0 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ss-chal-result { width: 100%; margin: 0 0 12px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+/* Three rows a line on a 6-track grid; five challenges (head + 5 rows) centre their second line of two. */
+.ss-chal-result > .ss-chal-row { grid-column: span 2; }
+.ss-chal-result > .ss-chal-row:nth-child(5):nth-last-child(2) { grid-column: 2 / span 2; }
 .ss-chal-result-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
 .ss-chal-result-stars { font-size: 26px; line-height: 1; letter-spacing: 2px; }
 .ss-chal-result-title { font-family: var(--display); font-weight: 900; font-size: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
@@ -192,6 +195,7 @@
 }
 @media (max-width: 520px) {
   .ss-chal-result { grid-template-columns: 1fr; }
+  .ss-chal-result > .ss-chal-row, .ss-chal-result > .ss-chal-row:nth-child(5):nth-last-child(2) { grid-column: auto; }
   .ss-chal-row { flex-direction: row; align-items: center; }
   /* Arena cards: the goal's tail is the actual requirement ("under 1:00"), so let it wrap instead of ellipsizing. */
   .ss-zone-chals { padding: 5px 6px 6px; gap: 3px; }

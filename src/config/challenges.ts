@@ -141,12 +141,14 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // (bots steer out of lava fast, so the burn alone rarely finishes one). 'blitz' retuned 30 s -> 15 s: the probe's
   // fresh-garage boss fights run 3-16 s (mid garage 2-3 s), so 30 s was a free star.
   // Signature: ISOTOPE's radiation burn (any burn tick that finishes a bot, TANK-BUSTER included) and scrapyard rams.
+  // 'burn' asks 5 of the ~17 bots: on the headless sim's 6-bot pack (scripts/balance/sim.ts rotation) burn ticks
+  // finish ~30% of a fresh ISOTOPE's kills but ~1% at mid (the spray overkills), so it wants spray-and-let-it-cook.
   junkyard: [
     lavaKills(3, 'Hot Tub'),
     untouchable(90, 'Thief-Proof'),
     bossBlitz(15, 'Eviction Notice'),
-    weaponKills('radBurn', 'burn', '☢️', 10, 'Tank-Buster', 'rad burn',
-      'ISOTOPE: spray bots with the Rad Sprayer and let the RAD DOSE and TANK-BUSTER burn finish them. Kills by the burn tick count.'),
+    weaponKills('radBurn', 'burn', '☢️', 5, 'Tank-Buster', 'rad burn',
+      'ISOTOPE: soak a bot with the Rad Sprayer, then move on and let the RAD DOSE and TANK-BUSTER burn finish it. Only kills by the burn tick count.'),
     ramKills(8, 'Demolition Derby'),
   ],
   // Rust Basin (arena 3, THE GRINDER): low gravity. Catch big air off the ramp, dive on the pack, survive it on the
@@ -166,23 +168,26 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // retuned 1:45 -> 1:30: fresh-garage clears run 0:53-1:42, mid 0:38-0:47. (Its two small ramps only lift you 0.5 m+
   // for ~0.2-0.4 s, too short for an air-slam goal, so the air challenges live in Rust Basin.)
   // Signature: VOLT-9's Arc Lance (chains through packs) and ARSENAL's Polarity Burst (F; it pulls a pack in first).
+  // Of ~28 bots: the sim's pack gives the lance ~21% (fresh) to ~46% (mid) of VOLT-9's kills, the burst ~17-21% of
+  // ARSENAL's, so 10 and 4.
   bowl: [
     ball(1.8, 'Cold Front'),
     whirlKills(4),
     speed(90, 'Divide & Conquer'),
-    weaponKills('arcLance', 'arc', '⚡', 15, 'Lightning Rod', 'Arc Lance',
+    weaponKills('arcLance', 'arc', '⚡', 10, 'Lightning Rod', 'Arc Lance',
       'VOLT-9: hold SPACE to fire the Arc Lance from range. Chains jump through up to 7 bots; every kill the lightning finishes counts.'),
     weaponKills('polarity', 'polarity', '🧲', 4, 'Polar Opposites', 'Polarity Burst',
       'ARSENAL: press F for a Polarity Burst. It drags a pack together, then blows it apart; kills from the blast count.'),
   ],
   // Golden Tower Plaza (arena 5, THE DONALD): break up the rally crowds, dodge the walls and the beam, keep the combo
   // going bigly.
-  // Signature: ARSENAL's Mag Laser through the rally crowds. 'speed': mid-garage clears run 0:50-1:04 (docs/balance.md).
+  // Signature: ARSENAL's Mag Laser through the rally crowds (~44 bots; the laser finishes ~36-39% of ARSENAL's kills on
+  // the sim's pack, so 15). 'speed': mid-garage clears run 0:50-1:04 (docs/balance.md).
   plaza: [
     strikes(3, 'Crowd Control'),
     bossClean(80, 'Fake Damage'),
     combo(40, 'Tremendous Combo'),
-    weaponKills('magLaser', 'laser', '🔷', 25, 'Laser Light Show', 'Mag Laser',
+    weaponKills('magLaser', 'laser', '🔷', 15, 'Laser Light Show', 'Mag Laser',
       'ARSENAL: hold SPACE and steer the Mag Laser down a line of bots. Its bolts pierce, so a lined-up crowd melts fast.'),
     speed(75, 'Rally Sprint'),
   ],
@@ -192,8 +197,9 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
     withPlow('brute', 'Rhino Rampage', { goal: '12 ram kills', test: (r) => r.killsBy.ram >= 12 }),
     bossClean(60, 'Omega Dodger'),
     slamKills(10, 'Avalanche Artist'),
-    // Signature: BRUTUS soaks the factory vs. a clean run (any plow). Mid-garage bot sweeps lose ~300-400 HP here
-    // (docs/balance.md, ISOTOPE 391), so 400 asks BRUTUS to wade in and 150 asks real dodging.
+    // Signature: BRUTUS soaks the factory vs. a clean run (any plow). Mid-garage bot sweeps lose ~90-180 HP on a normal
+    // run here and ~390-730 on Hard (docs/balance.md), so 400 asks BRUTUS to wade in (or take on Hard) and 150 sits
+    // near the sloppy-defense autopilot's losses.
     tank(400, 'Crash Test Dummy'),
     untouchable(150, 'Quality Control'),
   ],

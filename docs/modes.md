@@ -26,9 +26,9 @@ Every arena has **5 challenge stars** and, once cleared, a **Hard mode**:
   speed and plow signature goals. They're judged on any winning run (normal or Hard), shown on the arena cards
   and the results screen, and each new star pays a one-time bonus (+75 to +800 by arena). Every plow mechanic has a
   star somewhere: the Classic's Plow Rush hits (Coldboot Glacier, *Rush Hour*, 8 hits), ISOTOPE's radiation-burn
-  kills (Inferno Quarry, *Tank-Buster*, 10), ARSENAL's Singularity kills (Rust Basin, *Event Horizon*, 3), VOLT-9's
-  Arc Lance kills (The Thermal Divide, *Lightning Rod*, 15), ARSENAL's Polarity Burst kills (*Polar Opposites*, 4) and
-  Mag Laser kills (Golden Tower Plaza, *Laser Light Show*, 25), BRUTUS tanking 400 HP (The Omega Works, *Crash Test
+  kills (Inferno Quarry, *Tank-Buster*, 5), ARSENAL's Singularity kills (Rust Basin, *Event Horizon*, 3), VOLT-9's
+  Arc Lance kills (The Thermal Divide, *Lightning Rod*, 10), ARSENAL's Polarity Burst kills (*Polar Opposites*, 4) and
+  Mag Laser kills (Golden Tower Plaza, *Laser Light Show*, 15), BRUTUS tanking 400 HP (The Omega Works, *Crash Test
   Dummy*), plus the older VOLT-9 (*Live Wire*) and BRUTUS (*Rhino Rampage*) stars. The other new ones: *Cold
   Shoulder* (< 40 HP from FROSTBYTE), *Demolition Derby* (8 ram kills), *Drill Sergeant* (THE GRINDER in 30 s),
   *Rally Sprint* (the Plaza in 1:15) and *Quality Control* (The Omega Works losing < 150 HP). Weapon kills come from
