@@ -528,7 +528,7 @@ export class UI implements UIAPI {
     const head = el('div', 'ss-zones-head', undefined, panel);
     el('h2', 'ss-h2', 'CHOOSE YOUR ARENA', head);
     this.zoneStarTotal = el('div', 'ss-star-total', '', head);
-    this.zoneStarTotal.title = 'Challenge stars: 3 per arena. Each new star pays coins.';
+    this.zoneStarTotal.title = `Challenge stars: ${maxStars() / ZONES.length} per arena. Each new star pays coins.`;
     this.zoneGrid = el('div', 'ss-zone-grid', undefined, panel);
     const foot = el('div', 'ss-panel-foot', undefined, panel);
     this.btn('◀ BACK', 'ss-ice', () => this.showMainMenu(), foot);
@@ -985,7 +985,7 @@ export class UI implements UIAPI {
     this.gameHud.updateHud(s);
   }
 
-  toast(text: string, kind: 'info' | 'good' | 'bad' | 'big' = 'info'): void {
+  toast(text: string, kind: 'info' | 'good' | 'bad' | 'big' | 'radio' = 'info'): void {
     if (kind === 'big') {
       const box = this.bigBox;
       for (const c of Array.from(box.children)) c.classList.add('old');

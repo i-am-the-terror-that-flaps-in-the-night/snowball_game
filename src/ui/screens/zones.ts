@@ -84,16 +84,17 @@ export function renderZones(ui: ZonesDeps): void {
   if (fp) fp.dataset.primary = '1';
 }
 
-/** Zone card: ★★☆ and the arena's three challenge goals, earned ones ticked (full name + goal on hover). */
+/** Zone card: ★★☆☆☆ and the arena's challenge goals, earned ones ticked (full name + goal on hover). */
 function zoneChallengeList(ui: ZonesDeps, zoneIndex: number, parent: HTMLElement): void {
   const p = ui.ctx.progression;
   const got = earnedIds(p, zoneIndex);
   const n = zoneStars(p, zoneIndex);
-  const box = el('div', `ss-zone-chals ${n >= 3 ? 'all' : ''}`, undefined, parent);
+  const list = zoneChallenges(zoneIndex);
+  const box = el('div', `ss-zone-chals ${n >= list.length ? 'all' : ''}`, undefined, parent);
   const head = el('div', 'ss-zone-chal-head', undefined, box);
-  el('span', 'ss-zone-stars', undefined, head).innerHTML = starsHtml(n);
+  el('span', 'ss-zone-stars', undefined, head).innerHTML = starsHtml(n, 0, list.length);
   el('small', '', `+${fmt(starReward(zoneIndex))} 🪙 / star`, head);
-  for (const c of zoneChallenges(zoneIndex)) {
+  for (const c of list) {
     const done = got.has(c.id);
     const row = el('div', `ss-zone-chal ${done ? 'done' : ''}`, undefined, box);
     el('span', 'ss-zone-chal-mark', done ? '✓' : c.icon, row);

@@ -1,12 +1,12 @@
 import type { GameContext } from '../core/types';
 import type { Progression } from '../core/Progression';
-import type { GameEvents } from '../core/events';
+import type { GameEvents, KillWeapon } from '../core/events';
 import { ZONES, type ZoneDef } from '../config/zones';
 import { CHALLENGES, HARD, STAR_REWARD_FRAC, type ChallengeDef, type ChallengeRun } from '../config/challenges';
 import { UPGRADES, type UpgradeId } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
 
-/* Campaign meta: three star challenges per arena (config/challenges.ts) and a Hard mode for every arena.
+/* Campaign meta: five star challenges per arena (config/challenges.ts) and a Hard mode for every arena.
  *  - Stars live in save.challenges[zoneId] = [challenge ids]; each pays a one-time coin bonus.
  *  - Hard mode opens once the arena's normal clear is done; clears live in save.hardCleared[zoneId].
  *  - ChallengeTracker (constructed once by Game) tallies a few extras from events, judges every finished
@@ -85,7 +85,7 @@ export function recordHardClear(p: Progression, zoneIndex: number): number {
 
 /* ------------------------------------------------------------------ stars */
 
-/** The arena's three challenges (empty for unknown indices). */
+/** The arena's challenges (five each; empty for unknown indices). */
 export function zoneChallenges(zoneIndex: number): ChallengeDef[] {
   const z = ZONES[zoneIndex];
   return (z && CHALLENGES[z.id]) || [];
@@ -114,7 +114,7 @@ export function starReward(zoneIndex: number): number {
   return z ? Math.round(z.clearReward * STAR_REWARD_FRAC) : 0;
 }
 
-/** '★★☆' for `got` of `total`. */
+/** '★★☆' for `got` of `total` (zoneChallenges(i).length for an arena). */
 export function starString(got: number, total = 3): string {
   return '★'.repeat(Math.min(got, total)) + '☆'.repeat(Math.max(0, total - got));
 }
@@ -189,6 +189,9 @@ export class ChallengeTracker {
   private inBoss = false;
   private bossDamage = 0;
   private strikes = 0;
+  private rushHits = 0;
+  /** Signature-weapon kills this run (reset in place, never reallocated). */
+  private weaponKills: Partial<Record<KillWeapon, number>> = {};
 
   constructor(private ctx: GameContext) {
     const ev = ctx.events;
@@ -203,6 +206,10 @@ export class ChallengeTracker {
       if (this.inBoss) this.bossDamage += amount;
     });
     ev.on('strike', () => this.strikes++);
+    ev.on('plowRush', ({ hits }) => (this.rushHits += hits));
+    ev.on('enemyKilled', ({ weapon }) => {
+      if (weapon) this.weaponKills[weapon] = (this.weaponKills[weapon] ?? 0) + 1;
+    });
     ev.on('runFinished', (r) => this.onRunFinished(r));
   }
 
@@ -211,6 +218,8 @@ export class ChallengeTracker {
     this.inBoss = false;
     this.bossDamage = 0;
     this.strikes = 0;
+    this.rushHits = 0;
+    for (const k in this.weaponKills) delete this.weaponKills[k as KillWeapon];
   }
 
   private onRunFinished(r: GameEvents['runFinished']): void {
@@ -224,6 +233,8 @@ export class ChallengeTracker {
       bossTime: this.inBoss ? Math.max(0, ctx.time - this.bossStart) : 0,
       bossDamage: this.bossDamage,
       strikes: this.strikes,
+      rushHits: this.rushHits,
+      weaponKills: { ...this.weaponKills },
     };
     lastReport = awardRun(ctx.progression, run);
     this.reset();

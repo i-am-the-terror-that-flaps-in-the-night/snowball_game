@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ZONES } from '../src/config/zones';
 import { PLOWS, type PlowKind } from '../src/config/plows';
 import { ENEMIES } from '../src/config/enemies';
-import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE } from '../src/config/lore';
+import { BEAT_MAX_CHARS, BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE, ZONE_BEATS } from '../src/config/lore';
 
 describe('lore', () => {
   it('every campaign arena has a chapter (opening + ending)', () => {
@@ -13,6 +13,20 @@ describe('lore', () => {
     expect(Object.keys(CHAPTERS).sort()).toEqual(ZONES.map((z) => z.id).sort());
     expect(PROLOGUE.length).toBeGreaterThan(100);
     expect(EPILOGUE.length).toBeGreaterThan(100);
+  });
+
+  it('every campaign arena has short story beats: a dispatch intro and the boss\'s last words', () => {
+    expect(Object.keys(ZONE_BEATS).sort()).toEqual(ZONES.map((z) => z.id).sort());
+    for (const z of ZONES) {
+      const b = ZONE_BEATS[z.id];
+      expect(b.intro.startsWith('Dispatch:'), z.id).toBe(true);
+      for (const line of [b.intro, b.outro]) {
+        expect(line.length, `${z.id}: ${line}`).toBeGreaterThan(20);
+        expect(line.length, `${z.id}: ${line}`).toBeLessThanOrEqual(BEAT_MAX_CHARS);
+        // Shown inside “...” quotes, so no quote marks of their own.
+        expect(line, z.id).not.toMatch(/["“”]/);
+      }
+    }
   });
 
   it('every campaign boss has a profile and a happy-ending fate, listed under its own arena', () => {

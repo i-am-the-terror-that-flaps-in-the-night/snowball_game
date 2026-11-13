@@ -38,6 +38,12 @@
 .ss-story-text.dim { color: var(--ink-soft); font-style: italic; }
 .ss-story-rule { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; font-size: 11.5px; font-weight: 800; letter-spacing: 0.14em; color: var(--hazard); }
 .ss-story-rule::after { content: ""; flex: 1; height: 2px; background: var(--line); }
+/* Story beats (config/lore.ts ZONE_BEATS): dispatch's radio line, and a boss's last words as a quote. */
+.ss-story-text.radio { font-style: italic; font-weight: 600; color: var(--cyan); }
+.ss-story-quote { margin: 6px 0 0; padding-left: 10px; border-left: 3px solid var(--hazard); font-size: 14px; line-height: 1.45; }
+.ss-story-quote-line { font-style: italic; font-weight: 600; color: var(--ink); }
+.ss-story-quote-who { font-weight: 800; letter-spacing: 0.06em; color: var(--hazard); white-space: nowrap; }
+.ss-result-story .ss-story-quote { margin: 0 0 8px; }
 
 /* results screen: the chapter's ending after a campaign clear */
 .ss-result-story { max-width: 640px; margin: 10px auto 2px; padding: 10px 14px; text-align: left; background: var(--slab-2); box-shadow: inset 0 0 0 2px var(--line), inset 6px 0 0 var(--hazard); clip-path: var(--chamfer-sm); }

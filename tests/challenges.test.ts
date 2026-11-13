@@ -3,9 +3,11 @@ import { Progression } from '../src/core/Progression';
 import { ZONES } from '../src/config/zones';
 import { CHALLENGES, HARD, type ChallengeRun } from '../src/config/challenges';
 import {
-  awardRun, evaluateRun, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, hardZone, maxStars, recordHardClear, starReward, starString,
-  zoneChallenges, zoneStars,
+  ChallengeTracker, awardRun, evaluateRun, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, hardZone, lastChallengeReport, maxStars,
+  recordHardClear, starReward, starString, zoneChallenges, zoneStars,
 } from '../src/meta/challenges';
+import { EventBus, type GameEvents } from '../src/core/events';
+import type { EnemyHandle, GameContext } from '../src/core/types';
 import { totalStars } from '../src/meta/progress';
 
 let store: Map<string, string>;
@@ -34,15 +36,22 @@ function run(zoneIndex: number, over: Partial<ChallengeRun> = {}): ChallengeRun 
 const ids = (rep: ReturnType<typeof evaluateRun>) => rep!.results.filter((r) => r.met).map((r) => r.def.id);
 
 describe('challenge definitions', () => {
-  it('every arena has exactly three challenges with unique ids', () => {
+  it('every arena has exactly five challenges with unique ids', () => {
     for (const z of ZONES) {
       const list = CHALLENGES[z.id];
-      expect(list, z.id).toHaveLength(3);
-      expect(new Set(list.map((c) => c.id)).size).toBe(3);
+      expect(list, z.id).toHaveLength(5);
+      expect(new Set(list.map((c) => c.id)).size).toBe(5);
       for (const c of list) expect(c.goal.length, `${z.id}/${c.id}`).toBeLessThanOrEqual(22);
     }
-    expect(maxStars()).toBe(ZONES.length * 3);
+    expect(maxStars()).toBe(ZONES.length * 5);
     expect(ZONES.length).toBe(6);
+  });
+
+  it('every plow signature mechanic has a star somewhere in the campaign', () => {
+    const all = ZONES.flatMap((z) => CHALLENGES[z.id].map((c) => c.id));
+    for (const id of ['rush', 'arc', 'laser', 'polarity', 'sing', 'soak', 'burn', 'plow-volt', 'plow-brute']) expect(all, id).toContain(id);
+    // Signature goals that are not obvious explain themselves (zone card hover, results screen).
+    for (const z of ZONES) for (const c of CHALLENGES[z.id]) if (['rush', 'arc', 'laser', 'polarity', 'sing', 'soak', 'burn'].includes(c.id)) expect(c.tip, c.id).toBeTruthy();
   });
 
   it('a plain win meets nothing; each crafted payload meets its own challenge', () => {
@@ -76,10 +85,47 @@ describe('challenge definitions', () => {
     expect(ids(evaluateRun(p, run(4, { bossDamage: 79 })))).toEqual(['bossHp']);
     expect(ids(evaluateRun(p, run(4, { bestCombo: 40 })))).toEqual(['combo']);
     // The Omega Works (slot 6). BRUTUS twist: the plow alone is not enough.
-    expect(ids(evaluateRun(p, run(5, { plow: 'brute' })))).toEqual([]);
-    expect(ids(evaluateRun(p, run(5, { plow: 'brute', killsBy: { slam: 0, ram: 12, whirl: 0, other: 0 } })))).toEqual(['plow-brute']);
+    // (The default payload loses 9999 HP: BRUTUS tanking that much earns Crash Test Dummy on its own.)
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 399 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 399, killsBy: { slam: 0, ram: 12, whirl: 0, other: 0 } })))).toEqual(['plow-brute']);
     expect(ids(evaluateRun(p, run(5, { bossDamage: 0 })))).toEqual(['bossHp']);
     expect(ids(evaluateRun(p, run(5, { killsBy: { slam: 10, ram: 0, whirl: 0, other: 0 } })))).toEqual(['slam']);
+  });
+
+  it('the signature and second-wave goals: each crafted payload meets only its own', () => {
+    const p = new Progression();
+    const w = (weaponKills: ChallengeRun['weaponKills']) => ({ weaponKills });
+    // Coldboot Glacier: Classic PLOW RUSH hits, a cool boss fight.
+    expect(ids(evaluateRun(p, run(0, { rushHits: 8 })))).toEqual(['rush']);
+    expect(ids(evaluateRun(p, run(0, { rushHits: 7 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(0, { bossDamage: 39 })))).toEqual(['bossHp']);
+    expect(ids(evaluateRun(p, run(0, { bossDamage: 40 })))).toEqual([]);
+    // Inferno Quarry: ISOTOPE burn kills (only the radBurn tally counts), ram kills.
+    expect(ids(evaluateRun(p, run(1, w({ radBurn: 5 }))))).toEqual(['burn']);
+    expect(ids(evaluateRun(p, run(1, w({ radBurn: 4, arcLance: 50 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(1, { killsBy: { slam: 0, ram: 8, whirl: 0, other: 0 } })))).toEqual(['ram']);
+    // Rust Basin: SINGULARITY kills, a quick GRINDER fight.
+    expect(ids(evaluateRun(p, run(2, w({ singularity: 3 }))))).toEqual(['sing']);
+    expect(ids(evaluateRun(p, run(2, w({ singularity: 2, polarity: 9 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(2, { bossTime: 29.9 })))).toEqual(['blitz']);
+    expect(ids(evaluateRun(p, run(2, { bossTime: 30 })))).toEqual([]);
+    // The Thermal Divide: Arc Lance and Polarity Burst kills.
+    expect(ids(evaluateRun(p, run(3, w({ arcLance: 10 }))))).toEqual(['arc']);
+    expect(ids(evaluateRun(p, run(3, w({ arcLance: 9 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(3, w({ polarity: 4 }))))).toEqual(['polarity']);
+    expect(ids(evaluateRun(p, run(3, w({ polarity: 3, magLaser: 99 }))))).toEqual([]);
+    // Golden Tower Plaza: Mag Laser kills, a 1:15 clear.
+    expect(ids(evaluateRun(p, run(4, w({ magLaser: 15 }))))).toEqual(['laser']);
+    expect(ids(evaluateRun(p, run(4, w({ magLaser: 14 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(4, { duration: 74 })))).toEqual(['speed']);
+    expect(ids(evaluateRun(p, run(4, { duration: 75 })))).toEqual([]);
+    // The Omega Works: BRUTUS tanks 400 HP (only BRUTUS), or any plow keeps it under 150.
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 400 })))).toEqual(['soak']);
+    expect(ids(evaluateRun(p, run(5, { plow: 'isotope', damageTaken: 400 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(5, { damageTaken: 149 })))).toEqual(['hp']);
+    expect(ids(evaluateRun(p, run(5, { damageTaken: 150 })))).toEqual([]);
+    // Missing extras (an old payload) meet nothing.
+    expect(ids(evaluateRun(p, run(3, { weaponKills: undefined, rushHits: undefined })))).toEqual([]);
   });
 
   it('losses, other modes and missing arenas earn nothing', () => {
@@ -197,5 +243,84 @@ describe('hard mode', () => {
     expect(recordHardClear(p, 1)).toBe(Math.round(z.clearReward * HARD.repeatClearMult));
     expect(new Progression().data.hardCleared?.[z.id]).toBe(true);
     expect(hardCleared(p, 0)).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ tracker */
+
+describe('ChallengeTracker: event tallies feed the stars', () => {
+  const botHandle = { isBoss: false } as unknown as EnemyHandle;
+  function tracker() {
+    const events = new EventBus();
+    const ctx = { events, time: 0, progression: new Progression(), ui: { toast: () => {} } } as unknown as GameContext;
+    new ChallengeTracker(ctx);
+    const finish = (zoneIndex: number, over: Partial<GameEvents['runFinished']> = {}) =>
+      events.emit('runFinished', {
+        mode: 'campaign', plow: 'classic', won: true, kills: 0, killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 0 },
+        coins: 0, bestCombo: 0, biggestBall: 0, duration: 9999, damageTaken: 9999, zoneIndex, roundsCleared: 4, hard: false, ...over,
+      });
+    const kill = (weapon?: GameEvents['enemyKilled']['weapon']) => events.emit('enemyKilled', { enemy: botHandle, coins: 0, source: 'other', weapon });
+    return { events, ctx, finish, kill };
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('PLOW RUSH hits add up across rushes and earn Rush Hour', () => {
+    const t = tracker();
+    t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
+    for (const hits of [3, 0, 4, 1]) t.events.emit('plowRush', { hits });
+    // A real win goes through the boss round; a scrappy one (50 HP lost there) misses Cold Shoulder.
+    t.events.emit('roundStarted', { round: 4, total: 4, boss: true });
+    t.events.emit('plowDamaged', { amount: 50, blocked: 0 });
+    t.finish(0);
+    const rep = lastChallengeReport()!;
+    expect(rep.results.filter((r) => r.met).map((r) => r.def.id)).toEqual(['rush']);
+    expect(rep.newStars).toBe(1);
+  });
+
+  it('kills are tallied per signature weapon; untagged kills count for none', () => {
+    const t = tracker();
+    t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
+    for (let i = 0; i < 10; i++) t.kill('arcLance');
+    for (let i = 0; i < 3; i++) t.kill('polarity');
+    for (let i = 0; i < 20; i++) t.kill();
+    t.finish(3, { plow: 'volt' });
+    expect(lastChallengeReport()!.results.filter((r) => r.met).map((r) => r.def.id)).toEqual(['arc']);
+    // One more Polarity Burst kill next run: the tallies reset on a new run, so 1 is not enough.
+    t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
+    t.kill('polarity');
+    t.finish(3, { plow: 'arsenal' });
+    expect(lastChallengeReport()!.results.filter((r) => r.met).map((r) => r.def.id)).toEqual([]);
+  });
+
+  it('ARSENAL / ISOTOPE tallies earn their arenas’ stars and save them', () => {
+    const t = tracker();
+    t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
+    for (let i = 0; i < 3; i++) t.kill('singularity');
+    t.finish(2, { plow: 'arsenal' });
+    expect(lastChallengeReport()!.results.find((r) => r.def.id === 'sing')!.isNew).toBe(true);
+    t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
+    for (let i = 0; i < 5; i++) t.kill('radBurn');
+    t.finish(1, { plow: 'isotope' });
+    expect(lastChallengeReport()!.results.find((r) => r.def.id === 'burn')!.isNew).toBe(true);
+    t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
+    for (let i = 0; i < 15; i++) t.kill('magLaser');
+    t.finish(4, { plow: 'arsenal' });
+    expect(lastChallengeReport()!.results.find((r) => r.def.id === 'laser')!.isNew).toBe(true);
+    const p = (t.ctx as unknown as { progression: Progression }).progression;
+    expect(p.data.challenges?.foundry).toContain('sing');
+    expect(p.data.challenges?.junkyard).toContain('burn');
+    expect(p.data.challenges?.plaza).toContain('laser');
+  });
+
+  it('a lost run banks nothing; a non-campaign run clears the report', () => {
+    const t = tracker();
+    t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
+    for (let i = 0; i < 99; i++) t.kill('magLaser');
+    t.finish(4, { won: false });
+    expect(lastChallengeReport()!.newStars).toBe(0);
+    t.finish(4, { mode: 'survival', zoneIndex: undefined });
+    expect(lastChallengeReport()).toBeNull();
   });
 });

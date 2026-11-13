@@ -54,12 +54,18 @@ function rig(bots: EnemyHandle[], levels: Record<string, number> = {}, kind: Plo
     },
   };
   const slams: { zoneMult?: number; radius: number }[] = [];
-  const events = { emit: (type: string, p: { zoneMult?: number; radius: number }) => type === 'slam' && slams.push(p) };
+  const rushes: number[] = [];
+  const events = {
+    emit: (type: string, p: { zoneMult?: number; radius: number; hits: number }) => {
+      if (type === 'slam') slams.push(p);
+      if (type === 'plowRush') rushes.push(p.hits);
+    },
+  };
   const ctx = { scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop, terrain: new Terrain() } as unknown as GameContext;
   const snow = new Proxy({}, { get: (_t, k) => (k === 'getDepth' ? () => 0 : noop) });
   const binding = { stats, plow, enemies, input: { throttle: 0, steer: 0, wasPressed: () => false }, audio: noop, snow, events, local: true, authoritative: true } as unknown as PilotBinding;
   const c = new Combat(ctx, binding);
-  return { c, hits, plow, stats, slams };
+  return { c, hits, plow, stats, slams, rushes };
 }
 
 describe('Classic SPACE kit: numbers', () => {
@@ -198,6 +204,9 @@ describe('PLOW RUSH slam cash-in (Combat.rushSlam)', () => {
     expect(got[0].amount / plain.hits[0].amount).toBeCloseTo(1.4 * streakDamage(1));
     expect(loaded.slams[0].zoneMult).toBeCloseTo(1.5);
     expect(loaded.c.chunks).toBe(0);
+    // Each rush slam reports its hits (the Rush Hour challenge counts them); tap slams don't.
+    expect(plain.rushes).toEqual([1]);
+    expect(loaded.rushes).toEqual([2]);
   });
 
   it('chunks ride the Duel snapshot (the guest HUD / predicted cash-in read the host count)', () => {

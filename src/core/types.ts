@@ -910,7 +910,8 @@ export interface UIAPI {
   hideOverlays(): void;
   setHudVisible(visible: boolean): void;
   updateHud(state: HudState): void;
-  toast(text: string, kind?: 'info' | 'good' | 'bad' | 'big'): void;
+  /** 'radio': a longer-lived, smaller story line (Road Crew dispatch at a campaign arena's start). */
+  toast(text: string, kind?: 'info' | 'good' | 'bad' | 'big' | 'radio'): void;
   /** Non-blocking cinematic boss intro card (name + title), ~2.5s, e.g. "BOSS ROUND  BULLDOZA — The Yard Boss". */
   bossIntro(name: string, title: string): void;
   /** Brawl mode lobby: rules + difficulty pick -> handlers.onStartBrawl(difficulty). */

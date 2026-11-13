@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle } from '../../core/types';
+import type { KillWeapon } from '../../core/events';
 import { settings } from '../../core/settings';
 import { SingularityFx } from '../../fx/singularity';
 import { MAG_LASER_MAX_RATE } from '../../config/upgrades';
@@ -447,8 +448,11 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (laser bolts), see
    *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it (bots divide it by their mass;
-   *  a plow scales it by its heaviness, knockScale in Combat.hitPlow, like every push). Returns damage dealt. */
-  private weaponHit(e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false): number {
+   *  a plow scales it by its heaviness, knockScale in Combat.hitPlow, like every push). `weapon`: kill credit for
+   *  challenge stars (no effect on damage). Returns damage dealt. */
+  private weaponHit(
+    e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false, weapon?: KillWeapon,
+  ): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
@@ -462,6 +466,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       direct,
       pierce: true,
       ult: ult || undefined,
+      weapon,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.onPlayerHit(dealt, killed, e);
@@ -710,7 +715,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private laserStrike(e: EnemyHandle, fx: number, fz: number): boolean {
     const plow = this.b.plow;
     const knock = -(this.b.pvp ? LASER_DUEL_TUG : LASER_TUG * (e.isBoss ? LASER_TUG_BOSS : 1));
-    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round');
+    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round', 1, false, 'magLaser');
     this.chest(e, _r);
     _fwd.set(-fx, 0.35, -fz).normalize();
     const f = this.ctx.fx;
@@ -1004,7 +1009,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive || Math.abs(e.position.y - this.burstY) >= BURST_DET_R) continue;
-      const dealt = this.weaponHit(e, per, S.x, S.z, BURST_KNOCK);
+      const dealt = this.weaponHit(e, per, S.x, S.z, BURST_KNOCK, undefined, 1, false, 'polarity');
       if (dealt > 0) {
         _tip.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
         fx.floatText(_tip, `🌀${Math.round(dealt)}`, '#7ff0ff', 1);
@@ -1113,7 +1118,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const dmg = this.b.stats.missileDamage * SING_TICK_DMG;
         for (let i = 0; i < hits.length; i++) {
           const e = hits[i];
-          if (e.alive && Math.hypot(e.position.x - C.x, e.position.z - C.z) <= SING_R + e.radius) this.weaponHit(e, dmg, C.x, C.z, tug, undefined, 1, true);
+          if (e.alive && Math.hypot(e.position.x - C.x, e.position.z - C.z) <= SING_R + e.radius) this.weaponHit(e, dmg, C.x, C.z, tug, undefined, 1, true, 'singularity');
         }
       }
       this.clearTargets();
@@ -1166,7 +1171,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       const d = Math.hypot(e.position.x - C.x, e.position.z - C.z);
       if (d > SING_R + e.radius) continue;
       const k = 1 - 0.5 * THREE.MathUtils.clamp((d - SING_CORE) / (SING_R - SING_CORE), 0, 1);
-      const dealt = this.weaponHit(e, per * k, C.x, C.z, SING_KNOCK, undefined, 1, true);
+      const dealt = this.weaponHit(e, per * k, C.x, C.z, SING_KNOCK, undefined, 1, true, 'singularity');
       if (dealt > 0) {
         _tip.set(e.position.x, e.position.y + e.radius + 1.3, e.position.z);
         fx.floatText(_tip, `🌀${Math.round(dealt)}`, '#b9a4ff', 1.2);

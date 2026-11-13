@@ -5,8 +5,10 @@ import type { PlowKind } from '../config/plows';
 /** How the player landed a killing blow (campaign / survival / tutorial; Brawl kills omit it).
  *  'stomp' = landing on a bot, 'airSlam' = the slam-while-airborne shockwave, 'lava' = a bot burned in lava. */
 export type KillSource = 'slam' | 'ram' | 'whirl' | 'other' | 'stomp' | 'airSlam' | 'lava';
-/** The weapon behind a hit, where trophies need more than its KillSource ('arcLance' = VOLT-9's ARC LANCE, any hop). */
-export type KillWeapon = 'arcLance';
+/** The weapon behind a hit, where trophies / challenge stars need more than its KillSource: 'arcLance' = VOLT-9's ARC
+ *  LANCE (any hop), 'magLaser' / 'polarity' / 'singularity' = ARSENAL's Mag Laser bolts, Polarity Burst blast and
+ *  SINGULARITY (pull ticks and collapse), 'radBurn' = ISOTOPE's radiation burn tick (RAD DOSE + TANK-BUSTER). */
+export type KillWeapon = 'arcLance' | 'magLaser' | 'polarity' | 'singularity' | 'radBurn';
 
 /** Cross-cutting game events. Modules call ctx.audio / ctx.fx directly for their own feedback;
  *  events exist so Game/UI can track stats and show toasts without modules knowing about each other. */
@@ -19,6 +21,8 @@ export interface GameEvents {
   slam: { hits: number; radius: number; position: THREE.Vector3; zoneMult?: number };
   /** The player fired their F ability (Inferno, Thunderclap, Ground Pound, Meltdown; `nuke` = ISOTOPE's NUKE). */
   ability: { nuke: boolean };
+  /** The Classic Plow's PLOW RUSH ended in its slam, hitting `hits` bots / opponents (challenge stars count them). */
+  plowRush: { hits: number };
   /** One slam / whirl hit `count` (>= 3) bots. */
   strike: { count: number; position: THREE.Vector3 };
   plowDamaged: { amount: number; blocked: number };

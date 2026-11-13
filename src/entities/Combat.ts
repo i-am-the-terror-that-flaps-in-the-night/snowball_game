@@ -536,14 +536,15 @@ export class Combat implements CombatAPI {
   }
 
   /** Classic Plow PLOW RUSH end: the slam at (x, z) (ball radius `r`, `volume` already taken off the plow), cashing in
-   *  every SNOW CHUNK (zone x1.05 and damage x1.04 per chunk), which then reset. STREAK as tapSlam. Returns the bots
-   *  hit. */
+   *  every SNOW CHUNK (zone x1.05 and damage x1.04 per chunk), which then reset. STREAK as tapSlam. Emits
+   *  'plowRush'. Returns the bots hit. */
   rushSlam(x: number, z: number, r: number, volume: number): number {
     const m = this.classic.takeChunks(x, z);
     const fin = this.classic.finisherArmed;
     const s = this.classic.slamMods(fin);
     const hits = this.melee.slamAt(x, z, finisherBall(r, this.b.stats.maxBallRadius, fin), volume, m.radius * s.zone, m.damage * CLASSIC_SLAM_POWER * s.damage, s.knock);
     this.classic.landStreak(this.melee.slamHits, hits, x, z, this.melee.slamZone, fin);
+    this.b.events.emit('plowRush', { hits });
     return hits;
   }
 
