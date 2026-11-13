@@ -27,7 +27,7 @@ function bot(x: number, z: number, hp = 1e6): EnemyHandle {
 const ids = (...n: number[]) => n.map((id) => ({ id }));
 
 /** A Combat bound to a scripted plow at the origin facing +Z, recording every hit and impact. */
-function rig(bots: EnemyHandle[], opts: { kind?: PlowKind; pvp?: boolean } = {}) {
+function rig(bots: EnemyHandle[], opts: { kind?: PlowKind; pvp?: boolean; snowTop?: (x: number, z: number) => number } = {}) {
   const stats = computeStatsFor({}, opts.kind ?? 'classic');
   const plow = {
     position: new THREE.Vector3(), heading: 0, hp: 100, maxHp: 100, dead: false, radius: 1.6, heldBallRadius: 0,
@@ -54,7 +54,8 @@ function rig(bots: EnemyHandle[], opts: { kind?: PlowKind; pvp?: boolean } = {})
   const impacts: ImpactKind[] = [];
   const texts: string[] = [];
   const fx = new Proxy({}, { get: (_t, k) => (k === 'floatText' ? (_p: unknown, s: string) => texts.push(s) : noop) });
-  const ctx = { scene: new THREE.Scene(), time: 0, fx, ui: noop, terrain: new Terrain(), impact: { hit: (k: ImpactKind) => impacts.push(k) } } as unknown as GameContext;
+  const ctx = { scene: new THREE.Scene(), time: 0, fx, ui: noop, terrain: new Terrain(), impact: { hit: (k: ImpactKind) => impacts.push(k) },
+    snow: opts.snowTop ? { topAt: opts.snowTop } : null } as unknown as GameContext;
   const snow = new Proxy({}, { get: (_t, k) => (k === 'getDepth' ? () => 0 : noop) });
   const binding = {
     stats, plow, enemies, input: { throttle: 0, steer: 0, wasPressed: () => false }, audio: noop, snow, events: { emit: () => {} }, local: true, authoritative: true, pvp: !!opts.pvp,
@@ -196,6 +197,18 @@ describe('STREAK in Combat (tap and rush slams)', () => {
     expect(r.c.streak).toBe(0);
   });
 
+  it('the finisher\'s ground waves sit on the snow banked round the slam (at most 1.2 m up), not buried in its trough', () => {
+    const waveY = (bank: number) => {
+      const r = rig(row(), { snowTop: (x, z) => (Math.hypot(x - 40, z - 5) > 1 ? bank : 0) });
+      for (const x of [0, 10, 20, 30, 40]) r.c.tapSlam(x, 5, 1.5, 0);
+      const waves = (r.c as unknown as { classic: { shock: { waves: { root: THREE.Group }[] } } }).classic.shock.waves;
+      return Math.max(...waves.filter((w) => w.root.visible).map((w) => w.root.position.y));
+    };
+    expect(waveY(0.7)).toBeCloseTo(0.8);
+    // a wall or deck next to it never lifts the wave into the air
+    expect(waveY(6)).toBeCloseTo(1.3);
+  });
+
   it('a ball-less rush finisher hits with a real ball (FINISHER_MIN_R)', () => {
     const r = rig(row());
     for (const x of [0, 10, 20, 30]) r.c.rushSlam(x, 5, RUSH_MIN_SLAM_R, 0);
@@ -311,8 +324,17 @@ describe('STREAK hull visuals (plow/streakFx.ts)', () => {
     expect(one).toBeGreaterThan(0);
     expect(count(4)).toBeGreaterThan(one);
     const g = ghosts()[0] as THREE.Group;
-    const fill = g.children[1] as THREE.Mesh;
+    const [mask, rim, fill] = g.children as THREE.Mesh[];
     expect([STREAK_COLORS[2], STREAK_COLORS[3]]).toContain((fill.material as THREE.MeshBasicMaterial).color.getHex());
+    // Each ghost lays a depth-only mask of its silhouette first, then its outline shell, then the fill, all after every
+    // other transparent FX: the shell shows as a rim (not a solid deep-coloured hull) and a rush's string of ghosts
+    // never stacks into an opaque slab over the slam, while shockwaves / flashes behind them still show through.
+    const mm = mask.material as THREE.MeshBasicMaterial;
+    expect([mm.colorWrite, mm.depthWrite]).toEqual([false, true]);
+    expect((rim.material as THREE.MeshBasicMaterial).side).toBe(THREE.BackSide);
+    expect(mask.renderOrder).toBeLessThan(rim.renderOrder);
+    expect(rim.renderOrder).toBeLessThan(fill.renderOrder);
+    expect(mask.renderOrder).toBeGreaterThan(9);
     // stacks gone: the glow goes at once, the ghosts already out fade away
     fx.update(1 / 60, 0, 0, 20, 0, 0, 0);
     expect(edge.visible).toBe(false);

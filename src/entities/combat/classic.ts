@@ -30,6 +30,8 @@ const FINISH_CHUNKS_2 = { color: 0x5cc4ff, count: 26, speed: 11, size: 0.26, gra
 const FINISH_EMBERS = { color: 0xff5a10, count: 40, speed: 13, size: 0.3, gravity: -5, life: 0.65 };
 const FINISH_RIM = { color: 0xbfeaff, count: 4, speed: 7, size: 0.3, gravity: 18, life: 0.75 };
 const FINISH_POWDER = { size: 2.6, color: 0xd6e3f3 };
+/** The finisher's ground waves rise at most this far (m) above the slam point's floor onto the snow round it. */
+const FINISH_LIFT = 1.2;
 /** The finisher's ground shockwaves: hot red-orange band, gold hot line. */
 const FINISH_PALETTE = { band: 0xe0300a, hot: 0xffd27a, wall: 0xff6a1a, tint: 0xff8a2a };
 /** ON STREAK: seconds between blade embers and (on average) between the crackling arcs round the hull. */
@@ -192,10 +194,21 @@ export class ClassicKit extends Kit {
     const ctx = this.ctx;
     const plow = this.b.plow;
     const fx = ctx.fx;
-    const ground = floorTop(ctx.terrain, this.b.snow, plow.position.y, x, z);
+    // The flat waves sit on the highest snow round the zone (the slam point is often a plowed trough or a dip: at its
+    // own height the banks round it swallowed most of the wave), at most FINISH_LIFT m up.
+    const floor = floorTop(ctx.terrain, this.b.snow, plow.position.y, x, z);
+    let ground = floor;
+    const snow = ctx.snow;
+    if (snow) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const h = snow.topAt(x + Math.sin(a) * zone * 0.9, z + Math.cos(a) * zone * 0.9);
+        if (Number.isFinite(h) && h > ground) ground = Math.min(floor + FINISH_LIFT, h);
+      }
+    }
     this.shock.reduceFlash = settings.reduceFlash;
-    this.shock.spawn(x, ground, z, zone * 1.35, { dur: 0.75, flashR: 3.4, flashY: 1.3, wallH: 3 });
-    this.shock.spawn(x, ground, z, zone * 0.75, { dur: 0.45, wallH: 1.6 });
+    this.shock.spawn(x, ground, z, zone * 1.75, { dur: 0.9, flashR: 4.2, flashY: 1.3, wallH: 3.6 });
+    this.shock.spawn(x, ground, z, zone, { dur: 0.5, wallH: 2 });
     _q.set(x, ground, z);
     fx.ring(_q, zone, 0xff4a12);
     fx.ring(_q, zone * 1.18, 0xffc21a);

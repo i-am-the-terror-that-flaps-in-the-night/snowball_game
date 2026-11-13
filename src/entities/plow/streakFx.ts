@@ -17,10 +17,16 @@ const HULL_EDGE = 1.055;
  *  outline opacity. */
 const GHOST_GAP = [3, 2.6, 2.2, 1.8] as const;
 const GHOST_LIFE = [0.32, 0.38, 0.45, 0.55] as const;
-const GHOST_FILL = [0.24, 0.28, 0.32, 0.36] as const;
+const GHOST_FILL = [0.26, 0.3, 0.36, 0.44] as const;
 const GHOST_RIM = [0.7, 0.8, 0.9, 1] as const;
 /** Seconds an afterimage takes to fade in (the newest one sits on the hull: it must not paint over it). */
 const GHOST_IN = 0.08;
+/** Afterimage draw order: after every other transparent FX (particles up to 5, the flame cone 7, lightning 9), so a
+ *  ghost's depth-only mask (drawn first) hides only its own outline shell's interior and the ghosts behind it, never
+ *  a shockwave or flash seen through it. Then the outline shell, then the fill. Without the mask the BackSide shell
+ *  covers the whole silhouette, so each ghost is a solid deep-coloured hull and a rush's string of them (between
+ *  the chase camera and the plow) stacks into one opaque slab over the slam. */
+const GHOST_ORDER = 10;
 /** Afterimages only spawn above this ground speed (m/s). */
 const GHOST_SPEED = 3;
 /** Hull outline / underglow pulse (Hz) at 1 stack, plus this much per stack. */
@@ -29,6 +35,7 @@ const PULSE_HZ_STACK = 1.5;
 
 interface Ghost {
   root: THREE.Group;
+  mask: THREE.Mesh;
   fill: THREE.Mesh;
   edge: THREE.Mesh;
   fillMat: THREE.MeshBasicMaterial;
@@ -84,6 +91,9 @@ export function hullSilhouette(roots: readonly THREE.Object3D[], frame: THREE.Ob
   return g;
 }
 
+/** Depth-only write of a ghost's silhouette (shared: never changes). */
+const MASK_MAT = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true });
+
 const solid = (side: THREE.Side) => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, side, toneMapped: false });
 
 export class StreakFx {
@@ -109,14 +119,16 @@ export class StreakFx {
       const fillMat = solid(THREE.FrontSide);
       const edgeMat = solid(THREE.BackSide);
       const root = new THREE.Group();
+      const mask = new THREE.Mesh(geo, MASK_MAT);
       const fill = new THREE.Mesh(geo, fillMat);
       const edge = new THREE.Mesh(geo, edgeMat);
-      fill.renderOrder = 3;
-      edge.renderOrder = 2;
-      root.add(edge, fill);
+      mask.renderOrder = GHOST_ORDER;
+      edge.renderOrder = GHOST_ORDER + 1;
+      fill.renderOrder = GHOST_ORDER + 2;
+      root.add(mask, edge, fill);
       root.visible = false;
       scene.add(root);
-      this.ghosts.push({ root, fill, edge, fillMat, edgeMat, age: 0, life: 1, peak: 0, rim: 0, active: false });
+      this.ghosts.push({ root, mask, fill, edge, fillMat, edgeMat, age: 0, life: 1, peak: 0, rim: 0, active: false });
     }
     this.hullEdge = new THREE.Mesh(geo, this.hullEdgeMat);
     this.hullEdge.renderOrder = 2;
@@ -143,6 +155,7 @@ export class StreakFx {
     this.geo = geo;
     geo.boundingBox!.getCenter(this.center);
     for (const g of this.ghosts) {
+      g.mask.geometry = geo;
       g.fill.geometry = geo;
       g.edge.geometry = geo;
       g.edge.position.copy(this.center).multiplyScalar(1 - GHOST_EDGE);
