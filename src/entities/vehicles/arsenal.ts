@@ -11,7 +11,7 @@ export interface ArsenalRigState {
   firing: boolean;
   /** 0..1: the gyro rings fold flat into one spinning disc (Polarity Burst). */
   flat: number;
-  /** 0..1 extra charge glow (Grav Lance, Singularity). */
+  /** 0..1 extra charge glow (Mag Repulsor, Singularity). */
   charge: number;
 }
 
@@ -162,8 +162,8 @@ function fresnelMat(color: number, power: number, strength: number): THREE.Shade
  * own pivot) round a crystal reactor core with energy arcs, tucked into a bay under an armoured rear deck (cheek
  * skirts, bearing caps, swept struts, pistons, cables), projecting light rings onto the snow. Between them a faceted gunmetal hull
  * (lofted octagonal sections, sloped two-facet glacis) dressed in layered bolted plates, armoured wheel arches, coil
- * pods on the rear quarters and nose greebles (ram bar, tow hooks, caged headlights, the Grav Lance lens); an angled
- * turret with armour cheeks, optics, hatch and antenna carries the finned pulse-laser emitter. Static parts merge into
+ * pods on the rear quarters and nose greebles (ram bar, tow hooks, caged headlights, the Mag Repulsor lens); an angled
+ * turret with armour cheeks, optics, hatch and antenna carries the finned Mag Laser emitter. Static parts merge into
  * one mesh per material. Rides on the shared chassis slot (the shared wheels are hidden for this kind).
  */
 export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<ArsenalVehicleParts> {
@@ -337,7 +337,7 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     box(0.06, 0.03, 0.03, glowMat, sx * 0.62, 1.22, 2.04, 0, 0, 0, ap, false);
   }
   box(0.42, 0.035, 0.035, glowMat, 0, 1.21, 1.98, 0, 0, 0, ap, false);
-  // Grav Lance lens: a hex armoured housing set in the glacis lip, a chrome ring and a cyan crystal; the lance leaves
+  // Mag Repulsor lens: a hex armoured housing set in the glacis lip, a chrome ring and a cyan crystal; the wave leaves
   // from `laser`.
   const lensBody = addMesh(new THREE.CylinderGeometry(0.19, 0.22, 0.36, 6), armorMat, 0, 1.47, 1.92, ap);
   lensBody.rotation.set(Math.PI / 2, 0, Math.PI / 6);

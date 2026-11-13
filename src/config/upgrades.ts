@@ -111,12 +111,12 @@ export const grow = (L: number, knee: number, rate = 0.6) => (L <= knee ? L : kn
 /** Momentum line's Wrecking Fist bonus: fist damage x (1 + MOMENTUM_FIST x momentum^2). */
 export const MOMENTUM_FIST = 60;
 
-/** Every upgrade's effect by level — the single source for Progression.computeStats and the shop labels.
- *  Levels up to each upgrade's pips match the original (pre-endless) formulas exactly. */
 /** Mag Laser: most bolts a second, whatever the level and Overclock (see FX.gunRate): it keeps the late-garage
  *  single-target DPS in its band (docs/balance.md). */
 export const MAG_LASER_MAX_RATE = 15;
 
+/** Every upgrade's effect by level — the single source for Progression.computeStats and the shop labels.
+ *  Levels up to each upgrade's pips match the original (pre-endless) formulas exactly. */
 export const FX = {
   maxSpeed: (L: number) => 10 + 1.4 * soft(L, 5),
   accel: (L: number) => 14 + 3 * soft(L, 5),

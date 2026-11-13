@@ -202,8 +202,8 @@ the laser fires dead straight off the nose, no homing.
   a plow in the Duel). In the Duel the other player sees your bolts too.
 - **E: Mag Repulsor.** A magnetic wave bursts out of the nose across a 60° wedge (Snow Compactor widens it, 90° at
   most) and sweeps out to ~13 m in 0.3 s: a cyan arc wall racing over the snow, field-line streaks and a gyro flare.
-  Every bot in the wedge takes one big hit as the front passes (full damage out to half its reach, 70% at the edge;
-  the old Grav Lance's lone-bot damage) and is flung away from you (bosses barely move). No aiming help, no lock: point
+  Every bot in the wedge takes one big hit as the front passes (full damage out to half its reach, 70% at the edge)
+  and is flung away from you (bosses barely move). No aiming help, no lock: point
   the nose at the pack. In the Duel it shoves the other pilot a moderate amount and hits for 60% (one big hit gets no
   tick-by-tick diminishing returns).
 - **F: Polarity Burst.** The gyro rings snap flat into one spinning disc and a cyan event horizon opens 16 m round a

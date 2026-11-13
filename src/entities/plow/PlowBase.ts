@@ -215,7 +215,7 @@ export abstract class PlowBase {
   protected armGlowMat!: THREE.MeshStandardMaterial;
   protected arsRig!: ArsenalVehicleParts;
   /** Set by Combat each frame (ARSENAL): 0..1 gyro rings folded flat into a disc (Polarity Burst), and 0..1 extra
-   *  core charge glow (Grav Lance / Singularity). */
+   *  core charge glow (Mag Repulsor / Singularity). */
   gyroFlat = 0;
   gyroCharge = 0;
   protected gyroFlatEase = 0;
