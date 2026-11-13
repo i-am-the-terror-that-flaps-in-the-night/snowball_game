@@ -1,6 +1,6 @@
 /* Balance report (not part of `npm test`): `npm run balance`. Prints the markdown tables used in docs/balance.md. */
 import { it } from 'vitest';
-import { KINDS, TIERS, clusterDps, duelLaserDamage, duelTtk, singleDps, statsFor, ultDamage, ultFill, ultFillBoss } from './balance/sim';
+import { KINDS, TIERS, clusterDps, duelLaserDamage, duelTtk, singleDps, spreadDps, statsFor, ultDamage, ultFill, ultFillBoss } from './balance/sim';
 
 const f0 = (n: number) => (Number.isFinite(n) ? Math.round(n).toString() : '∞');
 const f1 = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : '∞');
@@ -28,6 +28,9 @@ it('balance report', () => {
         `| ${r.k} | ${f0(r.hp)} | ${f0(r.dps)} (${pct(r.dps, dpsMean)}) | ${f0(r.aoe)} | ${f1(r.fill)} / ${f1(r.boss)} | ${f0(r.ult.total)}, ${r.ult.hit} (${pct(r.ult.total, ultMean)}) | ${f1(r.ttk)} (${pct(r.ttk, ttkMean)}) / ${f1(r.ttkMin)} |`,
       );
     }
+    const ring = spreadDps(tier);
+    const flat = spreadDps(tier, false);
+    out.push(`\nClassic ring play (each slam on the next of 5 spread bots): ${f0(ring)} DPS with STREAK, ${f0(flat)} without (${pct(ring, flat)}).`);
     out.push(`\nVOLT-9 1-target DPS with a bot near the dummy (no GROUNDED ARC, as on a typical bot in a wave): ${f0(singleDps('volt', tier, 60, false))}.`);
     out.push(
       `\nDuel Mag Laser alone, 2 s held: ${f0(duelLaserDamage(tier))} HP of a ${f0(statsFor('classic', tier).maxHp)}-HP Classic; ${f0(duelLaserDamage(tier, 2, 'arsenal'))} of a ${f0(statsFor('arsenal', tier).maxHp)}-HP ARSENAL mirror.`,

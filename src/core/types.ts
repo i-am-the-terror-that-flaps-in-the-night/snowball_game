@@ -366,6 +366,11 @@ export interface CombatAPI {
   /** Classic Plow SNOW CHUNKS on the blade (0..10, tap slam hits pack them, a PLOW RUSH slam spends them), -1 on
    *  other plows. */
   readonly chunks?: number;
+  /** Classic Plow STREAK stacks (0..4, 4 = ON STREAK: the next slam is the SHOCKWAVE FINISHER), -1 on other plows and
+   *  in the online Duel (combat/classicStreak.ts). */
+  readonly streak?: number;
+  /** Share of the STREAK window left (1 = just stacked, 0 = about to drop / no stacks). */
+  readonly streakLeft?: number;
   /** The bound vehicle's SPACE / E HUD slots (combat/shared.ts VehicleKit descriptors), null on the Classic. */
   readonly abilityHud?: AbilityHud | null;
   /** Reset combat state. `betweenRounds` (round / wave cleared mid-run) keeps run-long meters like ISOTOPE's
@@ -585,7 +590,7 @@ export interface CameraRigAPI {
 }
 
 /** Impact feel kinds (see fx/impact.ts for the per-kind light colour, hit-stop and camera numbers). */
-export type ImpactKind = 'slam' | 'wreck' | 'kill' | 'bossHit' | 'bossKill' | 'pound' | 'punch' | 'clap' | 'meltdown' | 'nuke' | 'player';
+export type ImpactKind = 'slam' | 'wreck' | 'kill' | 'bossHit' | 'bossKill' | 'pound' | 'punch' | 'clap' | 'meltdown' | 'nuke' | 'player' | 'finisher';
 
 export interface ImpactOpts {
   /** false = light + camera only, no hit-stop (rival-vs-rival effects, slams that hit nothing). */
@@ -686,6 +691,10 @@ export interface HudState {
   critMass?: number;
   /** Classic Plow SNOW CHUNKS 0..10 (pips under the snowball gauge), -1 / absent elsewhere. */
   chunks?: number;
+  /** Classic Plow STREAK stacks 0..4 (the 4-pip meter by the ability icons) and the share of its window left; -1 /
+   *  absent elsewhere and in the Duel. */
+  streak?: number;
+  streakLeft?: number;
   /** Thunderclap Overload heat (CombatAPI.overloadHeat; -1 = hidden) and the next clap's predicted self-damage. */
   overload?: number;
   overloadCost?: number;

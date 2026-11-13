@@ -2,18 +2,49 @@ import * as THREE from 'three';
 import { FlameCone } from '../../fx/FlameCone';
 import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import { FX } from '../../config/upgrades';
-import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
+import { settings } from '../../core/settings';
+import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, floorTop, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultMeter } from './ultimates';
 import { CHUNK_BIG, CHUNK_MAX, addChunks, cashIn } from './classicRush';
+import { Shockwaves } from './arsenalFx';
+import { FINISHER_KNOCK, FINISHER_RADIUS, STREAK_COLORS, STREAK_CSS, STREAK_DEEP, STREAK_MAX, STREAK_REFUND, StreakHit, StreakState, streakDamage } from './classicStreak';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const UPDATE_FLAME_BURST = { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 };
 const UPDATE_FLAME_BURST_2 = { color: 0x2c2628, count: 2, speed: 1.5, size: 0.7, gravity: -3, life: 1.1 };
 const UPDATE_BURNS_BURST = { color: 0x2c2628, count: 1, speed: 1, size: 0.6, gravity: -2.5, life: 1 };
+/** STREAK: a new stack's pop at the target (sparks + chunks per stack colour), ON STREAK's blade embers / smoke, the
+ *  fizzle when it drops, and the SHOCKWAVE FINISHER's ice shards, chunks, embers and powder. */
+const STREAK_POP_SPARKS = STREAK_COLORS.map((color) => ({ color, count: 22, speed: 12, spread: 1, size: 0.1, length: 0.04, gravity: 16, life: 0.45 }));
+const STREAK_POP_BURST = STREAK_COLORS.map((color) => ({ color, count: 12, speed: 6, size: 0.24, gravity: 14, life: 0.6 }));
+const STREAK_EMBER = { color: 0xff5a10, count: 2, speed: 2.5, size: 0.28, gravity: -7, life: 0.45 };
+const STREAK_EMBER_2 = { color: 0xffd040, count: 2, speed: 5, size: 0.08, gravity: -9, life: 0.35 };
+const STREAK_TRAIL = { color: 0xff7a20, count: 2, speed: 7, spread: 0.35, size: 0.09, length: 0.05, gravity: 4, life: 0.4 };
+const STREAK_SMOKE = { color: 0x2c2628, count: 1, speed: 0.8, size: 0.5, gravity: -3, life: 0.8 };
+const FIZZLE_SMOKE = { count: 10, color: 0x8a9099, size: 0.55, grow: 2.6, life: 0.75, speed: 2.6, up: 1.3, rise: 0.5, drag: 2.6, spread: 1.1, opacity: 0.75 };
+const FIZZLE_BURST = { color: 0x5f646c, count: 14, speed: 4, size: 0.15, gravity: 10, life: 0.5 };
+const FINISH_SHARDS = { color: 0x8fdcff, count: 70, speed: 22, spread: 1, size: 0.13, length: 0.05, gravity: 16, life: 0.75 };
+const FINISH_CHUNKS = { color: 0xe6f6ff, count: 34, speed: 15, size: 0.38, gravity: 20, life: 1.05 };
+const FINISH_CHUNKS_2 = { color: 0x5cc4ff, count: 26, speed: 11, size: 0.26, gravity: 16, life: 0.95 };
+const FINISH_EMBERS = { color: 0xff5a10, count: 40, speed: 13, size: 0.3, gravity: -5, life: 0.65 };
+const FINISH_RIM = { color: 0xbfeaff, count: 4, speed: 7, size: 0.3, gravity: 18, life: 0.75 };
+const FINISH_POWDER = { size: 2.6, color: 0xd6e3f3 };
+/** The finisher's ground shockwaves: hot red-orange band, gold hot line. */
+const FINISH_PALETTE = { band: 0xe0300a, hot: 0xffd27a, wall: 0xff6a1a, tint: 0xff8a2a };
+/** ON STREAK: seconds between blade embers and (on average) between the crackling arcs round the hull. */
+const STREAK_EMBER_EVERY = 0.03;
+const STREAK_ARC_EVERY = 0.07;
+const STREAK_ARC = { life: 0.1, width: 0.18, jag: 0.5, color: 0xff7a20 };
+const STREAK_ARC_2 = { life: 0.1, width: 0.14, jag: 0.5, color: 0xffd040 };
+/** slamMods results (reused: read right away, never kept). */
+const NO_MODS = { damage: 1, zone: 1, knock: 1 };
+const STREAK_MODS = { damage: 1, zone: 1, knock: 1 };
 
 /** Knockback scratch for per-tick damage (Enemies.damage reads it immediately and never keeps it). */
 const _kb = new THREE.Vector3();
+/** ON STREAK spark direction (back off the blade). */
+const _back = new THREE.Vector3();
 
 /** Inferno (F): flame duration, cone half-angle (cos), seconds between ignite checks, burn length + tick. */
 const FLAME_SECONDS = 1.4;
@@ -70,6 +101,12 @@ export class ClassicKit extends Kit {
   readonly flameCone: FlameCone;
   /** SNOW CHUNKS packed by tap BALL SLAM hits (0..CHUNK_MAX); a PLOW RUSH slam spends them all. */
   chunks = 0;
+  /** STREAK (combat/classicStreak.ts): stacks, window, the previous slam's targets. */
+  readonly streak = new StreakState();
+  /** The SHOCKWAVE FINISHER's ground waves (built with the fire field). */
+  private shock!: Shockwaves;
+  private emberT = 0;
+  private arcT = 0;
 
   constructor(h: CombatHost) {
     super(h);
@@ -80,6 +117,163 @@ export class ClassicKit extends Kit {
   buildField(): void {
     this.fireFieldMat = new THREE.MeshBasicMaterial({ color: 0xff5a10, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
     this.fireField = new GroundDisc(this.ctx.scene, this.fireFieldMat);
+    this.shock = new Shockwaves(this.ctx.scene, 3, FINISH_PALETTE);
+  }
+
+  /* ------------------------------------------------------------------ STREAK */
+
+  /** STREAK is the Classic's (not a vehicle on the snowball kit), and off in the online Duel (its balance is kept). */
+  get streakLive(): boolean {
+    return this.b.stats.plowKind === 'classic' && !this.b.pvp;
+  }
+
+  /** The next slam is the SHOCKWAVE FINISHER (ON STREAK). */
+  get finisherArmed(): boolean {
+    return this.streakLive && this.streak.onStreak;
+  }
+
+  /** Slam multipliers from the streak for a slam about to go off (damage, zone, knockback; read right away). */
+  slamMods(finisher: boolean): { readonly damage: number; readonly zone: number; readonly knock: number } {
+    if (!this.streakLive) return NO_MODS;
+    STREAK_MODS.damage = streakDamage(this.streak.stacks, finisher);
+    STREAK_MODS.zone = finisher ? FINISHER_RADIUS : 1;
+    STREAK_MODS.knock = finisher ? FINISHER_KNOCK : 1;
+    return STREAK_MODS;
+  }
+
+  /** A slam (tap or rush end) landed on the first `n` of `hits` at (x, z) with zone radius `zone`: stack the streak
+   *  (meter refund, ring pop + STREAK xN at the new target) or, `finisher`, play the SHOCKWAVE FINISHER. */
+  landStreak(hits: readonly EnemyHandle[], n: number, x: number, z: number, zone: number, finisher: boolean): void {
+    if (!this.streakLive) return;
+    const res = this.streak.land(hits, n, finisher);
+    if (res === StreakHit.Finish) this.finisherFx(x, z, zone);
+    else if (res === StreakHit.Stack) this.stackFx(hits, n);
+  }
+
+  /** A new stack: refund part of the dash / rush meter, then a ring pop at a target and a STREAK xN pop. */
+  private stackFx(hits: readonly EnemyHandle[], n: number): void {
+    const plow = this.b.plow;
+    const ctx = this.ctx;
+    const k = this.streak.stacks;
+    // The Plow keeps its dash meter private: refund it through a narrow duck-typed view (the sim's plow has none).
+    const p = plow as unknown as { dashCharge?: number };
+    if (typeof p.dashCharge === 'number') p.dashCharge = Math.min(1, p.dashCharge + STREAK_REFUND);
+    // The pop goes on the first target still standing (else the first one hit).
+    let e = hits[0];
+    for (let i = 0; i < n; i++) {
+      if (hits[i].alive) {
+        e = hits[i];
+        break;
+      }
+    }
+    const c = STREAK_COLORS[k - 1];
+    const ground = floorTop(ctx.terrain, this.b.snow, plow.position.y, e.position.x, e.position.z);
+    _q.set(e.position.x, ground, e.position.z);
+    ctx.fx.ring(_q, 1.6 + 0.5 * k, STREAK_DEEP[k - 1]);
+    ctx.fx.ring(_q, 2.4 + 0.7 * k, c);
+    _q.y = ground + 1.2;
+    ctx.fx.sparks(_q, null, STREAK_POP_SPARKS[k - 1]);
+    ctx.fx.burst(_q, STREAK_POP_BURST[k - 1]);
+    const on = k >= STREAK_MAX;
+    // The count is the pilot's own read-out (a Brawl rival's ring pop shows, its text doesn't).
+    if (this.b.local) {
+      _q.set(e.position.x, e.position.y + e.radius + 2.4, e.position.z);
+      ctx.fx.floatText(_q, on ? `STREAK x${k} · ON STREAK!` : `STREAK x${k}`, STREAK_CSS[k - 1], 1.15 + 0.15 * k);
+    }
+    this.b.audio.play('charge', { volume: 0.45 + 0.1 * k, pitch: 1.2 + 0.25 * k });
+    if (on) {
+      this.b.audio.play('burst', { volume: 0.7, pitch: 1.4 });
+      this.shake(0.25);
+    }
+  }
+
+  /** The SHOCKWAVE FINISHER at (x, z): a huge hot ground wave + flash, ice shards and chunks flung out, a big punch. */
+  private finisherFx(x: number, z: number, zone: number): void {
+    const ctx = this.ctx;
+    const plow = this.b.plow;
+    const fx = ctx.fx;
+    const ground = floorTop(ctx.terrain, this.b.snow, plow.position.y, x, z);
+    this.shock.reduceFlash = settings.reduceFlash;
+    this.shock.spawn(x, ground, z, zone * 1.35, { dur: 0.75, flashR: 3.4, flashY: 1.3, wallH: 3 });
+    this.shock.spawn(x, ground, z, zone * 0.75, { dur: 0.45, wallH: 1.6 });
+    _q.set(x, ground, z);
+    fx.ring(_q, zone, 0xff4a12);
+    fx.ring(_q, zone * 1.18, 0xffc21a);
+    fx.ring(_q, zone * 0.55, 0xffffff);
+    _q.y = ground + 1;
+    fx.sparks(_q, null, FINISH_SHARDS);
+    fx.burst(_q, FINISH_CHUNKS);
+    fx.burst(_q, FINISH_CHUNKS_2);
+    fx.burst(_q, FINISH_EMBERS);
+    _q.y = ground;
+    fx.powder(_q, FINISH_POWDER);
+    // Ice kicked up all round the rim.
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      _q.set(x + Math.sin(a) * zone, ground + 0.4, z + Math.cos(a) * zone);
+      fx.burst(_q, FINISH_RIM);
+    }
+    _q.set(x, ground + 1, z);
+    this.impactHit('finisher', _q, 1.4);
+    this.shake(1.1);
+    this.b.audio.play('explosion', { volume: 0.85, pitch: 1.15 });
+    this.b.audio.play('strike', { volume: 0.9 });
+    this.b.audio.play('freeze', { volume: 0.7, pitch: 0.7 });
+    _q.set(x, ground + 5, z);
+    fx.floatText(_q, 'SHOCKWAVE!', '#ff4a12', 2.1);
+  }
+
+  /** STREAK every frame: the window (a grey fizzle when the stacks drop), ON STREAK's blade embers + crackling arcs
+   *  round the hull, the finisher's waves. */
+  updateStreak(dt: number): void {
+    this.shock.update(dt);
+    const plow = this.b.plow;
+    if (!this.streakLive || !plow || plow.dead) {
+      this.streak.clear();
+      return;
+    }
+    if (this.streak.update(dt) > 0) this.fizzle(plow);
+    if (!this.streak.onStreak || this.puppet) return;
+    const ctx = this.ctx;
+    plow.getForward(_fwd);
+    plow.getBladeTip(_tip);
+    const w = (this.b.stats.bladeWidth || 2.6) * 0.5;
+    this.emberT -= dt;
+    while (this.emberT <= 0) {
+      this.emberT += STREAK_EMBER_EVERY;
+      // Half off the blade, half licking up the flanks (the blade hides behind the cab from the chase camera).
+      const blade = Math.random() < 0.5;
+      const side = blade ? (Math.random() * 2 - 1) * w : (Math.random() < 0.5 ? -1.25 : 1.25);
+      const back = blade ? 0 : 1.5 + Math.random() * 3.5;
+      _p.set(_tip.x + _fwd.z * side - _fwd.x * back, _tip.y + 0.3 + Math.random() * 1.3, _tip.z - _fwd.x * side - _fwd.z * back);
+      ctx.fx.burst(_p, Math.random() < 0.6 ? STREAK_EMBER : STREAK_EMBER_2);
+      // Hot sparks streaming back off the blade (a flame trail behind the charge).
+      ctx.fx.sparks(_p, _back.set(-_fwd.x, 0.25, -_fwd.z), STREAK_TRAIL);
+      if (Math.random() < 0.12) ctx.fx.burst(_p, STREAK_SMOKE);
+    }
+    this.arcT -= dt;
+    if (this.arcT <= 0) {
+      this.arcT = STREAK_ARC_EVERY * (0.6 + Math.random() * 0.8);
+      const a = Math.random() * Math.PI * 2;
+      const b = a + 0.6 + Math.random() * 1.2;
+      const y0 = plow.position.y;
+      _p.set(plow.position.x + Math.sin(a) * 2.3, y0 + 0.4 + Math.random() * 1.8, plow.position.z + Math.cos(a) * 2.3);
+      _q.set(plow.position.x + Math.sin(b) * 2.3, y0 + 0.4 + Math.random() * 1.8, plow.position.z + Math.cos(b) * 2.3);
+      this.lightning.bolt(_p, _q, Math.random() < 0.5 ? STREAK_ARC : STREAK_ARC_2);
+    }
+  }
+
+  /** The streak ran out: a quick grey puff off the hull and a small 'streak lost'. */
+  private fizzle(plow: PlowAPI): void {
+    const ctx = this.ctx;
+    _p.set(plow.position.x, plow.position.y + 1.6, plow.position.z);
+    ctx.fx.smoke(_p, FIZZLE_SMOKE);
+    ctx.fx.burst(_p, FIZZLE_BURST);
+    if (this.b.local) {
+      _p.y += 2;
+      ctx.fx.floatText(_p, 'streak lost', '#9aa0a8', 0.8);
+    }
+    this.b.audio.play('error', { volume: 0.25, pitch: 0.7 });
   }
 
   /** Inferno (F, pilot perk): a 1s cone of fire from the blade that ignites bots and melts snow. */
@@ -392,6 +586,8 @@ export class ClassicKit extends Kit {
 
   clear(): void {
     this.chunks = 0;
+    this.streak.clear();
+    this.shock.clear();
     this.flameCone.hide();
     this.flameT = 0;
     this.flameCharge = 1;

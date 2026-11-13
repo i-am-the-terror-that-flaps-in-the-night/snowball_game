@@ -47,6 +47,9 @@ const KINDS: Record<ImpactKind, KindDef> = {
   meltdown: { color: 0x6dff3a, light: 120, range: 26, stop: 0.065, kick: 0.55, fov: -3.5 },
   nuke: { color: 0x7dff4a, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true },
   player: { color: 0xff5a4a, light: 0, range: 0, stop: 0.05, kick: 0.5, fov: 0 },
+  /** The Classic's STREAK SHOCKWAVE FINISHER (combat/classicStreak.ts FINISHER_HITSTOP): a forced 0.08 s stop, a hot
+   *  flash and a big punch. */
+  finisher: { color: 0xff6a20, light: 320, range: 34, stop: 0.08, kick: 1.1, fov: -7, force: true },
 };
 
 interface Flash {
@@ -120,6 +123,7 @@ export class Impact implements ImpactAPI {
     }
     if (def.kick > 0) this.kick(pos, def.kick * Math.min(1.6, s) * (opts?.falloff ?? 1), def.fov * Math.min(1.5, s));
     if (kind === 'nuke') this.screenFlash(0.9, 0.6);
+    else if (kind === 'finisher') this.screenFlash(0.45, 0.35);
   }
 
   /** The player took `damage` from an attacker at (fromX, fromZ): camera punch, plus vignette + hit-stop when heavy. */

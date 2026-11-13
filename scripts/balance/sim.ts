@@ -12,7 +12,7 @@ import { OpponentTarget, PlowHandle } from '../../src/duel/opponent';
 import type { PilotBinding } from '../../src/entities/pilot';
 import type { Plow } from '../../src/entities/Plow';
 import type { PlowKind } from '../../src/config/plows';
-import { RUSH_COST_MIN } from '../../src/entities/combat/classicRush';
+import { RUSH_COST_MIN, RUSH_MIN_SLAM_R } from '../../src/entities/combat/classicRush';
 
 export const KINDS: PlowKind[] = ['classic', 'volt', 'brute', 'isotope', 'arsenal'];
 export type Tier = 'fresh' | 'mid' | 'high';
@@ -337,6 +337,43 @@ export function clusterDps(kind: PlowKind, tier: Tier, seconds = 60): number {
   r.run(seconds);
   return total(bots) / seconds;
 }
+
+/** The Classic's ring play (its STREAK, combat/classicStreak.ts): five bots 6+ m apart ahead of the plow. The usual
+ *  rotation (F, whirl, ball slams), but every ball slam lands on the next bot in turn, and the dash meter goes on
+ *  short ball-less PLOW RUSHES (the 0.6 m end slam, RUSH_COST_MIN of the meter) from bot to bot, one at most every
+ *  RING_GAP s, instead of dash strikes: every slam lands on a new target, as when it runs rings round a pack. The meter
+ *  is the plow's own `dashCharge`, so the STREAK's refund pays for more rushes. `streak` false wipes the stacks every
+ *  step (the same play without the passive). Total DPS across the five. */
+export function spreadDps(tier: Tier, streak = true, seconds = 60): number {
+  const bots = [dummy(0, NEAR), dummy(-6, 8), dummy(6, 8), dummy(-3, 13), dummy(3, 13)];
+  const ctx = newCtx();
+  const stats = statsFor('classic', tier);
+  const plow = Object.assign(fakePlow(stats), { dashCharge: 1 });
+  const p = pilot(ctx, stats, plow, botManager(bots));
+  let next = 0;
+  const aim = () => bots[next++ % bots.length].position;
+  const rot = new Rotation(p, () => bots[0], 'hold', { slamPoint: aim, dash: () => false });
+  const st = (p.c as unknown as { classic: { streak: { clear(): void } } }).classic.streak;
+  let gap = 0;
+  for (let i = 0, n = Math.round(seconds / DT); i < n; i++) {
+    rot.step(DT, ctx);
+    plow.dashCharge = Math.min(1, plow.dashCharge + DT / Math.max(0.1, stats.dashCooldown));
+    gap -= DT;
+    if (gap <= 0 && plow.dashCharge >= RUSH_COST_MIN) {
+      const at = aim();
+      plow.dashCharge -= RUSH_COST_MIN;
+      p.c.rushSlam(at.x, at.z, RUSH_MIN_SLAM_R, 0);
+      gap = RING_GAP;
+    }
+    if (!streak) st.clear();
+    p.c.update(DT);
+    p.press.clear();
+    rot.drain();
+  }
+  return total(bots) / seconds;
+}
+/** Ring play: seconds between two rushes at the least (a ~10 m rush at 28 m/s, the end slam and lining up the next). */
+const RING_GAP = 1;
 
 /** Representative fight: bot HP per tier (zone 1 brutes and spinners / mid zones and rivals / late hard zones), and
  *  the seconds before a wrecked bot's replacement is in reach. */

@@ -685,6 +685,30 @@ does not; aim by steering. The Duel 2-second number rises because a hitscan bolt
 disc spent its first ~1 s flying out and back; the steady rate is the same (fresh 9.1 vs 9.2 HP/s, high 42 vs 44), and
 it stays under the 20% cap in tests/balance.test.ts (12 / 15 / 17%).
 
+## Follow-up: the Classic's STREAK passive
+
+The Classic's signature passive (docs/plows.md, `src/entities/combat/classicStreak.ts`): each slam or rush slam on a
+bot the last slam didn't hit adds a stack (max 4, all dropped after 3.5 s without a new target): +18% slam damage,
++8% top speed and 15% of the dash / rush meter back per stack; the slam after the 4th is the SHOCKWAVE FINISHER (2x
+zone, x1.6 on top of the stacks, 1.8x knockback, hitting as at least a max(0.9 m, half-max) ball). Off in the online
+Duel. `npm run balance`, same seed, before -> after:
+
+- The standard rows don't move: 1-target 79 / 438 / 1663 and cluster 278 / 1719 / 6838 (fresh / mid / high), ult
+  fill and Duel TTK identical. The single dummy is never a new target, and the cluster's slams always land on the
+  same packed group, which only holds a streak (VOLT-9's rows wobble by 1-2% only because the report now draws more
+  seeded random numbers in between).
+- A new line measures what the passive is for, ring play (`spreadDps`): five bots 6+ m apart, every ball slam on the
+  next bot and the dash meter spent on short ball-less rushes from bot to bot (at most one a second) instead of dash
+  strikes. With vs without the passive: **fresh 191 -> 220 (+15%), mid 1361 -> 1972 (+45%), high 6172 -> 9932
+  (+61%)**. The gain grows with the tier because the finisher's 2x zone (x1.5 more with Avalanche Core) catches the
+  whole spread pack once the ball is big, and the stacks multiply the Shatter Slam shards too. High ring play
+  (9932) sits just above ISOTOPE's packed-cluster 9014, the top of that column. The fresh gain is smaller because fire
+  is most of a fresh Classic's damage.
+- The finisher's ball floor was added after a first pass: without it a finisher fired from a ball-less rush (the
+  0.6 m slam) was worth ~50 damage and ring play gained only +7% at high. At 0.75 of the max ball the high tier ran
+  +129%, so it was trimmed to half the max ball (with the 0.9 m minimum for a fresh plow).
+- Not modelled: the +8% a stack top speed and the meter refund buy time and position, not damage, in this sim.
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

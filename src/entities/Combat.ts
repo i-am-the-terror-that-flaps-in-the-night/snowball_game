@@ -15,6 +15,7 @@ import { ArsenalKit } from './combat/arsenal';
 import { MeleeKit } from './combat/melee';
 import { AirKit } from './combat/air';
 import { CLASSIC_SLAM_POWER, cashIn } from './combat/classicRush';
+import { finisherBall } from './combat/classicStreak';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const HIT_PLOW_BURST = { color: 0xbfe6ff, count: 6, speed: 3, size: 0.14, gravity: 8, life: 0.5 };
@@ -520,19 +521,40 @@ export class Combat implements CombatAPI {
   }
 
   /** The Classic Plow's tap BALL SLAM (PlowMotion.slamImpact): slamAt, and every bot / opponent it hits packs a
-   *  SNOW CHUNK (ClassicKit.packChunks). Vehicles on the snowball kit slam without chunks. Returns the bots hit. */
+   *  SNOW CHUNK (ClassicKit.packChunks). Vehicles on the snowball kit slam without chunks. STREAK (off in the Duel):
+   *  its stacks scale the damage, ON STREAK the slam is the SHOCKWAVE FINISHER, and a hit on a new target stacks it.
+   *  Returns the bots hit. */
   tapSlam(x: number, z: number, r: number, volume: number): number {
     const classic = this.b.stats.plowKind === 'classic';
-    const hits = this.melee.slamAt(x, z, r, volume, 1, classic ? CLASSIC_SLAM_POWER : 1);
-    if (hits > 0 && classic) this.classic.packChunks(hits);
+    if (!classic) return this.melee.slamAt(x, z, r, volume);
+    const fin = this.classic.finisherArmed;
+    const s = this.classic.slamMods(fin);
+    const hits = this.melee.slamAt(x, z, finisherBall(r, this.b.stats.maxBallRadius, fin), volume, s.zone, CLASSIC_SLAM_POWER * s.damage, s.knock);
+    if (hits > 0) this.classic.packChunks(hits);
+    this.classic.landStreak(this.melee.slamHits, hits, x, z, this.melee.slamZone, fin);
     return hits;
   }
 
   /** Classic Plow PLOW RUSH end: the slam at (x, z) (ball radius `r`, `volume` already taken off the plow), cashing in
-   *  every SNOW CHUNK (zone x1.05 and damage x1.04 per chunk), which then reset. Returns the bots hit. */
+   *  every SNOW CHUNK (zone x1.05 and damage x1.04 per chunk), which then reset. STREAK as tapSlam. Returns the bots
+   *  hit. */
   rushSlam(x: number, z: number, r: number, volume: number): number {
     const m = this.classic.takeChunks(x, z);
-    return this.melee.slamAt(x, z, r, volume, m.radius, m.damage * CLASSIC_SLAM_POWER);
+    const fin = this.classic.finisherArmed;
+    const s = this.classic.slamMods(fin);
+    const hits = this.melee.slamAt(x, z, finisherBall(r, this.b.stats.maxBallRadius, fin), volume, m.radius * s.zone, m.damage * CLASSIC_SLAM_POWER * s.damage, s.knock);
+    this.classic.landStreak(this.melee.slamHits, hits, x, z, this.melee.slamZone, fin);
+    return hits;
+  }
+
+  /** Classic Plow STREAK stacks (0..4; 4 = ON STREAK), -1 on other plows and in the online Duel. */
+  get streak(): number {
+    return this.classic.streakLive ? this.classic.streak.stacks : -1;
+  }
+
+  /** Share of the STREAK window left (1 = just stacked, 0 = dropping / no stacks). */
+  get streakLeft(): number {
+    return this.classic.streakLive ? this.classic.streak.left : 0;
   }
 
   /** SNOW CHUNKS on the Classic's blade (0..10), -1 on other plows / the snowball kit (HUD). */
@@ -643,6 +665,7 @@ export class Combat implements CombatAPI {
     this.classic.updateFlame(dt);
     this.classic.updateBurns(dt);
     this.classic.updateFireField(dt);
+    this.classic.updateStreak(dt);
     this.ult.update(dt);
     this.volt.updateClap(dt);
     this.brute.updatePound(dt);

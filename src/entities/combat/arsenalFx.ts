@@ -107,22 +107,33 @@ interface Wave {
   wallH: number;
 }
 
-/** Expanding ground shockwaves: painted cyan band + hot line + a short vertical wall, and a flash ball at the source. */
+/** Shockwave colours: the painted band, the additive hot line, the wall and the flash tint. */
+export interface ShockPalette {
+  band: number;
+  hot: number;
+  wall: number;
+  tint: number;
+}
+/** ARSENAL's cyan (the default). */
+const CYAN_SHOCK: ShockPalette = { band: DEEP, hot: HOT, wall: 0x2ad8ff, tint: 0x5fe6ff };
+
+/** Expanding ground shockwaves: painted cyan band + hot line + a short vertical wall, and a flash ball at the source.
+ *  `palette` re-tints them (the Classic's STREAK finisher). */
 export class Shockwaves {
   private waves: Wave[] = [];
   reduceFlash = false;
 
-  constructor(scene: THREE.Scene, n = 6) {
+  constructor(scene: THREE.Scene, n = 6, palette: ShockPalette = CYAN_SHOCK) {
     const wallGeo = wallGeometry(48, false);
     const sph = new THREE.SphereGeometry(1, 16, 12);
     for (let i = 0; i < n; i++) {
       const root = new THREE.Group();
       root.visible = false;
-      const band = flatRing(0.8, paintMat(DEEP, 0.9));
-      const hot = flatRing(0.94, addMat(HOT, 1));
-      const wall = new THREE.Mesh(wallGeo, vMat(0x2ad8ff, 0.7));
+      const band = flatRing(0.8, paintMat(palette.band, 0.9));
+      const hot = flatRing(0.94, addMat(palette.hot, 1));
+      const wall = new THREE.Mesh(wallGeo, vMat(palette.wall, 0.7));
       const flash = new THREE.Mesh(sph, addMat(0xffffff, 1));
-      const flashTint = new THREE.Mesh(sph, paintMat(0x5fe6ff, 0.6));
+      const flashTint = new THREE.Mesh(sph, paintMat(palette.tint, 0.6));
       band.renderOrder = 2;
       hot.renderOrder = 3;
       wall.renderOrder = 3;

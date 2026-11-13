@@ -21,6 +21,7 @@ import {
 import { _fwd, _right, _a, _b, _dir } from './plow/scratch';
 import { knockScale } from '../config/plows';
 import { MOMENTUM_BOOST, RUSH_CHARGE_SLOW, RUSH_CHARGE_SLOW_PVP, RUSH_MAX, RUSH_SPEED } from './combat/classicRush';
+import { streakSpeed } from './combat/classicStreak';
 
 /* The player / pilot plow. The class is layered over ./plow/ (PlowBase -> PlowVisuals -> PlowMotion -> Plow; see
  * plow/PlowBase.ts); this top layer holds the public API, the duel netcode, reset and the per-frame update. */
@@ -141,6 +142,7 @@ export class Plow extends PlowMotion implements PlowAPI {
       this.tornado.visible = false;
       this.whirlRing.visible = false;
       this.rushFx.hide();
+      this.streakFx.hide();
       this.ballWasVisible = false;
       for (const g of this.ghosts) {
         g.active = false;
@@ -266,6 +268,7 @@ export class Plow extends PlowMotion implements PlowAPI {
       this.reset({ x: this.position.x, z: this.position.z, heading: this.heading });
     }
     this.updateGhosts(dt);
+    this.updateStreakVisuals(dt);
     this.updateStreaks(dt);
     this.updateTornado(dt);
     if (this._dead) {
@@ -458,6 +461,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.puppetRush = false;
     this.momentumT = 0;
     this.rushFx.hide();
+    this.streakFx.hide();
     this.dashCharge = 1;
     this.dashT = 0;
     this.whirlCharge = 1;
@@ -536,6 +540,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     if (stats.bladeWidth !== this.bladeWidth) this.setBladeWidth(stats.bladeWidth);
     if (stats.maxHp !== this.maxHp) this.applyStats(stats);
     this.updateGhosts(dt);
+    this.updateStreakVisuals(dt);
     this.updateStreaks(dt);
     this.updateTornado(dt);
 
@@ -635,7 +640,9 @@ export class Plow extends PlowMotion implements PlowAPI {
     // ---- longitudinal
     const heldR = this.heldBallRadius;
     const maxF = stats.maxSpeed * (1 - 0.2 * Math.min(1, heldR / maxBallR)) * (this.whirlT >= 0 ? WHIRL_SPEED : 1) *
-      (this.rushChargeK >= 0 ? (this.b.pvp ? RUSH_CHARGE_SLOW_PVP : RUSH_CHARGE_SLOW) : 1) * (this.momentumT > 0 ? 1 + MOMENTUM_BOOST : 1);
+      (this.rushChargeK >= 0 ? (this.b.pvp ? RUSH_CHARGE_SLOW_PVP : RUSH_CHARGE_SLOW) : 1) * (this.momentumT > 0 ? 1 + MOMENTUM_BOOST : 1) *
+      // STREAK: +8% top speed per stack (Combat reports -1 off the Classic and in the Duel: no change there).
+      (classicKit ? streakSpeed(b.combat?.streak ?? 0) : 1);
     const accel = stats.accel;
     // KITING: VOLT-9 backs off at VOLT_KITE_REV x top speed while its Arc Lance fires (voltArc is set by the kit on
     // every pilot that simulates this plow: single player, the Duel host, and the guest's own prediction).

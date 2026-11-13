@@ -49,6 +49,26 @@ up late game. It still plows snow into a ball: the ball grows as you plow and st
   SPACE never does nothing). A dash, a whirl or a jump during the hold drops the charge; while rushing, SHIFT and E
   wait.
 - In the air SPACE is still the air slam.
+- **Signature passive: STREAK** (`src/entities/combat/classicStreak.ts`; off in the online Duel, which keeps its
+  balance). Every slam or rush slam that hits a bot the previous slam didn't adds a **STREAK** stack (max 4).
+  Slamming the same bots again holds the streak but adds nothing, and **3.5 s without a new target drops every
+  stack** (a grey fizzle puff and a small "streak lost"). Each stack: **+18% slam damage, +8% top speed** and **15% of
+  the dash / rush meter back** when it's gained, so a rush into one bot pays for part of the rush into the next. At 4
+  stacks the Classic is **ON STREAK**: its next slam (tap or rush end) is the **SHOCKWAVE FINISHER**, 2x the slam zone,
+  +60% damage on top of the 4 stacks (x2.75 in all), 1.8x knockback outward, a forced 0.08 s hit-stop, a big screen
+  shake and flash; it hits at least as hard as a ball of max(0.9 m, half the max ball radius), so a ball-less rush
+  still lands a real one. Then the stacks reset to 0 (a finisher that hits nothing keeps them).
+  - **Looks** (normal-blended solid colours with deep outline shades, so they read on white snow and at night): stack
+    colours white, cyan, gold, hot red-orange. **Afterimages**: ghost copies of the hull silhouette (the merged shadow
+    proxies, `plow/streakFx.ts`) left every 3 m (1 stack) down to 1.8 m (4) of travel, brighter and longer lived with
+    stacks, a deep-coloured outline round each. The hull gets an **edge outline** and a **ground underglow ring** in the
+    stack colour that pulse faster with stacks and dim as the window runs out. A new stack pops two rings and sparks at
+    the target with a floating "STREAK x2 / x3 / x4". ON STREAK: embers and hot sparks off the blade and the flanks, and
+    orange / gold arcs crackling round the hull. The finisher: a huge expanding red-orange ground shockwave with a wall
+    and flash, ice shards and chunks flung out round the rim, "SHOCKWAVE!".
+  - **HUD**: a STREAK meter over the ability row, 4 pips filling in the stack colours, a bar that drains with the 3.5 s
+    window (blinking in its last 30%), flashing hot "ON STREAK!" at 4; a white burst when the finisher spends it, a grey
+    shake when it runs out.
 
 **F: Inferno**, a free fire cone (10 m base reach, more with Inferno Exhaust) that burns bots and ends in a fireball.
 

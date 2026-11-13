@@ -17,6 +17,10 @@ import {
 } from './constants';
 import { _a, _b, _c, _dir, _q, _m, _s, _col, _e, _p, _one, _up, _ballSurf } from './scratch';
 import type { Streak } from './assets';
+import { floorTop } from '../combat/shared';
+
+/** STREAK underglow: radius (m) at which the snow round the hull is sampled for the ring's height. */
+const STREAK_GLOW_R = 3.4;
 
 /* Layer 2 of the Plow class (see PlowBase.ts): kind swap, Paint Shop look, blade / wheels / cleats, and every
  * per-frame visual (model animation, saws, beacon, flame, held ball, trails, streaks, ghosts, tornado). */
@@ -230,6 +234,7 @@ export abstract class PlowVisuals extends PlowBase {
     const brute = this.kind === 'brute';
     const volt = this.kind === 'volt';
     this.bladeGroup.scale.set(1, brute ? BRUTE_BLADE_Y : volt ? 0.82 : 1, brute ? BRUTE_BLADE_Z : volt ? 0.85 : 1);
+    this.streakSilDirty = true;
     // Keep the saws round inside the stretched blade group.
     // (The left saw is mirrored on X so its mounting arm points back at the blade.)
     this.saws.forEach((saw, i) => saw.group.scale.set(i === 0 ? -1 : 1, 1 / this.bladeGroup.scale.y, 1 / this.bladeGroup.scale.z));
@@ -263,6 +268,7 @@ export abstract class PlowVisuals extends PlowBase {
       this.bladeProxy = makeShadowProxy([this.bladeCaps, this.bladeArms], this.bladeGroup)[0] ?? null;
       if (this.bladeProxy) this.bladeGroup.add(this.bladeProxy);
       this.applyBladeVis();
+      this.streakSilDirty = true;
     }
     // Mounted high (~1.3 m world) so the flat saws ride above the snow and the berms the blade pushes aside.
     this.saws[0].group.position.set(-w / 2 - 0.6, 1.0, 0.45);
@@ -441,6 +447,29 @@ export abstract class PlowVisuals extends PlowBase {
     else if (this.kind === 'brute') g.mat.color.setHSL(0.13 + Math.random() * 0.02, 1, 0.5);
     else if (this.kind === 'isotope') g.mat.color.setHSL(0.3 + Math.random() * 0.03, 1, 0.55);
     else g.mat.color.setHSL(0.07 + Math.random() * 0.03, 1, 0.55);
+  }
+
+  /** Classic STREAK on the hull (plow/streakFx.ts): afterimages, outline and underglow from Combat's stacks (-1 on
+   *  the other plows and in the Duel). Runs dead or alive, so the ghosts already out fade on. */
+  protected updateStreakVisuals(dt: number): void {
+    const k = this.kind === 'classic' && !this._dead ? (this.b.combat?.streak ?? -1) : -1;
+    if (k > 0 && this.streakSilDirty) {
+      this.streakSilDirty = false;
+      this.streakFx.setSilhouette(this.streakSilhouette());
+    }
+    const x = this.position.x;
+    const z = this.position.z;
+    // The underglow ring sits on the highest snow round it (the hull stands in its own plowed trough: at the hull's
+    // height the snow banks around would bury the ring).
+    let ground = 0;
+    if (k > 0) {
+      ground = floorTop(this.ctx.terrain, this.b.snow, this.vert.y, x, z);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        ground = Math.max(ground, floorTop(this.ctx.terrain, this.b.snow, this.vert.y, x + Math.sin(a) * STREAK_GLOW_R, z + Math.cos(a) * STREAK_GLOW_R));
+      }
+    }
+    this.streakFx.update(dt, k, this.b.combat?.streakLeft ?? 0, this.speed, x, ground, z);
   }
 
   protected updateGhosts(dt: number): void {

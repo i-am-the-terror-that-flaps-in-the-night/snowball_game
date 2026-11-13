@@ -34,6 +34,10 @@ export class MeleeKit extends Kit {
   private comboStacks = 0;
   private lastSlamHitAt = -999;
   private lastFreezeSound = -10;
+  /** The bots the last slamAt hit (reused: valid until the next slam) and its zone radius (m): the Classic's STREAK
+   *  reads them right after the slam. */
+  readonly slamHits: EnemyHandle[] = [];
+  slamZone = 0;
 
   playerRam(enemy: EnemyHandle, closingSpeed: number): number {
     const ctx = this.ctx;
@@ -156,8 +160,9 @@ export class MeleeKit extends Kit {
 
   /** SPACE slam impact centered at (x, z) with a ball of radius `r` (volume `volume` m^3, already consumed
    *  by the plow). Damages every bot in the zone, shatters the ball. Returns the number of bots hit. `zoneMult` /
-   *  `dmgMult` scale the zone radius and the damage (the Classic's PLOW RUSH cashing in SNOW CHUNKS). */
-  slamAt(x: number, z: number, r: number, volume: number, zoneMult = 1, dmgMult = 1): number {
+   *  `dmgMult` scale the zone radius and the damage (the Classic's PLOW RUSH cashing in SNOW CHUNKS, its STREAK),
+   *  `knockMult` the knockback (the STREAK's SHOCKWAVE FINISHER). */
+  slamAt(x: number, z: number, r: number, volume: number, zoneMult = 1, dmgMult = 1, knockMult = 1): number {
     const ctx = this.ctx;
     const stats = this.b.stats;
     const plow = this.b.plow;
@@ -168,7 +173,9 @@ export class MeleeKit extends Kit {
     if (ctx.time - this.lastSlamHitAt > COMBO_WINDOW) this.comboStacks = 0;
     const combo = stats.comboStep > 0 ? this.comboStacks : 0;
     const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo) * dmgMult;
-    const knockMag = (10 + 6 * r) * (avalanche ? 1.6 : 1);
+    const knockMag = (10 + 6 * r) * (avalanche ? 1.6 : 1) * knockMult;
+    this.slamHits.length = 0;
+    this.slamZone = zone;
     const freeze = stats.frostCore ? 3 : 0;
 
     plow.getForward(_fwd);
@@ -199,6 +206,7 @@ export class MeleeKit extends Kit {
         ballRadius: r,
       });
       count++;
+      this.slamHits.push(e);
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e);
       _q.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
@@ -359,5 +367,6 @@ export class MeleeKit extends Kit {
 
   clear(): void {
     this.ramCd.clear();
+    this.slamHits.length = 0;
   }
 }

@@ -59,6 +59,7 @@ export interface HudRefs {
   batt: HTMLElement; battFill: HTMLElement; crit: HTMLElement; critFill: HTMLElement;
   gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
   chunks: HTMLElement; chunkPips: HTMLElement[];
+  streak: HTMLElement; streakLbl: HTMLElement; streakPipBox: HTMLElement; streakPips: HTMLElement[]; streakFill: HTMLElement;
   slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
   dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement; primary: HTMLElement;
   heat: HTMLElement; heatFill: HTMLElement; heatTxt: HTMLElement;
@@ -72,7 +73,7 @@ export function hudLast() {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
+    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, streak: -2, streakLeft: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '',
   };
 }
 export type HudLast = ReturnType<typeof hudLast>;
@@ -130,6 +131,15 @@ export function buildHudDom(hud: HTMLElement, H: HudRefs, bossSlots: BossSlot[])
   const bc = el('div', 'ss-hud-bc', undefined, hud);
   H.blocked = el('div', 'ss-blocked', 'BLOCKED!', bc);
   H.shield = el('div', 'ss-shield', '🛡 SHIELD UP', bc);
+  // Classic Plow STREAK: 4 pips in the stack colours (white, cyan, gold, red-orange) over the ability row, a bar that
+  // drains as the 3.5 s window runs out, flashing hot ON STREAK.
+  H.streak = el('div', 'ss-streak hidden', undefined, bc);
+  H.streak.title = 'STREAK: slam a bot your last slam did not hit for a stack (+18% damage, +8% speed, 15% dash back each); at 4 your next slam is a SHOCKWAVE';
+  H.streakLbl = el('span', 'ss-streak-lbl', 'STREAK', H.streak);
+  H.streakPipBox = el('span', 'ss-streak-pips', undefined, H.streak);
+  H.streakPips = [];
+  for (let i = 0; i < 4; i++) H.streakPips.push(el('i', '', undefined, H.streakPipBox));
+  H.streakFill = el('span', 'ss-streak-fill', undefined, el('span', 'ss-streak-bar', undefined, H.streak));
   const row = el('div', 'ss-bc-row', undefined, bc);
   H.dash = buildAbility(row, '💨', 'DASH', 'SHIFT', 'dash');
   H.gauge = el('div', 'ss-gauge', undefined, row);
@@ -373,6 +383,27 @@ export function updateHudPanels(ui: { h: HudRefs; last: HudLast; hud: HTMLElemen
     H.chunks.classList.toggle('big', ck >= 5);
     if (ck > L.chunks && L.chunks >= 0) restart(H.chunks, 'bump');
     L.chunks = ck;
+  }
+
+  // Classic Plow STREAK meter (hidden on the other plows, the snowball kit and in the Duel).
+  const sk = s.streak === undefined || s.streak < 0 || s.abilities ? -1 : Math.round(s.streak);
+  if (sk !== L.streak) {
+    H.streak.classList.toggle('hidden', sk < 0);
+    H.streak.dataset.k = String(Math.max(0, sk));
+    for (let i = 0; i < H.streakPips.length; i++) H.streakPips[i].classList.toggle('on', i < sk);
+    const hot = sk >= 4;
+    H.streak.classList.toggle('hot', hot);
+    H.streakLbl.textContent = hot ? 'ON STREAK!' : 'STREAK';
+    if (sk > L.streak && L.streak >= 0) restart(H.streakPipBox, 'bump');
+    // Back to 0: the window ran out (grey drop), or the finisher went off (white burst).
+    else if (sk === 0 && L.streak > 0) restart(H.streak, L.streakLeft > 0.05 ? 'boom' : 'drop', 'boom', 'drop');
+    L.streak = sk;
+  }
+  const sl = sk > 0 ? Math.round(clamp01(s.streakLeft ?? 0) * 100) / 100 : 0;
+  if (sl !== L.streakLeft) {
+    H.streakFill.style.transform = `scaleX(${sl})`;
+    H.streak.classList.toggle('low', sk > 0 && sl < 0.3);
+    L.streakLeft = sl;
   }
 
   // abilities

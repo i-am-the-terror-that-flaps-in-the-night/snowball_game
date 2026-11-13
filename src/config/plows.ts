@@ -46,11 +46,12 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     id: 'classic',
     name: 'Classic Plow',
     icon: '🚜',
-    tagline: 'The close-range assassin: slam snow chunks out of them, then rush in 20 m and slam them home.',
+    tagline: 'The close-range assassin: run rings round them, slam a new bot every time to build a STREAK, then rush in and SHOCKWAVE the lot.',
     traits: [
       '+15% HP · sturdy: takes 20% less knockback · full slam damage, +5.5% more per Packed Ice level past 4',
       'SPACE tap: SLAM your snowball, as always; every bot it hits packs a ❄ snow chunk (max 10), and a slam that lands gives +20% speed for 1 s',
       'SPACE hold + release: PLOW RUSH, 1.5-20 m in a straight line (shares the dash meter), ending in your ball slam (at the first bot it touches); the chunks cash in for +5% radius / +4% damage each',
+      'STREAK (passive): every slam or rush that hits a bot your last one didn\'t adds a stack (max 4, gone after 3.5 s without a new one): +18% damage, +8% top speed and 15% of the dash meter back each · at 4 you are ON STREAK: the next slam is a SHOCKWAVE (2x radius, +60% damage, huge knockback) · off in the Duel',
       'F: Inferno fire cone (10 m) + fireball finisher (free) · fire damage builds FIRESTORM: full = 360° fire nova on F',
     ],
     hpMult: 1.15,
