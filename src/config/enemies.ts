@@ -128,7 +128,7 @@ export const GUNNER_RANGE_MIN = 10;
 export const GUNNER_RANGE_MAX = 14;
 /** Below this distance (m) it gives up aiming and just backs away (close in and it can't shoot you). */
 export const GUNNER_PANIC = 6.5;
-/** Aim wind-up (s): barrel glow + ground stripe. Fired at the plow's position when the aim started finishing. */
+/** Aim wind-up (s): barrel glow + ground stripe. The bolt flies at where the plow is when the aim ends (no lead). */
 export const GUNNER_AIM = 0.55;
 /** Snowball bolt: speed (m/s), reach (m), hit radius (m), knockback on the plow. Slow enough to drive out of. */
 export const GUNNER_BOLT_SPEED = 15;

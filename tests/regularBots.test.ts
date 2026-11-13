@@ -104,7 +104,7 @@ describe('Slushpile split', () => {
     const { mgr, kills } = await arena();
     const pile = mgr.spawn('slushpile', 0, 10, { hpMult: 2 }) as Bot;
     expect(mgr.aliveCount()).toBe(1);
-    expect(mgr.damage(pile, 9999, { source: 'slam' })).toBe(true);
+    expect(mgr.damage(pile, 9999, { source: 'ram' })).toBe(true);
     expect(mgr.aliveCount()).toBe(SPLIT_COUNT);
     expect(kills).toEqual([{ type: 'slushpile', coins: ENEMIES.slushpile.coins }]);
     const minis = mgr.query(0, 10, 4) as Bot[];
@@ -121,6 +121,26 @@ describe('Slushpile split', () => {
     expect(mgr.aliveCount()).toBe(SPLIT_COUNT - 1);
     expect(kills[1]).toEqual({ type: 'slushling', coins: ENEMIES.slushling.coins });
     expect(ENEMIES.slushling.coins).toBeLessThanOrEqual(2);
+  });
+
+  it('an area hit that wrecks the pile catches its slushlings too; a direct hit does not', async () => {
+    const { mgr, kills } = await arena();
+    mgr.damage(mgr.spawn('slushpile', 0, 10), 200, { source: 'slam' });
+    expect(mgr.aliveCount()).toBe(0);
+    expect(kills.map((k) => k.type)).toEqual(['slushpile', ...Array(SPLIT_COUNT).fill('slushling')]);
+    // a weak area tick (a burn) scratches them without wrecking them
+    const b = await arena();
+    const worn = b.mgr.spawn('slushpile', 0, 10) as Bot;
+    worn.hp = 3;
+    b.mgr.damage(worn, 6, { area: true });
+    const minis = b.mgr.query(0, 10, 4) as Bot[];
+    expect(minis).toHaveLength(SPLIT_COUNT);
+    for (const m of minis) expect(m.hp).toBeCloseTo(m.maxHp - 6);
+    // a ram does not reach them
+    const c = await arena();
+    c.mgr.damage(c.mgr.spawn('slushpile', 0, 10), 200, { source: 'ram' });
+    expect(c.mgr.aliveCount()).toBe(SPLIT_COUNT);
+    for (const m of c.mgr.query(0, 10, 4) as Bot[]) expect(m.hp).toBe(m.maxHp);
   });
 
   it('only slushpiles split', async () => {

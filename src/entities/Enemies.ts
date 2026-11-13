@@ -306,6 +306,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     let dmg = amount;
     let deflect = false;
     let rear = false;
+    // Area damage goes round the Bulwark's shield and catches a wrecked Slushpile's slushlings (DamageOpts.area).
+    const area = !!(opts?.area || opts?.ult || src === 'slam' || src === 'stomp' || src === 'airSlam');
 
     if (e.type === 'brute' && front) {
       dmg *= opts?.pierce ? PLATE_PIERCE : 0.3;
@@ -321,7 +323,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     } else if (e.type === 'spinner' && e.state === 'spin' && src === 'ram') {
       dmg *= 0.3;
       deflect = true;
-    } else if (e.type === 'bulwark' && !(opts?.area || opts?.ult || src === 'slam' || src === 'stomp' || src === 'airSlam')) {
+    } else if (e.type === 'bulwark' && !area) {
       // The plow-shield takes direct hits from its front 90°; area damage goes round it. Its rear vent is soft.
       if (facing > BULWARK_SHIELD_COS) {
         dmg *= opts?.pierce ? PLATE_PIERCE : 1 - BULWARK_BLOCK;
@@ -395,7 +397,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     ctx.events.emit('enemyHit', { enemy: e, damage: dmg });
     if (e.hp <= 0) {
       e.hp = 0;
-      this.kill(e, src, opts?.weapon);
+      this.kill(e, src, opts?.weapon, area ? amount : 0, opts);
       return true;
     }
     return false;
@@ -1139,7 +1141,9 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.ballR = 0;
   }
 
-  private kill(e: Bot, source: KillSource = 'other', weapon?: KillWeapon): void {
+  /** Wreck a bot. `areaAmt` > 0: it was finished by area damage (raw `areaAmt`, `areaOpts`), which a Slushpile's
+   *  slushlings are caught in too (split). */
+  private kill(e: Bot, source: KillSource = 'other', weapon?: KillWeapon, areaAmt = 0, areaOpts?: DamageOpts): void {
     const ctx = this.ctx;
     const def = e.def;
     e.alive = false;
@@ -1194,12 +1198,14 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     ctx.events.emit('enemyKilled', { enemy: e, coins, source, inLava: inLava || source === 'lava' || undefined, weapon });
     if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: def.name });
     ctx.pickups?.spawnCoins(p.clone(), coins);
-    if (e.type === 'slushpile') this.split(e);
+    if (e.type === 'slushpile') this.split(e, areaAmt, areaOpts);
   }
 
   /** A wrecked Slushpile bursts into SPLIT_COUNT slushlings, kicked outward from where it died (same hp scaling as the
-   *  pile, so Hard mode / Survival waves carry over). They are fresh wave bots: aliveCount() covers them. */
-  private split(e: Bot): void {
+   *  pile, so Hard mode / Survival waves carry over). They are fresh wave bots: aliveCount() covers them. Finished by
+   *  area damage (`areaAmt` > 0), the same hit lands on each slushling as it bursts out (player attacks snapshot their
+   *  targets before the split, so they would miss the minis otherwise). */
+  private split(e: Bot, areaAmt = 0, areaOpts?: DamageOpts): void {
     const p = e.position;
     const hpMult = e.maxHp / e.def.hp;
     const a0 = Math.random() * Math.PI * 2;
@@ -1214,6 +1220,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       m.cd = 0.9 + i * 0.35;
       m.orbitA = a;
       this.clampPos(m, false);
+      if (areaAmt > 0) this.damage(m, areaAmt, areaOpts);
     }
     const fx = this.ctx.fx;
     _v.set(p.x, e.groundY + e.rig.height * 0.5, p.z);
