@@ -4,14 +4,14 @@
 // An autopilot plays a full campaign arena (all rounds + the boss) with a chosen plow at a chosen upgrade tier and logs
 // per round: clear time (s), HP lost, deaths (the plow is revived in place and the death counted), damage dealt by
 // source (basic = rams / slams / whirls / dash, air = stomps / air slams, F, ult, passive auras; ARSENAL: laser /
-// shotgun / repulsor / burst / singularity), the share of bot-time spent on another level than the player (|dy| > 2 m), time stuck
+// repulsor / burst / singularity), the share of bot-time spent on another level than the player (|dy| > 2 m), time stuck
 // (moving < 1 m/s while throttling for > 1 s; "free" = no bot within 6 m, i.e. not a shoving match) and the boss fight
 // length. Each round is capped at --cap s (then force-cleared and flagged).
 // Tiers mirror scripts/balance/sim.ts levelsFor: LINE / TIER_DEF / the core four are read out of sim.ts at start-up
 // and rebuilt in the page through the progression API (garage levels + owned / equipped gear).
 // The autopilot drives at the nearest living bot (through ctx.enemies.nav waypoints when it is on another level, as the
 // bots route), plows snow on the way, uses every ability on cooldown (legend-probe style), fires the ultimate when the
-// meter is full, and on ARSENAL holds the Mag Shotgun, fires the Mag Repulsor and Polarity Burst on cooldown.
+// meter is full, and on ARSENAL holds the Mag Laser, fires the Mag Repulsor and Polarity Burst on cooldown.
 // The sim runs with window.__game.tick(1/60) (no render loop). Vite runs with HMR off, so edits other agents make to
 // src/ while a run is going don't reload the page (each run loads the current source).
 // Output: DIR/runs.jsonl (one line per run, appended), DIR/summary.json and DIR/summary.md (aggregated tables).

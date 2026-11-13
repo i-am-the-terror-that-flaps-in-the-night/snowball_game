@@ -3,7 +3,7 @@ import type { EnemyHandle } from '../../core/types';
 import { settings } from '../../core/settings';
 import { SingularityFx } from '../../fx/singularity';
 import { MAG_LASER_MAX_RATE } from '../../config/upgrades';
-import { ArcWaves, Horizon, LaserFx, Shockwaves, addMat, beamGeometry, paintMat } from './arsenalFx';
+import { ArcWaves, CYAN, Horizon, LaserFx, Shockwaves, addMat, beamGeometry, paintMat } from './arsenalFx';
 import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, type CombatHost } from './shared';
 import type { UltScript } from './ultimates';
 
@@ -40,7 +40,7 @@ export const PVE_MULT = 1.5;
  *  orbits SCRAP_ORBIT m out (SCRAP_SPIN rad/s) for SCRAP_LIFE s; a shard hits bots within SCRAP_HIT_R m of it, each
  *  bot at most every SCRAP_HIT_CD s. SCRAP_POOL = the most shards any level holds (FX.scrapMax cap). */
 const SCRAP_TICK = 0.5;
-export const SCRAP_PULL = 12;
+const SCRAP_PULL = 12;
 const SCRAP_FLY = 0.55;
 export const SCRAP_ORBIT = 3.5;
 const SCRAP_SPIN = 2.6;
@@ -58,36 +58,36 @@ const SHED_SELF = 0.25;
 interface Shard { mesh: THREE.Mesh; state: 0 | 1 | 2; t: number; from: THREE.Vector3; slot: number; hitAt: Map<EnemyHandle, number> }
 
 const DEG = Math.PI / 180;
-/** MAG LASER (SPACE, held): a rapid fire of FAT laser bolts dead straight off the nose, one every laserInterval s
- *  (1 / gunRate, ~12 a second; Overclock shortens it a little). Each bolt is HITSCAN along the hull's heading (no
- *  homing, no spread) out to the reach (tankGunRange), LASER_W m wide either side (tankBeamRadius, Whirlwind Turbine
- *  widens it); it stops at a prop (which breaks) or the ground, and PIERCES every target on its line in that reach
- *  and inside the height band (LASER_DY round the body), each once per bolt, for gunDamage (a direct 'round' hit)
- *  and a TUG toward ARSENAL (LASER_TUG m/s divided by the bot's mass, bosses LASER_TUG_BOSS x; in the Duel
- *  LASER_DUEL_TUG, scaled by the victim plow's heaviness, knockScale(kind), in Combat.hitPlow).
- *  Sized from the Mag Discs it replaced (10 a second, each hitting a target twice and tugging it once): per bolt the
- *  damage is 2 x the old disc hit x RATE_SPLIT (gunDamage, config/upgrades.ts) and the tug the old disc tug x
- *  RATE_SPLIT (10 / 12), so DPS and pull per second stay the same. */
-const RATE_SPLIT = 10 / 12;
+/** MAG LASER (SPACE, held): a rapid fire of FAT laser bolts off the nose, one every laserInterval s (1 / gunRate, ~12
+ *  a second; Overclock shortens it by cooldownMult^LASER_OVERCLOCK). Each bolt is HITSCAN out to the reach
+ *  (tankGunRange), LASER_W m wide either side (tankBeamRadius: + WHIRL_LASER_W per metre of Whirlwind Turbine spin
+ *  radius over 4, LASER_W_MAX at most), auto-aimed inside a wedge round the heading (LASER_WIDEN); it stops at a prop
+ *  (which breaks) or the ground, and PIERCES every target on its line in that reach and inside the height band
+ *  (LASER_DY round the body), each once per bolt, for gunDamage (a direct 'round' hit) and a TUG toward ARSENAL
+ *  (LASER_TUG m/s divided by the bot's mass, bosses LASER_TUG_BOSS x; in the Duel LASER_DUEL_TUG, scaled by the
+ *  victim plow's heaviness, knockScale(kind), in Combat.hitPlow). */
 const LASER_OVERCLOCK = 0.25;
 const LASER_W = 0.8;
+const WHIRL_LASER_W = 0.1;
 const LASER_W_MAX = 1.2;
 /** AUTO-AIM WEDGE: the bolt locks onto a target whose body is within tankBeamRadius + LASER_WIDEN m per metre of
  *  reach of the heading line (~0.8 m at the nose, ~2.8 m either side at 10 m), then fires a standard-width beam
  *  straight at it (fireBolt). */
-export const LASER_WIDEN = 0.2;
+const LASER_WIDEN = 0.2;
 /** The turret / emitter hold the last bolt's angle this long (s) between bolts, and tilt at most AIM_PITCH_MAX. */
 const AIM_HOLD = 0.3;
 const AIM_PITCH_MAX = 0.6;
-const WHIRL_LASER_W = 0.1;
-const LASER_TUG = 3.5 * RATE_SPLIT;
+/** Tug per bolt hit: ~2.92 m/s (the exact float it was tuned at; ~0.58 on a boss), 2.5 on a human in the Duel. */
+const LASER_TUG = 2.916666666666667;
 const LASER_TUG_BOSS = 0.2;
-const LASER_DUEL_TUG = 3 * RATE_SPLIT;
+const LASER_DUEL_TUG = 2.5;
 /** The beam leaves the emitter (high on the turret) and dips to LASER_HIT_Y m over ARSENAL's own footing at the full
  *  reach: it hits targets whose body (+ LASER_DY m slack) spans that height, i.e. on ARSENAL's level (not on a deck
  *  above or a floor below). */
 const LASER_HIT_Y = 1;
 const LASER_DY = 0.6;
+/** Bolts leave this far (m) ahead of the emitter tip. */
+const MUZZLE_OUT = 0.35;
 /** Ground check step (m) along the beam. */
 const LASER_STEP = 0.5;
 /** Bolts on screen at once at most (LASER_LIFE x the fastest rate, with slack). */
@@ -100,7 +100,7 @@ const FLASH_DECAY = 14;
 const GUN_BURST = 0.2;
 /* The snowball / spin shop lines, re-purposed on ARSENAL so every bought level still does something:
  * Mega Hopper stretches the laser's reach (HOPPER_RANGE m per m of max ball radius over the base 1.2 m),
- * Whirlwind Turbine makes the beam wider (WHIRL_LASER_W m per m of spin radius over 4, LASER_W_MAX at most),
+ * Whirlwind Turbine makes the beam wider (tankBeamRadius),
  * Snow Compactor widens the Mag Repulsor's wedge (COMPACT_ARC rad per unit of pack rate over the base 0.12). */
 const HOPPER_RANGE = 1.5;
 const COMPACT_ARC = 0.6;
@@ -111,8 +111,7 @@ export const tankBeamRadius = (st: { whirlRadius: number }): number => Math.min(
 /** Mag Repulsor wedge half-angle (rad) with Snow Compactor. */
 export const tankRepulseHalf = (st: { collectRate: number }): number => Math.min(REP_HALF_MAX, REP_HALF + COMPACT_ARC * Math.max(0, st.collectRate - 0.12));
 /** Seconds between two bolts: 1 / gunRate, x cooldownMult^LASER_OVERCLOCK (Overclock speeds the rate up a little:
- *  -48% cooldowns = 18% more bolts, as the discs had), never faster than MAG_LASER_MAX_RATE a second (the discs' fixed
- *  pool held their late-garage rate to about that: the cap keeps the laser's late single-target DPS where theirs was). */
+ *  -48% cooldowns = 18% more bolts), never faster than MAG_LASER_MAX_RATE a second. */
 export const laserInterval = (st: { gunRate: number; cooldownMult: number }): number =>
   1 / Math.min(MAG_LASER_MAX_RATE, Math.max(0.3, st.gunRate) / Math.max(0.4, st.cooldownMult || 1) ** LASER_OVERCLOCK);
 
@@ -128,8 +127,7 @@ const REP_FAR = 0.7;
 const REP_KNOCK = 16;
 const REP_BOSS = 0.25;
 const REP_DUEL_KNOCK = 9;
-/** Duel: the wave lands as one big hit (no tick-by-tick diminishing returns like the old lance's), so it hits a
- *  human for this share of its listed damage. */
+/** Duel: the wave lands as one big hit, so it hits a human for this share of its listed damage. */
 const REP_PVP = 0.6;
 const REP_DY = 3;
 
@@ -179,12 +177,7 @@ const SING_DUEL_PULL1 = 2.8;
 /** Visual radius handed to SingularityFx.open (m). */
 const SING_VIS_R = 2.6;
 
-const CYAN = 0x38e8ff;
 const _a = new THREE.Vector3();
-
-const glowMat = addMat;
-/** Normal-blended tint: additive cyan washes out to white over sunlit snow, so the outer glows are painted on. */
-const tintMat = paintMat;
 
 /** ARSENAL: Mag Laser, Mag Repulsor, Polarity Burst, the SINGULARITY and the Scrap Magnet (plus the duel guest's view). */
 export class ArsenalKit extends Kit implements UltScript, VehicleKit {
@@ -242,11 +235,12 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private singTickT = 0;
   private singCollapsed = false;
   private singBlown = false;
-  /** Is the Mag Laser trigger down this frame (snapshot bit). The repulsor always fires straight ahead (net field NP.laser). */
+  /** Is the Mag Laser trigger down this frame (snapshot bit). */
   gunsOn = false;
-  laserOff = 0;
-  /** Duel guest: last host snapshot fire bits (diagnostics only; Combat routes them through primary / secondary),
-   *  -1 = not a puppet. netTurret: the host's turret yaw (always 0 now: the emitter is fixed; slot kept). */
+  /** Net field NP.laser: the repulsor always fires straight ahead, so no aim offset (the snapshot keeps the slot). */
+  readonly laserOff = 0;
+  /** Duel guest diagnostics (Combat stores them from host snapshots; nothing here reads them): the last fire bits
+   *  (-1 = not a puppet) and the host's turret yaw (NaN = none yet; the guest's turret follows its own bolts). */
   netFire = -1;
   netTurret = NaN;
 
@@ -428,22 +422,23 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
 
   private buildArsenalFx(scene: THREE.Scene): void {
     const beam = beamGeometry();
-    const mk = (mat: THREE.Material, order = 3, geo: THREE.BufferGeometry = beam) => {
-      const m = new THREE.Mesh(geo, mat);
+    const ball = new THREE.SphereGeometry(1, 14, 10);
+    const mk = (mat: THREE.Material, order: number) => {
+      const m = new THREE.Mesh(ball, mat);
       m.visible = false;
       m.renderOrder = order;
       m.frustumCulled = false;
       scene.add(m);
       return m;
     };
-    const ball = new THREE.SphereGeometry(1, 14, 10);
-    // Mag Laser: a fixed pool of bolt visuals and the nose flash.
+    // Mag Laser: a fixed pool of bolt visuals and the nose flash (an additive core in a painted tint: additive cyan
+    // washes out to white over sunlit snow).
     this.laserFx = new LaserFx(scene, LASER_POOL, beam);
-    this.flashCore = mk(glowMat(0xe8ffff, 1), 4, ball);
-    this.flashTint = mk(tintMat(0x22ccff, 0.55), 3, ball);
+    this.flashCore = mk(addMat(0xe8ffff, 1), 4);
+    this.flashTint = mk(paintMat(0x22ccff, 0.55), 3);
     // Mag Repulsor: the forward wave, a gyro flare at the emitter; shared shockwaves (flash rings).
     this.arcs = new ArcWaves(scene, REP_HALF);
-    this.lens = mk(glowMat(0xd8ffff, 0.9), 4, ball);
+    this.lens = mk(addMat(0xd8ffff, 0.9), 4);
     // Polarity Burst: event horizon, pull point, tethers, streaks.
     this.horizon = new Horizon(scene, beam);
     this.shock = new Shockwaves(scene);
@@ -564,19 +559,18 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.drawFlash(dt);
   }
 
-  /** One bolt, HITSCAN (instant). AUTO-AIM: it locks onto ONE target inside the aim wedge (the area the old widening
-   *  beam covered: half-width tankBeamRadius + LASER_WIDEN m per metre of reach, out to the reach) and fires a
-   *  standard-width beam straight at it. The lock is the nearest target in the wedge, a boss whenever one is in it,
-   *  and it sticks while it stays in the wedge (no jitter). No target: straight along the heading. The bolt is cut
-   *  short by a prop (it breaks) or the ground, and pierces anything else on its aimed line inside the beam width. */
+  /** One bolt, HITSCAN (instant). AUTO-AIM: it locks onto ONE target inside the aim wedge (half-width
+   *  tankBeamRadius + LASER_WIDEN m per metre of reach, out to the reach) and fires a standard-width beam straight
+   *  at it. The lock is the nearest target in the wedge, a boss whenever one is in it, and it sticks while it stays
+   *  in the wedge (no jitter). No target: straight along the heading. The bolt is cut short by a prop (it breaks) or
+   *  the ground, and pierces anything else on its aimed line inside the beam width. */
   private fireBolt(): void {
     const plow = this.b.plow;
     const ctx = this.ctx;
     const st = this.b.stats;
     const hx = Math.sin(plow.heading);
     const hz = Math.cos(plow.heading);
-    plow.mountWorld('muzzle', 0, _a);
-    const S = _a.set(_a.x + hx * 0.35, _a.y, _a.z + hz * 0.35);
+    const S = this.muzzle(_a);
     const reach = tankGunRange(st);
     const rad = tankBeamRadius(st);
     let hitY = plow.position.y + LASER_HIT_Y;
@@ -732,6 +726,15 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     return dealt > 0;
   }
 
+  /** Where the bolts leave (and the nose flash sits): MUZZLE_OUT m ahead of the emitter tip. */
+  private muzzle(out: THREE.Vector3): THREE.Vector3 {
+    const plow = this.b.plow;
+    plow.mountWorld('muzzle', 0, out);
+    out.x += Math.sin(plow.heading) * MUZZLE_OUT;
+    out.z += Math.cos(plow.heading) * MUZZLE_OUT;
+    return out;
+  }
+
   /** A bot's chest point (aim / beam end). */
   private chest(e: EnemyHandle, out: THREE.Vector3): THREE.Vector3 {
     return out.set(e.position.x, e.position.y + Math.min(1.2, e.radius * 0.6), e.position.z);
@@ -744,9 +747,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const on = this.flashK > 0.02 && !!plow;
     this.flashCore.visible = this.flashTint.visible = on;
     if (!on) return;
-    plow.mountWorld('muzzle', 0, _a);
-    _a.x += Math.sin(plow.heading) * 0.35;
-    _a.z += Math.cos(plow.heading) * 0.35;
+    this.muzzle(_a);
     const k = this.flashK;
     this.flashCore.position.copy(_a);
     this.flashTint.position.copy(_a);
@@ -770,7 +771,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     const plow = this.b.plow;
     if (st.laserDps <= 0 || this.laserT > 0 || !plow || plow.dead) return false;
     this.laserT = REP_SECONDS;
-    this.laserOff = 0;
     this.repHit.clear();
     this.repHeading = plow.heading;
     this.repR = st.laserRange;
@@ -1016,7 +1016,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   /* ------------------------------------------------------------------ ULT: SINGULARITY */
 
   /** Where the black hole opens: the centre of the densest bot cluster within SING_SEEK m, else SING_AHEAD m ahead. */
-  singularityCentre(x: number, z: number, heading: number, out: THREE.Vector3): THREE.Vector3 {
+  private singularityCentre(x: number, z: number, heading: number, out: THREE.Vector3): THREE.Vector3 {
     const hits = this.collect(x, z, SING_SEEK);
     let best = -1;
     let bestN = 0;
@@ -1195,7 +1195,6 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.flashCore.visible = this.flashTint.visible = false;
     this.arcs.clear();
     this.endRepulse();
-    this.laserOff = 0;
     this.trigHeld = this.trigPressed = false;
     this.burstT = -1;
     this.horizon.clear();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { Combat } from '../src/entities/Combat';
-import { PVE_MULT } from '../src/entities/combat/arsenal';
+import { PVE_MULT, laserInterval } from '../src/entities/combat/arsenal';
 import { computeStatsFor } from '../src/core/Progression';
 import { HELD_BIT, INPUT_BYTES, PressTracker, decodeInput, encodeInput, type InputFrame } from '../src/net/protocol';
 import { NetInput } from '../src/duel/plumbing';
@@ -11,7 +11,7 @@ import type { Plow } from '../src/entities/Plow';
 import { NO_TARGETS, OpponentTarget, PlowHandle } from '../src/duel/opponent';
 import { fakePlow, newCtx, pilot, statsFor } from '../scripts/balance/sim';
 import { knockScale } from '../src/config/plows';
-import { FX, grow, soft } from '../src/config/upgrades';
+import { FX, MAG_LASER_MAX_RATE } from '../src/config/upgrades';
 
 /* ------------------------------------------------------------------ duel: held keys */
 
@@ -198,12 +198,17 @@ describe('MAG LASER (SPACE)', () => {
     expect(k.laserFx.live).toBe(0);
   });
 
-  it('the same DPS as the Mag Discs it replaced (10 discs/s, two hits each) at every level', () => {
-    for (let L = 0; L <= 20; L++) {
-      const disc = (4.3 + 1.4 * grow(L, 5, 0.5)) * 0.4 * 2 * (10 + 0.6 * soft(L, 5));
-      expect(FX.gunDamage(L) * FX.gunRate(L)).toBeGreaterThan(disc * 0.98);
-      expect(FX.gunDamage(L) * FX.gunRate(L)).toBeLessThan(disc * 1.02);
-    }
+  it('per-bolt damage: 2.87, +0.93 a level to 5, +0.47 a level after; 34.4 DPS fresh at 12 bolts/s', () => {
+    expect(FX.gunDamage(0)).toBeCloseTo(2.8667, 4);
+    expect(FX.gunDamage(5) - FX.gunDamage(4)).toBeCloseTo(0.9333, 4);
+    expect(FX.gunDamage(9) - FX.gunDamage(8)).toBeCloseTo(0.4667, 4);
+    expect(FX.gunDamage(0) * FX.gunRate(0)).toBeCloseTo(34.4, 6);
+  });
+
+  it('bolt interval: 1 / gunRate, Overclock speeds it up a little, never past MAG_LASER_MAX_RATE a second', () => {
+    expect(laserInterval({ gunRate: 12, cooldownMult: 1 })).toBeCloseTo(1 / 12, 9);
+    expect(1 / laserInterval({ gunRate: 12, cooldownMult: 0.52 })).toBeCloseTo(12 * 0.52 ** -0.25, 6); // -48%: ~18% more
+    expect(1 / laserInterval({ gunRate: FX.gunRate(40), cooldownMult: 0.4 })).toBeCloseTo(MAG_LASER_MAX_RATE, 9);
   });
 
   it('hitscan dead straight off the nose: one hit per bolt for gunDamage, tugging the bot toward ARSENAL', () => {
@@ -213,7 +218,7 @@ describe('MAG LASER (SPACE)', () => {
     expect(hits.length).toBe(1);
     expect(hits[0].n).toBeCloseTo(stats.gunDamage * stats.damageMult * PVE_MULT, 3);
     expect(hits[0].kz).toBeLessThan(0); // a pull, no outward nudge
-    expect(hits[0].kb).toBeCloseTo(3.5 * (10 / 12), 3); // the disc tug split over 12 bolts a second
+    expect(hits[0].kb).toBeCloseTo(2.917, 3); // ~2.92 m/s (divided by the bot's mass)
     const b = kit(c).laserFx.bolts.find((x) => x.to.z > 0)!;
     expect(Math.abs(b.to.x - b.from.x)).toBeLessThan(1e-6);
   });
@@ -275,6 +280,17 @@ describe('MAG LASER (SPACE)', () => {
     expect(rays).toBe(1);
     expect(near.hp).toBeLessThan(near.maxHp);
     expect(past.hp).toBe(past.maxHp);
+  });
+
+  it('in the Duel a bolt hits for gunDamage (no PvE bonus) and tugs at 2.5', () => {
+    const e = bot(0, 6, 1e6);
+    const r = gravRig([e], {}, true);
+    r.held.add('Space');
+    r.run(1 / 60);
+    expect(r.log.length).toBe(1);
+    expect(r.log[0].n).toBeCloseTo(r.stats.gunDamage * r.stats.damageMult, 6);
+    expect(r.log[0].kb).toBeCloseTo(2.5, 6);
+    expect(r.log[0].kz).toBeLessThan(0);
   });
 
   it('the tug is small on a boss', () => {

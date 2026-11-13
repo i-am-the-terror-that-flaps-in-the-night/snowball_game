@@ -111,11 +111,12 @@ export const grow = (L: number, knee: number, rate = 0.6) => (L <= knee ? L : kn
 /** Momentum line's Wrecking Fist bonus: fist damage x (1 + MOMENTUM_FIST x momentum^2). */
 export const MOMENTUM_FIST = 60;
 
-/** Every upgrade's effect by level — the single source for Progression.computeStats and the shop labels.
- *  Levels up to each upgrade's pips match the original (pre-endless) formulas exactly. */
-/** Mag Laser: most bolts a second, whatever the level and Overclock (see FX.gunRate). */
+/** Mag Laser: most bolts a second, whatever the level and Overclock (see FX.gunRate): it keeps the late-garage
+ *  single-target DPS in its band (docs/balance.md). */
 export const MAG_LASER_MAX_RATE = 15;
 
+/** Every upgrade's effect by level — the single source for Progression.computeStats and the shop labels.
+ *  Levels up to each upgrade's pips match the original (pre-endless) formulas exactly. */
 export const FX = {
   maxSpeed: (L: number) => 10 + 1.4 * soft(L, 5),
   accel: (L: number) => 14 + 3 * soft(L, 5),
@@ -219,16 +220,14 @@ export const FX = {
   chainBlast: (L: number) => (L <= 0 ? 0 : 35 + 18 * grow(L - 1, 4)),
   // ---- ARSENAL line (weapons are free at level 0; upgrades strengthen them)
   /** Mag Laser (SPACE, hold; off the nose emitter): damage per bolt hit (x your damage mult; every bolt pierces and
-   *  hits each target on its line once), bolts per second, reach (m). It replaced the Mag Discs (10 discs/s, each
-   *  hitting a target twice for (4.3 + 1.4 * grow(L, 5, 0.5)) * 0.4, sized to match the old Mag Shotgun's DPS, see
-   *  docs/balance.md) at the same DPS: per bolt 2 x that x 10 / 12 at 12 bolts/s. The real rate (Overclock
-   *  included) stops at MAG_LASER_MAX_RATE: the discs' fixed pool held their late-garage rate to about that, so the
-   *  laser's late single-target DPS stays where the discs' actually was. */
-  gunDamage: (L: number) => (4.3 + 1.4 * grow(L, 5, 0.5)) * 0.4 * 2 * (10 / 12),
+   *  hits each target on its line once): 2/3 x (4.3 + 1.4 a level), i.e. 2.87, +0.93 a level to 5 and +0.47 after
+   *  (written x 0.8 / 1.2 so the floats stay bit-for-bit the tuned ones). Bolts per second (the real rate, Overclock
+   *  included, stops at MAG_LASER_MAX_RATE), reach (m). */
+  gunDamage: (L: number) => ((4.3 + 1.4 * grow(L, 5, 0.5)) * 0.8) / 1.2,
   gunRate: (L: number) => 12 + 0.7 * soft(L, 5),
   gunRange: (L: number) => 10 + 0.5 * soft(L, 5),
-  /** Mag Repulsor (E): damage scale (one wave deals 1.5 s of it to every bot it reaches, x your damage mult; the old
-   *  Grav Lance's lone-bot damage), reach of the forward wedge (m), recharge (s). */
+  /** Mag Repulsor (E): damage scale (one wave deals 1.5 s of it to every bot it reaches, x your damage mult), reach
+   *  of the forward wedge (m), recharge (s). The laser* names are left over from the Grav Lance it replaced. */
   laserDps: (L: number) => 70 + 25 * grow(L, 5),
   laserRange: (L: number) => 13 + 0.5 * soft(L, 5),
   laserCooldown: (L: number) => 4 + 2 * Math.exp(-L / 4),

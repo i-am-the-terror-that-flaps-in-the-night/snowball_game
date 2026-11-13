@@ -353,7 +353,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.jitter = Math.max(this.jitter, 0.15);
   }
 
-  /** ARSENAL mounts in world space: the pulse emitter tip ('muzzle', i wraps), the Grav Lance nose lens ('laser') or
+  /** ARSENAL mounts in world space: the Mag Laser emitter tip ('muzzle', i wraps), the Mag Repulsor nose lens ('laser') or
    *  the gyro core at the rear ('gyro'). */
   mountWorld(kind: 'muzzle' | 'laser' | 'gyro', i: number, out: THREE.Vector3): THREE.Vector3 {
     const o = kind === 'laser' ? this.laserMount : kind === 'muzzle' ? this.muzzles[i % this.muzzles.length] : this.gyroMount;
