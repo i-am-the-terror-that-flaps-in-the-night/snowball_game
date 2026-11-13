@@ -66,14 +66,15 @@ special wave unless the pair would double up.
 | ⏩ Overdrive | 7 | Bots drive 25% faster | ×1.25 |
 | 💰 Gold Rush | 7 | Nothing else | ×2 |
 | 🔩 Armored | 10 | Bots +50% HP | ×1.35 |
-| 🐜 Horde | 13 | Twice the spawn budget and bot cap, half HP (never on Swarm / Elite Squad) | ×0.65 per kill |
+| 🐜 Horde | 13 | Twice the spawn budget and bot cap (at most 48), half HP (never on Swarm / Elite Squad) | ×0.65 per kill |
 | 😡 Frenzy | 13 | Spawns come twice as fast, bots hit 20% harder (never on Blitz) | ×1.3 |
 
 The coin multiplier covers kill coins and the wave bonus. The pick rotates through the table from a per-run offset
 (from the seed on the Daily, so everyone gets the same ones).
 
 **Milestones** (every 10th wave): a campaign boss at 45% HP (FROSTBYTE, BULLDOZA or THE GRINDER, never a copy of the
-wave's own boss) rolls in 8 s after the wave's lineup; twin-boss waves skip it (two boss bars). Clearing a milestone
+wave's own boss) rolls in 8 s after the wave's lineup; twin-boss waves skip it (two boss bars). The pit stop names the
+coming mini-boss. Clearing a milestone
 pays 150 + 15 × wave coins, repairs 40% of max HP, always drops gear (better odds than a boss wave) and gives an 8 s
 breather into the next wave.
 

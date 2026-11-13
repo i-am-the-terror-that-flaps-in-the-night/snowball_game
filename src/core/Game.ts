@@ -606,6 +606,7 @@ export class Game {
     const sv = this.survival;
     const wave = sv.wave;
     const repairCost = fullRepairCost(wave);
+    const mini = sv.miniBossAt(wave + 1);
     // The wave clear may have moved the run to its next biome (SurvivalManager.switchBiome): a new arena.
     this.warmNow();
     this.state = 'shop';
@@ -618,6 +619,7 @@ export class Game {
       nextSpecial: sv.specialFor(wave + 1),
       nextModifier: sv.modifierFor(wave + 1),
       nextMilestone: isMilestone(wave + 1),
+      nextMiniBoss: mini ? ENEMIES[mini].name : null,
       milestone: sv.milestone,
       repairCost,
       loot,
@@ -720,7 +722,7 @@ export class Game {
       this.countdown = sv.nextWave();
       const boss = sv.boss;
       const mini = sv.miniBoss;
-      const head = mini ? `🏆 MILESTONE · Wave ${sv.wave}` : `Wave ${sv.wave}`;
+      const head = isMilestone(sv.wave) ? `🏆 MILESTONE · Wave ${sv.wave}` : `Wave ${sv.wave}`;
       if (boss || mini) {
         // Boss wave and / or milestone: the lineup's bosses (a milestone's mini-boss joins a few seconds in).
         const types = sv.lineupBosses;

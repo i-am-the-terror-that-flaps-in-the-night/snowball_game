@@ -151,6 +151,22 @@ describe('wave modifiers in a run', () => {
     frenzy.intervals.forEach((t, i) => expect(t).toBeCloseTo(plain.intervals[i] * 0.5));
   });
 
+  it('Horde caps its raised bot count at 48, even over a Daily Swarm', () => {
+    const { sv } = rig();
+    sv.reset({ ...dailyFor('2026-11-13'), modifierId: 'swarm' });
+    let hordes = 0;
+    for (let w = 1; w <= 60; w++) {
+      sv.nextWave();
+      if (sv.modifier?.id === 'horde') {
+        hordes++;
+        // (a Thief Raid's 2 lead scrappers ride on top of its capped thieves, as on any wave)
+        expect(bots(sv)).toBeLessThanOrEqual(48 + 2);
+      }
+      sv.waveCleared();
+    }
+    expect(hordes).toBeGreaterThan(0);
+  });
+
   it('Blizzard pushes the whiteout gale for its wave and lifts it on the clear and on a new run', () => {
     const { ctx, sv } = rig();
     forceModifier(sv, 7, 'blizzard');
@@ -238,6 +254,23 @@ describe('milestones', () => {
     expect(sv.miniBoss).not.toBeNull();
     expect(sv.zone.rounds[0].boss).toBe(true);
     expect(sv.zone.bossName).toBe(ENEMIES[sv.miniBoss!].name);
+  });
+
+  it('the pit stop previews the mini-boss the milestone then plays (none on a twin lineup)', () => {
+    for (const spec of [null, { ...dailyFor('2026-11-13'), modifierId: 'bossRush' as const }]) {
+      const { sv } = rig();
+      sv.reset(spec);
+      for (let w = 1; w <= 60; w++) {
+        const preview = sv.miniBossAt(w);
+        sv.nextWave();
+        expect(sv.miniBoss).toBe(preview);
+        sv.waveCleared();
+      }
+    }
+    const { sv } = rig();
+    expect(sv.bossFor(20)?.types).toEqual(['slush', 'sleet']);
+    expect(sv.miniBossAt(20)).toBeNull();
+    expect(sv.miniBossAt(10)).toBe('frostbyte');
   });
 
   it('milestone loot always drops', () => {

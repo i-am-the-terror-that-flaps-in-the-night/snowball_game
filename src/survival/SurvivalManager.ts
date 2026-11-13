@@ -48,6 +48,8 @@ const BOSS_BREATHER_SECONDS = 6;
 const WAVE_REPAIR = 0.5;
 /** Max bots in one generated wave (spawn pacing keeps the arena readable). */
 const MAX_WAVE_BOTS = 24;
+/** Hard ceiling on a Horde wave's raised bot cap (a Daily Swarm under a Horde would otherwise reach 68). */
+const HORDE_MAX_BOTS = 2 * MAX_WAVE_BOTS;
 
 /** The minion pool of normal (and Blitz) waves: spawn-budget cost + first wave each type may appear in. A new bot type
  *  joins Survival with one line here (cost ~ how many scrappers it is worth). Specials and boss escorts keep their own
@@ -404,8 +406,19 @@ export class SurvivalManager {
 
   /** Boss lineup of the current wave (empty on minion waves). */
   get boss(): { types: EnemyType[]; name: string } | null {
-    if (!this.isBossWave) return null;
-    return BOSS_CYCLE[(this.wave / this.bossEvery - 1) % BOSS_CYCLE.length];
+    return this.bossFor(this.wave);
+  }
+
+  /** Boss lineup of wave w (null off the boss cadence). */
+  bossFor(w: number): { types: EnemyType[]; name: string } | null {
+    const every = this.bossEvery;
+    if (w <= 0 || w % every !== 0) return null;
+    return BOSS_CYCLE[(w / every - 1) % BOSS_CYCLE.length];
+  }
+
+  /** Mini-boss joining wave w (milestones without a twin lineup; the pit stop's preview, nextWave plays the same). */
+  miniBossAt(w: number): EnemyType | null {
+    return miniBossFor(w, this.bossFor(w)?.types ?? []);
   }
 
   /** Special wave w is, if any: waves 3, 6, 8, 11, 13, ... (2 per 5-wave boss cycle, never a boss wave). */
@@ -459,7 +472,7 @@ export class SurvivalManager {
       }
     }
     // Milestone: a scaled-down boss rolls in a few seconds after the main lineup (the round becomes a boss round).
-    const mini = (this.miniBoss = miniBossFor(w, this.boss?.types ?? []));
+    const mini = (this.miniBoss = this.miniBossAt(w));
     if (mini) {
       round.groups.push({ type: mini, count: 1, delay: MINIBOSS_DELAY, interval: 1, hpMult: MINIBOSS_HP });
       round.boss = true;
@@ -546,9 +559,7 @@ export class SurvivalManager {
 
   /** Lineup name of wave w if it's a boss wave (for the between-wave shop's preview), else null. */
   bossNameFor(w: number): string | null {
-    const every = this.bossEvery;
-    if (w <= 0 || w % every !== 0) return null;
-    return BOSS_CYCLE[(w / every - 1) % BOSS_CYCLE.length].name;
+    return this.bossFor(w)?.name ?? null;
   }
 
   get best(): number {
@@ -566,9 +577,10 @@ export class SurvivalManager {
     return this.fx.budget * (this.modifier?.budget ?? 1);
   }
 
-  /** Bot cap of the wave (Horde raises it with its budget). */
+  /** Bot cap of the wave (Horde raises it with its budget, up to HORDE_MAX_BOTS). */
   private get botCap(): number {
-    return Math.round(this.fx.maxBots * (this.modifier?.budget ?? 1));
+    const k = this.modifier?.budget ?? 1;
+    return k > 1 ? Math.min(HORDE_MAX_BOTS, Math.round(this.fx.maxBots * k)) : this.fx.maxBots;
   }
 
   /** Budget-based mix of the unlocked minion types; faster spawn pacing as waves climb. */

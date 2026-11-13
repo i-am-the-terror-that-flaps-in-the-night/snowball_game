@@ -721,7 +721,7 @@ export class UI implements UIAPI {
     t.innerHTML = `Wave <b>${next}</b> next${o.nextMilestone ? ' · 🏆 MILESTONE' : ''}${o.nextBoss ? ` · ☠ BOSS: ${o.nextBoss}` : o.nextSpecial ? ` · ${o.nextSpecial.icon} ${o.nextSpecial.name}` : ''}`;
     if (o.nextSpecial && !o.nextBoss) el('div', 'ss-sv-special', o.nextSpecial.blurb, w);
     if (o.nextModifier) el('div', 'ss-sv-mod', `+ ${o.nextModifier.icon} ${o.nextModifier.name}: ${o.nextModifier.blurb}`, w);
-    if (o.nextMilestone) el('div', 'ss-sv-special', 'A mini-boss joins the wave. Clear it for a milestone reward!', w);
+    if (o.nextMilestone) el('div', 'ss-sv-special', `${o.nextMiniBoss ? `Mini-boss ${o.nextMiniBoss} joins the wave. ` : ''}Clear it for a milestone reward!`, w);
     if (o.milestone) {
       const m = el('div', 'ss-sv-milestone', undefined, w);
       el('span', '', `🏆 Wave ${o.milestone.wave} milestone`, m);

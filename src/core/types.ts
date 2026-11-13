@@ -845,6 +845,8 @@ export interface SurvivalShopOpts {
   nextModifier?: { name: string; icon: string; blurb: string } | null;
   /** True when the next wave is a milestone (mini-boss + reward). */
   nextMilestone?: boolean;
+  /** Name of the mini-boss joining that milestone (null on a twin-boss milestone: the HUD has two boss bars). */
+  nextMiniBoss?: string | null;
   /** Reward of the milestone just cleared (coins paid, HP repaired). */
   milestone?: { wave: number; coins: number; healed: number } | null;
   /** Coins for a Full Repair. */
