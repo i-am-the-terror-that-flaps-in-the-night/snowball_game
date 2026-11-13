@@ -15,6 +15,7 @@ const bot = (x: number, z: number): Bot =>
   ({ id: nextId++, position: new THREE.Vector3(x, 0, z), radius: 1, hp: 1e6, maxHp: 1e6, alive: true, dealt: 0, frozen: 0, type: 'grunt', mass: 1, isBoss: false }) as unknown as Bot;
 
 function rig(bots: Bot[], levels: Record<string, number> = {}) {
+  const weapons: (string | undefined)[] = [];
   const press = new Set<string>();
   const held = new Set<string>();
   const plow = {
@@ -40,7 +41,8 @@ function rig(bots: Bot[], levels: Record<string, number> = {}) {
       for (const b of bots) if (b.alive && Math.hypot(b.position.x - x, b.position.z - z) <= r + b.radius) o.push(b);
       return o;
     },
-    damage: (e: EnemyHandle, n: number, opts?: { freezeSeconds?: number }) => {
+    damage: (e: EnemyHandle, n: number, opts?: { freezeSeconds?: number; weapon?: string }) => {
+      weapons.push(opts?.weapon);
       const b = e as Bot;
       b.dealt += n;
       b.hp -= n;
@@ -63,7 +65,7 @@ function rig(bots: Bot[], levels: Record<string, number> = {}) {
       press.clear();
     }
   };
-  return { c, plow, press, held, run, ctx, binding };
+  return { c, plow, press, held, run, ctx, binding, weapons };
 }
 
 const iso = (c: Combat) => (c as unknown as { isotope: IsotopeKit }).isotope;
@@ -91,8 +93,12 @@ describe('ISOTOPE Reactor Hauler', () => {
     // Off the trigger: no more spray, but the RAD DOSE that soaked in keeps burning for a long time (well past the
     // old 3 s), keeping the bot irradiated, then runs out.
     const before = near.dealt;
+    r.weapons.length = 0;
     r.run(1);
     expect(near.dealt).toBeGreaterThan(before);
+    // Burn ticks (RAD DOSE + TANK-BUSTER) carry the radBurn tag: kill credit for the Tank-Buster challenge.
+    expect(r.weapons.length).toBeGreaterThan(0);
+    expect(r.weapons.every((w) => w === 'radBurn')).toBe(true);
     r.run(5);
     const mid = near.dealt;
     r.run(1);

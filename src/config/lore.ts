@@ -125,6 +125,45 @@ export const CHAPTERS: Record<string, ChapterLore> = {
   },
 };
 
+/** A campaign arena's in-run story beats (normal mode; Hard mode tells PROTOCOL B instead). One short line each. */
+export interface ZoneBeat {
+  /** Road Crew dispatch on the radio as the run starts (a radio toast under the arena name; the chapter card). */
+  intro: string;
+  /** The boss's last words once it falls (the results screen above the chapter ending; the chapter card). */
+  outro: string;
+}
+
+/** Longest beat line: they show as a toast and a one-line quote, so they stay short. */
+export const BEAT_MAX_CHARS = 90;
+
+/** Per-arena beats, keyed by the arena's save id. The outro is said by the arena's bossName (the twins share one). */
+export const ZONE_BEATS: Record<string, ZoneBeat> = {
+  yard: {
+    intro: 'Dispatch: the relay is playing that jingle again. Bring earplugs. And a plow.',
+    outro: 'Rebooting... is it over? Please tell me the jingle is over.',
+  },
+  junkyard: {
+    intro: 'Dispatch: the quarry is running hot. Mind the lava, it does not do returns.',
+    outro: 'Lifetime warranty, my exhaust pipe. I want a refund.',
+  },
+  foundry: {
+    intro: 'Dispatch: the ground out west has gone hollow. Drive soft, jump big.',
+    outro: 'RECALCULATING... RECALCULATING... Oh. That is a lot of holes.',
+  },
+  bowl: {
+    intro: 'Dispatch: the weather has split down the middle. Pack a scarf. And sunscreen.',
+    outro: 'You started it. No, the memo started it. ...Fair. ...Fair. Group hug? Lukewarm hug.',
+  },
+  plaza: {
+    intro: 'Dispatch: big rally downtown. Very big, apparently. Whatever you do, refuse the hat.',
+    outro: 'Rigged! Nobody plows better than me. Many people say so. Okay, you. You do.',
+  },
+  summit: {
+    intro: 'Dispatch: this is it. The front door is open. Do not sit through the slideshow.',
+    outro: 'Error: driver exceeded projections. Please update your sli... de... de... ck...',
+  },
+};
+
 /* ---- Hard mode: PROTOCOL B (unlocks after MEGAPLOW Ω is beaten; order-free, since every arena is open by then).
  * Ω's contingency plan: a backup of its mind split into six fragments, cached one per arena. It recorded every fight
  * you won, and each cache is guarded by a "NEW & IMPROVED" knock-off of the machine it used there, built from that

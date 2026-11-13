@@ -45,6 +45,7 @@ import { hostRoom, joinRoom, type HostRoom, type LocalLinkOpts, type Transport, 
 import { ROOM_CODE_LEN, cleanRoomCode } from '../ui/DuelUI';
 import { NavGraph } from '../world/omega/nav';
 import { OMEGA_NAV } from '../world/omega/layout';
+import { ZONE_BEATS } from '../config/lore';
 
 type State =
   | 'menu' | 'countdown' | 'playing' | 'shop' | 'paused' | 'wrecked' | 'gameover' | 'victory'
@@ -478,6 +479,9 @@ export class Game {
     ctx.ui.hideOverlays();
     ctx.ui.setHudVisible(true);
     ctx.ui.toast(ctx.zone.name, 'big');
+    // Story beat: Road Crew dispatch on the radio (normal mode only; Hard tells PROTOCOL B on the results screen).
+    const beat = hard ? undefined : ZONE_BEATS[ctx.zone.id];
+    if (beat) ctx.ui.toast(`📻 ${beat.intro}`, 'radio');
     ctx.cameraRig.setMode('follow');
     ctx.cameraRig.snap();
     this.beginCountdown();

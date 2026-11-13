@@ -571,7 +571,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         const pvp = !!this.b.pvp;
         const tb = tankBusterTick(e.maxHp, pvp);
         const total = (amt + soak) * mult + (pvp ? 0 : tb);
-        const burnOpts = { source: 'other', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' } as const;
+        const burnOpts = { source: 'other', weapon: 'radBurn', fromX: e.position.x, fromZ: e.position.z, direct: 'beam' } as const;
         let killed = this.b.enemies.damage(e, total, burnOpts);
         if (pvp && tb > 0 && !killed && e.alive) killed = this.b.enemies.damage(e, tb, { ...burnOpts, hpShare: true });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));

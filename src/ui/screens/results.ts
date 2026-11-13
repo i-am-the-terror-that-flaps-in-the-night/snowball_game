@@ -1,13 +1,13 @@
 /** Campaign / Survival results screen: stats, challenge report, daily card, loot, story outro and the next-step buttons. */
 import type { GameContext, RunSummary, UIHandlers } from '../../core/types';
 import { ZONES } from '../../config/zones';
-import { CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE } from '../../config/lore';
+import { CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, ZONE_BEATS } from '../../config/lore';
 import { activeDaily } from '../../meta/daily';
 import { hardUnlocked, lastChallengeReport } from '../../meta/challenges';
 import { renderDailyResult } from '../DailyResult';
 import { renderLoot } from '../LootReveal';
 import type { Story } from '../Story';
-import { el, fmt, starsHtml, type BtnFn } from '../uiKit';
+import { el, fmt, starsHtml, storyQuote, type BtnFn } from '../uiKit';
 
 export interface ResultDeps {
   ctx: GameContext;
@@ -75,6 +75,9 @@ export function renderResult(ui: ResultDeps, sum: RunSummary, win: boolean): voi
   if (chapter) {
     const box = el('div', 'ss-result-story', undefined, p);
     el('div', 'ss-result-story-h', hardStory ? '☠️ STORY · PROTOCOL B' : '📜 STORY', box);
+    // The boss's last words first (config/lore.ts ZONE_BEATS), then the chapter ending.
+    const beat = hardStory ? undefined : ZONE_BEATS[zoneId!];
+    if (beat) storyQuote(box, beat.outro, ui.ctx.zone?.bossName ?? '');
     el('p', '', chapter.outro, box);
     const end = hardStory ? (ZONES.every((z) => prog.data.hardCleared?.[z.id] === true) ? HARD_EPILOGUE : '') : zoneId === lastId ? EPILOGUE : '';
     if (end) el('p', '', end, box).style.marginTop = '8px';
@@ -104,7 +107,7 @@ export function renderResult(ui: ResultDeps, sum: RunSummary, win: boolean): voi
   if (!btns.querySelector('[data-primary]')) (win ? m : g).dataset.primary = '1';
 }
 
-/** Campaign results: HARD badge under the emoji, then the arena's three challenges (✓ met this run,
+/** Campaign results: HARD badge under the emoji, then the arena's five challenges (✓ met this run,
  *  NEW for first-time stars, ★ already owned) and the star coin bonus. */
 function renderCampaignChallenges(p: HTMLElement, sum: RunSummary): void {
   if (sum.hard) p.querySelector('.ss-result-emoji')?.after(el('div', 'ss-hard-badge', '💀 HARD MODE'));
@@ -112,7 +115,7 @@ function renderCampaignChallenges(p: HTMLElement, sum: RunSummary): void {
   if (!rep) return;
   const box = el('div', `ss-chal-result ${rep.newStars ? 'has-new' : ''}`, undefined, p);
   const head = el('div', 'ss-chal-result-head', undefined, box);
-  el('span', 'ss-chal-result-stars', undefined, head).innerHTML = starsHtml(rep.stars, rep.results.filter((r) => r.isNew).length);
+  el('span', 'ss-chal-result-stars', undefined, head).innerHTML = starsHtml(rep.stars, rep.results.filter((r) => r.isNew).length, rep.results.length);
   el('span', 'ss-chal-result-title', 'CHALLENGES', head);
   if (rep.bonus > 0) el('span', 'ss-chal-result-bonus', `+${fmt(rep.bonus)} 🪙 star bonus`, head);
   else if (!rep.won) el('span', 'ss-chal-result-hint', 'Clear the arena to earn stars', head);

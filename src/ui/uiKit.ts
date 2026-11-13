@@ -15,6 +15,14 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, 
   return e;
 }
 
+/** A one-line story quote, “line” — SPEAKER (a boss's last words: results screen, Story chapter cards; story.css). */
+export function storyQuote(parent: HTMLElement, line: string, speaker: string): HTMLElement {
+  const q = el('p', 'ss-story-quote', undefined, parent);
+  el('span', 'ss-story-quote-line', `“${line}”`, q);
+  if (speaker) el('span', 'ss-story-quote-who', ` — ${speaker}`, q);
+  return q;
+}
+
 /** Restart a one-shot CSS animation class. */
 export function restart(e: HTMLElement, cls: string, ...others: string[]): void {
   e.classList.remove(cls, ...others);

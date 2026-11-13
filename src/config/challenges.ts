@@ -1,11 +1,14 @@
-import type { GameEvents } from '../core/events';
+import type { GameEvents, KillWeapon } from '../core/events';
 import type { PlowKind } from './plows';
 
-/* Campaign challenges: three per arena, one star each (meta/challenges.ts awards them). Every challenge is
+/* Campaign challenges: five per arena, one star each (meta/challenges.ts awards them). Every challenge is
  * judged on a WON campaign run (normal or Hard) from the runFinished payload plus a few extras the
  * ChallengeTracker tallies from events. Thresholds were tuned against a headless autopilot (it clears fast
  * but plays sloppy defense), so speed goals sit a bit above its times and damage goals well above its hits.
- * Ids only need to be unique within their arena (saved as save.challenges[zoneId]). */
+ * Ids only need to be unique within their arena (saved as save.challenges[zoneId]).
+ * Each arena has three originals plus two signature goals (docs/modes.md): one per plow mechanic (Classic Plow Rush,
+ * VOLT-9 Arc Lance, ARSENAL Mag Laser / Polarity Burst / Singularity, BRUTUS tanking, ISOTOPE burn) and a boss / no-damage /
+ * speed / zone goal. Signature goals have no plow check: only that plow's weapon can score them. */
 
 /** What a challenge gets to look at: the runFinished payload + tracker extras. */
 type RunFinished = GameEvents['runFinished'];
@@ -16,6 +19,10 @@ export interface ChallengeRun extends RunFinished {
   bossDamage: number;
   /** STRIKE!s landed (one slam / whirl hitting 3+ bots). */
   strikes: number;
+  /** Bots hit by the Classic Plow's PLOW RUSH end slams (sum over every rush; 'plowRush' events). */
+  rushHits?: number;
+  /** Player kills by signature weapon ('enemyKilled' weapon, core/events.ts KillWeapon). */
+  weaponKills?: Partial<Record<KillWeapon, number>>;
 }
 
 export interface ChallengeDef {
@@ -84,6 +91,29 @@ const bossBlitz = (sec: number, name = 'Boss Blitz'): ChallengeDef => ({
 const bossClean = (hp: number, name = 'Not a Scratch'): ChallengeDef => ({
   id: 'bossHp', icon: '🎯', name, goal: `Take < ${hp} HP from boss`, test: (r) => r.bossDamage < hp,
 });
+/* Plow signature challenges (one per signature mechanic, spread over the arenas). */
+/** Bots hit by the Classic's PLOW RUSH end slams (a full rush into a pack hits 3-6). */
+const rushHits = (n: number, name = 'Rush Hour'): ChallengeDef => ({
+  id: 'rush', icon: '🚜', name, goal: `${n} Plow Rush hits`,
+  tip: 'Classic Plow: hold SPACE to charge a PLOW RUSH, release to charge into a pack. Every bot its end slam hits counts. Tap slams first to pack SNOW CHUNKS for a wider rush slam.',
+  test: (r) => (r.rushHits ?? 0) >= n,
+});
+/** Kills finished by one signature weapon. */
+const weaponKills = (weapon: KillWeapon, id: string, icon: string, n: number, name: string, what: string, tip: string): ChallengeDef => ({
+  id, icon, name, goal: `${n} ${what} kills`, tip, test: (r) => (r.weaponKills?.[weapon] ?? 0) >= n,
+});
+/** BRUTUS soaks the hits: lose at least `hp` HP over the run and still win (repairs between rounds help). */
+const tank = (hp: number, name = 'Crash Test Dummy'): ChallengeDef => ({
+  id: 'soak', icon: '🦏', name, goal: `BRUTUS: tank ${hp} HP`,
+  tip: 'Win with BRUTUS after soaking up this much damage over the run. Wade into the crowd, take the hits, keep swinging (round repairs top you up).',
+  test: (r) => r.plow === 'brute' && r.damageTaken >= hp,
+});
+const ramKills = (n: number, name = 'Demolition Derby'): ChallengeDef => ({
+  id: 'ram', icon: '🐏', name, goal: `${n} ram kills`,
+  tip: 'Finish bots by driving into them at speed (dash for a harder hit). Softened-up bots go down to a ram.',
+  test: (r) => r.killsBy.ram >= n,
+});
+
 /** Clear with one plow, plus an optional twist. */
 const withPlow = (kind: PlowKind, name: string, extra?: { goal: string; test: (r: ChallengeRun) => boolean }): ChallengeDef => ({
   id: `plow-${kind}`,
@@ -93,17 +123,32 @@ const withPlow = (kind: PlowKind, name: string, extra?: { goal: string; test: (r
   test: (r) => r.plow === kind && (!extra || extra.test(r)),
 });
 
-/** Zone id -> its three challenges (card / results order). Keyed by save id, so a challenge follows its arena's id
+/** Zone id -> its five challenges (card / results order). Keyed by save id, so a challenge follows its arena's id
  *  (docs/level-overhaul.md "Swaps and saves"): ids never change, only titles get rethemed. */
 export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // Coldboot Glacier (arena 1, FROSTBYTE): learn the basics: slam, max out a ball, keep moving. 'speed' re-checked on
   // the terrain build (scripts/omega-probe.mjs, fresh garage): every plow clears in 0:24-0:48, so 1:00 holds.
-  yard: [slamKills(3), ball(1.2, 'Big Ball Energy'), speed(60, 'Quick Plow')],
+  // Signature: the Classic's PLOW RUSH (a fresh rush into a 3-bot pack is 3 hits) and a cool boss fight.
+  yard: [
+    slamKills(3),
+    ball(1.2, 'Big Ball Energy'),
+    speed(60, 'Quick Plow'),
+    rushHits(8, 'Rush Hour'),
+    bossClean(40, 'Cold Shoulder'),
+  ],
   // Inferno Quarry (arena 2, BULLDOZA): thieves and lava. Knock bots into the lava, dodge, scrap the Yard Boss fast.
   // 'lava' replaced the x30 combo (Golden Tower Plaza keeps a combo star); any kill on a bot standing in lava counts
   // (bots steer out of lava fast, so the burn alone rarely finishes one). 'blitz' retuned 30 s -> 15 s: the probe's
   // fresh-garage boss fights run 3-16 s (mid garage 2-3 s), so 30 s was a free star.
-  junkyard: [lavaKills(3, 'Hot Tub'), untouchable(90, 'Thief-Proof'), bossBlitz(15, 'Eviction Notice')],
+  // Signature: ISOTOPE's radiation burn (any burn tick that finishes a bot, TANK-BUSTER included) and scrapyard rams.
+  junkyard: [
+    lavaKills(3, 'Hot Tub'),
+    untouchable(90, 'Thief-Proof'),
+    bossBlitz(15, 'Eviction Notice'),
+    weaponKills('radBurn', 'burn', '☢️', 10, 'Tank-Buster', 'rad burn',
+      'ISOTOPE: spray bots with the Rad Sprayer and let the RAD DOSE and TANK-BUSTER burn finish them. Kills by the burn tick count.'),
+    ramKills(8, 'Demolition Derby'),
+  ],
   // Rust Basin (arena 3, THE GRINDER): low gravity. Catch big air off the ramp, dive on the pack, survive it on the
   // fragile electric plow. Its ramp gives ~1.4 s of flight (4.5 m up, >1.3 s high enough to air-slam) at a fresh plow's
   // 10 m/s top speed, straight off the lip (8 m/s: ~0.75 s), so 'air' asks 1.0 s. 'airSlam' (air slam or stomp kill)
@@ -112,20 +157,45 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
     airKills(1, 'Meteor Strike'),
     airtime(1.0, 'Moonshot'),
     withPlow('volt', 'Live Wire', { goal: 'lose < 100 HP', test: (r) => r.damageTaken < 100 }),
+    // Signature: ARSENAL's SINGULARITY (one black hole on a pack does it) and a quick GRINDER fight.
+    weaponKills('singularity', 'sing', '🌀', 3, 'Event Horizon', 'Singularity',
+      'ARSENAL: fill the SINGULARITY meter with weapon damage, then drop the black hole on a crowd. Kills while it pulls or as it collapses count.'),
+    bossBlitz(30, 'Drill Sergeant'),
   ],
   // The Thermal Divide (arena 4, SLUSH & SLEET): a hot twin and a cold twin. Big balls, spin, and do it fast. 'speed'
   // retuned 1:45 -> 1:30: fresh-garage clears run 0:53-1:42, mid 0:38-0:47. (Its two small ramps only lift you 0.5 m+
   // for ~0.2-0.4 s, too short for an air-slam goal, so the air challenges live in Rust Basin.)
-  bowl: [ball(1.8, 'Cold Front'), whirlKills(4), speed(90, 'Divide & Conquer')],
+  // Signature: VOLT-9's Arc Lance (chains through packs) and ARSENAL's Polarity Burst (F; it pulls a pack in first).
+  bowl: [
+    ball(1.8, 'Cold Front'),
+    whirlKills(4),
+    speed(90, 'Divide & Conquer'),
+    weaponKills('arcLance', 'arc', '⚡', 15, 'Lightning Rod', 'Arc Lance',
+      'VOLT-9: hold SPACE to fire the Arc Lance from range. Chains jump through up to 7 bots; every kill the lightning finishes counts.'),
+    weaponKills('polarity', 'polarity', '🧲', 4, 'Polar Opposites', 'Polarity Burst',
+      'ARSENAL: press F for a Polarity Burst. It drags a pack together, then blows it apart; kills from the blast count.'),
+  ],
   // Golden Tower Plaza (arena 5, THE DONALD): break up the rally crowds, dodge the walls and the beam, keep the combo
   // going bigly.
-  plaza: [strikes(3, 'Crowd Control'), bossClean(80, 'Fake Damage'), combo(40, 'Tremendous Combo')],
+  // Signature: ARSENAL's Mag Laser through the rally crowds. 'speed': mid-garage clears run 0:50-1:04 (docs/balance.md).
+  plaza: [
+    strikes(3, 'Crowd Control'),
+    bossClean(80, 'Fake Damage'),
+    combo(40, 'Tremendous Combo'),
+    weaponKills('magLaser', 'laser', '🔷', 25, 'Laser Light Show', 'Mag Laser',
+      'ARSENAL: hold SPACE and steer the Mag Laser down a line of bots. Its bolts pierce, so a lined-up crowd melts fast.'),
+    speed(75, 'Rally Sprint'),
+  ],
   // The Omega Works (arena 6, MEGAPLOW Ω): the finale. Tank it with BRUTUS, dodge the machine, bury the rest in snow.
   // No time-based goals here on purpose: the 160 m multi-level factory makes clear times swing with routing.
   summit: [
     withPlow('brute', 'Rhino Rampage', { goal: '12 ram kills', test: (r) => r.killsBy.ram >= 12 }),
     bossClean(60, 'Omega Dodger'),
     slamKills(10, 'Avalanche Artist'),
+    // Signature: BRUTUS soaks the factory vs. a clean run (any plow). Mid-garage bot sweeps lose ~300-400 HP here
+    // (docs/balance.md, ISOTOPE 391), so 400 asks BRUTUS to wade in and 150 asks real dodging.
+    tank(400, 'Crash Test Dummy'),
+    untouchable(150, 'Quality Control'),
   ],
 };
 

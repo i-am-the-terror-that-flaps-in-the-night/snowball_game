@@ -20,11 +20,23 @@ PLATED at half HP. The arenas are mid-way through a biome overhaul (glacier, lav
 rally, neon factory; see [level-overhaul.md](level-overhaul.md)): names, bosses and order are final, the new looks and
 terrain are landing arena by arena.
 
-Every arena has **3 challenge stars** and, once cleared, a **Hard mode**:
+Every arena has **5 challenge stars** and, once cleared, a **Hard mode**:
 
-- **Challenge stars**: 3 per arena (18 total): slam kills, ball size, clear times, combos, damage limits, boss-fight
-  speed and a few plow-specific goals. They're judged on any winning run (normal or Hard), shown on the arena cards
-  and the results screen, and each new star pays a one-time bonus (+75 to +800 by arena).
+- **Challenge stars**: 5 per arena (30 total): slam kills, ball size, clear times, combos, damage limits, boss-fight
+  speed and plow signature goals. They're judged on any winning run (normal or Hard), shown on the arena cards
+  and the results screen, and each new star pays a one-time bonus (+75 to +800 by arena). Every plow mechanic has a
+  star somewhere: the Classic's Plow Rush hits (Coldboot Glacier, *Rush Hour*, 8 hits), ISOTOPE's radiation-burn
+  kills (Inferno Quarry, *Tank-Buster*, 10), ARSENAL's Singularity kills (Rust Basin, *Event Horizon*, 3), VOLT-9's
+  Arc Lance kills (The Thermal Divide, *Lightning Rod*, 15), ARSENAL's Polarity Burst kills (*Polar Opposites*, 4) and
+  Mag Laser kills (Golden Tower Plaza, *Laser Light Show*, 25), BRUTUS tanking 400 HP (The Omega Works, *Crash Test
+  Dummy*), plus the older VOLT-9 (*Live Wire*) and BRUTUS (*Rhino Rampage*) stars. The other new ones: *Cold
+  Shoulder* (< 40 HP from FROSTBYTE), *Demolition Derby* (8 ram kills), *Drill Sergeant* (THE GRINDER in 30 s),
+  *Rally Sprint* (the Plaza in 1:15) and *Quality Control* (The Omega Works losing < 150 HP). Weapon kills come from
+  `enemyKilled`'s `weapon` tag (`core/events.ts` KillWeapon), rush hits from the `plowRush` event; both only credit
+  the player's own weapons, so they never touch combat numbers or the Duel.
+- **Story beats**: each campaign arena opens with a one-line Road Crew radio call (a toast as the run starts, normal
+  mode) and its boss gets last words after the fight (results screen, above the chapter ending); both also show on
+  the arena's chapter card in the Story overlay (`ZONE_BEATS` in `src/config/lore.ts`).
 - **Hard mode**: ×1.8 bot HP, ×1.5 bot damage, about 35% more minions, the same boss, ×1.75 coins. It scales with
   your plow past mid-game: your power is the average effective level (Garage + gear) of the core four upgrades and
   your plow's own line. Up to 4 nothing changes; each level above that adds +15% bot HP and +8% bot damage, capped at

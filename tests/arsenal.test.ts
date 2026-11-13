@@ -116,7 +116,7 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}, pvp =
     getForward: (o: THREE.Vector3) => o.set(0, 0, 1),
     mountWorld: (_k: string, _i: number, o: THREE.Vector3) => o.set(0, 1, 1.5),
   };
-  const log: { t: number; e: EnemyHandle; n: number; kb: number; kx: number; kz: number }[] = [];
+  const log: { t: number; e: EnemyHandle; n: number; kb: number; kx: number; kz: number; w?: string }[] = [];
   const ctx = { scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop } as unknown as GameContext;
   const enemies = {
     bosses: [],
@@ -125,10 +125,10 @@ function gravRig(bots: EnemyHandle[], levels: Record<string, number> = {}, pvp =
       for (const b of bots) if (b.alive && Math.hypot(b.position.x - x, b.position.z - z) <= r + b.radius) out.push(b);
       return out;
     },
-    damage: (e: EnemyHandle, n: number, o?: { knockback?: THREE.Vector3 }) => {
+    damage: (e: EnemyHandle, n: number, o?: { knockback?: THREE.Vector3; weapon?: string }) => {
       e.hp -= n;
       const k = o?.knockback;
-      log.push({ t: ctx.time, e, n, kb: k ? Math.hypot(k.x, k.z) : 0, kx: k?.x ?? 0, kz: k?.z ?? 0 });
+      log.push({ t: ctx.time, e, n, kb: k ? Math.hypot(k.x, k.z) : 0, kx: k?.x ?? 0, kz: k?.z ?? 0, w: o?.weapon });
       return false;
     },
     pull: (e: EnemyHandle, vx: number, vz: number, dt: number) => {
@@ -214,6 +214,7 @@ describe('MAG LASER (SPACE)', () => {
     expect(hits[0].n).toBeCloseTo(stats.gunDamage * stats.damageMult * PVE_MULT, 3);
     expect(hits[0].kz).toBeLessThan(0); // a pull, no outward nudge
     expect(hits[0].kb).toBeCloseTo(3.5 * (10 / 12), 3); // the disc tug split over 12 bolts a second
+    expect(hits[0].w).toBe('magLaser'); // kill credit for the Laser Light Show challenge
     const b = kit(c).laserFx.bolts.find((x) => x.to.z > 0)!;
     expect(Math.abs(b.to.x - b.from.x)).toBeLessThan(1e-6);
   });
@@ -410,6 +411,9 @@ describe('POLARITY BURST (F)', () => {
     expect(far.position.z).toBe(40);
     expect(far.hp).toBe(far.maxHp);
     expect(c.flameReady).toBeLessThan(1);
+    // Kill credit for the Polar Opposites challenge: every blast hit carries the polarity tag.
+    expect(log.length).toBeGreaterThan(0);
+    expect(log.every((h) => h.w === 'polarity')).toBe(true);
   });
 });
 
@@ -467,5 +471,7 @@ describe('SINGULARITY (ultimate)', () => {
     for (const e of [...cluster, stray]) expect(e.hp).toBeLessThan(e.maxHp);
     expect(outside.hp).toBe(outside.maxHp);
     expect(c.critMass).toBe(0); // its own damage never refills the meter
+    // Kill credit for the Event Horizon challenge: pull ticks and the collapse both carry the singularity tag.
+    expect(log.every((h) => h.w === 'singularity')).toBe(true);
   });
 });

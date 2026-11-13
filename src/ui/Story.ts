@@ -4,7 +4,8 @@ import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES } from '../config/zones';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import { life, lifeBoss } from '../config/achievements';
-import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE, WORLD_NAME } from '../config/lore';
+import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE, WORLD_NAME, ZONE_BEATS } from '../config/lore';
+import { storyQuote } from './uiKit';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -171,9 +172,13 @@ export class Story {
       const done = cleared(z.id);
       const c = this.card(sp, `ch-${z.id}`, `${isOpen ? 'open' : 'locked'} ${done ? 'done' : ''}`, isOpen ? String(i + 1) : '🔒', isOpen ? z.name : '???', `Chapter ${i + 1}`);
       if (!isOpen) return this.para(c, 'Clear the previous arena to unlock this chapter.', 'dim');
+      // The arena's story beats (ZONE_BEATS): dispatch's radio line on top, the boss's last words after the battle.
+      const beat = ZONE_BEATS[z.id];
+      if (beat) this.para(c, `📻 ${beat.intro}`, 'radio');
       this.para(c, ch.intro);
       if (done) {
         el('div', 'ss-story-rule', 'AFTER THE BATTLE', c);
+        if (beat) storyQuote(c, beat.outro, z.bossName);
         this.para(c, ch.outro);
       } else this.para(c, `Beat ${z.bossName} to find out what happens next.`, 'dim');
     });
