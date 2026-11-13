@@ -235,6 +235,7 @@ export class ClassicKit extends Kit {
         fromX: x,
         fromZ: z,
         ult: !feed,
+        area: true,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       if (feed) this.feedFire(dealt);

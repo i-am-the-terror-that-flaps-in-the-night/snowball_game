@@ -269,6 +269,7 @@ export class MeleeKit extends Kit {
         knockback: _kb.set((dx / d) * 8, 0, (dz / d) * 8),
         fromX: x,
         fromZ: z,
+        area: true,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e);

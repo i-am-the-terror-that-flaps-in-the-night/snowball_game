@@ -604,6 +604,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
         freezeSeconds: st.clapStun,
         fromX: px,
         fromZ: pz,
+        area: true,
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.onPlayerHit(dealt, killed, e, true, false);

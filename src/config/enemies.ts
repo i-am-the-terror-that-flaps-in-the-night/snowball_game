@@ -1,5 +1,5 @@
-/** Every enemy is a BOT (robot vehicle). Combat is strictly close-quarters: rams, shoves, slams,
- *  spins and short-range shockwaves. NO projectiles or ranged attacks of any kind. */
+/** Every enemy is a BOT (robot vehicle). Combat is close-quarters (rams, shoves, slams, spins, short-range
+ *  shockwaves) with ONE exception: the Flurry Gunner's slow, telegraphed snowball bolt (dodgeable, see GUNNER_*). */
 export type EnemyType =
   | 'scrapper'
   | 'brute'
@@ -15,7 +15,15 @@ export type EnemyType =
   | 'rallybot'
   | 'donald'
   /** Brawl mode rival plow (stats are the baseline; BrawlManager scales by difficulty). */
-  | 'rival';
+  | 'rival'
+  /** Ranged minion: keeps a standoff and lobs slow, telegraphed snowball bolts (enemies/ai.ts gunner). */
+  | 'gunner'
+  /** Shield minion: a frontal plow-shield blocks most direct hits; flank it or hit it with area damage. */
+  | 'bulwark'
+  /** Splitter minion: bursts into SPLIT_COUNT slushlings when wrecked. */
+  | 'slushpile'
+  /** A Slushpile's mini (a shrunken scrapper): never in a wave list, only spawned by a split. */
+  | 'slushling';
 
 export interface EnemyDef {
   type: EnemyType;
@@ -91,8 +99,55 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
     type: 'donald', name: 'THE DONALD', title: 'Tremendous Plow of the Tower', hp: 2600, speed: 5, radius: 3.0, mass: 9, ramDamage: 30, armor: 8, coins: 450, isBoss: true, color: 0xf4f1e8, accent: 0xe0a91c,
     special: 'Huge gold-and-white caricature plow (orange face, swoopy blond hair, red cap, long red tie). (1) BUILD THE WALL: snow-brick wall lines rise across the arena (1.0s ground-stripe telegraph), block movement for 9s, smashed by slams / dash strikes. (2) DEPORTATION: 1.2s tractor-beam ring near the plow; inside when it fires = flung to the far edge, held ball lost (bots too). (3) RALLY: parks at the podium, summons a ring of red-cap rally bots, takes 60% less damage, bots buffed; wrecking half of them or smashing the podium breaks it (boss stunned). SHOVE / STEAMROLL charge between. Phase 2 at 50%: GOLD PLATED (reflects 15% of damage), faster, more walls, taunts.',
   },
+  gunner: {
+    type: 'gunner', name: 'Flurry Gunner', title: '', hp: 26, speed: 6.5, radius: 0.95, mass: 0.7, ramDamage: 9, armor: 0, coins: 9, isBoss: false, color: 0x3d6f94, accent: 0x7fe6ff,
+    special: 'Spindly snow-cannon on four wheels with a long barrel. Holds a 10-14 m standoff, strafing round the plow and backing off when it closes in. AIM (0.55s: barrel glows cyan, a ground stripe shows the line) then fires ONE slow snowball bolt (ramDamage, ~15 m/s, aimed where the plow was) that the player can drive out of. Paper-thin: close in and it pops.',
+  },
+  bulwark: {
+    type: 'bulwark', name: 'Bulwark', title: '', hp: 110, speed: 3.4, radius: 1.45, mass: 3.2, ramDamage: 14, armor: 2, coins: 16, isBoss: false, color: 0x2f4a6b, accent: 0xdfe9f5,
+    special: 'Slow tread-tank behind a huge curved PLOW-SHIELD. Direct hits arriving within 45° of its front (a 90° cone) lose 75% (BLOCK sparks); sides and back hit normally and its rear vent takes x1.3. Slams, blasts, shockwaves and ultimates go round the shield. Turns slowly (1.0 rad/s) to keep the shield on the plow: run rings round it. Close in: SHIELD BASH (0.75s wind-up, shield glows) for ramDamage + a big shove.',
+  },
+  slushpile: {
+    type: 'slushpile', name: 'Slushpile', title: '', hp: 70, speed: 4.8, radius: 1.25, mass: 1.6, ramDamage: 10, armor: 1, coins: 8, isBoss: false, color: 0x9cb4c4, accent: 0x3fd1a8,
+    special: 'A treaded hopper heaped with grey slush. Plods in and does a short belly-flop ram (0.5s wind-up). When wrecked it BURSTS into 3 slushlings (fast, flimsy, 1 coin each): finish the pile with a slam or blast to catch the minis in the same hit.',
+  },
+  slushling: {
+    type: 'slushling', name: 'Slushling', title: '', hp: 12, speed: 9, radius: 0.6, mass: 0.35, ramDamage: 4, armor: 0, coins: 1, isBoss: false, color: 0xb6cad6, accent: 0x3fd1a8,
+    special: 'A Slushpile\'s mini: a shrunken scrapper that circles and darts in. Only spawned by a split.',
+  },
   omega: {
     type: 'omega', name: 'MEGAPLOW Ω', title: 'The Final Machine', hp: 2400, speed: 4.5, radius: 3.2, mass: 10, ramDamage: 30, armor: 8, coins: 400, isBoss: true, color: 0x22252b, accent: 0xff1744,
     special: 'Colossal black-and-chrome mega plow with a triple blade, glowing red core and hazard lights. Three phases (announce each with a roar + shake). P1 (100-66%): CHARGE (1.0s telegraph, 18 m/s, wall-hit = 2s stun) and SHOVE (0.6s, when within 6m). P2 (66-33%): adds GROUND POUND — 1.1s telegraph (it rears up, a red ring of radius 8 appears on the ground), slams down: ramDamage x1.2 to anything within 8m + knockback (get out of the ring!); summons 3 scrappers at the start of P2. P3 (<33%): ENRAGED (red core pulsing, speed x1.35), combos CHARGE -> GROUND POUND, summons 2 brutes once. Core vulnerability: after a ground pound it is exposed for 1.5s (takes x1.5).',
   },
 };
+
+/* ------------------------------------------------------------------ regular-bot tuning (enemies/ai.ts, Enemies.ts) */
+
+/** Flurry Gunner standoff band (m): it strafes at the middle, backs off inside the near edge, closes past the far. */
+export const GUNNER_RANGE_MIN = 10;
+export const GUNNER_RANGE_MAX = 14;
+/** Below this distance (m) it gives up aiming and just backs away (close in and it can't shoot you). */
+export const GUNNER_PANIC = 6.5;
+/** Aim wind-up (s): barrel glow + ground stripe. Fired at the plow's position when the aim started finishing. */
+export const GUNNER_AIM = 0.55;
+/** Snowball bolt: speed (m/s), reach (m), hit radius (m), knockback on the plow. Slow enough to drive out of. */
+export const GUNNER_BOLT_SPEED = 15;
+export const GUNNER_BOLT_RANGE = 24;
+export const GUNNER_BOLT_R = 0.45;
+export const GUNNER_BOLT_KNOCK = 4;
+/** Seconds between a gunner's shots (min + random extra). */
+export const GUNNER_COOLDOWN = 2.4;
+export const GUNNER_COOLDOWN_RAND = 1;
+/** At most this many gunners aim at once (their own limit, separate from the melee attack tokens). */
+export const GUNNER_MAX_AIMING = 2;
+
+/** Bulwark plow-shield: cosine of the half-angle of its frontal block cone (45° each side = a 90° cone). */
+export const BULWARK_SHIELD_COS = Math.SQRT1_2;
+/** Share of a direct frontal hit the shield takes off (magnetic `pierce` hits: only down to PLATE_PIERCE). */
+export const BULWARK_BLOCK = 0.75;
+/** Damage multiplier on hits into its rear vent (arriving within 60° of straight behind). */
+export const BULWARK_REAR_MULT = 1.3;
+
+/** Slushlings a wrecked Slushpile bursts into, and their outward kick (m/s). */
+export const SPLIT_COUNT = 3;
+export const SPLIT_KICK = 8;

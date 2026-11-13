@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import type { DamageOpts, EnemyHandle, EnemyManagerAPI, GameContext, SoundName } from '../core/types';
 import { ARENA, ENEMY_GATES, GATE_WIDTH, PLOW_MASS } from '../core/types';
-import { bodyBand, heightOk } from './combat/shared';
-import { ENEMIES, type EnemyType } from '../config/enemies';
+import { bodyBand, heightOk, waveHitPlow } from './combat/shared';
+import {
+  BULWARK_BLOCK, BULWARK_REAR_MULT, BULWARK_SHIELD_COS, ENEMIES, GUNNER_BOLT_KNOCK, GUNNER_BOLT_R, GUNNER_BOLT_RANGE,
+  GUNNER_BOLT_SPEED, GUNNER_MAX_AIMING, GUNNER_RANGE_MAX, SPLIT_COUNT, SPLIT_KICK, type EnemyType,
+} from '../config/enemies';
 import { Bot, Vuln, type Host } from './enemies/Bot';
 import { HpBars, createRig, debrisGeometry, debrisMaterials, debrisWarmMaterials, disposeRig, rollWheels } from './enemies/models';
 import { DecalPool } from './enemies/decals';
@@ -22,12 +25,23 @@ import {
  *    2 minions (1 while a boss is alive) are winding up / attacking at once — others circle and strafe
  *  - motion integration with finite turn rates, knockback, wall clamping (+ wall-hit detection for charges)
  *  - bot-bot separation by mass, plow contact (separation, player rams, bot attack windows)
- *  - damage resolution: armor, Brute front plate, Frostbyte ball block + CLASH, vulnerability multipliers,
- *    freeze, knockback / mass, hit flash, minion HP bars, death explosions with flying debris
+ *  - damage resolution: armor, Brute front plate, Bulwark plow-shield (area hits go round it), Frostbyte ball block +
+ *    CLASH, vulnerability multipliers, freeze, knockback / mass, hit flash, minion HP bars, death explosions with
+ *    flying debris, the Slushpile's split into slushlings
+ *  - the Flurry Gunner's snowball bolts (a small pooled projectile set: flight, plow hits, walls / props / terrain)
  *  - telegraph ground decals (charge stripes, warning rings) */
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const WEAK_SPOT_BURST = { color: 0xffe14a, count: 10, speed: 6, size: 0.12, gravity: 10, life: 0.5 };
+/** A Bulwark BLOCK: cyan sparks off the shield face. */
+const SHIELD_BLOCK_BURST = { color: 0x9fe8ff, count: 18, speed: 10, size: 0.09, gravity: 20, life: 0.35 };
+/** Gunner bolt: the powder trail it leaves while flying, and the splat when it hits something. */
+const BOLT_TRAIL = { color: 0xe8f8ff, count: 1, speed: 0.6, size: 0.16, gravity: 1, life: 0.35 };
+const BOLT_SPLAT = { color: 0xffffff, count: 16, speed: 6, size: 0.2, gravity: 12, life: 0.6 };
+const BOLT_SPLAT_TINT = { color: 0x7fe6ff, count: 8, speed: 4, size: 0.1, gravity: 8, life: 0.4 };
+/** A Slushpile bursting: grey slush + teal meltwater. */
+const SPLIT_BURST = { color: 0xb6cad6, count: 26, speed: 8, size: 0.3, gravity: 14, life: 0.8 };
+const SPLIT_BURST_TINT = { color: 0x3fd1a8, count: 12, speed: 6, size: 0.14, gravity: 12, life: 0.6 };
 const HOT_STEAM_BURST = { color: 0xdfe6ee, count: 3, speed: 1.5, size: 0.3, gravity: -3, life: 0.8 };
 
 /** Knockback speed (m/s) above which a flying bot smashes a destructible prop (cf. Plow's PROP_SMASH_SPEED). */
@@ -83,6 +97,32 @@ interface Debris {
 
 /** DamageOpts.pierce: share of a magnetic hit a frontal plate lets through. */
 const PLATE_PIERCE = 0.8;
+/** Bulwark rear vent: hits arriving within 60° of straight behind (cosine of the angle to its back). */
+const REAR_COS = 0.5;
+/** Gunner bolts alive at once (pool size; a shot past it is dropped). */
+const MAX_BOLTS = 24;
+/** Seconds between a bolt's trail puffs. */
+const BOLT_TRAIL_GAP = 0.04;
+/** A bolt hits the plow when its centre is within this height of the plow's body centre (feet + this). */
+const BOLT_PLOW_MID = 0.9;
+const BOLT_PLOW_BAND = 1.5;
+
+/** A Flurry Gunner's snowball bolt in flight (pooled). */
+interface Bolt {
+  mesh: THREE.Mesh;
+  owner: Bot;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vz: number;
+  /** Metres of flight left. */
+  left: number;
+  trailT: number;
+  active: boolean;
+}
+let _boltGeo: THREE.BufferGeometry | null = null;
+let _boltMat: THREE.MeshStandardMaterial | null = null;
 
 export class EnemyManager implements EnemyManagerAPI, Host {
   readonly ctx: GameContext;
@@ -103,6 +143,9 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private barQ = new THREE.Quaternion();
   private attackers = 0;
   private thieves = 0;
+  /** Gunners holding an aim slot (Host.tryVolley). */
+  private aimers = 0;
+  private bolts: Bolt[] = [];
   private nextTokenT = 0;
   private lastSfx = new Map<string, number>();
   private plowAlive = true;
@@ -159,7 +202,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
    * Spawn a bot at (x, z). `opts.y` = the height to spawn at (a deck top, e.g. an Omega Works hatch on the Assembly
    * Floor): the bot stands on the highest surface within a step of it. Default 0 = the ground (under any deck).
    */
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number }): EnemyHandle {
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean }): EnemyHandle {
     const ctx = this.ctx;
     const def = ENEMIES[type];
     const rig = createRig(type);
@@ -168,7 +211,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
 
     let gi = -1;
     let best = 10 * 10;
-    for (let i = 0; i < ENEMY_GATES.length; i++) {
+    for (let i = 0; i < ENEMY_GATES.length && !opts?.noGate; i++) {
       const g = ENEMY_GATES[i];
       const d2 = (g.x - x) ** 2 + (g.z - z) ** 2;
       if (d2 < best) {
@@ -258,9 +301,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       dx /= dl;
       dz /= dl;
     }
-    const front = dl > 1e-3 && Math.sin(e.heading + e.spinVis) * dx + Math.cos(e.heading + e.spinVis) * dz > 0.5;
+    const facing = dl > 1e-3 ? Math.sin(e.heading + e.spinVis) * dx + Math.cos(e.heading + e.spinVis) * dz : 0;
+    const front = facing > 0.5;
     let dmg = amount;
     let deflect = false;
+    let rear = false;
 
     if (e.type === 'brute' && front) {
       dmg *= opts?.pierce ? PLATE_PIERCE : 0.3;
@@ -276,6 +321,16 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     } else if (e.type === 'spinner' && e.state === 'spin' && src === 'ram') {
       dmg *= 0.3;
       deflect = true;
+    } else if (e.type === 'bulwark' && !(opts?.area || opts?.ult || src === 'slam' || src === 'stomp' || src === 'airSlam')) {
+      // The plow-shield takes direct hits from its front 90°; area damage goes round it. Its rear vent is soft.
+      if (facing > BULWARK_SHIELD_COS) {
+        dmg *= opts?.pierce ? PLATE_PIERCE : 1 - BULWARK_BLOCK;
+        deflect = true;
+        e.glow = 1;
+      } else if (facing < -REAR_COS) {
+        dmg *= BULWARK_REAR_MULT;
+        rear = true;
+      }
     }
 
     // Rapid small hits (ARSENAL rounds, laser ticks) pierce part of the flat armour, which would otherwise gut them.
@@ -311,21 +366,28 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (deflect && fx) {
       const fwX = Math.sin(e.heading);
       const fwZ = Math.cos(e.heading);
-      _v.set(e.position.x + fwX * e.radius, e.groundY + e.rig.height * 0.4, e.position.z + fwZ * e.radius);
-      fx.burst(_v, { color: e.type === 'frostbyte' ? 0xbff4ff : 0xffd24a, count: 16, speed: 9, size: 0.09, gravity: 20, life: 0.35 });
+      const shield = e.type === 'bulwark';
+      const r = shield ? e.rig.front : e.radius;
+      _v.set(e.position.x + fwX * r, e.groundY + e.rig.height * 0.4, e.position.z + fwZ * r);
+      if (shield) fx.burst(_v, SHIELD_BLOCK_BURST);
+      else fx.burst(_v, { color: e.type === 'frostbyte' ? 0xbff4ff : 0xffd24a, count: 16, speed: 9, size: 0.09, gravity: 20, life: 0.35 });
       if (e.blockFxT <= 0) {
         e.blockFxT = 0.25;
-        this.sfx('block', 0.7, 1, 0.06);
+        this.sfx('block', 0.7, shield ? 1.25 : 1, 0.06);
         _v.y += 1.2;
-        fx.floatText(_v, e.type === 'spinner' ? 'SPINNING!' : opts?.pierce ? 'PIERCE' : 'DEFLECT', opts?.pierce ? '#ffc46a' : '#9fd8ff', 0.7);
+        const text = e.type === 'spinner' ? 'SPINNING!' : opts?.pierce ? 'PIERCE' : shield ? 'BLOCK' : 'DEFLECT';
+        fx.floatText(_v, text, opts?.pierce ? '#ffc46a' : '#9fd8ff', shield ? 0.85 : 0.7);
       }
+    } else if (rear && fx) {
+      _v.set(e.position.x - Math.sin(e.heading) * e.radius, e.groundY + e.rig.height * 0.45, e.position.z - Math.cos(e.heading) * e.radius);
+      fx.burst(_v, WEAK_SPOT_BURST);
     } else if (vm > 1 && fx) {
       _v.set(e.position.x, e.groundY + e.rig.height * 0.7, e.position.z);
       fx.burst(_v, WEAK_SPOT_BURST);
     }
 
     // Big hits stagger minions (cancels their wind-up).
-    if (!e.isBoss && e.hp > 0 && e.vuln === Vuln.None && amount >= (e.type === 'brute' ? 30 : 18) && !deflect) {
+    if (!e.isBoss && e.hp > 0 && e.vuln === Vuln.None && amount >= (e.type === 'brute' || e.type === 'bulwark' ? 30 : 18) && !deflect) {
       e.stagger = 0.45;
       resetAI(this, e);
     }
@@ -350,8 +412,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     donaldProps.clear(this.ctx);
     for (const d of this.debris) d.active = false;
     this.syncDebris();
+    for (const b of this.bolts) this.dropBolt(b);
     this.attackers = 0;
     this.thieves = 0;
+    this.aimers = 0;
     this.nextTokenT = 0;
     this.lastSfx.clear();
   }
@@ -377,15 +441,18 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     // recount tokens (robust against any missed release)
     let att = 0;
     let th = 0;
+    let aim = 0;
     this.bossAlive = false;
     for (const e of this.list) {
       if (!e.alive) continue;
       if (e.token) att++;
       if (e.thiefToken) th++;
+      if (e.volley) aim++;
       if (e.isBoss) this.bossAlive = true;
     }
     this.attackers = att;
     this.thieves = th;
+    this.aimers = aim;
     let minions = 0;
     for (const e of this.list) if (e.alive && !e.isBoss) minions++;
     // Only the true stragglers: nothing left to spawn in this round.
@@ -400,6 +467,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     this.separate();
     this.plowContact();
+    this.updateBolts(dt);
     this.barQ.copy(ctx.camera.quaternion);
     for (let i = 0; i < this.list.length; i++) {
       const e = this.list[i];
@@ -453,7 +521,50 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     return true;
   }
 
+  tryVolley(e: Bot): boolean {
+    if (e.volley) return true;
+    if (this.aimers >= GUNNER_MAX_AIMING) return false;
+    e.volley = true;
+    this.aimers++;
+    return true;
+  }
+
+  shoot(e: Bot, x: number, y: number, z: number, dx: number, dz: number): void {
+    let b: Bolt | null = null;
+    for (const o of this.bolts) if (!o.active) {
+      b = o;
+      break;
+    }
+    if (!b) {
+      if (this.bolts.length >= MAX_BOLTS) return;
+      _boltGeo ??= new THREE.IcosahedronGeometry(GUNNER_BOLT_R, 1);
+      _boltMat ??= new THREE.MeshStandardMaterial({ color: 0xf4fbff, roughness: 0.6, emissive: 0x7fe6ff, emissiveIntensity: 0.9, flatShading: true });
+      const mesh = new THREE.Mesh(_boltGeo, _boltMat);
+      mesh.castShadow = true;
+      mesh.visible = false;
+      this.ctx.scene.add(mesh);
+      b = { mesh, owner: e, x: 0, y: 0, z: 0, vx: 0, vz: 0, left: 0, trailT: 0, active: false };
+      this.bolts.push(b);
+    }
+    const l = Math.hypot(dx, dz) || 1;
+    b.owner = e;
+    b.x = x;
+    b.y = y;
+    b.z = z;
+    b.vx = (dx / l) * GUNNER_BOLT_SPEED;
+    b.vz = (dz / l) * GUNNER_BOLT_SPEED;
+    b.left = GUNNER_BOLT_RANGE;
+    b.trailT = 0;
+    b.active = true;
+    b.mesh.visible = true;
+    b.mesh.position.set(x, y, z);
+  }
+
   releaseToken(e: Bot): void {
+    if (e.volley) {
+      e.volley = false;
+      this.aimers = Math.max(0, this.aimers - 1);
+    }
     if (e.token) {
       e.token = false;
       this.attackers = Math.max(0, this.attackers - 1);
@@ -717,9 +828,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   /** Last-bot hunt: a straggler far from the player drops its wander / orbit and drives straight at them (via the
    *  zone's level routing when one is set and the player is on another level). Close in, its own AI attacks. */
   private hunt(e: Bot): void {
-    if (e.entering || e.atk || e.state === 'flee' || e.stun > 0 || e.stagger > 0) return;
+    if (e.entering || e.atk || e.windup > 0 || e.state === 'flee' || e.stun > 0 || e.stagger > 0) return;
     const d = Math.hypot(this.px - e.position.x, this.pz - e.position.z);
-    if (d < HUNT_RANGE) return;
+    // A Flurry Gunner at its standoff ring is not a straggler: only hunt it in from well beyond the ring.
+    if (d < (e.type === 'gunner' ? GUNNER_RANGE_MAX + 3 : HUNT_RANGE)) return;
     let tx = this.px;
     let tz = this.pz;
     const plow = this.ctx.plow;
@@ -1082,6 +1194,108 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     ctx.events.emit('enemyKilled', { enemy: e, coins, source, inLava: inLava || source === 'lava' || undefined, weapon });
     if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: def.name });
     ctx.pickups?.spawnCoins(p.clone(), coins);
+    if (e.type === 'slushpile') this.split(e);
+  }
+
+  /** A wrecked Slushpile bursts into SPLIT_COUNT slushlings, kicked outward from where it died (same hp scaling as the
+   *  pile, so Hard mode / Survival waves carry over). They are fresh wave bots: aliveCount() covers them. */
+  private split(e: Bot): void {
+    const p = e.position;
+    const hpMult = e.maxHp / e.def.hp;
+    const a0 = Math.random() * Math.PI * 2;
+    for (let i = 0; i < SPLIT_COUNT; i++) {
+      const a = a0 + (i / SPLIT_COUNT) * Math.PI * 2;
+      const s = Math.sin(a);
+      const c = Math.cos(a);
+      const m = this.spawn('slushling', p.x + s * e.radius * 0.6, p.z + c * e.radius * 0.6, { hpMult, heading: a, y: e.vert.surfaceY, noGate: true }) as Bot;
+      m.entering = false;
+      m.kvx = s * SPLIT_KICK + e.vx * 0.3;
+      m.kvz = c * SPLIT_KICK + e.vz * 0.3;
+      m.cd = 0.9 + i * 0.35;
+      m.orbitA = a;
+      this.clampPos(m, false);
+    }
+    const fx = this.ctx.fx;
+    _v.set(p.x, e.groundY + e.rig.height * 0.5, p.z);
+    fx.burst(_v, SPLIT_BURST);
+    fx.burst(_v, SPLIT_BURST_TINT);
+    _v.y = e.groundY + e.rig.height + 0.9;
+    fx.floatText(_v, 'SPLIT!', '#7fe8cf', 0.9);
+  }
+
+  /* ------------------------------------------------------------------ gunner bolts */
+
+  /** Fly every live bolt: it pops on the plow (a ranged hit: no body band, blockable by the ball shield from the
+   *  front, see waveHitPlow), on an arena wall, a prop / obstacle, rising ground or a deck side, or at the end of
+   *  its reach. */
+  private updateBolts(dt: number): void {
+    const ctx = this.ctx;
+    const plow = ctx.plow;
+    const t = ctx.terrain;
+    const obs = ctx.world?.obstacles;
+    const hitR = this.pr + GUNNER_BOLT_R;
+    for (let i = 0; i < this.bolts.length; i++) {
+      const b = this.bolts[i];
+      if (!b.active) continue;
+      const x0 = b.x;
+      const z0 = b.z;
+      b.x += b.vx * dt;
+      b.z += b.vz * dt;
+      b.left -= GUNNER_BOLT_SPEED * dt;
+      b.mesh.position.set(b.x, b.y, b.z);
+      b.mesh.rotation.x += dt * 9;
+      let pop = b.left <= 0;
+      // the plow: closest approach along this frame's segment (a fast frame can't tunnel through it)
+      if (!pop && this.plowAlive) {
+        const sx = b.x - x0;
+        const sz = b.z - z0;
+        const sl = sx * sx + sz * sz;
+        const k = sl > 1e-8 ? clamp(((this.px - x0) * sx + (this.pz - z0) * sz) / sl, 0, 1) : 1;
+        const cx = x0 + sx * k - this.px;
+        const cz = z0 + sz * k - this.pz;
+        if (cx * cx + cz * cz < hitR * hitR && Math.abs(b.y - (plow.position.y + BOLT_PLOW_MID)) < BOLT_PLOW_BAND) {
+          const from = 1 / GUNNER_BOLT_SPEED;
+          waveHitPlow(ctx, b.owner, b.owner.def.ramDamage, { knockback: GUNNER_BOLT_KNOCK, fromX: b.x - b.vx * from, fromZ: b.z - b.vz * from });
+          pop = true;
+        }
+      }
+      if (!pop && (b.x < ARENA.minX || b.x > ARENA.maxX || b.z < ARENA.minZ || b.z > ARENA.maxZ)) pop = true;
+      if (!pop && obs) {
+        for (let j = 0; j < obs.length; j++) {
+          const o = obs[j];
+          const r = o.r + GUNNER_BOLT_R;
+          if ((b.x - o.x) ** 2 + (b.z - o.z) ** 2 < r * r) {
+            pop = true;
+            break;
+          }
+        }
+      }
+      if (!pop && t.active && (t.ground(b.x, b.z) > b.y - GUNNER_BOLT_R || (t.decks.length && t.wallAt(b.x, b.z, b.y - GUNNER_BOLT_R, GUNNER_BOLT_R * 2, GUNNER_BOLT_R)))) pop = true;
+      if (pop) {
+        _v.set(b.x, b.y, b.z);
+        ctx.fx.burst(_v, BOLT_SPLAT);
+        ctx.fx.burst(_v, BOLT_SPLAT_TINT);
+        if (this.near(b.x, b.z)) this.sfx('hit', 0.3, 1.5, 0.05);
+        this.dropBolt(b);
+        continue;
+      }
+      if ((b.trailT -= dt) <= 0) {
+        b.trailT = BOLT_TRAIL_GAP;
+        ctx.fx.burst(b.mesh.position, BOLT_TRAIL);
+      }
+    }
+  }
+
+  private dropBolt(b: Bolt): void {
+    b.active = false;
+    b.mesh.visible = false;
+  }
+
+  /** Gunner bolts in flight (tests / probes). */
+  get boltsInFlight(): number {
+    let n = 0;
+    for (const b of this.bolts) if (b.active) n++;
+    return n;
   }
 
   private removeVisual(e: Bot): void {
@@ -1136,6 +1350,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       by += Math.sin(t * 53) * e.jitter * 0.5;
     } else body.position.x = 0;
     body.position.y = by;
+    if (e.type === 'slushpile') {
+      // the heap wobbles like jelly, harder while it winds up a belly-flop
+      const w = Math.sin(t * 7 + e.bob) * 0.035 * (1 + e.windup * 3);
+      body.scale.set(1 + w, 1 - w, 1 + w);
+    }
     body.rotation.x = -e.windup * 0.06 + clamp(e.speed * 0.004, -0.04, 0.06) * (e.type === 'thief' ? 4 : 1);
     if (rig.lift) rig.lift.rotation.x = -e.rear * 0.42;
 
