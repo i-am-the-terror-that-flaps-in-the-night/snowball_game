@@ -46,7 +46,7 @@ export interface DecalDef extends CosmeticBase {
   style: DecalStyle | null;
 }
 
-export type TrailStyle = 'ice' | 'fire' | 'spark' | 'confetti' | 'rainbow';
+export type TrailStyle = 'ice' | 'fire' | 'spark' | 'confetti' | 'rainbow' | 'ghostfire';
 
 export interface TrailDef extends CosmeticBase {
   slot: 'trail';
@@ -81,7 +81,7 @@ export interface HornDef extends CosmeticBase {
   icon: string;
 }
 
-export type KillStyle = 'confetti' | 'lightning' | 'coins' | 'snowflakes' | 'pixel';
+export type KillStyle = 'confetti' | 'lightning' | 'coins' | 'snowflakes' | 'pixel' | 'soul';
 
 export interface KillDef extends CosmeticBase {
   slot: 'kill';
@@ -118,6 +118,7 @@ export const COSMETICS: readonly CosmeticDef[] = [
   { id: 'trail_spark', slot: 'trail', name: 'Static Sparks', blurb: 'Crackling blue sparks.', price: 700, req: { achievements: 8 }, style: 'spark', colors: [0x9fe8ff, 0xffffff, 0x4aa8ff] },
   { id: 'trail_confetti', slot: 'trail', name: 'Party Mode', blurb: 'Every lap is a parade.', price: 900, style: 'confetti', colors: [0xff4359, 0xffc531, 0x35c86b, 0x3fa7f0, 0xb05cf0, 0xff8a1f] },
   { id: 'trail_rainbow', slot: 'trail', name: 'Rainbow Road', blurb: 'Leave a rainbow everywhere you go.', price: 1500, req: { stars: 12 }, style: 'rainbow', colors: [0xff4359, 0xffc531, 0x35c86b, 0x3fa7f0, 0xb05cf0] },
+  { id: 'trail_ghostfire', slot: 'trail', name: 'Ghostfire', blurb: 'Rolling ghost-smoke with lightning in it. Dash to rattle the chains.', price: 1800, req: { stars: 15 }, style: 'ghostfire', colors: [0x2a0c48, 0xb04dff, 0x12041f] },
   // ---- Blade skin
   { id: 'blade_stock', slot: 'blade', name: 'Factory Blade', blurb: "Each plow's own steel.", price: 0, style: null, colors: [0xffd23a, 0x8a8f99] },
   { id: 'blade_hazard', slot: 'blade', name: 'Hazard Stripes', blurb: 'Caution: may contain bots.', price: 200, style: 'hazard', colors: [0xffc21a, 0x16181c] },
@@ -140,6 +141,7 @@ export const COSMETICS: readonly CosmeticDef[] = [
   { id: 'kill_pixel', slot: 'kill', name: 'Pixel Pop', blurb: 'Game over, man.', price: 600, style: 'pixel', colors: [0x35ff6b, 0xff3bd0, 0x3fd8ff, 0xfff23a], icon: '👾' },
   { id: 'kill_coins', slot: 'kill', name: 'Jackpot', blurb: 'A fountain of gold coins (just for show).', price: 1000, req: { achievements: 10 }, style: 'coins', colors: [0xffd23a, 0xffb000, 0xfff3c4], icon: '🪙' },
   { id: 'kill_lightning', slot: 'kill', name: 'Smite', blurb: 'Lightning strikes the wreck.', price: 1600, req: { stars: 12 }, style: 'lightning', colors: [0x9fe8ff, 0xffffff, 0x4aa8ff], icon: '⚡' },
+  { id: 'kill_soul', slot: 'kill', name: 'Soul Harvest', blurb: 'Their soul is yours now. It flies home to your hull.', price: 2000, req: { achievements: 15 }, style: 'soul', colors: [0xb04dff, 0xe0a8ff, 0x4a1a7a], icon: '👻' },
 ];
 
 /** Free default per slot (owned by everyone, equipped on fresh / damaged saves). */
