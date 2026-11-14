@@ -159,6 +159,26 @@
 .ss-style-trail-spark .ss-style-puff { width: 5px; height: 5px; border-radius: 1px; transform: translateY(calc(-50% + (var(--i) % 2 * 2 - 1) * 5px)) rotate(45deg); }
 .ss-style-trail-confetti .ss-style-puff { width: 6px; height: 4px; border-radius: 1px; box-shadow: none; transform: translateY(calc(-50% + (var(--i) % 3 - 1) * 7px)) rotate(calc(var(--i) * 37deg)); }
 .ss-style-trail-rainbow .ss-style-puff { width: 9px; height: 9px; opacity: 0.95; }
+/* Ghostfire: violet-black smoke billows over a dim purple track line, a lightning bolt crackling inside. */
+.ss-style-swatch.ss-style-trail-ghostfire { background: radial-gradient(ellipse at 60% 70%, #2a0c48, #0a0214 75%); }
+.ss-style-trail-ghostfire::before {
+  content: ''; position: absolute; left: 20px; right: 4px; top: calc(50% + 8px); height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, #b04dff, #4a1a7a 45%, transparent); box-shadow: 0 0 5px #4a1a7a;
+}
+.ss-style-trail-ghostfire::after {
+  content: ''; position: absolute; left: calc(50% - 4px); top: calc(50% - 9px); width: 9px; height: 16px; z-index: 1;
+  background: #f4e8ff; clip-path: polygon(55% 0, 15% 55%, 45% 55%, 25% 100%, 85% 40%, 55% 40%, 80% 0);
+  filter: drop-shadow(0 0 3px #b04dff); animation: ss-style-bolt 1.3s steps(1) infinite;
+}
+.ss-style-trail-ghostfire .ss-style-puff {
+  width: calc(14px - var(--i) * 0.7px); height: calc(12px - var(--i) * 0.6px); border-radius: 50%;
+  background: radial-gradient(circle at 45% 40%, #3a1460 0 30%, #1c0830 65%, #0a0214);
+  box-shadow: 0 0 0 1px #12041f, 0 0 6px #4a1a7a;
+  transform: translateY(calc(-50% - var(--i) % 2 * 4px));
+  animation: ss-style-ghost 1.6s ease-in-out calc(var(--i) * -0.23s) infinite;
+}
+@keyframes ss-style-bolt { 0%, 62%, 80% { opacity: 0; } 64%, 74%, 84%, 88% { opacity: 1; } }
+@keyframes ss-style-ghost { 50% { opacity: 0.55; translate: 0 -3px; } }
 @keyframes ss-style-drift { 50% { opacity: 0.45; } }
 
 .ss-style-foot { margin-top: 12px; justify-content: space-between; }

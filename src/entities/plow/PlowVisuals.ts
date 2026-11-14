@@ -211,6 +211,9 @@ export abstract class PlowVisuals extends PlowBase {
     this.object.rotation.set(0, this.heading, 0);
   }
 
+  /** Rear-corner positions (x, z for left, right) at the last trail puff (Ghostfire track marks). */
+  private readonly trailPrev = new Float32Array(4);
+
   /** Cosmetic trail puffs from both rear corners (throttled; denser while dashing). */
   protected emitTrail(dt: number, dash: boolean): void {
     const trail = this.look.trail;
@@ -222,10 +225,17 @@ export abstract class PlowVisuals extends PlowBase {
     const yaw = this.object.rotation.y;
     const s = Math.sin(yaw);
     const c = Math.cos(yaw);
-    for (const sx of [-1, 1]) {
-      const x = r.x * sx;
+    for (let k = 0; k < 2; k++) {
+      const x = r.x * (k * 2 - 1);
       _c.set(this.position.x + x * c + r.z * s, this.position.y + r.y, this.position.z - x * s + r.z * c);
-      emitTrail(this.ctx.fx, trail, _c, dash, this.time + (sx > 0 ? 0.15 : 0));
+      // Ground this corner covered since its last puff (Ghostfire lays a glowing track mark along it; a teleport
+      // or a parked showcase lays none).
+      const dx = _c.x - this.trailPrev[k * 2], dz = _c.z - this.trailPrev[k * 2 + 1];
+      this.trailPrev[k * 2] = _c.x;
+      this.trailPrev[k * 2 + 1] = _c.z;
+      const moved = Math.hypot(dx, dz);
+      const lay = moved < 4 ? moved : 0;
+      emitTrail(this.ctx.fx, trail, _c, dash, this.time + (k > 0 ? 0.15 : 0), lay > 0.02 ? Math.atan2(dx, dz) : yaw, lay, this.position.y);
     }
   }
 

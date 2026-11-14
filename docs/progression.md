@@ -101,9 +101,14 @@ There's no loot in the Tutorial or the Duel. Tables live in `src/config/loot.ts`
   Arc Lance: kills tagged `weapon: 'arcLance'`), **Exciting Opportunity** (The Omega Works on Hard: the PROTOCOL B
   finale; "every arena on Hard" is Glutton for Punishment) and **Q4: Total Defeat** (Hard Omega Works with 0 HP lost in the boss round,
   `runFinished.bossDamage`).
-- **🎨 Paint Shop**: 8 paints, 5 decals, 5 exhaust trails, 6 blade skins, 5 slam horns and 5 kill effects, 150–2000
-  coins. Purely visual; five premium items also need challenge stars or achievements. Hover or focus an item to
-  preview it on the plow before buying.
+- **🎨 Paint Shop**: 9 paints, 5 decals, 6 exhaust trails, 6 blade skins, 5 slam horns and 6 kill effects, 150–2000
+  coins. Purely visual and sold once for every plow; the premium items also need challenge stars or achievements.
+  Hover or focus an item to preview it on the plow before buying. The purple pair: **Ghostfire** (trail, 1,800 +
+  15 stars: thick violet-black smoke billowing off the back with white-violet lightning crackling inside it, a dim
+  ember glow at its base, tyre tracks that glow dark purple for ~1.3 s, and on a dash more lightning plus a
+  spectral streak with flickering chain links) and **Soul Harvest** (kill, 2,000 + 15 achievements: the wreck's
+  skull-faced soul spirals ~3.6 m up for ~1.15 s, then darts into your hull with a purple flash). Both are drawn by
+  one pooled sprite batch (`fx/ghostFx.ts`, owned by Fx).
 
 ## Old saves
 
