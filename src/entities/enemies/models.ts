@@ -938,6 +938,143 @@ function slushpile(): Tpl {
   return { root, height: 2.3, stacks, front: 1.1 };
 }
 
+/** Mirror Plow: a low chrome rival plow (mirror-finish panels over a dark chassis, a raked windshield, a broad chrome
+ *  blade with a magenta edge) under a floating RECORDING HALO (the glow: a ring + four fins, recoloured by the move it
+ *  copies, Enemies.render). The halo floats MIRROR_HALO_Y up. */
+export const MIRROR_HALO_Y = 2.75;
+function mirror(): Tpl {
+  const t: EnemyType = 'mirror';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  base.add(G.box(), M.black(), [0, 0.42, 0], [1.6, 0.22, 2.7]);
+  for (const sx of [-1, 1]) for (const sz of [-0.85, 0.85]) wheels.add(sx * 0.95, 0.42, sz, 0.42, 0.3, M.chrome());
+  wheels.flush(root);
+  const { b } = sub(root, 'body', [0, 0, 0]);
+  const CHROME = mat('paint_mirror', ENEMIES[t].color, { roughness: 0.12, metalness: 0.75 }, 'paint');
+  // chassis + sculpted hood: chrome panels with dark seams
+  b.add(G.wedge(0.32), CHROME, [0, 0.85, 0.25], [1.7, 0.52, 2.2]);
+  b.add(G.box(), M.dark(), [0, 0.6, -0.2], [1.74, 0.1, 2.9]);
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), CHROME, [sx * 0.86, 0.82, -0.25], [0.12, 0.34, 2.3]);
+    b.add(G.box(), accent(t), [sx * 0.93, 0.76, 0.1], [0.04, 0.05, 1.7]);
+  }
+  // cab with a raked dark windshield and a mirrored roof
+  b.add(G.box(), CHROME, [0, 1.38, -0.55], [1.3, 0.62, 1.1]);
+  b.add(G.box(), M.glass(), [0, 1.4, 0.03], [1.2, 0.5, 0.08], [-0.5, 0, 0]);
+  b.add(G.box(), M.glass(), [0, 1.42, -0.55], [1.34, 0.36, 0.9]);
+  b.add(G.box(), CHROME, [0, 1.74, -0.6], [1.36, 0.1, 1.16]);
+  // visor eye strip behind the windshield
+  b.add(G.box(), eyeMat(t, 0xff3bd0, 2.4), [0, 1.48, -0.02], [0.9, 0.06, 0.05], [-0.5, 0, 0]);
+  // broad chrome blade with a magenta edge + side wings
+  b.add(G.box(), M.chrome(), [0, 0.62, 1.5], [2.3, 0.8, 0.14], [-0.15, 0, 0]);
+  for (const sx of [-1, 1]) b.add(G.box(), M.chrome(), [sx * 1.32, 0.62, 1.32], [0.6, 0.8, 0.14], [-0.15, sx * -0.5, 0]);
+  b.add(G.box(), accent(t), [0, 0.24, 1.56], [2.3, 0.07, 0.16]);
+  b.add(G.box(), M.black(), [0, 1.04, 1.44], [2.36, 0.07, 0.2]);
+  for (const sx of [-1, 1]) b.add(G.cyl(8), M.dark(), [sx * 0.55, 0.78, 1.0], [0.08, 0.7, 0.08], [PI / 2 - 0.35, 0, 0]);
+  // twin exhausts + rear spoiler
+  for (const sx of [-1, 1]) stack(b, stacks, sx * 0.52, 0.9, -1.25, 0.08, 0.32, M.chrome(), M.dark());
+  b.add(G.box(), CHROME, [0, 1.3, -1.35], [1.5, 0.06, 0.34]);
+  for (const sx of [-1, 1]) b.add(G.box(), M.dark(), [sx * 0.55, 1.12, -1.35], [0.06, 0.34, 0.2]);
+  // RECORDING HALO (glow): a ring with four fins, on a thin mast
+  b.add(G.cyl(6), M.dark(), [0, 2.05, -0.6], [0.04, 0.62, 0.04]);
+  const HALO = glowMat(t, 0xff3bd0, 0.6);
+  b.add(G.torus(), HALO, [0, MIRROR_HALO_Y, -0.6], [0.62, 0.62, 0.62], [PI / 2, 0, 0]);
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * PI * 2;
+    b.add(G.box(), HALO, [Math.sin(a) * 0.62, MIRROR_HALO_Y, -0.6 + Math.cos(a) * 0.62], [0.08, 0.26, 0.08]);
+  }
+  b.flush();
+  base.flush();
+  return { root, height: 3.1, stacks, front: 1.6 };
+}
+
+/** Magnet Tower: a tracked base under a tall mast carrying a red horseshoe magnet (silver pole tips = the glow, which
+ *  crackles while it pulls and flares red-hot overheated), a copper coil drum (spinY) and three fold-down anchor legs
+ *  (the lift: Enemies.render lowers them with `rear`). */
+export const MAGNET_TOP_Y = 3.3;
+function magnet(): Tpl {
+  const t: EnemyType = 'magnet';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  treads(base, wheels, 0.8, 1.9, 0.5, 0.42, 3, M.dark());
+  wheels.flush(root);
+  const { b, g } = sub(root, 'body', [0, 0, 0]);
+  b.add(G.box(), M.dark(), [0, 0.68, 0], [1.5, 0.3, 1.7]);
+  b.add(G.box(), M.hazard(), [0, 0.84, 0.86], [1.3, 0.12, 0.03], ZERO, [3, 0.4]);
+  // mast + collar
+  b.add(G.cyl(10), M.steel(), [0, 1.6, 0], [0.22, 1.6, 0.22]);
+  b.add(G.cyl(12), M.black(), [0, 1.0, 0], [0.42, 0.24, 0.42]);
+  b.add(G.cyl(12), paint(t), [0, 2.35, 0], [0.34, 0.18, 0.34]);
+  // horseshoe: two red arms + a curved crown of boxes, silver pole tips (glow) facing forward-up
+  const R = 0.62;
+  for (let k = 0; k <= 6; k++) {
+    const a = PI * (k / 6);
+    b.add(G.box(), paint(t), [Math.cos(a) * R, MAGNET_TOP_Y + Math.sin(a) * R * 0.9, 0], [0.34, 0.34, 0.4], [0, 0, a]);
+  }
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), paint(t), [sx * R, MAGNET_TOP_Y - 0.4, 0], [0.34, 0.7, 0.4]);
+    b.add(G.box(), glowMat(t, 0xcfd8ff, 0.5), [sx * R, MAGNET_TOP_Y - 0.86, 0], [0.36, 0.24, 0.42]);
+    b.add(G.box(), M.black(), [sx * R, MAGNET_TOP_Y - 0.72, 0], [0.38, 0.04, 0.44]);
+  }
+  // eye: a sensor in the crown
+  b.add(G.sph(1), eyeMat(t, 0xffe14a, 2.4), [0, MAGNET_TOP_Y + R * 0.9, 0.2], [0.11, 0.11, 0.08]);
+  // copper coil drum on the mast (spins while pulling)
+  const coil = sub(g, 'spinY', [0, 1.9, 0]);
+  coil.b.add(G.cyl(14), mat('copper', 0xc8742e, { roughness: 0.35, metalness: 0.6 }), [0, 0, 0], [0.4, 0.42, 0.4]);
+  for (let k = 0; k < 3; k++) coil.b.add(G.torus(), M.black(), [0, -0.14 + k * 0.14, 0], [0.42, 0.42, 0.42], [PI / 2, 0, 0]);
+  coil.b.add(G.box(), accent(t), [0.42, 0, 0], [0.06, 0.4, 0.12]);
+  coil.b.flush();
+  // three anchor legs on the lift (fold down when anchored)
+  const lift = sub(root, 'lift', [0, 0.9, 0]);
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * PI * 2 + PI / 3;
+    const x = Math.sin(a) * 0.7;
+    const z = Math.cos(a) * 0.7;
+    lift.b.add(G.box(), M.steel(), [x * 1.3, -0.3, z * 1.3], [0.14, 0.9, 0.14], [Math.cos(a) * 0.6, 0, -Math.sin(a) * 0.6]);
+    lift.b.add(G.cyl(8), M.black(), [x * 1.75, -0.78, z * 1.75], [0.2, 0.08, 0.2]);
+  }
+  lift.b.flush();
+  stack(b, stacks, -0.5, 0.84, -0.6, 0.07, 0.3, M.steel(), M.dark());
+  b.flush();
+  base.flush();
+  return { root, height: 4.1, stacks, front: 0.95 };
+}
+
+/** Tether Twin: a compact indigo hover-buggy with a gold tether pylon on its roof (the glow: the pylon's orb, where the
+ *  tether beam attaches, TWIN_PYLON_Y up) and gold fins. */
+export const TWIN_PYLON_Y = 1.85;
+function twinlink(): Tpl {
+  const t: EnemyType = 'twinlink';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  base.add(G.box(), M.black(), [0, 0.36, 0], [1.1, 0.16, 1.7]);
+  for (const sx of [-1, 1]) for (const sz of [-0.55, 0.55]) wheels.add(sx * 0.66, 0.34, sz, 0.34, 0.24, accent(t));
+  wheels.flush(root);
+  const { b } = sub(root, 'body', [0, 0, 0]);
+  b.add(G.wedge(0.4), paint(t), [0, 0.72, 0.1], [1.14, 0.5, 1.5]);
+  b.add(G.box(), paint(t), [0, 1.08, -0.35], [0.86, 0.36, 0.7]);
+  b.add(G.box(), M.black(), [0, 1.27, -0.35], [0.9, 0.05, 0.74]);
+  // twin eyes
+  for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0xffd23a, 2.6), [sx * 0.22, 1.1, 0.02], [0.09, 0.09, 0.05]);
+  // ram prow + gold fins
+  b.add(G.box(), M.steel(), [0, 0.5, 0.92], [1.1, 0.34, 0.12], [-0.2, 0, 0]);
+  for (const sx of [-1, 1]) b.add(G.box(), accent(t), [sx * 0.6, 0.98, -0.5], [0.05, 0.36, 0.6], [0, 0, sx * 0.3]);
+  // tether pylon: mast, collar and the glowing orb
+  b.add(G.cyl(8), M.dark(), [0, 1.5, -0.4], [0.06, 0.5, 0.06]);
+  b.add(G.cyl(10), accent(t), [0, 1.62, -0.4], [0.14, 0.06, 0.14]);
+  b.add(G.sph(1), glowMat(t, 0xffd23a, 0.9), [0, TWIN_PYLON_Y, -0.4], [0.2, 0.2, 0.2]);
+  stack(b, stacks, 0.3, 0.9, -0.8, 0.05, 0.2, M.steel(), M.dark());
+  b.flush();
+  base.flush();
+  return { root, height: 2.1, stacks, front: 1.0 };
+}
+
 /** Slushlings are scrappers shrunk to this scale (their radius is ~0.65 of a scrapper's). */
 const SLUSHLING_SCALE = 0.64;
 function slushling(): Tpl {
@@ -964,6 +1101,9 @@ const BUILDERS: Record<EnemyType, () => Tpl> = {
   bulwark,
   slushpile,
   slushling,
+  mirror,
+  magnet,
+  twinlink,
   rival: () => scrapper(), // Brawl rivals use their own models (src/brawl); placeholder for exhaustiveness
 };
 /** One depth-only shadow proxy per rigid group of the template (root base, body, lift, saw rings, auger, ball):

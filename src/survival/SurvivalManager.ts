@@ -63,6 +63,10 @@ export const SURVIVAL_MINIONS: readonly { type: EnemyType; cost: number; from: n
   // a pile is really four bots (it splits into three slushlings)
   { type: 'slushpile', cost: 2.6, from: 6 },
   { type: 'bulwark', cost: 3.2, from: 7 },
+  // elites: towers (often a fenced pair), twins (spawn as a pair: cost covers both draws), the copycat
+  { type: 'magnet', cost: 3.6, from: 9 },
+  { type: 'twinlink', cost: 2.4, from: 10 },
+  { type: 'mirror', cost: 6, from: 12 },
 ];
 
 /** Boss cycle (one entry per boss wave); twins come as a pair. Ordered like the campaign, so the first laps meet
@@ -620,8 +624,11 @@ export class SurvivalManager {
     const pace = Math.max(0.55, 2.4 - w * 0.08) / Math.sqrt(k);
     const groups: SpawnGroup[] = [];
     let delay = 0;
-    for (const [type, count] of counts) {
-      const interval = pace * (ENEMIES[type].radius > 1.2 ? 1.6 : 1);
+    for (const [type, n0] of counts) {
+      // Tether Twins come in pairs, spawned back to back so they link up
+      const pair = type === 'twinlink';
+      const count = pair ? n0 * 2 : n0;
+      const interval = pair ? 0.6 : pace * (ENEMIES[type].radius > 1.2 ? 1.6 : 1);
       groups.push({ type, count, delay, interval });
       delay += Math.min(8, count * interval * 0.5) + 1;
     }

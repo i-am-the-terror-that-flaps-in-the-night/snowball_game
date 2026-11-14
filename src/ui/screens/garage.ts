@@ -20,6 +20,7 @@ export const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: str
 const ENEMY_TIP: Partial<Record<EnemyType, string>> = {
   scrapper: 'FAST', brute: 'FRONT ARMOR', spinner: 'OVERHEATS', thief: 'STEALS SNOW', rallybot: 'RALLY BUFF',
   gunner: 'RANGED', bulwark: 'FLANK IT', slushpile: 'SPLITS',
+  mirror: 'COPIES YOU', magnet: 'PULLS + FENCES', twinlink: 'KILL BOTH',
 };
 
 export interface CardRefs {

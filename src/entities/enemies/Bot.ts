@@ -135,6 +135,17 @@ export class Bot implements EnemyHandle {
   stole = false;
   /** Summoned by a boss (phase adds): powers down when the last boss of the fight dies. */
   summoned = false;
+  /** Mirror Plow: the move it is copying (MirrorMove) and the time of the last player cue it took. */
+  mimic = 0;
+  cueSeen = -1;
+  /** Magnet Tower: legs down (pinned, pulling / fencing). */
+  anchored = false;
+  /** Tether Twins: the paired twin; this one is a downed HUSK (wrecked, waiting for a revive); the revive channel (s);
+   *  game time it went down. */
+  partner: Bot | null = null;
+  husk = false;
+  channel = 0;
+  downAt = -1;
 
   // --- visuals
   windup = 0;
@@ -240,4 +251,14 @@ export interface Host {
   fxAt(x: number, y: number, z: number, color: number, count: number, speed: number, size: number, gravity: number, life: number): void;
   /** Distance from (x, z) to the arena wall along (dx, dz), clamped to `max`. */
   wallDist(x: number, z: number, dx: number, dz: number, max: number): number;
+  /** The player's last copyable move (MirrorMove, 0 = none yet) and the game time it was used (Mirror Plow). */
+  readonly cueMove: number;
+  readonly cueT: number;
+  /** Drag the plow toward (dirX, dirZ) at `frac` of its own top speed this frame (Plow.tow; heavy plows resist). */
+  towPlow(dirX: number, dirZ: number, frac: number, dt: number): void;
+  /** Revive a downed twin husk at `hpFrac` of its max HP. */
+  revive(e: Bot, hpFrac: number): void;
 }
+
+/** Mirror Plow moves (Bot.mimic / Host.cueMove). */
+export const MirrorMove = { None: 0, Dash: 1, Ring: 2, Beam: 3, Cone: 4 } as const;
