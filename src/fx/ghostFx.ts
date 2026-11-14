@@ -53,12 +53,12 @@ const TRACK_W = 0.2;
 const FLAME_LIFE = 0.45;
 const WISP_LIFE = 1.15;
 /** Ghostfire smoke: life (s), start / end half size (m), rise; lightning flicker life and chance per puff. */
-const SMOKE_LIFE = 1.7;
-const SMOKE_S0 = 0.42;
-const SMOKE_S1 = 1.35;
+const SMOKE_LIFE = 1.5;
+const SMOKE_S0 = 0.75;
+const SMOKE_S1 = 1.7;
 const BOLT_LIFE = 0.13;
-const BOLT_CHANCE = 0.16;
-const BOLT_CHANCE_DASH = 0.55;
+const BOLT_CHANCE = 0.3;
+const BOLT_CHANCE_DASH = 0.75;
 
 /** Half width of a flame / wisp teardrop at height y (-1 bottom .. 1 tip) in quad units (mirrors the shader). */
 export function flameHalfWidth(y: number): number {
@@ -474,9 +474,9 @@ export class GhostFx implements GhostFxAPI {
         FLAME_LIFE * (0.8 + Math.random() * 0.4), 0.22 + Math.random() * 0.08, 0.1, 1.2, 0, 0.75);
     }
     // Thick violet-black smoke rolling off the back and billowing up (the body of the trail).
-    const puffs = dash ? 2 : 1;
+    const puffs = dash ? 3 : 2;
     for (let k = 0; k < puffs; k++) {
-      const back = 0.3 + Math.random() * 0.5 + k * 0.6;
+      const back = 0.2 + Math.random() * 0.4 + k * 0.5;
       this.emit(G_SMOKE, x + jx * 2 - fx * back, y - 0.25 + Math.random() * 0.3, z + jz * 2 - fz * back,
         -fx * (dash ? 1.4 : 0.7) + (Math.random() - 0.5) * 0.5, 0.35 + Math.random() * 0.35, -fz * (dash ? 1.4 : 0.7) + (Math.random() - 0.5) * 0.5,
         SMOKE_LIFE * (0.8 + Math.random() * 0.4), SMOKE_S0 * (0.8 + Math.random() * 0.4), SMOKE_S1 * (0.8 + Math.random() * 0.4), 0.35, 0.3 + Math.random() * 0.3, 0.95);
@@ -485,7 +485,7 @@ export class GhostFx implements GhostFxAPI {
     if (Math.random() < (dash ? BOLT_CHANCE_DASH : BOLT_CHANCE)) {
       const back = 0.8 + Math.random() * (dash ? 2.4 : 1.4);
       this.emit(G_BOLT, x - fx * back + (Math.random() - 0.5) * 0.8, y + 0.1 + Math.random() * 0.7, z - fz * back + (Math.random() - 0.5) * 0.8,
-        -fx * 0.4, 0.2, -fz * 0.4, BOLT_LIFE * (0.8 + Math.random() * 0.6), 0.45 + Math.random() * 0.35, 0.5, 0, 0, 1);
+        -fx * 0.4, 0.2, -fz * 0.4, BOLT_LIFE * (0.8 + Math.random() * 0.6), 0.7 + Math.random() * 0.45, 0.75, 0, 0, 1);
     }
     // The odd pale wisp curling out of the top of the smoke.
     if (Math.random() < (dash ? 0.35 : 0.15)) {

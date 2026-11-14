@@ -48,7 +48,7 @@ describe('ghost shapes', () => {
 });
 
 describe('GhostFx pools', () => {
-  it('a parked puff is smoke only; moving lays a track; dash doubles the smoke and adds a streak', () => {
+  it('a parked puff is smoke only; moving lays a track; dash thickens the smoke and adds a streak', () => {
     // High rolls: no optional embers / lightning / wisps / chain links, so only the fixed sprites count.
     const r = vi.spyOn(Math, 'random').mockReturnValue(0.99);
     const count = (moved: number, dash: boolean) => {
@@ -56,9 +56,9 @@ describe('GhostFx pools', () => {
       g.trail(0, 0.9, 0, 0, 0, moved, dash);
       return g.n;
     };
-    expect(count(0, false)).toBe(1); // smoke
-    expect(count(0.5, false)).toBe(2); // + track mark
-    expect(count(0.5, true)).toBe(4); // two smoke puffs + track + dash streak
+    expect(count(0, false)).toBe(2); // two smoke puffs
+    expect(count(0.5, false)).toBe(3); // + track mark
+    expect(count(0.5, true)).toBe(5); // three smoke puffs + track + dash streak
     r.mockRestore();
   });
 
@@ -66,7 +66,7 @@ describe('GhostFx pools', () => {
     const r = vi.spyOn(Math, 'random').mockReturnValue(0.01);
     const g = new GhostFx(null);
     g.trail(0, 0.9, 0, 0, 0, 0, false);
-    expect(g.n).toBe(4); // ember + smoke + lightning + wisp
+    expect(g.n).toBe(5); // ember + two smoke puffs + lightning + wisp
     r.mockRestore();
   });
 
