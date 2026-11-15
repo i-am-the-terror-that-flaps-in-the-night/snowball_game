@@ -5,6 +5,7 @@ import { ACHIEVEMENTS, CLEAN_CLEAR_HP, LIFE, OMEGA_WORKS, lifeBoss, lifeRunsMode
 import { BRAWL_BOTS } from '../config/brawl';
 import { ZONES } from '../config/zones';
 import { bumpLifetime, maxLifetime } from './progress';
+import { PROTOCOL_C_BROADCAST } from '../config/lore';
 
 /* Achievements: event handlers bump lifetime counters in the save (mutated live, saved in batches by
  * p.commit() on unlock / run end), and every check re-evaluates ACHIEVEMENTS against the save. Rewards are
@@ -114,6 +115,8 @@ export class Achievements {
       if (inLava || source === 'lava') bumpLifetime(p(), LIFE.killsLava);
       // Only campaign / Survival bots carry a weapon (Brawl and the Duel never set it).
       if (weapon === 'arcLance' && enemy.isBoss) bumpLifetime(p(), LIFE.lanceBossKills);
+      // PROTOCOL C: an echo wrecked while THE CHAIRMAN's HOSTILE TAKEOVER still has it ACQUIRED ("Deal Blocked").
+      if (enemy.echo && (enemy.acquired ?? 0) > 0) bumpLifetime(p(), LIFE.takeoversBroken);
       this.check();
     });
     events.on('slam', ({ hits }) => {
@@ -132,6 +135,11 @@ export class Achievements {
       bumpLifetime(p(), LIFE.bossKills);
       // PROTOCOL C's echoes (x0.35 HP copies) count as bosses scrapped, but not toward a boss's own kill trophies.
       if (!enemy.echo) bumpLifetime(p(), lifeBoss(enemy.type));
+      this.check();
+    });
+    // PROTOCOL C finale (stage 4 emits it when THE AVALANCHE hits THE WHITEOUT).
+    events.on('avalancheHit', () => {
+      bumpLifetime(p(), LIFE.avalancheHits);
       this.check();
     });
     events.on('brawlKill', ({ killerIsPlayer, method }) => {
@@ -186,6 +194,8 @@ export class Achievements {
   private announce(got: AchievementDef[], delay: number): void {
     const { ui, audio } = this.ctx;
     const show = () => {
+      // PROTOCOL C just opened: the radio crackles back on before the trophy toast (lore.ts PROTOCOL_C_BROADCAST).
+      if (got.some((a) => a.id === 'protocol_open')) ui.toast(PROTOCOL_C_BROADCAST, 'radio');
       if (got.length > 3) {
         const coins = got.reduce((s, a) => s + a.reward, 0);
         ui.toast(`🏆 ${got.length} achievements unlocked! +${coins.toLocaleString('en-US')} coins`, 'good');

@@ -230,3 +230,71 @@ export const HARD = {
 
 /** Coins per newly earned star, as a fraction of the arena's first-clear reward. */
 export const STAR_REWARD_FRAC = 0.5;
+
+/* ---- PROTOCOL C (config/protocol.ts): five COMBAT stars of its own (save.protocol.stars; never part of the campaign's
+ * star total, so cosmetics / achievements gated on campaign stars are unchanged). Judged on a cleared PROTOCOL C run
+ * from the runFinished payload plus what meta/challenges.ts ProtocolStarTracker measures during the run. Tunables sit
+ * here (the stage-5 balance pass may move them). */
+
+/** Extras the ProtocolStarTracker measures on a PROTOCOL C run. */
+export interface ProtocolRun extends RunFinished {
+  /** HP lost in each wave played start to finish this run (index = wave - 1; NaN = not played whole this run). */
+  waveDamage: number[];
+  /** Wave 6: seconds from the first echo arriving to the last of its echoes wrecked (Infinity = not all wrecked). */
+  echoSweep: number;
+  /** Seconds from THE CHAIRMAN landing (end of his descent) to his defeat (Infinity = not beaten this run). */
+  chairmanTime: number;
+  /** THE AVALANCHE hit THE WHITEOUT at full size on the run's first throw (finale, stage 4; false until it exists). */
+  avalancheFirstTry: boolean;
+}
+
+export interface ProtocolChallengeDef {
+  id: string;
+  icon: string;
+  name: string;
+  goal: string;
+  tip?: string;
+  test(r: ProtocolRun): boolean;
+}
+
+/** "Quiet Quarter": the wave judged and the HP budget (wave 4: SLUSH & SLEET upgraded + three echoes). */
+export const PROTOCOL_STAR_HP_WAVE = 4;
+export const PROTOCOL_STAR_HP = 60;
+/** "Restructuring": wave 6's echoes all wrecked within this many seconds of the first one arriving. */
+export const PROTOCOL_STAR_SWEEP_WAVE = 6;
+export const PROTOCOL_STAR_SWEEP_S = 30;
+/** "Hostile Exit": THE CHAIRMAN beaten within this many seconds of landing. */
+export const PROTOCOL_STAR_CHAIRMAN_S = 90;
+/** Coins per newly earned PROTOCOL C star. */
+export const PROTOCOL_STAR_REWARD = 750;
+
+export const PROTOCOL_CHALLENGES: ProtocolChallengeDef[] = [
+  {
+    id: 'clean', icon: '🧾', name: 'No Do-Overs', goal: 'Clear without a checkpoint retry',
+    tip: 'All seven waves in one go: RETRY WAVE and RESUME both count as a retry.',
+    test: (r) => !r.partial,
+  },
+  {
+    id: 'hp', icon: '🛡', name: 'Quiet Quarter', goal: `Lose under ${PROTOCOL_STAR_HP} HP in wave ${PROTOCOL_STAR_HP_WAVE}`,
+    tip: `Wave ${PROTOCOL_STAR_HP_WAVE} start to finish (SLUSH & SLEET and three echoes). Keep moving and split the twins.`,
+    test: (r) => {
+      const d = r.waveDamage[PROTOCOL_STAR_HP_WAVE - 1];
+      return typeof d === 'number' && d >= 0 && d < PROTOCOL_STAR_HP;
+    },
+  },
+  {
+    id: 'sweep', icon: '🧹', name: 'Restructuring', goal: `Wreck wave ${PROTOCOL_STAR_SWEEP_WAVE}'s echoes within ${PROTOCOL_STAR_SWEEP_S} s`,
+    tip: `Every echo of wave ${PROTOCOL_STAR_SWEEP_WAVE}, counted from the first one walking in. Echoes are fragile: hit them as they arrive.`,
+    test: (r) => r.echoSweep <= PROTOCOL_STAR_SWEEP_S,
+  },
+  {
+    id: 'chairman', icon: '🏢', name: 'Hostile Exit', goal: `Beat THE CHAIRMAN within ${PROTOCOL_STAR_CHAIRMAN_S} s of landing`,
+    tip: 'The clock starts when he lands. Save your ultimate charge for him (ultimates hurt him like any boss).',
+    test: (r) => r.chairmanTime <= PROTOCOL_STAR_CHAIRMAN_S,
+  },
+  {
+    id: 'avalanche', icon: '☃️', name: 'Avalanche Season', goal: 'Land THE AVALANCHE at full size, first try',
+    tip: 'The finale: grow the ball all the way before you let it go.',
+    test: (r) => r.avalancheFirstTry,
+  },
+];

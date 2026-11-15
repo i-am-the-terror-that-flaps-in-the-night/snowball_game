@@ -40,6 +40,11 @@ export interface GameEvents {
   bossPhase: { enemy: EnemyHandle; name: string; label: string };
   bossDefeated: { enemy: EnemyHandle; name: string };
   roundStarted: { round: number; total: number; boss: boolean };
+  /** PROTOCOL C finale (THE WHITEOUT, build stage 4): the player's AVALANCHE snowball hit the storm. `fullSize` = the
+   *  ball was at its full finale size; `attempt` = 1 for the first throw of this run, 2 for the second, ... Read by the
+   *  achievements ("Snowball's Chance") and the PROTOCOL C star "Avalanche Season" (meta/challenges.ts
+   *  ProtocolStarTracker: met when a run's attempt-1 hit has fullSize). Nothing emits it before the finale lands. */
+  avalancheHit: { fullSize: boolean; attempt: number };
   /** A campaign run, Survival run or Brawl match ended. Game emits it AFTER recording the result in the save.
    *  Not emitted for the Tutorial. */
   runFinished: {
@@ -63,6 +68,9 @@ export interface GameEvents {
     damageTaken: number;
     /** PROTOCOL C run (mode 'campaign', no zoneIndex: arena challenges never judge it). */
     protocol?: boolean;
+    /** PROTOCOL C: THE AVALANCHE landed at full size on its first throw this run (the finale may set it directly
+     *  instead of emitting 'avalancheHit'; either one counts for the star). */
+    avalancheFirstTry?: boolean;
     /** PROTOCOL C: the run did not play every wave in one go (a checkpoint retry, or a dev start past wave 1): its
      *  damageTaken covers only part of it, so it never counts as a clean clear. */
     partial?: boolean;

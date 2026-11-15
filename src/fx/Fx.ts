@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { FxAPI, GameContext, PowderOpts, SmokeOpts, SmolderOpts, SparkOpts } from '../core/types';
 import { GhostFx } from './ghostFx';
+import { FrostFx } from './frostFx';
 import { PuffBatch, RingBatch, ScorchBatch, SparkBatch } from './particles';
 import { currentPreset, scaleCount } from '../core/settings';
 
@@ -85,6 +86,8 @@ export class Fx implements FxAPI {
   private smolders: Smolder[] = [];
   /** Ghostfire trail / Soul Harvest kill sprites. */
   readonly ghost: GhostFx;
+  /** Whiteout trail / Avalanche kill sprites (PROTOCOL C exclusives). */
+  readonly frost: FrostFx;
 
   private sprayAcc = 0;
   private sprayPuffAcc = 0;
@@ -128,6 +131,8 @@ export class Fx implements FxAPI {
     ctx.scene.add(this.scorchBatch.mesh, this.ringBatch.mesh, this.puffBatch.mesh, this.sparkBatch.mesh);
     this.ghost = new GhostFx(this, (x, z, y) => this.groundAt(x, z, y));
     ctx.scene.add(this.ghost.mesh);
+    this.frost = new FrostFx(this, (x, z, y) => this.groundAt(x, z, y), (name, volume, pitch) => ctx.audio?.play(name, { volume, pitch }));
+    ctx.scene.add(this.frost.mesh);
 
     for (let i = 0; i < MAX_SMOLDER; i++) {
       this.smolders.push({ x: 0, y: 0, z: 0, t: 0, dur: 0, scale: 1, smokeAcc: 0, emberAcc: 0, fireAcc: 0, active: false, hushed: false });
@@ -156,7 +161,7 @@ export class Fx implements FxAPI {
 
   /** Live instance counts per pool (debug / probes). */
   get stats(): Record<string, number> {
-    return { chunks: this.n, sparks: this.sparkBatch.n, puffs: this.puffBatch.n, rings: this.ringBatch.n, scorch: this.scorchBatch.n, smolder: this.smolders.filter((s) => s.active).length, ghost: this.ghost.stats.sprites, souls: this.ghost.stats.souls };
+    return { chunks: this.n, sparks: this.sparkBatch.n, puffs: this.puffBatch.n, rings: this.ringBatch.n, scorch: this.scorchBatch.n, smolder: this.smolders.filter((s) => s.active).length, ghost: this.ghost.stats.sprites, souls: this.ghost.stats.souls, frost: this.frost.stats.sprites, balls: this.frost.stats.balls };
   }
 
   private emit(
@@ -545,6 +550,7 @@ export class Fx implements FxAPI {
     this.ringBatch.clear();
     this.scorchBatch.clear();
     this.ghost.clear();
+    this.frost.clear();
     for (const s of this.smolders) s.active = false;
     for (let i = 0; i < this.labels.length; i++) {
       const l = this.labels[i];
@@ -632,6 +638,7 @@ export class Fx implements FxAPI {
     this.ringBatch.update(dt);
     this.scorchBatch.update(dt, fxGround);
     this.ghost.update(dt);
+    this.frost.update(dt);
 
     // Labels
     const cam = this.ctx.camera;

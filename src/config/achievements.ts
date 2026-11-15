@@ -66,6 +66,10 @@ export const LIFE = {
   omegaHardFlawless: 'omegaHardFlawless',
   /** Coins paid out by achievement rewards. */
   achievementCoins: 'achievementCoins',
+  /** PROTOCOL C: echoes wrecked while THE CHAIRMAN's HOSTILE TAKEOVER had them ACQUIRED (enemyKilled, enemy.acquired > 0). */
+  takeoversBroken: 'takeoversBroken',
+  /** PROTOCOL C finale: AVALANCHE hits on THE WHITEOUT ('avalancheHit' events, any size). */
+  avalancheHits: 'avalancheHits',
 } as const;
 
 export const lifeRunsMode = (mode: 'campaign' | 'survival' | 'brawl') => `runs_${mode}`;
@@ -123,6 +127,17 @@ export function stars(p: Progression): number {
   } catch {
     return 0;
   }
+}
+
+/** PROTOCOL C's record, read defensively (save.protocol; meta/protocol.ts owns it). */
+function protocolFlag(p: Progression, key: 'cleared' | 'cleanClear'): number {
+  const pr = p.data.protocol;
+  return isObj(pr) && (pr as Record<string, unknown>)[key] === true ? 1 : 0;
+}
+
+/** PROTOCOL C is open: every campaign arena cleared on normal and on Hard (meta/protocol.ts protocolUnlocked). */
+export function protocolOpen(p: Progression): number {
+  return arenasCleared(p) >= ZONES.length && hardClears(p) >= ZONES.length ? 1 : 0;
 }
 
 /** Upgrade levels bought, summed over every upgrade. */
@@ -217,6 +232,13 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   // Not 'every arena on Hard' (that is Glutton for Punishment): the PROTOCOL B finale, Ω's new and improved body.
   { id: 'protocol_b', name: 'Exciting Opportunity', desc: `Clear ${OMEGA_WORKS.name} on Hard: scrap Ω's new and improved body and recover the master fragment. Ω would like to circle back.`, icon: '📊', category: 'bosses', goal: 1, reward: 400, value: (p) => (p.data.hardCleared?.[OMEGA_WORKS.id] === true ? 1 : 0) },
   { id: 'omega_flawless', name: 'Q4: Total Defeat', desc: `Scrap ${bossName('omega')} on Hard without losing a single HP in the boss fight. Please update the slide.`, icon: '📉', category: 'bosses', goal: 1, reward: 500, value: (p) => life(p, LIFE.omegaHardFlawless) },
+  // ---- PROTOCOL C (config/protocol.ts): the secret seventh arena and its finale.
+  { id: 'protocol_open', name: 'Agenda Item C', desc: 'Unlock PROTOCOL C: clear every arena on normal and on Hard. Somebody left a sticky note.', icon: '🗒️', category: 'bosses', goal: 1, reward: 250, value: protocolOpen },
+  { id: 'protocol_clear', name: 'Meeting Adjourned', desc: 'Clear PROTOCOL C: all seven waves.', icon: '📋', category: 'bosses', goal: 1, reward: 500, value: (p) => protocolFlag(p, 'cleared') },
+  { id: 'protocol_clean', name: 'No Do-Overs', desc: 'Clear PROTOCOL C without a single checkpoint retry.', icon: '🧾', category: 'bosses', goal: 1, reward: 500, value: (p) => protocolFlag(p, 'cleanClear') },
+  { id: 'boss_chairman', name: 'Board Dismissed', desc: 'Scrap THE CHAIRMAN.', icon: '🏢', category: 'bosses', goal: 1, reward: 400, value: (p) => life(p, lifeBoss('chairman')), secret: true },
+  { id: 'takeover_broken', name: 'Deal Blocked', desc: 'Wreck an echo while THE CHAIRMAN has it ACQUIRED. The regulators thank you.', icon: '🚫', category: 'bosses', goal: 1, reward: 250, value: (p) => life(p, LIFE.takeoversBroken), secret: true },
+  { id: 'avalanche', name: "Snowball's Chance", desc: 'Land THE AVALANCHE on THE WHITEOUT.', icon: '☃️', category: 'bosses', goal: 1, reward: 500, value: (p) => life(p, LIFE.avalancheHits), secret: true },
   { id: 'boss_25', name: 'Boss Rush', desc: 'Scrap 25 bosses.', icon: '👑', category: 'bosses', goal: 25, reward: 300, value: (p) => life(p, LIFE.bossKills) },
 
   // ---- Brawl

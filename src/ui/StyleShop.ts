@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { GameContext, SoundName } from '../core/types';
 import { COSMETIC_SLOTS, cosmeticsInSlot, type CosmeticDef, type CosmeticSlot } from '../config/cosmetics';
 import {
-  buyCheck, buyCosmetic, cosmeticsState, equipCosmetic, equippedLook, isOwned, lockHint, lockLabel,
+  buyCheck, buyCosmetic, cosmeticsState, equipCosmetic, equippedLook, grantProtocolCosmetics, isOwned, lockHint, lockLabel,
 } from '../meta/cosmetics';
 import { Plow } from '../entities/Plow';
 import { FACTORY_PAINT, drawBladeSkin, drawDecal } from '../entities/plowModels';
@@ -114,6 +114,8 @@ export class StyleShop {
     this.ctx.audio?.play('click');
     this.returnFocus = document.activeElement as HTMLElement | null;
     this.parent.classList.add('ss-style-open');
+    // A save that cleared PROTOCOL C before the exclusives existed gets them now (idempotent).
+    grantProtocolCosmetics(this.ctx.progression);
     this.hover = null;
     this.note.textContent = '';
     this.setSlot(this.slot, false);
@@ -203,6 +205,11 @@ export class StyleShop {
     el('div', 'ss-style-blurb', def.blurb, info);
     const act = el('div', 'ss-style-act', '', info);
     const card: Card = { def, btn, swatch, act };
+    // PROTOCOL C exclusives: a gold boardroom ribbon on the card.
+    if (def.req?.protocol) {
+      btn.classList.add('ss-style-exclusive');
+      el('div', 'ss-style-ribbon', 'PROTOCOL C', btn);
+    }
     if (def.slot === 'decal') this.drawDecalSwatch(card);
     else if (def.slot === 'trail') this.drawTrailSwatch(card);
     else if (def.slot === 'blade') this.drawBladeSwatch(card);
@@ -271,6 +278,7 @@ export class StyleShop {
     const d = card.def;
     if (d.slot !== 'horn' && d.slot !== 'kill') return;
     card.swatch.classList.add('ss-style-icon');
+    if (d.slot === 'kill' && d.style) card.swatch.classList.add(`ss-style-kill-${d.style}`);
     el('span', 'ss-style-icon-glyph', d.icon, card.swatch);
     if (d.slot === 'kill' && d.colors.length) {
       card.swatch.style.setProperty('--glow', css(d.colors[0]));
@@ -377,7 +385,9 @@ export class StyleShop {
           ? 'EQUIP'
           : lock
             ? `🔒 ${lock}`
-            : `<span class="ss-coin sm"></span>${fmt(d.price)}`;
+            : d.req?.protocol
+              ? '🎁 CLAIM'
+              : `<span class="ss-coin sm"></span>${fmt(d.price)}`;
       if (d.slot === 'paint') {
         // Paint chips show the colours on your current plow (stock = its factory colours).
         const body = css(d.body ?? factory.body);
@@ -385,6 +395,8 @@ export class StyleShop {
         c.swatch.style.setProperty('--body', body);
         c.swatch.style.setProperty('--trim', trim);
         c.swatch.classList.toggle('ss-style-metal', (d.metalness ?? 0) >= 0.25);
+        c.swatch.classList.toggle('ss-style-pinstripe', d.pattern === 'pinstripe');
+        if (d.patternColor != null) c.swatch.style.setProperty('--stripe', css(d.patternColor));
       } else if (d.slot === 'decal') {
         // Decals sit on your current paint.
         c.swatch.style.setProperty('--body', css(look.paint.body ?? factory.body));
@@ -414,6 +426,7 @@ export class StyleShop {
       this.note.textContent = `🔒 ${lockHint(d)}`;
       this.note.classList.add('bad');
     } else if (check === 'poor') this.note.textContent = `Previewing ${d.name}. Need ${fmt(d.price - p.coins)} more coins.`;
+    else if (d.req?.protocol) this.note.textContent = `Previewing ${d.name}. A PROTOCOL C exclusive: press to claim it.`;
     else this.note.textContent = `Previewing ${d.name}. Press to buy for ${fmt(d.price)}.`;
   }
 

@@ -4,7 +4,11 @@ import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES } from '../config/zones';
 import { ENEMIES, type EnemyType } from '../config/enemies';
 import { life, lifeBoss } from '../config/achievements';
-import { BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE, WORLD_NAME, ZONE_BEATS } from '../config/lore';
+import {
+  BOSS_LORE, BOSS_ORDER, CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, HARD_PROLOGUE, PLOW_LORE, PROLOGUE, PROTOCOL_C_CHAPTER,
+  TRUE_EPILOGUE, WORLD_NAME, ZONE_BEATS,
+} from '../config/lore';
+import { protocolStory } from '../meta/protocol';
 import { storyQuote } from './uiKit';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
@@ -212,6 +216,22 @@ export class Story {
       const all = ZONES.every((z) => hardDone(z.id));
       const he = this.card(hp, 'hard-epilogue', all ? 'open done' : 'locked', all ? '🌋' : '🔒', all ? 'Nothing After' : '???', 'Hard Mode epilogue');
       this.para(he, all ? HARD_EPILOGUE : 'Destroy all six caches (every arena on Hard) to read the ending.', all ? '' : 'dim');
+      // PROTOCOL C (meta/protocol.ts protocolStory): its chapter once the sticky note is found, its ending and the
+      // TRUE EPILOGUE once it is cleared.
+      const ps = protocolStory(prog);
+      if (ps.chapter !== 'hidden') {
+        const pc = this.card(hp, 'hard-protocol', `ss-story-protocol ${ps.chapter === 'locked' ? 'locked' : 'open'} ${ps.chapter === 'done' ? 'done' : ''}`, ps.chapter === 'locked' ? '🔒' : '▣', ps.chapter === 'locked' ? '???' : 'Protocol C', 'Item C on the agenda');
+        if (ps.chapter === 'locked') this.para(pc, 'Clear every arena on normal and Hard to open PROTOCOL C.', 'dim');
+        else {
+          this.para(pc, PROTOCOL_C_CHAPTER.intro);
+          if (ps.chapter === 'done') {
+            el('div', 'ss-story-rule', 'MEETING ADJOURNED', pc);
+            this.para(pc, PROTOCOL_C_CHAPTER.outro);
+          } else this.para(pc, 'Clear PROTOCOL C to find out who is in the boardroom.', 'dim');
+        }
+        const te = this.card(hp, 'hard-true-epilogue', `ss-story-protocol ${ps.epilogue ? 'open done' : 'locked'}`, ps.epilogue ? '🌨️' : '🔒', ps.epilogue ? 'Somebody Still Has to Plow' : '???', 'True epilogue');
+        this.para(te, ps.epilogue ? TRUE_EPILOGUE : 'Clear PROTOCOL C to read the true ending.', ps.epilogue ? '' : 'dim');
+      }
     }
 
     // ---- Bosses.
@@ -238,6 +258,19 @@ export class Story {
           this.para(c, lore.hardFate);
         }
       } else this.para(c, 'Beat it to find out what happens to it.', 'dim');
+    }
+    // THE CHAIRMAN (PROTOCOL C; no campaign arena): a ??? card once PROTOCOL C opens, the full profile after a clear.
+    const chair = protocolStory(prog).chairman;
+    const cl = BOSS_LORE.chairman;
+    if (chair !== 'hidden' && cl) {
+      const shown = chair === 'revealed';
+      const c = this.card(grid, 'boss-chairman', `ss-story-protocol ${shown ? 'open done' : 'locked'}`, shown ? '🏢' : '🔒', shown ? ENEMIES.chairman.name : '???', shown ? ENEMIES.chairman.title : 'A voice in the boardroom');
+      if (!shown) this.para(c, 'Somebody in pinstripes is running PROTOCOL C from a glass box. Clear it to find out who.', 'dim');
+      else {
+        this.para(c, cl.bio);
+        el('div', 'ss-story-rule', 'WHERE IT IS NOW', c);
+        this.para(c, cl.fate);
+      }
     }
 
     // ---- Plows (no spoilers: always readable).

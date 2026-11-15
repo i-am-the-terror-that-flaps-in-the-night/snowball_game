@@ -2,7 +2,11 @@ import type { GameContext } from '../core/types';
 import type { Progression } from '../core/Progression';
 import type { GameEvents, KillWeapon } from '../core/events';
 import { ZONES, type ZoneDef } from '../config/zones';
-import { CHALLENGES, HARD, STAR_REWARD_FRAC, type ChallengeDef, type ChallengeRun } from '../config/challenges';
+import {
+  CHALLENGES, HARD, PROTOCOL_CHALLENGES, PROTOCOL_STAR_REWARD, PROTOCOL_STAR_SWEEP_WAVE, STAR_REWARD_FRAC,
+  type ChallengeDef, type ChallengeRun, type ProtocolChallengeDef, type ProtocolRun,
+} from '../config/challenges';
+import { PROTOCOL_ID, PROTOCOL_WAVES, waveBossCount } from '../config/protocol';
 import { UPGRADES, type UpgradeId } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
 
@@ -12,7 +16,7 @@ import type { PlowKind } from '../config/plows';
  *  - ChallengeTracker (constructed once by Game) tallies a few extras from events, judges every finished
  *    campaign run and keeps the verdict for the results screen (lastChallengeReport). */
 
-export type { ChallengeDef, ChallengeRun } from '../config/challenges';
+export type { ChallengeDef, ChallengeRun, ProtocolChallengeDef, ProtocolRun } from '../config/challenges';
 export { HARD } from '../config/challenges';
 
 /* ------------------------------------------------------------------ hard mode */
@@ -194,6 +198,8 @@ export class ChallengeTracker {
   private weaponKills: Partial<Record<KillWeapon, number>> = {};
 
   constructor(private ctx: GameContext) {
+    // PROTOCOL C's own five stars ride along (Game constructs only this tracker); campaign judging is unchanged.
+    new ProtocolStarTracker(ctx);
     const ev = ctx.events;
     ev.on('roundStarted', ({ round, boss }) => {
       if (round === 1) this.reset();
@@ -244,5 +250,157 @@ export class ChallengeTracker {
     const names = rep.results.filter((x) => x.isNew).map((x) => x.def.name);
     const text = `★ ${rep.newStars > 1 ? `${rep.newStars} new stars` : names[0]}! +${rep.bonus.toLocaleString('en-US')} coins`;
     setTimeout(() => ctx.ui.toast(text, 'good'), 700);
+  }
+}
+
+/* ------------------------------------------------------------------ PROTOCOL C stars */
+
+/** PROTOCOL C star ids earned (known ids only; save.protocol.stars). Never part of totalStars / maxStars. */
+export function protocolStarIds(p: Progression): Set<string> {
+  const ids = p.data.protocol?.stars;
+  const known = new Set(PROTOCOL_CHALLENGES.map((c) => c.id));
+  return new Set(Array.isArray(ids) ? ids.filter((id) => known.has(id)) : []);
+}
+
+export function protocolStars(p: Progression): number {
+  return protocolStarIds(p).size;
+}
+
+export interface ProtocolStarResult {
+  def: ProtocolChallengeDef;
+  met: boolean;
+  isNew: boolean;
+  owned: boolean;
+}
+
+export interface ProtocolStarReport {
+  won: boolean;
+  results: ProtocolStarResult[];
+  newStars: number;
+  bonus: number;
+  stars: number;
+}
+
+/** Judge a finished PROTOCOL C run: stars only on a clear. Pure: no save changes. */
+export function evaluateProtocolRun(p: Progression, run: ProtocolRun): ProtocolStarReport {
+  const got = protocolStarIds(p);
+  const results = PROTOCOL_CHALLENGES.map((def) => {
+    const met = run.won && def.test(run);
+    return { def, met, isNew: met && !got.has(def.id), owned: met || got.has(def.id) };
+  });
+  const newStars = results.filter((r) => r.isNew).length;
+  return { won: run.won, results, newStars, bonus: newStars * PROTOCOL_STAR_REWARD, stars: results.filter((r) => r.owned).length };
+}
+
+/** Evaluate and bank a PROTOCOL C run: saves new stars (save.protocol.stars) and pays their bonus once. */
+export function awardProtocolRun(p: Progression, run: ProtocolRun): ProtocolStarReport {
+  const rep = evaluateProtocolRun(p, run);
+  if (!rep.newStars) return rep;
+  const pr = (p.data.protocol ??= { cleared: false, clears: 0, bestTime: 0, bestWave: 0, cleanClear: false, checkpoint: null });
+  const list = (pr.stars ??= []);
+  for (const r of rep.results) if (r.isNew && !list.includes(r.def.id)) list.push(r.def.id);
+  if (rep.bonus > 0) p.addCoins(rep.bonus);
+  else p.commit();
+  return rep;
+}
+
+let lastProtocol: ProtocolStarReport | null = null;
+
+/** Verdict of the most recent PROTOCOL C run (null after any other run). Read by the PROTOCOL C results screen. */
+export function lastProtocolReport(): ProtocolStarReport | null {
+  return lastProtocol;
+}
+
+/** THE CHAIRMAN lands this long after he spawns (enemies/chairman.ts CH.REVEAL_T, his descent from the box). */
+export const CHAIRMAN_LAND_DELAY = 2.8;
+
+/**
+ * Measures a PROTOCOL C run for its stars (constructed by ChallengeTracker): HP lost per whole wave, wave 6's echo
+ * sweep, THE CHAIRMAN's time from landing, and the finale's first AVALANCHE ('avalancheHit'). Only listens while the
+ * zone is PROTOCOL C; every other run is ignored (and clears the last verdict).
+ */
+export class ProtocolStarTracker {
+  private wave = 0;
+  private waveDmg = 0;
+  private readonly waveDamage: number[] = new Array(PROTOCOL_WAVES).fill(NaN);
+  private sweepStart = -1;
+  private sweepKills = 0;
+  private sweepEnd = -1;
+  private chairLand = -1;
+  private chairTime = Infinity;
+  private avalanche: boolean | null = null;
+
+  constructor(private ctx: GameContext) {
+    const ev = ctx.events;
+    ev.on('roundStarted', ({ round }) => {
+      if (!this.active()) return;
+      // A new run (fresh start, or a RETRY WAVE / RESUME from a checkpoint) never moves forward from the last wave.
+      if (round <= this.wave) this.reset();
+      else if (this.wave > 0) this.waveDamage[this.wave - 1] = this.waveDmg;
+      this.wave = round;
+      this.waveDmg = 0;
+    });
+    ev.on('plowDamaged', ({ amount }) => {
+      if (this.active() && this.wave > 0) this.waveDmg += Math.max(0, amount);
+    });
+    ev.on('bossSpawned', ({ enemy }) => {
+      if (!this.active()) return;
+      if (enemy.echo && this.wave === PROTOCOL_STAR_SWEEP_WAVE && this.sweepStart < 0) this.sweepStart = ctx.time;
+      if (enemy.type === 'chairman' && !enemy.echo) this.chairLand = ctx.time + CHAIRMAN_LAND_DELAY;
+    });
+    ev.on('bossDefeated', ({ enemy }) => {
+      if (!this.active()) return;
+      if (enemy.echo && this.wave === PROTOCOL_STAR_SWEEP_WAVE && this.sweepStart >= 0) {
+        this.sweepKills++;
+        if (this.sweepKills >= waveBossCount(PROTOCOL_STAR_SWEEP_WAVE).echoes && this.sweepEnd < 0) this.sweepEnd = ctx.time;
+      }
+      if (enemy.type === 'chairman' && !enemy.echo && this.chairLand >= 0) this.chairTime = Math.max(0, ctx.time - this.chairLand);
+    });
+    ev.on('avalancheHit', ({ fullSize, attempt }) => {
+      if (this.active() && this.avalanche === null) this.avalanche = attempt <= 1 && fullSize;
+    });
+    ev.on('runFinished', (r) => this.onRunFinished(r));
+  }
+
+  private active(): boolean {
+    return this.ctx.zone?.id === PROTOCOL_ID;
+  }
+
+  private reset(): void {
+    this.wave = 0;
+    this.waveDmg = 0;
+    this.waveDamage.fill(NaN);
+    this.sweepStart = this.sweepEnd = this.chairLand = -1;
+    this.sweepKills = 0;
+    this.chairTime = Infinity;
+    this.avalanche = null;
+  }
+
+  /** The run so far as the stars see it (`won`: the last wave counts as played whole). */
+  snapshot(r: GameEvents['runFinished']): ProtocolRun {
+    const waveDamage = [...this.waveDamage];
+    if (r.won && this.wave > 0) waveDamage[this.wave - 1] = this.waveDmg;
+    return {
+      ...r,
+      waveDamage,
+      echoSweep: this.sweepStart >= 0 && this.sweepEnd >= 0 ? this.sweepEnd - this.sweepStart : Infinity,
+      chairmanTime: this.chairTime,
+      avalancheFirstTry: r.avalancheFirstTry ?? this.avalanche ?? false,
+    };
+  }
+
+  private onRunFinished(r: GameEvents['runFinished']): void {
+    if (!r.protocol) {
+      lastProtocol = null;
+      return;
+    }
+    const run = this.snapshot(r);
+    this.reset();
+    lastProtocol = awardProtocolRun(this.ctx.progression, run);
+    const rep = lastProtocol;
+    if (!rep.newStars) return;
+    const names = rep.results.filter((x) => x.isNew).map((x) => x.def.name);
+    const text = `★ ${rep.newStars > 1 ? `${rep.newStars} PROTOCOL C stars` : names[0]}! +${rep.bonus.toLocaleString('en-US')} coins`;
+    setTimeout(() => this.ctx.ui.toast(text, 'good'), 900);
   }
 }

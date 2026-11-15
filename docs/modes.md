@@ -137,6 +137,17 @@ rewards and its own stars come later). Code: `src/config/protocol.ts` (zone + wa
   Coins and upgrades are permanent as everywhere else. A clear records the best total time (fights only) and whether
   it used no retries, and pays 6,000 coins the first time (40% after) plus Hard-grade loot ("PROTOCOL C clear"). A run
   that used a retry never counts as a clean clear ("Not a Scratch"); the shop preview reads "Wave n of 7".
+- **Rewards** (build stage 5): the first clear unlocks three Paint Shop exclusives that are never for sale
+  (`req: { protocol: true }`, shown locked as "Beat PROTOCOL C"; meta/cosmetics.ts `grantProtocolCosmetics`): the
+  **Hostile Takeover** paint (matte black, gold pinstripes in the plow body's own space: entities/plow/pinstripe.ts), the
+  **Whiteout** trail (a pocket blizzard, a gust on a dash, a frost line, now and then a blinking eye in the snow) and the
+  **Avalanche** kill effect (a snowball rolls out of the wreck, gathers the scrap, swells and implodes); both FX live in
+  fx/frostFx.ts (pooled, LOW halves them). Six trophies (unlock, clear, no-retry clear, THE CHAIRMAN, a broken HOSTILE
+  TAKEOVER, THE AVALANCHE), a radio broadcast when it unlocks, a Story chapter + true epilogue and THE CHAIRMAN's profile
+  (after a clear). **Five combat stars of its own** (config/challenges.ts `PROTOCOL_CHALLENGES`, save.protocol.stars,
+  750 coins each, not in the campaign's 30): no checkpoint retry; under 60 HP lost in wave 4; wave 6's echoes wrecked
+  within 30 s of the first arriving; THE CHAIRMAN beaten within 90 s of landing; THE AVALANCHE at full size on the first
+  throw (the finale emits `avalancheHit { fullSize, attempt }` or sets `runFinished.avalancheFirstTry`).
 - **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock. Such a dev run records
   nothing (no clear, best time / wave, checkpoint or clear reward) unless the arena is unlocked and it starts on wave 1.
 

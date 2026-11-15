@@ -118,7 +118,8 @@ describe('buying and equipping', () => {
   });
 
   it('every gated item is locked until its own requirement', () => {
-    for (const c of COSMETICS.filter((x) => x.req)) {
+    // (PROTOCOL C exclusives have their own gate: tests/protocolRewards.test.ts)
+    for (const c of COSMETICS.filter((x) => x.req && !x.req.protocol)) {
       const p = prog(100000);
       grant(p, (c.req!.stars ?? 0) - (c.req!.stars ? 1 : 0), (c.req!.achievements ?? 0) - (c.req!.achievements ? 1 : 0));
       expect(buyCheck(p, c.id)).toBe('locked');

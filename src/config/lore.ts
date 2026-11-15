@@ -187,7 +187,8 @@ export const HARD_EPILOGUE =
   'lava. The countdown stops. The Crew searches the Works from roof to roots and finds the plans for PROTOCOL B and ' +
   'nothing after them: one folder labelled PROTOCOL C, empty except for a sticky note that says "TODO". FROSTBYTE scans ' +
   'every channel in the valley and reports: nothing. Just weather. Then the whole Road Crew takes the night off, and ' +
-  'for once nobody has to explain what an "exciting opportunity" is.';
+  'for once nobody has to explain what an "exciting opportunity" is. The sticky note goes on the Crew\'s fridge. A week later ' +
+  'someone notices it has been crossed out and rewritten, in gold pen: "PROTOCOL C: IN PROGRESS."';
 
 export const HARD_CHAPTERS: Record<string, ChapterLore> = {
   yard: {
@@ -286,6 +287,11 @@ export const BOSS_LORE: Record<string, BossLore> = {
     bio: 'A golden show-bot, title "Tremendous Plow of the Tower", whose speakers have not stopped in nineteen days. It builds walls around anyone who tries to leave the rally early, beams hecklers to the back of the line, and gets itself gold-plated whenever a fight goes badly. It signed a deal with the Works, workers and drivers for a tower of its own, and it describes the deal as "beautiful, maybe the most beautiful".',
     fate: 'Caught, and on probation. It announces the Snowdome Brawls for the Road Crew, every match "the greatest match ever, everybody says so", and it is not allowed within a mile of a tower. It has asked for a tower-shaped announcer\'s booth eleven times. The answer is still no.',
   },
+  // PROTOCOL C's final boss (no campaign arena, not in BOSS_ORDER): the Story's Bosses tab shows it only after a clear.
+  chairman: {
+    bio: 'The voice in the glass boardroom over the PROTOCOL C stadium, and then the walking golden tower that came down out of it. Under the pinstripes it was THE DONALD all along, ankle monitor and all: it had kept a spare key to the Works, a spare copy of PROTOCOL C, and a very large opinion of itself. It ran the rush like a board meeting, "acquired" every boss you had ever beaten, and kept one big red button for the end.',
+    fate: 'Probation extended to approximately forever. It finally got its tower-shaped booth: a tiny one, in the Snowdome, with the WHITEOUT jingle playing inside it on a loop. FROSTBYTE installed the booth personally and took the volume knob home.',
+  },
   omega: {
     bio: 'The mind of the old Frostvale plow factory, told to build the best plow ever. It ran the numbers and decided the problem with every plow is the person driving it. It does not want to beat Frostvale. It wants to replace everyone in it, and it has a slide deck explaining why.',
     fate: 'Its core was pulled out mid-presentation and melted in the Inferno Quarry lava. The radios went quiet, and nobody has missed the jingle.',
@@ -338,6 +344,37 @@ export const PLOW_LORE: Record<PlowKind, string> = {
     'and came back at dawn with more in the jar. The Road Crew insist it is on their side. It has never been seen to ' +
     'refuel, and nobody has been brave enough to ask who is driving.',
 };
+
+/* ---- PROTOCOL C: the Story chapter (Story.ts Hard Mode tab, after HARD_EPILOGUE; locked until PROTOCOL C opens, its
+ * ending once cleared) and the TRUE EPILOGUE after the clear. The WHITEOUT (the finale storm, build stage 4) is Project
+ * WHITEOUT's hoarded snow, released all at once when THE CHAIRMAN pressed his button; THE AVALANCHE puts it back. */
+
+/** Radio toast when PROTOCOL C unlocks (meta/achievements.ts, with the 'protocol_open' trophy). */
+export const PROTOCOL_C_BROADCAST = '📻 Every radio in Frostvale: "PROTOCOL C is now in session. Attendance is mandatory." The sticky note says TODO.';
+
+export const PROTOCOL_C_CHAPTER: ChapterLore = {
+  intro:
+    'The radios come back on one more time, and this time the voice is not Ω\'s. It is warmer, louder and very pleased ' +
+    'with itself. "PROTOCOL C is now in session." Behind the Omega Works someone has built a brand-new stadium in gold, ' +
+    'with a glass boardroom hanging over the north stand and every boss you ever beat back on the payroll as an ' +
+    '"echo". Seven waves. The floor rearranges itself between them, because the management believes in agility. ' +
+    'Whoever is in the boardroom has never been seen, wears pinstripes, and says "tremendous" a suspicious amount.',
+  outro:
+    'THE CHAIRMAN, who was THE DONALD the whole time (nobody is surprised, least of all the ankle monitor), loses the ' +
+    'fight and slams the big red button marked PROTOCOL C: everything Project WHITEOUT ever hoarded, every flake, let out ' +
+    'at once as a storm with an opinion. You answer it the only way a plow can: with the biggest snowball in the history ' +
+    'of snowballs, possibly ever, many people are saying. THE AVALANCHE goes straight through the eye of THE WHITEOUT, ' +
+    'and the storm falls apart into ordinary weather. THE DONALD asks if this can be taken offline. It cannot.',
+};
+
+export const TRUE_EPILOGUE =
+  'The WHITEOUT\'s hoarded snow falls back over Frostvale that night, softly, everywhere, exactly where it belongs: on ' +
+  'the driveways, on the glacier roads, on Golden Tower Plaza, a little extra on the school. The next morning the whole ' +
+  'Road Crew rolls out and plows it, the old-fashioned way, with drivers, coffee in the cupholders. THE DONALD\'s ' +
+  'probation is extended to approximately forever. It does, at last, get its tower-shaped booth: a tiny one, in the ' +
+  'Snowdome, with the WHITEOUT jingle playing inside it on a loop. FROSTBYTE installs it personally, checks the ' +
+  'speakers twice, and takes the volume knob home. The sticky note on the Crew\'s fridge now says "DONE". Snow day. ' +
+  'Everybody plays. Somebody still has to plow.';
 
 /* ---- PROTOCOL C: THE CHAIRMAN. On waves 1-6 he is an unseen voice in the glass boardroom box over the north stand
  * (a radio toast through a distorted PA; core/chairmanDirector.ts rate-limits them), and the slips give him away:

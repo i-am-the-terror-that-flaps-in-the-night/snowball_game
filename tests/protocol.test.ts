@@ -230,7 +230,8 @@ describe('checkpoint', () => {
     expect(r.importSave(p.exportSave())).toEqual({ ok: true });
     expect(protocolSave(r).checkpoint?.wave).toBe(5);
     const rec = recordProtocolClear(r, 412.34, 1);
-    expect(rec).toEqual({ firstClear: true, reward: PROTOCOL_CLEAR_REWARD, newBest: true, bestTime: 412.3 });
+    expect(rec).toMatchObject({ firstClear: true, reward: PROTOCOL_CLEAR_REWARD, newBest: true, bestTime: 412.3 });
+    expect(rec.granted.length).toBe(3);
     expect(protocolSave(r).checkpoint).toBeNull();
     expect(protocolSave(r).cleanClear).toBe(false);
     expect(protocolReward(r)).toBeLessThan(PROTOCOL_CLEAR_REWARD);

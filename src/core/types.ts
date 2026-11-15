@@ -430,6 +430,8 @@ export interface EnemyHandle {
   readonly echo?: boolean;
   readonly headline?: boolean;
   readonly held?: boolean;
+  /** PROTOCOL C: seconds left on THE CHAIRMAN's HOSTILE TAKEOVER buff on this echo (> 0 = ACQUIRED; Bot.acquired). */
+  readonly acquired?: number;
 }
 
 export interface DamageOpts {
@@ -595,9 +597,19 @@ export interface GhostFxAPI {
   soul(at: THREE.Vector3, target: THREE.Vector3 | null): void;
 }
 
+/** Ice-white sprites for the PROTOCOL C exclusives: the Whiteout trail / Avalanche kill (fx/frostFx.ts). */
+export interface FrostFxAPI {
+  /** One Whiteout puff from a rear corner; `moved` m since the last puff lays a frost line (0 = parked); `dash` gusts. */
+  trail(x: number, y: number, z: number, groundY: number, yaw: number, moved: number, dash: boolean): void;
+  /** A snowball rolls out of the wreck at `at` along (dirX, dirZ), gathers the scrap, swells and implodes. */
+  avalanche(at: THREE.Vector3, dirX: number, dirZ: number): void;
+}
+
 export interface FxAPI {
   /** Ghostfire / Soul Harvest sprites (absent on stub FX: callers fall back to plain bursts). */
   ghost?: GhostFxAPI;
+  /** Whiteout / Avalanche sprites (absent on stub FX: callers fall back to plain bursts). */
+  frost?: FrostFxAPI;
   /** Tumbling chunks. Routing: rising bursts (gravity < 0) render as soft puffs (saturated colours glow);
    *  small (size <= 0.12), short (life <= 0.6), coloured bursts render as streak sparks. */
   burst(pos: THREE.Vector3, opts?: { color?: number; count?: number; speed?: number; size?: number; gravity?: number; life?: number }): void;

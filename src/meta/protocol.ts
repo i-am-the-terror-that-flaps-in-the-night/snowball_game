@@ -3,6 +3,8 @@ import { ZONES } from '../config/zones';
 import { UPGRADES, upgradeCost } from '../config/upgrades';
 import { GEAR_BY_ID, gearSpent } from '../config/gear';
 import { PROTOCOL_CLEAR_REWARD, PROTOCOL_REPEAT_FRAC, PROTOCOL_WAVES } from '../config/protocol';
+import type { CosmeticDef } from '../config/cosmetics';
+import { grantProtocolCosmetics } from './cosmetics';
 
 /* PROTOCOL C meta (config/protocol.ts): the unlock rule, the clear / best-time record and the per-wave checkpoint.
  * Lives in save.protocol (validated by Progression's sanitizeProtocol on load and import). The campaign's own
@@ -25,6 +27,23 @@ export function protocolTeased(p: Progression): boolean {
   return p.zoneRecord(ZONES[ZONES.length - 1].id).cleared;
 }
 
+/** What the Story overlay may show of PROTOCOL C (spoiler gating; ui/Story.ts):
+ *  - chapter: 'hidden' before the Hard epilogue is readable (every arena on Hard), 'locked' until PROTOCOL C opens
+ *    (never in practice: the same clears open it), 'open' (its opening), 'done' (its ending too, after a clear);
+ *  - epilogue: the TRUE EPILOGUE, after a clear;
+ *  - chairman: THE CHAIRMAN's Bosses-tab card: 'hidden' until PROTOCOL C opens, 'locked' (a ??? card) until a clear,
+ *    'revealed' (bio + fate) after one. */
+export function protocolStory(p: Progression): { chapter: 'hidden' | 'locked' | 'open' | 'done'; epilogue: boolean; chairman: 'hidden' | 'locked' | 'revealed' } {
+  const open = protocolUnlocked(p);
+  const cleared = open && p.data.protocol?.cleared === true;
+  const hardAll = ZONES.every((z) => p.data.hardCleared?.[z.id] === true);
+  return {
+    chapter: cleared ? 'done' : open ? 'open' : hardAll ? 'locked' : 'hidden',
+    epilogue: cleared,
+    chairman: cleared ? 'revealed' : open ? 'locked' : 'hidden',
+  };
+}
+
 /** The save's Protocol record (a fresh one if missing). */
 export function protocolSave(p: Progression): ProtocolSave {
   return (p.data.protocol ??= { cleared: false, clears: 0, bestTime: 0, bestWave: 0, cleanClear: false, checkpoint: null });
@@ -41,6 +60,8 @@ export interface ProtocolClear {
   /** New best total time (s). */
   newBest: boolean;
   bestTime: number;
+  /** PROTOCOL C exclusives granted by this clear (the first one; config/cosmetics.ts req.protocol). */
+  granted: CosmeticDef[];
 }
 
 /** Record a clear in `time` s (fights only: shops excluded) with `uses` checkpoint retries. Saves; Game pays the coins. */
@@ -58,7 +79,9 @@ export function recordProtocolClear(p: Progression, time: number, uses: number):
   if (uses <= 0) s.cleanClear = true;
   s.checkpoint = null;
   p.commit();
-  return { firstClear, reward, newBest, bestTime: s.bestTime };
+  // The exclusives (Hostile Takeover / Whiteout / Avalanche) unlock with the first clear; idempotent afterwards.
+  const granted = grantProtocolCosmetics(p);
+  return { firstClear, reward, newBest, bestTime: s.bestTime, granted };
 }
 
 /** Wave reached on a failed run (best wave reached is kept). */
