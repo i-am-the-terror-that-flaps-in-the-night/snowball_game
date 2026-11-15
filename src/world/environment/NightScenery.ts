@@ -3,7 +3,7 @@ import type { ZoneDef } from '../../core/types';
 import { ARENA } from '../../core/types';
 import { currentPreset } from '../../core/settings';
 import type { Item } from './types';
-import { VenueScenery } from './VenueScenery';
+import { PROTOCOL_STAGE_HALF, ProtocolScenery } from './ProtocolScenery';
 import {
   WALL_C, GATE_HALF, PILLAR_W, STAND_N0, ROWS, ROW_D, ROW_RISE, STAGE_HALF, BRAWL_WALL_H, DOME_N0, DOME_ROWS,
   DOME_ROW_D, DOME_RISE, SIDES, SPONSORS, brawlMode, gapsFor, merge, subtract, type Side,
@@ -34,7 +34,7 @@ const BANK_TILT = 0.62;
  * colliders or anything the simulation reads: every random number comes from this.nightRnd.
  * Draw calls added: bank frames + bank lamps, cones (not on LOW), pools, LED ribbon, the Points (6 at most).
  */
-export class NightScenery extends VenueScenery {
+export class NightScenery extends ProtocolScenery {
   /** Scrolling LED ribbon (offset advanced in update). */
   protected ledTex: THREE.Texture | null = null;
 
@@ -48,6 +48,7 @@ export class NightScenery extends VenueScenery {
       const range = side.key === 'n' || side.key === 's' ? [ARENA.minX - 1, ARENA.maxX + 1] : [ARENA.minZ - 1, ARENA.maxZ + 1];
       const gaps = gapsFor(side.key, GATE_HALF + 2.2);
       if (side.key === 'n' && rally) gaps.push([-(STAGE_HALF + 0.6), STAGE_HALF + 0.6]);
+      else if (side.key === 'n' && zone.stage) gaps.push([-(PROTOCOL_STAGE_HALF + 0.6), PROTOCOL_STAGE_HALF + 0.6]);
       for (const [a, b] of subtract(range[0], range[1], gaps)) {
         for (let s = a + 4.5; s < b - 2; s += 12) {
           const [x, z] = side.map(s, backN - 0.3);

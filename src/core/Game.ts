@@ -27,7 +27,7 @@ import { Impact } from '../fx/impact';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
-import { ChallengeTracker, hardCleared, hardPower, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
+import { ChallengeTracker, hardCleared, hardPower, hardScale, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
 import { renderFrame } from '../render/post';
@@ -47,6 +47,10 @@ import { ROOM_CODE_LEN, cleanRoomCode } from '../ui/DuelUI';
 import { NavGraph } from '../world/omega/nav';
 import { OMEGA_NAV } from '../world/omega/layout';
 import { ZONE_BEATS } from '../config/lore';
+import { PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, protocolWaveZone, protocolZone, waveBossCount } from '../config/protocol';
+import { protocolSave, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint, saveCheckpoint, takeCheckpoint } from '../meta/protocol';
+import type { ProtocolCheckpoint } from './Progression';
+import type { ZoneDef } from '../config/zones';
 
 type State =
   | 'menu' | 'countdown' | 'playing' | 'shop' | 'paused' | 'wrecked' | 'gameover' | 'victory'
@@ -107,6 +111,14 @@ export class Game {
   /** Current campaign run is the arena's Hard mode; current Survival run is the Daily. */
   private hard = false;
   private daily = false;
+  /** Current campaign run is PROTOCOL C (config/protocol.ts): its power-scaled base zone, the checkpoint taken at the
+   *  current wave's start (RETRY WAVE n restores it), checkpoint retries used this run, and the kills the run started
+   *  with (a retry restores earlier kills, already counted in totalKills). */
+  private protocol = false;
+  private protocolBase: ZoneDef = PROTOCOL_ZONE;
+  private protocolCk: ProtocolCheckpoint | null = null;
+  private protocolUses = 0;
+  private protocolKills0 = 0;
   private hud: HudState;
   private mode: Mode = 'campaign';
   /** Ultimate kill-cam trigger (3+ kills from one ultimate -> slow-mo + camera swing). */
@@ -217,7 +229,11 @@ export class Game {
       onStartSurvival: () => this.startSurvival(),
       onStartDaily: () => this.startSurvival(true),
       onStartTutorial: () => this.startTutorial(),
-      onRetry: () => (this.mode === 'survival' ? this.startSurvival(this.daily) : this.startRun(this.zoneIndex, this.hard)),
+      onRetry: () => (this.mode === 'survival' ? this.startSurvival(this.daily) : this.protocol ? this.startProtocol(1) : this.startRun(this.zoneIndex, this.hard)),
+      onStartProtocol: (resume) => {
+        if (protocolUnlocked(progression)) this.startProtocol(1, !!resume);
+      },
+      onRetryCheckpoint: () => this.startProtocol(1, true),
       onResetSave: () => {
         progression.resetSave();
         this.refreshStats();
@@ -426,6 +442,7 @@ export class Game {
 
   /** Every arena start (before the arena is built): apply a pending AUTO quality decision, start a new sample. */
   private arenaStart(): void {
+    this.protocol = false;
     commitAutoQuality(this.ctx);
     commitTimeOfDay();
     this.autoSampler.reset();
@@ -487,6 +504,80 @@ export class Game {
     ctx.cameraRig.setMode('follow');
     ctx.cameraRig.snap();
     this.beginCountdown();
+    this.warmNow();
+  }
+
+  /**
+   * PROTOCOL C (config/protocol.ts): the seven-wave boss rush. `resume`: restart from the last wave-start checkpoint
+   * (this run's, else the saved one) with its HP / kills / time, counting a checkpoint use. Callable at any `wave`
+   * from the console for testing (`__game.startProtocol(5)`); the zone select only opens it once unlocked
+   * (meta/protocol.ts protocolUnlocked).
+   */
+  startProtocol(wave = 1, resume = false): void {
+    const { ctx } = this;
+    const p = ctx.progression;
+    const ck = resume ? (this.protocolCk ?? protocolSave(p).checkpoint) : null;
+    const w = ck ? ck.wave : Math.max(1, Math.min(PROTOCOL_WAVES, Math.round(wave) || 1));
+    this.arenaStart();
+    this.setMode('campaign');
+    this.protocol = true;
+    this.zoneIndex = PROTOCOL_INDEX;
+    this.hard = false;
+    this.roundIndex = w - 1;
+    this.run = this.newRun();
+    this.combo = 0;
+    this.protocolBase = protocolZone(hardScale(hardPower((id) => p.statLevel(id), p.data.plow)));
+    ctx.zone = protocolWaveZone(this.protocolBase, w);
+    this.refreshStats();
+    this.clearArena();
+    setArenaHalfSize(CAMPAIGN_ARENA_HALF);
+    setBrawlPerf(ctx, false);
+    ctx.enemies.nav = null;
+    ctx.fx.clear();
+    ctx.world.setZone(ctx.zone);
+    ctx.snow.reset(ctx.zone);
+    ctx.plow.reset();
+    this.protocolUses = 0;
+    this.protocolKills0 = 0;
+    if (ck) {
+      const r = restoreCheckpoint(ck, ctx.plow.maxHp, ctx.time);
+      ctx.plow.hp = r.hp;
+      this.run.kills = this.protocolKills0 = r.kills;
+      this.run.coins = r.coins;
+      this.run.start = r.start;
+      this.protocolUses = r.uses;
+    }
+    ctx.ui.hideOverlays();
+    ctx.ui.setHudVisible(true);
+    ctx.ui.toast(ck ? `PROTOCOL C · RETRY WAVE ${w}` : 'PROTOCOL C', 'big');
+    ctx.cameraRig.setMode('follow');
+    ctx.cameraRig.snap();
+    this.protocolCheckpoint();
+    this.beginCountdown();
+    this.warmNow();
+  }
+
+  /** PROTOCOL C: snapshot the run at this wave's start (memory + save) for RETRY WAVE n. */
+  private protocolCheckpoint(): void {
+    const { ctx } = this;
+    this.protocolCk = takeCheckpoint({
+      wave: this.roundIndex + 1, hp: ctx.plow.hp, maxHp: ctx.plow.maxHp, time: ctx.time, start: this.run.start,
+      kills: this.run.kills, coins: this.run.coins, uses: this.protocolUses,
+    });
+    saveCheckpoint(ctx.progression, this.protocolCk);
+  }
+
+  /** PROTOCOL C between waves: "restructure" the arena for wave `wave` (its floor, decor and snow), the plow back on
+   *  its spawn with its HP (Survival's switchBiome precedent). Runs while the shop is up. */
+  private protocolRestructure(wave: number): void {
+    const { ctx } = this;
+    ctx.zone = protocolWaveZone(this.protocolBase, wave);
+    ctx.fx.clear();
+    ctx.world.setZone(ctx.zone);
+    ctx.snow.reset(ctx.zone);
+    const hp = ctx.plow.hp;
+    ctx.plow.reset();
+    ctx.plow.hp = Math.min(ctx.plow.maxHp, hp);
     this.warmNow();
   }
 
@@ -749,6 +840,14 @@ export class Game {
           ctx.audio.play('boss');
         } else ctx.ui.toast(`${head} incoming…`, 'info');
       }
+    } else if (this.isBossRound && this.protocol) {
+      this.countdown = BOSS_COUNTDOWN_SECONDS;
+      const w = this.roundIndex + 1;
+      const { echoes } = waveBossCount(w);
+      const more = echoes ? ` · + ${echoes} ECHO${echoes > 1 ? 'ES' : ''}` : '';
+      // TODO(protocol stage 3): wave 7 introduces THE CHAIRMAN; THE DONALD stands in for now.
+      ctx.ui.bossIntro(ctx.zone.bossName, `PROTOCOL C · ${w >= PROTOCOL_WAVES ? 'FINAL WAVE' : `WAVE ${w}/${PROTOCOL_WAVES}`}${more}`);
+      ctx.audio.play('boss');
     } else if (this.isBossRound) {
       this.countdown = BOSS_COUNTDOWN_SECONDS;
       ctx.ui.bossIntro(ctx.zone.bossName, bossIntroTitle(ctx.zone.rounds[this.roundIndex].groups.map((g) => g.type)));
@@ -787,16 +886,20 @@ export class Game {
     this.state = 'shop';
     ctx.audio.setEngine(0, 0);
     ctx.audio.setPlowing(0);
+    // PROTOCOL C restructures the arena for the next wave while the shop is up.
+    if (this.protocol) this.protocolRestructure(this.roundIndex + 2);
     ctx.ui.showShop(this.roundIndex + 2, ctx.zone.rounds.length, () => {
       this.refreshStats();
       ctx.plow.hp = Math.min(ctx.plow.maxHp, ctx.plow.hp + ctx.stats.repairFraction * ctx.plow.maxHp);
       ctx.ui.hideOverlays();
       this.roundIndex++;
+      if (this.protocol) this.protocolCheckpoint();
       this.beginCountdown();
     });
   }
 
   private victory(): void {
+    if (this.protocol) return this.protocolVictory();
     const { ctx } = this;
     this.state = 'victory';
     this.run.bossDefeated = true;
@@ -826,6 +929,55 @@ export class Game {
     ctx.ui.showVictory(summary);
   }
 
+  /** PROTOCOL C cleared: the clear + best time (meta/protocol.ts), its coin reward, Hard-grade loot. */
+  private protocolVictory(): void {
+    const { ctx } = this;
+    this.state = 'victory';
+    this.run.bossDefeated = true;
+    const time = Math.max(0, ctx.time - this.run.start);
+    const p = ctx.progression;
+    const rec = recordProtocolClear(p, time, this.protocolUses);
+    this.protocolCk = null;
+    p.data.totalKills += Math.max(0, this.run.kills - this.protocolKills0);
+    p.addCoins(rec.reward);
+    this.run.coins += rec.reward;
+    const loot = p.rollLoot(rec.firstClear ? 'hard' : 'hardRepeat');
+    if (loot) this.run.loot.push(loot);
+    const summary: RunSummary = {
+      ...this.summaryBase(ctx.zone.rounds.length),
+      firstClear: rec.firstClear,
+      clearReward: rec.reward,
+      unlockedZoneName: null,
+      loot: this.run.loot,
+      protocol: { wave: PROTOCOL_WAVES, time, bestTime: rec.bestTime, newBest: rec.newBest, uses: this.protocolUses, checkpointWave: null },
+    };
+    this.emitRunFinished({ mode: 'campaign', won: true, protocol: true, roundsCleared: ctx.zone.rounds.length });
+    ctx.audio.setEngine(0, 0);
+    ctx.audio.setPlowing(0);
+    ctx.audio.play('victory');
+    ctx.ui.setHudVisible(false);
+    ctx.ui.showVictory(summary);
+  }
+
+  /** PROTOCOL C wrecked: keep the best wave; the results screen offers RETRY WAVE n (the checkpoint). */
+  private protocolGameOver(): void {
+    const { ctx } = this;
+    this.state = 'gameover';
+    const p = ctx.progression;
+    recordProtocolWave(p, this.roundIndex + 1);
+    p.data.totalKills += Math.max(0, this.run.kills - this.protocolKills0);
+    this.protocolKills0 = this.run.kills;
+    p.commit();
+    this.emitRunFinished({ mode: 'campaign', won: false, protocol: true, roundsCleared: this.roundIndex });
+    ctx.audio.play('gameOver');
+    ctx.ui.setHudVisible(false);
+    const time = Math.max(0, ctx.time - this.run.start);
+    ctx.ui.showGameOver({
+      ...this.summaryBase(this.roundIndex), firstClear: false, clearReward: 0, unlockedZoneName: null,
+      protocol: { wave: this.roundIndex + 1, time, bestTime: protocolSave(p).bestTime, newBest: false, uses: this.protocolUses, checkpointWave: this.protocolCk?.wave ?? null },
+    });
+  }
+
   private wrecked(): void {
     this.state = 'wrecked';
     this.wreckT = WRECK_SECONDS;
@@ -839,6 +991,7 @@ export class Game {
   private gameOver(): void {
     const { ctx } = this;
     if (this.mode === 'survival') return this.survivalOver();
+    if (this.protocol) return this.protocolGameOver();
     this.state = 'gameover';
     ctx.progression.recordRun(this.zoneIndex, this.roundIndex, false, this.run.kills);
     this.emitRunFinished({ mode: 'campaign', won: false, zoneIndex: this.zoneIndex, roundsCleared: this.roundIndex, hard: this.hard });
@@ -1297,7 +1450,11 @@ export class Game {
     hud.overload = ctx.combat.overloadHeat;
     hud.overloadCost = ctx.combat.overloadCost;
     hud.snowFraction = ctx.snow.totalSnowFraction();
-    hud.bosses = ctx.enemies.bosses.map((b) => ({ name: ENEMIES[b.type].name, title: ENEMIES[b.type].title, hp: b.hp, maxHp: b.maxHp }));
+    hud.bosses = ctx.enemies.bosses.map((b) => ({
+      name: b.echo ? `ECHO ${ENEMIES[b.type].name}` : ENEMIES[b.type].name,
+      title: b.echo ? 'Echo' : b.headline ? `PROTOCOL · ${ENEMIES[b.type].title}` : ENEMIES[b.type].title,
+      hp: b.hp, maxHp: b.maxHp, type: b.type, echo: !!b.echo, held: !!b.held,
+    }));
     hud.combo = this.combo;
     const counting = this.state === 'countdown' || this.state === 'brawlCountdown';
     hud.countdown = counting ? Math.max(0, this.countdown) : this.state === 'duel' ? this.duel.countdown : 0;

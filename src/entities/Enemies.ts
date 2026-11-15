@@ -14,6 +14,7 @@ import {
 import { DecalPool } from './enemies/decals';
 import { MINION_AI, MOVE_COLOR, aroundAngle, clamp, initAI, orbit, resetAI, segDist, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
+import { ECHO_DMG, HEADLINE_DMG } from '../config/protocol';
 import { donaldProps } from './enemies/donaldProps';
 import type { KillSource, KillWeapon } from '../core/events';
 import type { BotNav } from '../core/types';
@@ -70,6 +71,15 @@ const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { twinlink: 0xffb020, s
 
 const _c = new THREE.Color();
 const _ec = new THREE.Color();
+/** PROTOCOL C echoes: paint pulled toward gold, a gold shimmer on top (stage 2 polishes the hologram look). */
+const ECHO_GOLD = new THREE.Color(0xffd257);
+const ECHO_TINT = 0.5;
+/** Boss leash (ZoneDef.maxActiveBosses): an active echo is swapped for the longest-held one after LEASH_SWAP s in
+ *  play (once it is between moves); a held boss circles the plow LEASH_R (+ a little per id) away. */
+export const LEASH_SWAP = 9;
+export const LEASH_R = 15;
+/** Boss AI states where a boss is between moves (it can be put on hold without cutting an attack short). */
+const BOSS_NEUTRAL = new Set(['approach', 'hunt', 'lineup', 'pin']);
 const _v = new THREE.Vector3();
 /** Last-bot hunt: with this many campaign minions (or fewer) left, they stop wandering and drive at the player. */
 export const HUNT_LEFT = 2;
@@ -246,12 +256,20 @@ export class EnemyManager implements EnemyManagerAPI, Host {
    * Spawn a bot at (x, z). `opts.y` = the height to spawn at (a deck top, e.g. an Omega Works hatch on the Assembly
    * Floor): the bot stands on the highest surface within a step of it. Default 0 = the ground (under any deck).
    */
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean }): EnemyHandle {
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean }): EnemyHandle {
     const ctx = this.ctx;
     const def = ENEMIES[type];
     const rig = createRig(type);
     const e = new Bot(this.nextId++, type, opts?.hpMult ?? 1, rig);
     e.position.set(x, 0, z);
+    if (def.isBoss && opts?.echo) {
+      e.echo = true;
+      e.dmgOutMult = ECHO_DMG;
+      for (const c of rig.paintBase) c.lerp(ECHO_GOLD, ECHO_TINT);
+    } else if (def.isBoss && opts?.headline) {
+      e.headline = true;
+      e.dmgOutMult = HEADLINE_DMG;
+    }
 
     let gi = -1;
     let best = 10 * 10;
@@ -269,6 +287,15 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.desHeading = e.heading;
     initAI(e);
     if (type === 'sleet') e.cd3 = 3;
+    if (type === 'slush' || type === 'sleet') {
+      // SLUSH & SLEET pair up (several pairs can share a fight: PROTOCOL C's headline twins and their echoes)
+      const other: EnemyType = type === 'slush' ? 'sleet' : 'slush';
+      const mate = this.list.find((b) => b.alive && b.type === other && !b.partner && b.echo === e.echo);
+      if (mate) {
+        mate.partner = e;
+        e.partner = mate;
+      }
+    }
     if (type === 'twinlink') {
       // pair with a waiting twin (spawned just before), else wait for the next one
       const mate = this.list.find((b) => b.alive && b.type === 'twinlink' && !b.partner);
@@ -520,6 +547,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.aimers = aim;
     let minions = 0;
     for (const e of this.list) if (e.alive && !e.isBoss) minions++;
+    this.leash(dt);
     // Only the true stragglers: nothing left to spawn in this round.
     const pending = ctx.waves ? ctx.waves.remaining - this.aliveN : 0;
     this.hunting = minions > 0 && minions <= HUNT_LEFT && this.plowAlive && pending <= 0;
@@ -703,9 +731,64 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     fx.floatText(_v.set(e.position.x, e.groundY + e.rig.height + 1.2, e.position.z), label, '#ff6a5a', 1.3);
   }
 
+  /** The first living bot of `type` (several can share a fight in PROTOCOL C: pair / owner logic must not rely on it;
+   *  twins use Bot.partner, THE DONALD's props their owner). */
   findBoss(type: EnemyType): Bot | null {
     for (const e of this.list) if (e.alive && e.type === type) return e;
     return null;
+  }
+
+  /**
+   * Boss leash (ZoneDef.maxActiveBosses, PROTOCOL C): at most `max` bosses fight at once. Headlines always fight; the
+   * newest echoes over the cap are held back (once between moves), a freed slot goes to the longest-held echo, and an
+   * echo that has fought LEASH_SWAP s swaps with the longest-held one, so every echo gets its turn.
+   */
+  private leash(dt: number): void {
+    const max = this.ctx.zone?.maxActiveBosses;
+    const list = this.bossList;
+    if (!max) return;
+    let active = 0;
+    for (const b of list) {
+      b.leashT += dt;
+      if (!b.held) active++;
+    }
+    const neutral = (b: Bot) => b.echo && !b.entering && !b.atk && BOSS_NEUTRAL.has(b.state);
+    for (let i = list.length - 1; i >= 0 && active > max; i--) {
+      const b = list[i];
+      if (b.held || !neutral(b)) continue;
+      this.hold(b, true);
+      active--;
+    }
+    const longestHeld = (): Bot | null => {
+      let best: Bot | null = null;
+      for (const b of list) if (b.held && (!best || b.leashT > best.leashT)) best = b;
+      return best;
+    };
+    while (active < max) {
+      const b = longestHeld();
+      if (!b) break;
+      this.hold(b, false);
+      active++;
+    }
+    const inn = longestHeld();
+    if (!inn || inn.leashT < 3) return;
+    let out: Bot | null = null;
+    for (const b of list) if (!b.held && neutral(b) && b.leashT >= LEASH_SWAP && (!out || b.leashT > out.leashT)) out = b;
+    if (!out) return;
+    this.hold(out, true);
+    this.hold(inn, false);
+  }
+
+  private hold(b: Bot, on: boolean): void {
+    b.held = on;
+    b.leashT = 0;
+    if (on) {
+      resetAI(this, b);
+      this.label(b, 'ON HOLD', '#ffd257', 0.9);
+    } else {
+      b.cd = Math.max(b.cd, 1.0);
+      this.label(b, 'BACK IN!', '#ffd257', 1.0);
+    }
   }
 
   hitPlow(e: Bot, dmg: number, opts?: { knockback?: number; unblockable?: boolean; fromX?: number; fromZ?: number }): number {
@@ -938,6 +1021,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       e.accel = 14;
       e.windup = 0;
       e.jitter = 0;
+    } else if (e.held) {
+      // on the boss leash: circle well away from the plow, no attacks
+      e.taunt = 0;
+      orbit(this, e, LEASH_R + (e.id % 3) * 1.5, e.def.speed * 0.55, dt);
+      e.cd = Math.max(e.cd, 1.2);
     } else {
       e.taunt = 0;
       const ai = e.isBoss ? BOSS_AI[e.type] : MINION_AI[e.type];
@@ -1384,7 +1472,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     // Standing in lava when it died (lava burn, or a hit that finished it in the lava): a "kill in lava".
     const inLava = e.mat === 'lava' && !e.vert.airborne;
     ctx.events.emit('enemyKilled', { enemy: e, coins, source, inLava: inLava || source === 'lava' || undefined, weapon });
-    if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: def.name });
+    if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: e.displayName });
     ctx.pickups?.spawnCoins(p.clone(), coins);
     if (e.type === 'slushpile') this.split(e, areaAmt, areaOpts);
     // The other twin was a husk: it goes down for good too. Both within TWIN_SEVER_WINDOW s: SEVERED! bonus coins.
@@ -1637,6 +1725,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (e.enraged) {
       _ec.setHex(ENRAGE_COLOR[e.type] ?? 0xff2020).multiplyScalar(0.16 + 0.1 * Math.sin(t * 8));
       _c.add(_ec);
+    }
+    if (e.echo) {
+      // hologram shimmer: a gold glow that flickers, brighter while on the leash
+      const k = (e.held ? 0.22 : 0.12) + 0.08 * Math.sin(t * 5 + e.id) + (Math.sin(t * 23 + e.id * 3) > 0.92 ? 0.25 : 0);
+      _c.add(_ec.copy(ECHO_GOLD).multiplyScalar(k));
     }
     if ((e.stun > 0 || e.vuln === Vuln.Dizzy) && Math.sin(t * 12) > 0) {
       _c.r += 0.12;

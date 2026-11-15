@@ -22,6 +22,9 @@ interface QueuedSpawn {
   gate: number;
   /** SpawnGroup.hpMult (1 = just the zone's). */
   hp: number;
+  /** SpawnGroup.echo / headline (PROTOCOL C). */
+  echo?: boolean;
+  headline?: boolean;
 }
 
 export class WaveDirector implements WaveDirectorAPI {
@@ -64,7 +67,7 @@ export class WaveDirector implements WaveDirectorAPI {
             }
             gate = order[oi++];
           }
-          this.queue.push({ t: g.delay + i * g.interval, type: g.type, gate, hp: g.hpMult ?? 1 });
+          this.queue.push({ t: g.delay + i * g.interval, type: g.type, gate, hp: g.hpMult ?? 1, echo: g.echo, headline: g.headline });
         }
       }
     }
@@ -131,7 +134,7 @@ export class WaveDirector implements WaveDirectorAPI {
     const lat = def.isBoss ? 0 : (Math.random() - 0.5) * Math.max(0, GATE_WIDTH - 2 * def.radius - 0.8);
     const x = g.x + fz * lat - fx * back;
     const z = g.z - fx * lat - fz * back;
-    this.ctx.enemies.spawn(s.type, x, z, { hpMult: this.hpMult * s.hp, heading: g.heading });
+    this.ctx.enemies.spawn(s.type, x, z, { hpMult: this.hpMult * s.hp, heading: g.heading, echo: s.echo, headline: s.headline });
   }
 
   /** The Omega Works: rise out of a floor hatch near the player (bosses: an open-ground hatch), facing them. */

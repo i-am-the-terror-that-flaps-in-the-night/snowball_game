@@ -209,3 +209,36 @@
   .ss-root .ss-zone-hard { flex-wrap: wrap; gap: 0 6px; white-space: normal; text-align: center; line-height: 1.1; }
   .ss-zone-hard small { white-space: nowrap; }
 }
+
+/* ------------------------------------------------------------ PROTOCOL C (zone select: the seventh card, a full row) */
+.ss-protocol-slot { grid-column: 1 / -1; }
+/* the seventh row pushes the list past a 720p screen: let the panel scroll */
+.ss-zones:has(.ss-protocol-slot) { overflow-y: auto; }
+.ss-zone.ss-protocol { min-height: 150px; background: linear-gradient(100deg, #10182c 0%, #1b2440 55%, #3a2c0c 100%); box-shadow: inset 0 0 0 3px #e8b423; }
+.ss-zone.ss-protocol::before { display: none; }
+.ss-zone.ss-protocol .ss-zone-bottom { padding-top: 10px; }
+.ss-zone.ss-protocol .ss-zone-name { color: #f2c94c; font-size: 40px; letter-spacing: 0.08em; }
+.ss-zone.ss-protocol .ss-zone-num { color: rgba(242, 201, 76, 0.22); }
+.ss-zone.ss-protocol .ss-zone-tag { max-width: 60ch; }
+.ss-zone.ss-protocol.cleared { box-shadow: inset 0 0 0 3px var(--green), inset 0 0 0 6px #e8b423; }
+/* locked: a broken-signal card (saturation kept: the glitch is the point) */
+.ss-zone.ss-protocol.locked { filter: none; }
+.ss-zone.ss-protocol.locked .ss-zone-lock {
+  left: 34%;
+  flex-direction: row;
+  background: linear-gradient(90deg, transparent, rgba(6, 8, 14, 0.78) 18%), repeating-linear-gradient(0deg, rgba(6, 8, 14, 0.5) 0 3px, transparent 3px 5px);
+}
+.ss-zone.ss-protocol.glitch .ss-zone-name { position: relative; animation: ss-glitch-skew 2.6s steps(1) infinite; }
+.ss-zone.ss-protocol.glitch .ss-zone-name::before,
+.ss-zone.ss-protocol.glitch .ss-zone-name::after { content: attr(data-text); position: absolute; left: 0; top: 0; width: 100%; overflow: hidden; }
+.ss-zone.ss-protocol.glitch .ss-zone-name::before { color: #18e8ff; transform: translate(-3px, 0); clip-path: inset(0 0 55% 0); animation: ss-glitch-a 1.9s steps(1) infinite; opacity: 0.8; }
+.ss-zone.ss-protocol.glitch .ss-zone-name::after { color: #ff2bd6; transform: translate(3px, 0); clip-path: inset(55% 0 0 0); animation: ss-glitch-b 1.3s steps(1) infinite; opacity: 0.8; }
+.ss-zone.ss-protocol.glitch .ss-lock-text { font-family: var(--display); letter-spacing: 0.08em; color: #f2c94c; }
+@keyframes ss-glitch-a { 0%, 100% { transform: translate(-3px, 0); } 30% { transform: translate(4px, -2px); clip-path: inset(10% 0 70% 0); } 60% { transform: translate(-6px, 1px); clip-path: inset(40% 0 35% 0); } }
+@keyframes ss-glitch-b { 0%, 100% { transform: translate(3px, 0); } 40% { transform: translate(-5px, 2px); clip-path: inset(70% 0 5% 0); } 75% { transform: translate(6px, -1px); clip-path: inset(25% 0 55% 0); } }
+@keyframes ss-glitch-skew { 0%, 88%, 100% { transform: none; } 90% { transform: skewX(-12deg) translateX(4px); } 94% { transform: skewX(8deg) translateX(-3px); } }
+.ss-btn.ss-protocol-resume { box-shadow: inset 0 0 0 2px #e8b423; color: #f2c94c; }
+.ss-btn.ss-protocol-resume:hover, .ss-btn.ss-protocol-resume:focus-visible { background: #e8b423; color: var(--ink-inv); }
+@media (prefers-reduced-motion: reduce) {
+  .ss-zone.ss-protocol.glitch .ss-zone-name, .ss-zone.ss-protocol.glitch .ss-zone-name::before, .ss-zone.ss-protocol.glitch .ss-zone-name::after { animation: none; }
+}

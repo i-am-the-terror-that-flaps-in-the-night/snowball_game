@@ -312,7 +312,8 @@ function leapAir(h: Host, e: Bot): void {
 
 function bulldoza(h: Host, e: Bot, dt: number): void {
   const d = h.dist(e);
-  if (!e.enraged && e.hpFrac <= 0.5) {
+  // An ECHO (PROTOCOL C) never enrages: charge + leap only.
+  if (!e.echo && !e.enraged && e.hpFrac <= 0.5) {
     e.enraged = true;
     h.bossPhase(e, 'ENRAGED!');
     leapState(e).next = h.time + LEAP_FIRST;
@@ -363,12 +364,12 @@ function bulldoza(h: Host, e: Bot, dt: number): void {
       goTo(e, h.px, h.pz, spd, 3);
       e.turnRate = 1.5;
       if (e.cd <= 0) {
-        if (d < e.radius + h.pr + 1.6) {
+        if (!e.echo && d < e.radius + h.pr + 1.6) {
           e.set('shoveWind', 0.6);
           h.sfx('charge', 0.4, 0.65, 0.2);
-        } else if (e.enraged && d > LEAP_MIN && h.time >= leapState(e).next) {
+        } else if ((e.enraged || e.echo) && d > LEAP_MIN && h.time >= leapState(e).next) {
           beginLeap(h, e);
-        } else if (d > 8) {
+        } else if (d > (e.echo ? 6 : 8)) {
           e.chargesLeft = e.enraged ? 2 : 1;
           beginChargeWind(h, e, 1.0);
         }
@@ -409,7 +410,8 @@ function frostbyteImpact(h: Host, e: Bot): void {
 
 function frostbyte(h: Host, e: Bot, dt: number): void {
   const d = h.dist(e);
-  if (!e.enraged && e.hpFrac <= 0.4) {
+  // An ECHO: ball slam only (no ram, no OVERCLOCKED thieves).
+  if (!e.echo && !e.enraged && e.hpFrac <= 0.4) {
     e.enraged = true;
     h.bossPhase(e, 'OVERCLOCKED!');
     h.spawnAtGate('thief', 1);
@@ -483,7 +485,7 @@ function frostbyte(h: Host, e: Bot, dt: number): void {
         e.set('slamWind', 0.7);
         e.aimH = Math.atan2(h.px - e.position.x, h.pz - e.position.z);
         h.sfx('charge', 0.6, 1.25, 0.15);
-      } else if (e.cd2 <= 0 && h.plowBall > 0.5 && d < 11) {
+      } else if (!e.echo && e.cd2 <= 0 && h.plowBall > 0.5 && d < 11) {
         e.set('ramWind', 0.6);
         h.sfx('charge', 0.45, 1.6, 0.15);
       } else {
@@ -531,13 +533,14 @@ function frostbyte(h: Host, e: Bot, dt: number): void {
 
 function grinder(h: Host, e: Bot, dt: number): void {
   const d = h.dist(e);
-  if (e.phase < 1 && e.hpFrac <= 0.6) {
+  // An ECHO: the auger pull (spin) only; no phases, no scrappers, no dash.
+  if (!e.echo && e.phase < 1 && e.hpFrac <= 0.6) {
     e.phase = 1;
     h.bossPhase(e, 'PHASE 2');
     h.spawnAtGate('scrapper', 1);
     h.spawnAtGate('scrapper', 2);
   }
-  if (e.phase < 2 && e.hpFrac <= 0.3) {
+  if (!e.echo && e.phase < 2 && e.hpFrac <= 0.3) {
     e.phase = 2;
     e.enraged = true;
     h.bossPhase(e, 'PHASE 3');
@@ -673,7 +676,7 @@ function grinder(h: Host, e: Bot, dt: number): void {
         if (d < 8) {
           e.set('spinWind', 1.2);
           h.sfx('charge', 0.7, 0.55, 0.15);
-        } else if (d < 24) {
+        } else if (!e.echo && d < 24) {
           e.set('dashWind', 0.8);
           e.aimH = Math.atan2(h.px - e.position.x, h.pz - e.position.z);
           h.sfx('charge', 0.7, 0.85, 0.15);
@@ -685,10 +688,12 @@ function grinder(h: Host, e: Bot, dt: number): void {
 
 /* ------------------------------------------------------------------ SLUSH & SLEET */
 
+/** The twin this one fights beside: its spawn partner (several pairs can share a fight in PROTOCOL C), else the first
+ *  of the other type. Losing it enrages (never an ECHO). */
 function twinEnrage(h: Host, e: Bot, other: EnemyType): Bot | null {
-  const twin = h.findBoss(other);
+  const twin = e.partner ? (e.partner.alive ? e.partner : null) : h.findBoss(other);
   if (twin) e.flags |= 1;
-  else if (!e.enraged && e.flags & 1) {
+  else if (!e.echo && !e.enraged && e.flags & 1) {
     e.enraged = true;
     h.bossPhase(e, 'ENRAGED!');
   }
@@ -839,7 +844,8 @@ function sleet(h: Host, e: Bot, dt: number): void {
         face(e, h.px, h.pz);
         e.desSpeed = 0;
       } else goTo(e, tx, tz, e.def.speed * sm, 2);
-      if (e.cd3 <= 0 && d < SR + 0.7) {
+      // An ECHO SLEET only shoves (SLUSH's echo keeps its charge).
+      if (!e.echo && e.cd3 <= 0 && d < SR + 0.7) {
         e.set('swipeWind', 0.9);
         h.sfx('charge', 0.5, 1.1, 0.15);
       } else if (e.cd <= 0 && d < e.radius + h.pr + 1.0) {
@@ -932,7 +938,8 @@ function omegaTalk(e: Bot): OmegaTalk {
 
 function omega(h: Host, e: Bot, dt: number): void {
   const d = h.dist(e);
-  if (e.phase < 1 && e.hpFrac <= 0.66) {
+  // An ECHO: the ground pound only (no phases / summons, charges, shoves or deck leaps).
+  if (!e.echo && e.phase < 1 && e.hpFrac <= 0.66) {
     e.phase = 1;
     h.bossPhase(e, 'PHASE 2');
     summon(h, 'scrapper', 0);
@@ -940,7 +947,7 @@ function omega(h: Host, e: Bot, dt: number): void {
     summon(h, 'scrapper', 2);
     omegaSay(e, 'PLEASE HOLD YOUR QUESTIONS. INTERNS?');
   }
-  if (e.phase < 2 && e.hpFrac <= 0.33) {
+  if (!e.echo && e.phase < 2 && e.hpFrac <= 0.33) {
     e.phase = 2;
     e.enraged = true;
     h.bossPhase(e, 'PHASE 3 — ENRAGED!');
@@ -1107,6 +1114,15 @@ function omega(h: Host, e: Bot, dt: number): void {
       }
       break;
     default: {
+      if (e.echo) {
+        goTo(e, h.px, h.pz, spd, 3);
+        e.turnRate = 1.1;
+        if (e.cd <= 0 && d < PR + h.pr * 0.4) {
+          e.set('poundWind', 1.1);
+          h.sfx('charge', 0.8, 0.5, 0.15);
+        }
+        break;
+      }
       // The Omega Works: route via ramps / round decks when the player is on another level.
       const nav = h.ctx.enemies.nav;
       if (nav && nav.next(e.position.x, e.position.z, e.vert.deck, h.px, h.pz, h.ctx.plow.deck, _navOut)) goTo(e, _navOut.x, _navOut.z, spd, 1);
@@ -1235,6 +1251,7 @@ function donaldWalls(h: Host, e: Bot, s: DonaldState): void {
     side(-6.5);
   }
   const tele = s.plated ? 0.75 : 1.0;
+  donaldProps.claim(e);
   donaldProps.buildWalls(h, lines, tele, 9);
   e.set('wallWind', tele);
   s.wallCd = s.plated ? 8 : 13;
@@ -1249,6 +1266,7 @@ function donaldBeam(h: Host, e: Bot, s: DonaldState): void {
   const m = 4;
   const x = clamp(h.px + Math.sin(plow.heading) * lead, ARENA.minX + m, ARENA.maxX - m);
   const z = clamp(h.pz + Math.cos(plow.heading) * lead, ARENA.minZ + m, ARENA.maxZ - m);
+  donaldProps.claim(e);
   donaldProps.startBeam(h, x, z, s.plated ? 4.8 : 4.2, 1.2);
   e.set('beamWind', 1.2);
   s.beamCd = s.plated ? 7 : 9.5;
@@ -1331,7 +1349,8 @@ function donaldPlate(h: Host, e: Bot, s: DonaldState): void {
 
 function donald(h: Host, e: Bot, dt: number): void {
   let s = DSTATE.get(e);
-  if (!s) {
+  if (!s && e.echo) s = dstate(e);
+  else if (!s) {
     s = dstate(e);
     // grand entrance: confetti cannons from the stage and both stands
     const fx = h.ctx.fx;
@@ -1348,7 +1367,8 @@ function donald(h: Host, e: Bot, dt: number): void {
   // a reset out of the rally state (plow died, etc.) must still drop the rally buffs
   if (e.state !== 'rally' && e.dmgTakenMult !== 1) donaldRallyEnd(h, e, s, false);
   const d = h.dist(e);
-  if (!s.plated && e.hpFrac <= 0.5) donaldPlate(h, e, s);
+  // An ECHO: BUILD THE WALL (and its steamroll) only: no GOLD PLATED, rallies or deportations.
+  if (!e.echo && !s.plated && e.hpFrac <= 0.5) donaldPlate(h, e, s);
   s.tauntT -= dt;
   if (s.tauntT <= 0) {
     s.tauntT = s.plated ? 6 : DONALD_TAUNT_SLOW;
@@ -1362,7 +1382,7 @@ function donald(h: Host, e: Bot, dt: number): void {
       h.sparks(e, 0xfff2b0, 2);
     }
   }
-  if (!s.rallied && e.hpFrac < 0.75) {
+  if (!e.echo && !s.rallied && e.hpFrac < 0.75) {
     s.rallied = true;
     s.rallyCd = Math.min(s.rallyCd, 0);
   }
@@ -1432,6 +1452,7 @@ function donald(h: Host, e: Bot, dt: number): void {
       if (s.podPending && (Math.abs(Math.atan2(Math.sin(e.heading - e.aimH), Math.cos(e.heading - e.aimH))) < 0.2 || e.prog > 0.12)) {
         s.podPending = false;
         e.heading = e.aimH;
+        donaldProps.claim(e);
         donaldProps.raisePodium(h, s.podX, s.podZ, e.aimH + Math.PI);
       }
       let alive = 0;
@@ -1455,7 +1476,10 @@ function donald(h: Host, e: Bot, dt: number): void {
     default:
       goTo(e, h.px, h.pz, spd, 3);
       e.turnRate = 1.3 * (s.plated ? 1.25 : 1);
-      if (e.cd <= 0) {
+      if (e.cd <= 0 && e.echo) {
+        if (s.wallCd <= 0 && !donaldProps.wallsUp) donaldWalls(h, e, s);
+        else e.cd = 0.4;
+      } else if (e.cd <= 0) {
         if (s.rallyCd <= 0) {
           e.set('rallyGo', 8);
           h.label(e, 'RALLY TIME!', '#ff4a5a', 1.1);

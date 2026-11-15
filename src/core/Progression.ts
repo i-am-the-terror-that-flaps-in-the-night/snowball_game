@@ -13,6 +13,68 @@ export interface ZoneRecord {
   bestRound: number;
 }
 
+/** PROTOCOL C run state at the start of a wave (meta/protocol.ts): what RETRY WAVE n restores. */
+export interface ProtocolCheckpoint {
+  /** Wave (1-based) the checkpoint was taken at. */
+  wave: number;
+  /** Plow HP as a fraction of max at that wave's start. */
+  hpFrac: number;
+  /** Run seconds (fights only) before this wave, kills and coins so far. */
+  elapsed: number;
+  kills: number;
+  coins: number;
+  /** Checkpoint retries used so far this run. */
+  uses: number;
+}
+
+/** PROTOCOL C record (meta/protocol.ts). */
+export interface ProtocolSave {
+  cleared: boolean;
+  clears: number;
+  /** Best total run time (s, fights only), 0 = none yet. */
+  bestTime: number;
+  /** Highest wave reached. */
+  bestWave: number;
+  /** Cleared once without a checkpoint retry. */
+  cleanClear: boolean;
+  /** The current run's last wave-start checkpoint (kept across a quit / reload), null when none. */
+  checkpoint: ProtocolCheckpoint | null;
+}
+
+/** Protocol C's wave count (config/protocol.ts PROTOCOL_WAVES; repeated here to keep the save module free of it). */
+const PROTOCOL_SAVE_WAVES = 7;
+
+/** Validate a stored / imported protocol record: well-formed fields survive, anything else falls back. */
+export function sanitizeProtocol(raw: unknown): ProtocolSave | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const fin = (v: unknown, min: number, max: number, int = false) => {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return min;
+    const x = Math.min(max, Math.max(min, v));
+    return int ? Math.floor(x) : x;
+  };
+  let checkpoint: ProtocolCheckpoint | null = null;
+  const c = r.checkpoint;
+  if (c && typeof c === 'object' && !Array.isArray(c)) {
+    const k = c as Record<string, unknown>;
+    const wave = fin(k.wave, 0, PROTOCOL_SAVE_WAVES, true);
+    const hpFrac = fin(k.hpFrac, 0, 1);
+    if (wave >= 1 && hpFrac > 0) {
+      checkpoint = {
+        wave, hpFrac, elapsed: fin(k.elapsed, 0, 1e6), kills: fin(k.kills, 0, 1e6, true), coins: fin(k.coins, 0, 1e9, true), uses: fin(k.uses, 0, 1e4, true),
+      };
+    }
+  }
+  return {
+    cleared: r.cleared === true,
+    clears: fin(r.clears, 0, 1e6, true),
+    bestTime: fin(r.bestTime, 0, 1e6),
+    bestWave: fin(r.bestWave, 0, PROTOCOL_SAVE_WAVES, true),
+    cleanClear: r.cleanClear === true,
+    checkpoint,
+  };
+}
+
 export interface SaveData {
   version: 1;
   coins: number;
@@ -51,6 +113,8 @@ export interface SaveData {
   gear?: GearState;
   /** Gear price cuts already refunded (GEAR_PRICE_REV); missing = an older save. */
   gearPrices?: number;
+  /** PROTOCOL C (meta/protocol.ts): clear, best time, best wave, the live run's checkpoint. */
+  protocol?: ProtocolSave;
 }
 
 function freshSave(): SaveData {
@@ -205,6 +269,7 @@ function sanitizeSave(raw: unknown): SaveData | null {
     refundRemovedGear(out, p.gear);
     out.gear = cleanGear(p.gear);
   }
+  if (p.protocol !== undefined) out.protocol = sanitizeProtocol(p.protocol);
   // An imported save without the field predates the price cuts (freshSave's default must not mask that).
   out.gearPrices = typeof p.gearPrices === 'number' && Number.isFinite(p.gearPrices) ? Math.max(0, Math.floor(p.gearPrices)) : 0;
   refundRepricedGear(out);
@@ -237,6 +302,7 @@ export class Progression {
           refundRepricedGear(d);
           refundItemStats(d);
           openClearedArenas(d);
+          if (d.protocol !== undefined) d.protocol = sanitizeProtocol(d.protocol);
           return d;
         }
       }

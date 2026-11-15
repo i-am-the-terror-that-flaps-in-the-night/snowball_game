@@ -419,6 +419,10 @@ export interface EnemyHandle {
   readonly airborne: boolean;
   readonly vy: number;
   readonly deck: number;
+  /** PROTOCOL C bosses: an echo / the headline; held back on the boss leash (EnemyManager). */
+  readonly echo?: boolean;
+  readonly headline?: boolean;
+  readonly held?: boolean;
 }
 
 export interface DamageOpts {
@@ -461,7 +465,7 @@ export interface DamageOpts {
 }
 
 export interface EnemyManagerAPI {
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number }): EnemyHandle;
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; echo?: boolean; headline?: boolean }): EnemyHandle;
   /** Living enemies whose collision circle overlaps the given circle. Reuses `out` if provided. */
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[];
   /** Callers pass RAW damage. The manager applies armor (min 1; reduced for `direct` hits), directional armor, and vulnerability
@@ -702,6 +706,11 @@ export interface HudBoss {
   title: string;
   hp: number;
   maxHp: number;
+  /** Bot type (bar colour / badge; the name may carry an ECHO prefix). */
+  type?: EnemyType;
+  /** PROTOCOL C: an echo (small bar) / held back on the leash (dimmed). */
+  echo?: boolean;
+  held?: boolean;
 }
 
 export interface HudState {
@@ -880,6 +889,9 @@ export interface RunSummary {
   };
   /** Gear loot this run dropped (boss / Hard clear, Survival boss waves). */
   loot?: LootDrop[];
+  /** PROTOCOL C run: wave reached (7 on a clear), run time (s, fights only), best time, checkpoint retries used, and the
+   *  wave RETRY WAVE n restarts at (null on a clear). */
+  protocol?: { wave: number; time: number; bestTime: number; newBest: boolean; uses: number; checkpointWave: number | null };
 }
 
 export interface SurvivalShopOpts {
@@ -923,6 +935,10 @@ export interface UIHandlers {
   onResume(): void;
   onQuitToMenu(): void;
   onRetry(): void;
+  /** PROTOCOL C (meta/protocol.ts): start a new run, or `resume` from the saved wave checkpoint. */
+  onStartProtocol?(resume?: boolean): void;
+  /** PROTOCOL C results: RETRY WAVE n (the last wave-start checkpoint). */
+  onRetryCheckpoint?(): void;
   onResetSave(): void;
   onToggleMute(): void;
   /** Main menu DUEL button: open the online 1v1 lobby. */

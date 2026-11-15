@@ -145,6 +145,9 @@ class DonaldProps {
   private time = 0;
   /** Set when the player smashes the rally podium; the boss AI consumes it. */
   podiumBroken = false;
+  /** The THE DONALD whose walls / beam / podium are up (claim()): two can share a fight in PROTOCOL C (an echo and
+   *  the headline), and the props collapse with their owner, not with the first Donald in the list. */
+  private owner: Bot | null = null;
 
   private depth = (x: number, z: number): number => (this.ctx?.snow ? this.ctx.snow.getDepth(x, z) : 0);
 
@@ -156,6 +159,11 @@ class DonaldProps {
     this.ctx = ctx;
     this.build(ctx.scene);
     ctx.events.on('slam', (e) => this.slamQ.push({ x: e.position.x, z: e.position.z, r: e.radius }));
+  }
+
+  /** The boss about to use a prop (bosses.ts calls it before buildWalls / startBeam / raisePodium). */
+  claim(boss: Bot): void {
+    this.owner = boss;
   }
 
   /** Build the props' meshes / materials now (hidden) so a warm-up can compile them before the fight
@@ -276,7 +284,8 @@ class DonaldProps {
       this.init(ctx);
     }
     this.time += dt;
-    const boss = h.findBoss('donald');
+    // the props' owner (claim()); before any claim, the first Donald in the fight
+    const boss = this.owner ? (this.owner.alive ? this.owner : null) : h.findBoss('donald');
     const plow = ctx.plow;
 
     // the boss is gone: everything collapses
@@ -326,20 +335,22 @@ class DonaldProps {
     this.updateFlights(h, dt);
     this.updatePodium(dt);
 
-    // ---- GOLD PLATED: reflect queued damage back in small batches
+    // ---- GOLD PLATED: reflect queued damage back in small batches (whichever Donald is plated, owner or not)
     this.reflectT -= dt;
-    if (boss && boss.reflectPool >= 1 && this.reflectT <= 0) {
-      const amt = Math.min(22, boss.reflectPool);
-      boss.reflectPool = 0;
+    let plated: Bot | null = null;
+    for (const b of ctx.enemies.bosses) if (b.alive && b.type === 'donald' && (b as Bot).reflectPool >= 1) plated = b as Bot;
+    if (plated && this.reflectT <= 0) {
+      const amt = Math.min(22, plated.reflectPool);
+      plated.reflectPool = 0;
       this.reflectT = 0.45;
       if (!plow.dead) {
         // Not a body hit: the reflection reaches the plow at any height (mesa top, mid-air), see waveHitPlow.
-        waveHitPlow(ctx, boss, amt, { knockback: 3, unblockable: true });
+        waveHitPlow(ctx, plated, amt, { knockback: 3, unblockable: true });
         _v.set(plow.position.x, plow.position.y + 2.6, plow.position.z);
         ctx.fx.floatText(_v, `REFLECTED ${Math.round(amt)}`, '#ffd24a', 0.75);
         ctx.fx.burst(_v.set(plow.position.x, plow.position.y + 1.2, plow.position.z), { color: 0xffd24a, count: 12, speed: 6, size: 0.1, gravity: 10, life: 0.4 });
       }
-    } else if (!boss) this.reflectT = 0;
+    } else if (!plated) this.reflectT = 0;
 
     this.syncObstacles(ctx);
     this.syncMeshes();
@@ -347,6 +358,7 @@ class DonaldProps {
   }
 
   clear(ctx: GameContext): void {
+    this.owner = null;
     if (this.ctx !== ctx) return;
     for (const w of this.walls) this.decals!.release(w.decal);
     this.walls.length = 0;

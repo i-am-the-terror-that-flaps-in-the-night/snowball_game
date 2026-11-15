@@ -16,6 +16,10 @@ export interface SpawnGroup {
   interval: number;
   /** Extra hp multiplier on this group's bots, on top of zone.enemyHpMult (Survival's milestone mini-boss). */
   hpMult?: number;
+  /** PROTOCOL C: the bosses come back as ECHOES (weaker, one or two signature moves, no phase 2: Bot.echo) or as the
+   *  wave's PROTOCOL-upgraded headline (Bot.headline: more damage). */
+  echo?: boolean;
+  headline?: boolean;
 }
 
 export interface RoundDef {
@@ -82,11 +86,16 @@ export interface ZoneDef {
   biome?: BiomeDef;
   /** Venue structure ('rally' = the Plaza stage, 'brawl' = the Snowdome, no gates, 'omega' = The Omega Works' own
    *  factory build with floor hatches instead of gates) and the decoration fallback when there is no biome. */
-  theme: 'meadow' | 'pines' | 'lake' | 'blizzard' | 'peak' | 'rally' | 'brawl' | 'omega';
+  theme: 'meadow' | 'pines' | 'lake' | 'blizzard' | 'peak' | 'rally' | 'brawl' | 'omega' | 'protocol';
   /** Half-size (m) of the playable square. Omitted = CAMPAIGN_ARENA_HALF (The Omega Works is 160 m across). */
   arenaHalf?: number;
   /** Where the plow starts. Omitted = PLOW_SPAWN. */
   spawn?: { readonly x: number; readonly z: number; readonly heading: number };
+  /** At most this many bosses attack at once; the rest hold back on a leash (PROTOCOL C). Omitted = no cap. */
+  maxActiveBosses?: number;
+  /** PROTOCOL C venue: the rally stage behind the north wall (waves 5+) / the hot-west, cold-east floor decal. */
+  stage?: boolean;
+  split?: boolean;
 }
 
 const g = (type: EnemyType, count: number, delay = 0, interval = 2.5): SpawnGroup => ({ type, count, delay, interval });

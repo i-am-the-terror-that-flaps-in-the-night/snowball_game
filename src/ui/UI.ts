@@ -859,7 +859,9 @@ export class UI implements UIAPI {
     this.shopHint.textContent = 'Press ENTER to fight';
     this.shopTitle.textContent = 'UPGRADE SHOP';
     const cleared = Math.max(1, nextRound - 1);
-    this.shopSub.textContent = `${this.ctx.zone?.name ?? ''}: round ${cleared} cleared! Gear up before the next fight.`;
+    this.shopSub.textContent = this.ctx.zone?.theme === 'protocol'
+      ? `${this.ctx.zone.name}: wave ${cleared} cleared! The arena is restructuring. Gear up before the next wave.`
+      : `${this.ctx.zone?.name ?? ''}: round ${cleared} cleared! Gear up before the next fight.`;
     garage.renderRoundPreview(this.garageDeps(), nextRound, totalRounds);
     this.plowPick.classList.add('hidden');
     this.shopBack.classList.add('hidden');

@@ -235,12 +235,20 @@ export function renderRoundPreview(ui: Pick<GarageDeps, 'shopPreview' | 'ctx'>, 
   const t = el('div', 'ss-rp-title', undefined, w);
   t.innerHTML = `Round <b>${nextRound}</b> of ${totalRounds} next`;
 
-  const counts = new Map<EnemyType, number>();
-  if (round) for (const g of round.groups) counts.set(g.type, (counts.get(g.type) ?? 0) + g.count);
+  // by type, PROTOCOL C's echoes as their own chips
+  const counts = new Map<string, { type: EnemyType; echo: boolean; n: number }>();
+  if (round) {
+    for (const g of round.groups) {
+      const key = `${g.type}${g.echo ? ':echo' : ''}`;
+      const c = counts.get(key) ?? { type: g.type, echo: !!g.echo, n: 0 };
+      c.n += g.count;
+      counts.set(key, c);
+    }
+  }
 
   if (isBoss) {
     let first: EnemyDef | undefined;
-    for (const type of counts.keys()) if (ENEMIES[type].isBoss) { first = ENEMIES[type]; break; }
+    for (const c of counts.values()) if (ENEMIES[c.type].isBoss && !c.echo) { first = ENEMIES[c.type]; break; }
     const bp = el('div', 'ss-boss-preview', undefined, w);
     bp.style.setProperty('--bc', bossColor(first));
     el('div', 'ss-bp-badge', '💀', bp);
@@ -251,15 +259,15 @@ export function renderRoundPreview(ui: Pick<GarageDeps, 'shopPreview' | 'ctx'>, 
   }
 
   const chips = el('div', 'ss-chips', undefined, w);
-  for (const [type, n] of counts) {
+  for (const { type, echo, n } of counts.values()) {
     const def = ENEMIES[type];
     if (isBoss && def.isBoss && bossCount(zone) <= 1) continue;
     const chip = el('div', `ss-chip ${def.isBoss ? 'boss' : ''}`, undefined, chips);
-    chip.style.setProperty('--chip', hex(def.isBoss ? def.accent : def.color));
+    chip.style.setProperty('--chip', hex(echo ? 0xe8b423 : def.isBoss ? def.accent : def.color));
     el('span', 'ss-chip-icon', ENEMY_ICON[type] ?? '🤖', chip);
-    el('span', 'ss-chip-name', def.name, chip);
+    el('span', 'ss-chip-name', echo ? `ECHO ${def.name}` : def.name, chip);
     el('span', 'ss-chip-count', `×${n}`, chip);
-    if (def.isBoss) el('span', 'ss-chip-tag', 'BOSS', chip);
+    if (def.isBoss) el('span', 'ss-chip-tag', echo ? 'ECHO' : 'BOSS', chip);
     else if (ENEMY_TIP[type]) el('span', 'ss-chip-tag tip', ENEMY_TIP[type]!, chip);
   }
   if (!chips.childElementCount) chips.remove();

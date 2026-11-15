@@ -44,6 +44,20 @@ export interface BossSlot {
   /** performance.now() when destroyed (bar lingers), 0 otherwise. */
   down: number;
   mark: boolean;
+  /** PROTOCOL C: drawn as a compact echo bar / dimmed while held back on the leash (cached class state). */
+  echo: boolean;
+  held: boolean;
+}
+
+/** Boss bar slots: one boss, a pair (SLUSH & SLEET), up to PROTOCOL C's final wave (a headline + seven echoes). */
+export const BOSS_BAR_MAX = 8;
+
+/** Boss bar layout for `n` visible bars, `echoes` of them echoes: one big bar ('solo'), two equal bars ('twin', the
+ *  campaign's SLUSH & SLEET), or a compact stack ('many': the headline full width, the rest small, two per row). */
+export function bossBarLayout(n: number, echoes = 0): 'solo' | 'twin' | 'many' {
+  if (n <= 1) return 'solo';
+  if (echoes > 0 || n > 2) return 'many';
+  return 'twin';
 }
 
 const GAUGE_R = 46;
@@ -75,7 +89,7 @@ export function hudLast() {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, souls: -2, streak: -2, streakLeft: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '', waveTag: '',
+    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, souls: -2, streak: -2, streakLeft: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, bossLayout: '', brawl: -1, hideRound: false, arena: '', waveTag: '',
   };
 }
 export type HudLast = ReturnType<typeof hudLast>;
@@ -98,9 +112,9 @@ export function buildHudDom(hud: HTMLElement, H: HudRefs, bossSlots: BossSlot[])
   // Survival: the live wave's modifier (Blizzard, Gold Rush, ...) or milestone tag.
   H.waveTag = el('div', 'ss-hud-wavetag hidden', '', tl);
 
-  // top-center: boss bars (1–2)
+  // top-center: boss bars (1, a pair, or PROTOCOL C's compact stack of up to BOSS_BAR_MAX)
   H.bosses = el('div', 'ss-bosses', undefined, hud);
-  for (let i = 0; i < 2; i++) bossSlots.push(buildBossSlot(H.bosses));
+  for (let i = 0; i < BOSS_BAR_MAX; i++) bossSlots.push(buildBossSlot(H.bosses));
 
   // top-right: coins
   H.coinBox = el('div', 'ss-hud-tr ss-glass-dark', undefined, hud);
@@ -225,7 +239,7 @@ function buildBossSlot(parent: HTMLElement): BossSlot {
   const chip = el('div', 'ss-bb-chip', undefined, track);
   const fill = el('div', 'ss-bb-fill', undefined, track);
   el('div', 'ss-bb-segs', undefined, track);
-  return { key: '', root, inner, badge, name, title, phase, hp, fill, chip, frac: -1, hpVal: -1, down: 0, mark: false };
+  return { key: '', root, inner, badge, name, title, phase, hp, fill, chip, frac: -1, hpVal: -1, down: 0, mark: false, echo: false, held: false };
 }
 
 function buildAbility(parent: HTMLElement, icon: string, name: string, key: string, cls: string): HTMLElement {
@@ -270,8 +284,14 @@ export function assignSlot(slot: BossSlot, key: string, b: HudBoss): void {
   slot.down = 0;
   slot.frac = -1;
   slot.hpVal = -1;
-  const def = DEF_BY_NAME.get(b.name);
-  slot.root.style.setProperty('--bc', bossColor(def));
+  const def = b.type ? ENEMIES[b.type] : DEF_BY_NAME.get(b.name);
+  slot.root.style.setProperty('--bc', b.echo ? '#e8b423' : bossColor(def));
+  // the headline first, echoes after it (in their arrival order) whatever slot they landed in
+  slot.echo = !!b.echo;
+  slot.root.classList.toggle('echo', slot.echo);
+  slot.root.style.order = slot.echo ? '1' : '0';
+  slot.held = false;
+  slot.root.classList.remove('held');
   slot.badge.textContent = def ? ENEMY_ICON[def.type] ?? '💀' : '💀';
   slot.name.textContent = b.name;
   slot.title.textContent = b.title;
@@ -281,6 +301,8 @@ export function assignSlot(slot: BossSlot, key: string, b: HudBoss): void {
 
 export function freeSlot(s: BossSlot): void {
   s.key = '';
+  s.echo = s.held = false;
+  s.root.classList.remove('echo', 'held');
   s.down = 0;
   s.frac = -1;
   s.hpVal = -1;

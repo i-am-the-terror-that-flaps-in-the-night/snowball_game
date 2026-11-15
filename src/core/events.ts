@@ -61,6 +61,8 @@ export interface GameEvents {
     duration: number;
     /** HP lost this run (after armor / shields). */
     damageTaken: number;
+    /** PROTOCOL C run (mode 'campaign', no zoneIndex: arena challenges never judge it). */
+    protocol?: boolean;
     /** Campaign: arena index, rounds cleared, Hard mode. */
     zoneIndex?: number;
     roundsCleared?: number;

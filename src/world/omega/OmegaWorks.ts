@@ -207,18 +207,21 @@ export class OmegaWorks {
   private readonly terrain: Terrain;
   private readonly lights: THREE.PointLight[] = [];
 
-  constructor(terrain: Terrain) {
+  /** `opts.accent`: neon of flat decks / ramps (default cyan / magenta); `opts.lights`: the undercroft work lights
+   *  (default on); `opts.plate`: a plate tint with no circuit glow (PROTOCOL C's two low gold decks). */
+  constructor(terrain: Terrain, opts: { accent?: readonly [number, number]; lights?: boolean; plate?: number } = {}) {
     this.terrain = terrain;
+    const [flatAccent, rampAccent] = opts.accent ?? [NEON_CYAN, NEON_MAGENTA];
     this.group.name = 'omega-works';
     const [plate, glow] = deckTextures();
 
     const deckMat = (accent: number): THREE.MeshStandardMaterial => {
       const m = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
+        color: opts.plate ?? 0xffffff,
         map: plate,
         emissive: accent,
-        emissiveMap: glow,
-        emissiveIntensity: 0.8,
+        emissiveMap: opts.plate === undefined ? glow : null,
+        emissiveIntensity: opts.plate === undefined ? 0.8 : 0.06,
         metalness: 0.35,
         roughness: 0.5,
         transparent: true, // so it can fade while overhead; opaque look at opacity 1
@@ -279,7 +282,7 @@ export class OmegaWorks {
         this.views.push({ deck: d, mesh, mats: [pistonTopMat, pistonSideMat], fade: 1, baseY: d.top });
         continue;
       }
-      const accent = d.rise ? NEON_MAGENTA : NEON_CYAN;
+      const accent = d.rise ? rampAccent : flatAccent;
       const geo = deckGeometry(d);
       const strip = edgeStripGeometry(d);
       this.owned.push(geo, strip);
@@ -311,7 +314,7 @@ export class OmegaWorks {
     for (const cv of terrain.conveyors) this.addConveyor(cv);
 
     // A few coloured work lights under the big decks so the undercroft reads (point lights, no shadows).
-    for (const [x, y, z, c] of [
+    if (opts.lights !== false) for (const [x, y, z, c] of [
       [0, 4.5, 0, NEON_CYAN],
       [52, 4.5, -52, NEON_MAGENTA],
       [-52, 4.5, 52, NEON_MAGENTA],

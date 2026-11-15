@@ -189,10 +189,40 @@ function omegaPaint(): FloorPaint {
   };
 }
 
+/** PROTOCOL C: a corporate floor logo round the rink: a double gold ring, a big gold "C" opening east and four gold
+ *  rules out to the walls (shows through a little fresh snow, fully in plowed trenches). */
+function protocolPaint(): FloorPaint {
+  const gold = lin(0xe8b423).map((v) => v * 1.3);
+  const navy = lin(0x1b2a44);
+  const cz = -2;
+  return {
+    ghost: 0.35,
+    sample(x, z, out, o) {
+      const dz = z - cz;
+      const r = Math.hypot(x, dz);
+      const ring = Math.max(line(Math.abs(r - 11.2), 0.22, 0.35), line(Math.abs(r - 12.2), 0.4, 0.4));
+      if (ring > 0.01) return put(out, o, gold, ring);
+      // the C: an arc of radius 4.6 (0.7 m wide) with a 90° opening toward +x
+      const a = Math.atan2(dz, x);
+      if (Math.abs(a) > Math.PI / 4) {
+        const c = line(Math.abs(r - 4.6), 0.7, 0.35);
+        if (c > 0.01) return put(out, o, gold, c);
+      }
+      if (r < 5.6) return put(out, o, navy, 0.55 * (1 - smooth(4.9, 5.6, r)));
+      if (r > 12.6) {
+        const rule = Math.max(line(Math.abs(x), 0.18, 0.3), line(Math.abs(dz), 0.18, 0.3));
+        if (rule > 0.01) return put(out, o, gold, rule * 0.8);
+      }
+      out[o + 3] = 0;
+    },
+  };
+}
+
 /** Painted floor for this zone, or null. */
 export function floorPaintFor(zone: ZoneDef): FloorPaint | null {
   if (zone.theme === 'rally') return plazaPaint();
   if (zone.theme === 'omega') return omegaPaint();
+  if (zone.theme === 'protocol') return protocolPaint();
   if (zone.theme === 'brawl' && !zone.biome && zone.id !== 'duel') return domePaint();
   return null;
 }

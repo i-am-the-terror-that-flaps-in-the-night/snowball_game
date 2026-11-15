@@ -4,6 +4,8 @@ import { ENEMIES, type EnemyDef } from '../../config/enemies';
 import { HARD, earnedIds, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, maxStars, starReward, zoneChallenges, zoneStars } from '../../meta/challenges';
 import { totalStars } from '../../meta/progress';
 import { bossColor, bossCount, el, fmt, hex, restart, starsHtml, type BtnFn } from '../uiKit';
+import { PROTOCOL_WAVES, PROTOCOL_ZONE } from '../../config/protocol';
+import { formatRunTime, protocolReward, protocolSave, protocolTeased, protocolUnlocked } from '../../meta/protocol';
 
 /** What the arena select needs from the UI: its grid / star total and the shared button + sound helpers. */
 export interface ZonesDeps {
@@ -78,6 +80,7 @@ export function renderZones(ui: ZonesDeps): void {
     if (unlocked && !rec.cleared && !firstPlayable) firstPlayable = card;
     if (unlocked) lastUnlocked = card;
   });
+  protocolCard(ui);
   // First unlocked arena not yet beaten; once every open arena is cleared, the newest open one.
   const fp = (firstPlayable ?? lastUnlocked) as HTMLButtonElement | null;
   ui.zoneGrid.querySelectorAll('[data-primary]').forEach((n) => delete (n as HTMLElement).dataset.primary);
@@ -128,4 +131,50 @@ function zoneHardStrip(ui: ZonesDeps, zoneIndex: number, slot: HTMLElement): voi
     slot,
   );
   b.title = tip;
+}
+
+/** PROTOCOL C (config/protocol.ts): nothing before the normal Omega clear; then a glitched, locked seventh card (a full
+ *  row) until every arena is beaten on normal and Hard; then the playable card with its best time and, while a run's
+ *  checkpoint is saved, a RESUME strip. */
+function protocolCard(ui: ZonesDeps): void {
+  const p = ui.ctx.progression;
+  if (!protocolTeased(p)) return;
+  const open = protocolUnlocked(p);
+  const rec = protocolSave(p);
+  const slot = el('div', 'ss-zone-slot ss-protocol-slot', undefined, ui.zoneGrid);
+  const card = el('button', `ss-zone ss-protocol ${open ? '' : 'locked glitch'} ${rec.cleared ? 'cleared' : ''}`, undefined, slot);
+  card.type = 'button';
+  card.style.setProperty('--sky-top', hex(PROTOCOL_ZONE.skyTop));
+  card.style.setProperty('--sky-bottom', hex(PROTOCOL_ZONE.skyBottom));
+  card.style.setProperty('--bc', '#e8b423');
+  el('div', 'ss-zone-num', open ? '7' : '?', card);
+  const top = el('div', 'ss-zone-top', undefined, card);
+  const name = el('div', 'ss-zone-name', 'PROTOCOL C', top);
+  name.dataset.text = 'PROTOCOL C';
+  el('div', 'ss-zone-tag', open ? 'Seven waves. Every boss you beat, back for more. Someone is watching from the boardroom.' : 'TODO', top);
+  const bottom = el('div', 'ss-zone-bottom', undefined, card);
+  if (open) {
+    if (rec.cleared) el('div', 'ss-zone-badge', '✓ CLEARED', el('div', 'ss-zone-badges', undefined, bottom));
+    el('div', 'ss-zone-stat', `☠ ${PROTOCOL_WAVES} boss waves  ·  ⏱ best ${formatRunTime(rec.bestTime)}  ·  🏁 ${rec.bestWave > 0 ? `wave ${rec.bestWave}/${PROTOCOL_WAVES}` : 'wave —'}`, bottom);
+    el('div', 'ss-zone-stat ss-zone-reward', `🪙 ${fmt(protocolReward(p))} clear reward`, bottom);
+  } else {
+    const hard = ZONES.filter((z) => p.data.hardCleared?.[z.id] === true).length;
+    const lock = el('div', 'ss-zone-lock', undefined, card);
+    el('div', 'ss-lock-icon', '🔒', lock);
+    el('div', 'ss-lock-text', `PROTOCOL C: TODO — clear every arena on Hard (${hard}/${ZONES.length})`, lock);
+  }
+  card.addEventListener('click', () => {
+    if (!open) {
+      ui.sfx('error');
+      restart(card, 'shake');
+      return;
+    }
+    ui.sfx('click');
+    ui.handlers.onStartProtocol?.(false);
+  });
+  const ck = rec.checkpoint;
+  if (open && ck && ck.wave > 1) {
+    const b = ui.btn(`▶ <b>RESUME</b> <small>wave ${ck.wave}/${PROTOCOL_WAVES} · checkpoint</small>`, 'ss-zone-hard ss-protocol-resume', () => ui.handlers.onStartProtocol?.(true), slot);
+    b.title = 'Restart the saved run at the start of its last wave (counts as a checkpoint retry).';
+  }
 }

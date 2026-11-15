@@ -8,6 +8,7 @@ import { renderDailyResult } from '../DailyResult';
 import { renderLoot } from '../LootReveal';
 import type { Story } from '../Story';
 import { el, fmt, starsHtml, storyQuote, type BtnFn } from '../uiKit';
+import { formatRunTime } from '../../meta/protocol';
 
 export interface ResultDeps {
   ctx: GameContext;
@@ -23,6 +24,7 @@ export function renderResult(ui: ResultDeps, sum: RunSummary, win: boolean): voi
   p.textContent = '';
   p.classList.toggle('win', win);
   p.classList.toggle('lose', !win);
+  if (sum.protocol) return renderProtocolResult(ui, sum, win);
   el('div', 'ss-result-emoji', win ? '🏆' : sum.survival?.endedEarly ? '🏁' : '💥', p);
   el('h2', 'ss-h2 ss-result-title', win ? `${sum.bossName} DESTROYED!` : sum.survival?.endedEarly ? 'RUN BANKED!' : 'WRECKED!', p);
   el(
@@ -140,4 +142,46 @@ function renderCampaignChallenges(p: HTMLElement, sum: RunSummary): void {
     if (r.isNew) el('span', 'ss-chal-row-new', 'NEW ★', row);
     else if (r.owned) el('span', 'ss-chal-row-owned', '★', row);
   });
+}
+
+/** PROTOCOL C results (config/protocol.ts): waves, run time vs best, checkpoint retries; a loss offers RETRY WAVE n
+ *  (the wave-start checkpoint) before a full restart. Its own screen: the campaign's finale / story logic is not used. */
+function renderProtocolResult(ui: ResultDeps, sum: RunSummary, win: boolean): void {
+  const p = ui.resultPanel;
+  const pr = sum.protocol!;
+  el('div', 'ss-result-emoji', win ? '🏆' : '💥', p);
+  el('div', 'ss-hard-badge ss-protocol-badge', '▣ PROTOCOL C', p);
+  el('h2', 'ss-h2 ss-result-title', win ? 'PROTOCOL C CLEARED!' : 'WRECKED!', p);
+  el('div', 'ss-sub', win
+    ? `All ${sum.totalRounds} waves down in ${formatRunTime(pr.time)}.${pr.newBest ? ' 🌟 NEW BEST TIME!' : ` Best: ${formatRunTime(pr.bestTime)}.`}`
+    : `Scrapped on wave ${pr.wave} of ${sum.totalRounds}. The checkpoint keeps your plow as it was when wave ${pr.checkpointWave ?? pr.wave} started.`, p);
+  const grid = el('div', 'ss-stats', undefined, p);
+  const stat = (icon: string, label: string, value: string, delay: number) => {
+    const s = el('div', 'ss-stat', undefined, grid);
+    s.style.animationDelay = `${delay}ms`;
+    el('div', 'ss-stat-icon', icon, s);
+    el('div', 'ss-stat-val', value, s);
+    el('div', 'ss-stat-label', label, s);
+  };
+  stat('☠', win ? 'Waves cleared' : 'Waves survived', `${sum.roundsCleared}/${sum.totalRounds}`, 100);
+  stat('⏱', 'Run time', formatRunTime(pr.time), 180);
+  stat('🤖', 'Bosses + bots scrapped', fmt(sum.kills), 260);
+  stat('↺', 'Checkpoint retries', String(pr.uses), 340);
+  stat('🪙', 'Coins earned', `+${fmt(sum.coinsEarned)}`, 420);
+  if (win && sum.clearReward > 0) {
+    const r = el('div', 'ss-reward', undefined, p);
+    el('span', 'ss-coin', undefined, r);
+    el('span', '', `+${fmt(sum.clearReward)} ${sum.firstClear ? 'first-clear reward!' : 'clear reward'}`, r);
+  }
+  if (sum.loot?.length) renderLoot(p, sum.loot);
+  const btns = el('div', 'ss-result-btns', undefined, p);
+  if (!win && pr.checkpointWave) {
+    ui.btn(`↺ RETRY WAVE ${pr.checkpointWave}`, 'ss-primary ss-big', () => ui.handlers.onRetryCheckpoint?.(), btns).dataset.primary = '1';
+    ui.btn('↻ RESTART RUN', 'ss-ice', () => ui.handlers.onRetry(), btns);
+  } else if (!win) {
+    ui.btn('↻ RETRY', 'ss-primary ss-big', () => ui.handlers.onRetry(), btns).dataset.primary = '1';
+  }
+  const g = ui.btn('🔧 GARAGE', 'ss-ice', () => ui.openGarage('quit'), btns);
+  const m = ui.btn('🏠 MAIN MENU', 'ss-ice', () => ui.handlers.onQuitToMenu(), btns);
+  if (!btns.querySelector('[data-primary]')) (win ? m : g).dataset.primary = '1';
 }

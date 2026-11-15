@@ -6,7 +6,7 @@ import { BrawlHudView } from './BrawlHud';
 import { RadarHud } from './RadarHud';
 import { el, restart } from './uiKit';
 import {
-  INTRO_MS, assignSlot, buildHudDom, freeSlot, hudLast, renderPips, setSlotHp, updateHudPanels, type BossSlot, type HudRefs,
+  INTRO_MS, assignSlot, bossBarLayout, buildHudDom, freeSlot, hudLast, renderPips, setSlotHp, updateHudPanels, type BossSlot, type HudRefs,
 } from './hudParts';
 
 /** Toasts: default top (px) and gap under the lowest top HUD box their column crosses. */
@@ -137,8 +137,10 @@ export class GameHud {
       if (slot.key !== key || slot.down) assignSlot(slot, key, b);
       slot.mark = true;
       setSlotHp(slot, b.hp, b.maxHp);
+      if (!!b.held !== slot.held) slot.root.classList.toggle('held', (slot.held = !!b.held));
     }
     let visible = 0;
+    let echoes = 0;
     const now = performance.now();
     for (const s of slots) {
       if (!s.key) continue;
@@ -158,10 +160,14 @@ export class GameHud {
         }
       }
       visible++;
+      if (s.echo) echoes++;
     }
-    if (visible !== this.last.bossCount) {
+    const layout = bossBarLayout(visible, echoes);
+    if (visible !== this.last.bossCount || layout !== this.last.bossLayout) {
       this.last.bossCount = visible;
-      this.h.bosses.classList.toggle('twin', visible >= 2);
+      this.last.bossLayout = layout;
+      this.h.bosses.classList.toggle('twin', layout === 'twin');
+      this.h.bosses.classList.toggle('many', layout === 'many');
       this.rootEl.classList.toggle('has-boss', visible === 1);
       this.rootEl.classList.toggle('has-twin', visible >= 2);
       this.topDirty = true;

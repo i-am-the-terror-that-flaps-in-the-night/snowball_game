@@ -65,6 +65,39 @@ Every arena has **5 challenge stars** and, once cleared, a **Hard mode**:
 Boss clears drop gear: the first clear always does, repeat clears sometimes, and Hard clears with better odds (always on the first Hard clear)
 (see [progression.md](progression.md#loot)).
 
+## Protocol C
+
+The secret seventh arena (build stage 1 of 5: foundation; THE CHAIRMAN, THE WHITEOUT, rewards and its own stars come
+later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
+`src/world/protocol/layout.ts` (floor), `src/world/environment/ProtocolScenery.ts` (venue).
+
+- **Not a campaign arena**: `PROTOCOL_ZONE` is not in `ZONES`, so the arena unlock prefix, the finale (results /
+  Story), `clear_all` / `hard_all` and the 30-star total are untouched. After the normal Omega clear the arena select
+  shows a glitched, locked seventh card ("PROTOCOL C: TODO — clear every arena on Hard", with the Hard count); it opens
+  once every arena is cleared on normal and Hard, showing its best time, best wave and reward.
+- **Run**: 7 boss waves on one stadium (±30 m, stands on four sides, a glass boardroom box over the north stand, gold
+  on ice; its own night look). Wave n = campaign boss n PROTOCOL-upgraded (×1.6 its home-arena HP, ×1.25 damage); the
+  bosses already beaten walk back in as **echoes** (×0.35 home HP, ×0.85 damage, gold-tinted, "ECHO" in the HUD) one by
+  one, 6 s apart. Wave 7 is every headline as an echo, in two groups, around a stand-in final boss (THE DONALD at
+  headline strength until THE CHAIRMAN lands in stage 3). Base difficulty is Hard's (×1.8 HP / ×1.5 damage on summoned
+  minions and bot hits, scaled with your power like Hard). The normal upgrade shop runs between waves.
+- **Echoes** keep one or two signature moves and never reach phase 2 or summon: FROSTBYTE ball slam · BULLDOZA charge +
+  leap · THE GRINDER auger pull · SLUSH charge / SLEET shove (as a pair) · THE DONALD wall (+ its steamroll) · Ω ground
+  pound. Twins pair by spawn partner and THE DONALD's props follow the Donald that raised them, so two of a kind can
+  share a fight.
+- **Boss leash**: at most 4 bosses fight at once (`ZoneDef.maxActiveBosses`); headlines always do, the extra echoes
+  circle 15 m out ("ON HOLD", dimmed bar) and rotate in every ~9 s. The HUD stacks up to 8 boss bars: the headline
+  full width, echoes compact, two per row (the campaign's one / two bar layouts are unchanged).
+- **Restructuring**: during each shop the floor is swapped: 1 ice rink · 2 + a broken lava ring · 3 + craters and two
+  launch ramps · 4 rink + hot (lava vents, scorched) west / cold (ice) east · 5 + a rally stage behind the north wall
+  (in front of THE DONALD's rally spot) · 6 + two low gold decks with ramps · 7 everything. The plow is set back on
+  its spawn with its HP.
+- **Checkpoints**: each wave's start is saved (HP fraction, kills, coins, run time, retries). Wrecked, the results
+  screen offers RETRY WAVE n (restores it, +1 retry) or a full restart; a saved run can also be resumed from the card.
+  Coins and upgrades are permanent as everywhere else. A clear records the best total time (fights only) and whether
+  it used no retries, and pays 6,000 coins the first time (40% after) plus Hard-grade loot.
+- **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock.
+
 ## Snowdome Brawl
 
 A 180 m free-for-all against 8 named rival plows that hunt everyone, including each other. Kill streaks multiply your

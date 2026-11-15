@@ -11,6 +11,7 @@ import { OmegaWorks } from './omega/OmegaWorks';
 import { OmegaSet } from './omega/OmegaSet';
 import { PUFF_CAM_CLEAR, STYLES, BIOME_SKY } from './environment/styles';
 import { TOWER_OFF, DOME_TOWER_OFF, DOME_TOWER_H, STAGE_HALF, brawlMode, domeK, setBrawlMode, mulberry32 } from './environment/layout';
+import { PROTOCOL_STAGE_HALF } from './environment/ProtocolScenery';
 import { chevronTex } from './environment/textures';
 import { NightScenery } from './environment/NightScenery';
 import { GlowPoints, NIGHT_BOOST, NIGHT_CROWD_LIFT, NIGHT_SPOT_BOOST, NIGHT_SPOT_BOOST_BIG, nightLook, nightZone } from './environment/night';
@@ -33,6 +34,8 @@ export class Environment extends NightScenery implements WorldAPI {
   private storm = false;
   /** The zone's light / sky / fog fields as built (the night look at night). */
   private look: ZoneDef | null = null;
+  /** Decks of a non-Omega arena (PROTOCOL C waves 6-7), drawn with the Omega Works' deck builder in gold. */
+  private deckWorks: OmegaWorks | null = null;
 
   get obstacles(): readonly Obstacle[] {
     return this.obstacleList;
@@ -130,7 +133,7 @@ export class Environment extends NightScenery implements WorldAPI {
 
     this.buildDecor(zone);
     this.buildWeather(zone);
-    this.ctx.audio?.setAmbience(zone.biome?.ambience ?? (brawl || zone.theme === 'blizzard' ? 'wind' : 'none'));
+    this.ctx.audio?.setAmbience(zone.biome?.ambience ?? (brawl || zone.theme === 'blizzard' ? 'wind' : zone.theme === 'protocol' ? 'crowd' : 'none'));
   }
 
   syncTimeOfDay(): void {
@@ -187,6 +190,8 @@ export class Environment extends NightScenery implements WorldAPI {
   }
 
   private disposeDecor(): void {
+    this.deckWorks?.dispose();
+    this.deckWorks = null;
     if (this.omega) {
       this.omega.works.dispose();
       this.omega.set.dispose();
@@ -274,12 +279,14 @@ export class Environment extends NightScenery implements WorldAPI {
     }
 
     const rally = this.isRally;
+    const protocol = zone.theme === 'protocol';
     this.bobAmp.value = rally ? 0.42 : 0.2;
     this.buildWalls(G, snowMat);
     this.buildGates(G, snowMat);
-    this.buildStands(G, rally ? STAGE_HALF + 0.6 : 0);
+    this.buildStands(G, rally ? STAGE_HALF + 0.6 : zone.stage ? PROTOCOL_STAGE_HALF + 0.6 : 0);
     this.buildTowers();
-    if (!rally) this.buildJumbotron(zone);
+    // PROTOCOL C: the boardroom box hangs where the jumbotron would be
+    if (!rally && !protocol) this.buildJumbotron(zone);
     this.buildSouthDressing(G);
     this.buildMountains(mountainLook);
     this.buildDrifts(G, snowMat);
@@ -298,7 +305,13 @@ export class Environment extends NightScenery implements WorldAPI {
     else if (theme === 'lake') this.buildFoundry(G);
     else if (theme === 'blizzard') this.buildBowl(zone);
     else if (theme === 'rally') this.buildRally(G);
+    else if (protocol) this.buildProtocol(G, zone);
     else this.buildSummit(G, snowMat);
+    if (this.ctx.terrain.decks.length) {
+      // low decks outside The Omega Works (PROTOCOL C): its deck builder, gold, no work lights
+      this.deckWorks = new OmegaWorks(this.ctx.terrain, { accent: [0xffc233, 0xffe08a], lights: false, plate: 0xf0d890 });
+      this.ctx.scene.add(this.deckWorks.group);
+    }
     this.buildGroundDecals();
     if (this.night) this.buildNightStadium(zone, G);
     this.finishDecor();
@@ -308,9 +321,11 @@ export class Environment extends NightScenery implements WorldAPI {
    *  Omega Works draws its own structures). */
   private buildGroundDecals(): void {
     const t = this.ctx.terrain;
-    if (t.decks.length || (!t.patches.length && !t.shapes.some((s) => s.kind === 'ramp') && this.biome !== 'divide')) return;
+    // PROTOCOL C's hot / cold waves borrow the Thermal Divide's scorched west half
+    const biome = this.biome ?? (this.zone.split ? 'divide' : null);
+    if (this.zone.theme === 'omega' || (!t.patches.length && !t.shapes.some((s) => s.kind === 'ramp') && biome !== 'divide')) return;
     const snow = this.ctx.snow;
-    this.decals = new GroundDecals(t, this.biome, (x, z) => (snow ? snow.getDepth(x, z) : this.zone.snowDepth), ARENA.maxX);
+    this.decals = new GroundDecals(t, biome, (x, z) => (snow ? snow.getDepth(x, z) : this.zone.snowDepth), ARENA.maxX);
     this.add(this.decals.group);
   }
 
@@ -375,6 +390,10 @@ export class Environment extends NightScenery implements WorldAPI {
       const p = this.ctx.plow?.position;
       this.omega.works.update(dt, p?.x ?? 0, p?.y ?? 0, p?.z ?? 0);
       this.omega.set.update(t);
+    }
+    if (this.deckWorks) {
+      const p = this.ctx.plow?.position;
+      this.deckWorks.update(dt, p?.x ?? 0, p?.y ?? 0, p?.z ?? 0);
     }
 
     // sun shadow camera follows the player (snapped to shadow-map texels to avoid shimmering)

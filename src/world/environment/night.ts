@@ -99,6 +99,13 @@ export const NIGHT: Record<string, NightLook> = {
     sky: { stars: 0.9, sun: { ...MOON, color: 0xe8eeff } },
     flood: 0xfff3e0, glow: [0xff3d7f, 0x22d3ff, 0xffd23a, 0x7cff5a],
   },
+  // PROTOCOL C: a black-navy boardroom night, gold glow on the horizon, icy-white floods
+  protocol: {
+    skyTop: 0x02040e, skyBottom: 0x2a2210, fogColor: 0x2a2a34,
+    sunColor: 0xd8e4ff, sunIntensity: 0.7, ambientColor: 0xc8c0b0, ambientIntensity: 0.45,
+    sky: { bounce: 0x8a7a50, stars: 0.8, sun: { ...MOON, color: 0xfff4dc } },
+    flood: 0xffeccc, glow: [0xffd257, 0x7fe0ff, 0xffffff],
+  },
   // Anything else (the Training Yard's pines look): a plain navy night
   default: {
     skyTop: 0x030818, skyBottom: 0x1a2a4a, fogColor: 0x2a3448,

@@ -135,6 +135,14 @@ export class Bot implements EnemyHandle {
   stole = false;
   /** Summoned by a boss (phase adds): powers down when the last boss of the fight dies. */
   summoned = false;
+  /** PROTOCOL C: an ECHO of a beaten boss (low HP, one or two signature moves, no phase 2 / summons; bosses.ts) or the
+   *  wave's PROTOCOL-upgraded headline boss. */
+  echo = false;
+  headline = false;
+  /** Boss leash (ZoneDef.maxActiveBosses): held back, circling at a distance instead of attacking; seconds in the
+   *  current held / active stint. */
+  held = false;
+  leashT = 0;
   /** Mirror Plow: the move it is copying (MirrorMove) and the time of the last player cue it took. */
   mimic = 0;
   cueSeen = -1;
@@ -177,6 +185,10 @@ export class Bot implements EnemyHandle {
     this.orbitDir = Math.random() < 0.5 ? -1 : 1;
   }
 
+  /** HUD / toast name: ECHO <NAME> for echoes. */
+  get displayName(): string {
+    return this.echo ? `ECHO ${this.def.name}` : this.def.name;
+  }
   get x(): number {
     return this.position.x;
   }

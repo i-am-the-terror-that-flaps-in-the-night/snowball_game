@@ -52,6 +52,7 @@ const BARE_COLORS: Record<ZoneDef['theme'], number> = {
   rally: 0x8a6a4a,
   brawl: 0x5d6478,
   omega: 0x2a2633,
+  protocol: 0x8a9cb4,
 };
 
 function hash2(x: number, y: number, seed: number): number {

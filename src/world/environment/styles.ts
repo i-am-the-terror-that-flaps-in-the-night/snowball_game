@@ -58,6 +58,11 @@ export const STYLES: Record<Theme | BiomeKey, Style> = {
     block: 0xf6f1e4, blockAlt: 0xe9dfc8, trim: 0xc9a227, accents: [0xc8102e, 0x1f3b8c, 0xffffff, 0xf2c033], gate: 0xffc233,
     stand: 0xf3efe6, standAlt: 0xc8102e, tire: 0x222429, lamp: 0xffd9a0, spot: 2600, glow: 0.85, rock: 0x8a7a66, mountain: 0x9c8d80,
   },
+  // PROTOCOL C — corporate gold on ice: marble-white walls, gold trim, navy stands, ice-cyan accents
+  protocol: {
+    block: 0xf3f0e8, blockAlt: 0xddd5c3, trim: 0xc9a227, accents: [0xe8b423, 0x1b2a44, 0x7fe0ff, 0xffffff], gate: 0xffc233,
+    stand: 0x26304a, standAlt: 0x1b2236, tire: 0x1c1d22, lamp: 0xfff0d0, spot: 1500, glow: 0.7, rock: 0x8f97a6, mountain: 0x9fb2d0,
+  },
   // THE SNOWDOME — colossal free-for-all stadium
   brawl: {
     block: 0x3a4a78, blockAlt: 0x2f3d68, trim: 0x1d2236, accents: [0xff3d7f, 0x22d3ff, 0xffd23a, 0x7cff5a], gate: 0xff3d7f,
