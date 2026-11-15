@@ -45,7 +45,7 @@ export class ProtocolScenery extends VenueScenery {
     const lit = mode === 'lit' ? Math.max(0, Math.min(1, k)) : 0;
     r.lit.visible = lit > 0.35;
     r.shadow.visible = !r.lit.visible;
-    r.warm.emissiveIntensity = 0.6 + 1.6 * lit;
+    r.warm.emissiveIntensity = 0.6 + 0.5 * lit;
     r.glow.material.opacity = 0.9 * lit;
   }
 
@@ -156,21 +156,25 @@ export class ProtocolScenery extends VenueScenery {
     const cz = z - hd + 2.0;
     const sil: Parts = new Map();
     const dark = this.std(0x07070b, { roughness: 0.9 });
-    add(sil, B, dark, x, y0 + 2.0, cz, 2.0, 1.8, 1.1);
+    add(sil, B, dark, x, y0 + 2.0, cz, 2.4, 1.8, 1.1);
     add(sil, B, dark, x, y0 + 3.4, cz, 1.25, 1.2, 1.1);
-    add(sil, SPH, dark, x + 0.1, y0 + 4.15, cz + 0.2, 0.95, 0.28, 0.6, 0, 0.12, -0.14);
-    add(sil, SPH, dark, x - 0.6, y0 + 4.05, cz + 0.4, 0.4, 0.18, 0.3, 0.2, 0.4, -0.35);
+    // the unmistakable hair: a high swoop off to one side, a flick past the brow
+    add(sil, SPH, dark, x + 0.15, y0 + 4.12, cz + 0.1, 0.85, 0.3, 0.6, 0, 0, -0.18);
+    add(sil, SPH, dark, x - 0.75, y0 + 4.02, cz + 0.2, 0.65, 0.24, 0.45, 0, 0, -0.42);
+    add(sil, SPH, dark, x - 1.25, y0 + 3.78, cz + 0.2, 0.32, 0.14, 0.3, 0, 0, -0.9);
+    for (const sx of [-1, 1]) add(sil, SPH, dark, x + sx * 0.7, y0 + 3.6, cz - 0.1, 0.2, 0.42, 0.5);
     const shadow = new THREE.Group();
     flush(sil, shadow);
     group.add(shadow);
     // ... and THE DONALD, lit (orange face, swoopy blond hair, the long red tie, one foot up on the table: the ankle
     // monitor's red light blinks)
     const lit: Parts = new Map();
-    const skin = this.std(0xf08a2a, { roughness: 0.6 });
-    const hair = this.std(0xf6d55c, { roughness: 0.45, metalness: 0.15 });
-    const suit = this.std(0x1b2236, { roughness: 0.6 });
-    const white = this.std(0xf3f5f8, { roughness: 0.45 });
-    const tie = this.std(0xd0102a, { roughness: 0.5 });
+    // (lit from inside the room: a little emissive so he reads at night)
+    const skin = this.std(0xf08a2a, { roughness: 0.6, emissive: 0x7a3000, emissiveIntensity: 0.8 });
+    const hair = this.std(0xf6d55c, { roughness: 0.45, metalness: 0.15, emissive: 0x8a6a10, emissiveIntensity: 0.8 });
+    const suit = this.std(0x1b2236, { roughness: 0.6, emissive: 0x0c1020, emissiveIntensity: 1 });
+    const white = this.std(0xf3f5f8, { roughness: 0.45, emissive: 0x505050, emissiveIntensity: 1 });
+    const tie = this.std(0xd0102a, { roughness: 0.5, emissive: 0x500008, emissiveIntensity: 1 });
     const black = this.std(0x131418, { roughness: 0.5 });
     add(lit, B, suit, x, y0 + 2.0, cz, 2.0, 1.8, 1.1);
     add(lit, B, white, x, y0 + 2.45, cz + 0.56, 0.7, 0.9, 0.05);

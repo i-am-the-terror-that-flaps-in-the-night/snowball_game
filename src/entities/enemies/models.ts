@@ -974,7 +974,7 @@ function chairman(): Tpl {
   // ---- storeys 1-2: mirrored gold glass, gold pilasters, black floor bands
   const WIN = mat('cmWindow', 0xffffff, { map: windowTexture(), emissiveMap: windowTexture(), emissive: 0xffd98a, emissiveIntensity: 0.85, roughness: 0.18, metalness: 0.35, flatShading: false });
   const storey = (w: number, d: number, y0: number, h: number) => {
-    b.add(G.box(), WIN, [0, y0 + h / 2, 0], [w, h, d]);
+    b.add(G.box(), WIN, [0, y0 + h / 2, 0], [w, h, d], ZERO, [2, 2]);
     b.add(G.box(), A, [0, y0 + 0.06, 0], [w + 0.12, 0.12, d + 0.12]);
     b.add(G.box(), P, [0, y0 + h - 0.06, 0], [w + 0.18, 0.14, d + 0.18]);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.box(), P, [(sx * w) / 2, y0 + h / 2, (sz * d) / 2], [0.22, h, 0.22]);
@@ -1016,9 +1016,9 @@ function chairman(): Tpl {
   b.add(G.box(), GOLD, [0, RY0 + 1.25, -0.95], [1.3, 2.1, 0.3]);
   b.add(G.box(), GOLD, [0, RY0 + 0.55, -0.55], [1.2, 0.18, 0.9]);
   for (const sx of [-1, 1]) b.add(G.box(), GOLD, [sx * 0.62, RY0 + 0.8, -0.5], [0.14, 0.5, 0.9]);
-  // ---- THE DONALD at the table (the DONALD model's head / hair language, small)
-  const SKIN = mat('donaldSkin', 0xf08a2a, { roughness: 0.6 });
-  const HAIR = mat('donaldHair', 0xf6d55c, { roughness: 0.45, metalness: 0.15 });
+  // ---- THE DONALD at the table (the DONALD model's head / hair language, small; lit from the room so he reads at night)
+  const SKIN = mat('cmSkin', 0xf08a2a, { roughness: 0.6, emissive: 0x6a2a00, emissiveIntensity: 0.7 });
+  const HAIR = mat('cmHair', 0xf6d55c, { roughness: 0.45, metalness: 0.15, emissive: 0x7a6010, emissiveIntensity: 0.7 });
   const TIE = mat('donaldTie', 0xd0102a, { roughness: 0.5 });
   const SUIT = mat('cmSuit', 0x1b2236, { roughness: 0.6 });
   const DY = RY0 + 0.6; // seat height
@@ -1029,12 +1029,15 @@ function chairman(): Tpl {
   b.add(G.box(), SKIN, [0, DY + 1.25, -0.3], [0.62, 0.6, 0.56]);
   b.add(G.sph(1), SKIN, [0, DY + 1.0, -0.05], [0.26, 0.11, 0.12]);
   for (const sx of [-1, 1]) {
-    b.add(G.box(), M.white(), [sx * 0.14, DY + 1.32, -0.01], [0.13, 0.05, 0.02]);
+    b.add(G.box(), M.white(), [sx * 0.14, DY + 1.32, -0.01], [0.15, 0.07, 0.02]);
+    b.add(G.box(), M.black(), [sx * 0.13, DY + 1.32, 0.0], [0.06, 0.06, 0.02]);
     b.add(G.box(), HAIR, [sx * 0.15, DY + 1.41, -0.01], [0.17, 0.04, 0.03], [0, 0, sx * 0.14]);
+    b.add(G.sph(1), HAIR, [sx * 0.31, DY + 1.42, -0.35], [0.08, 0.16, 0.26]);
   }
-  b.add(G.sph(1), HAIR, [0, DY + 1.55, -0.45], [0.36, 0.14, 0.32]);
-  b.add(G.sph(1), HAIR, [0.05, DY + 1.59, -0.08], [0.42, 0.1, 0.16], [0, 0.12, -0.14]);
-  b.add(G.sph(1), HAIR, [-0.28, DY + 1.55, -0.04], [0.15, 0.07, 0.1], [0.2, 0.4, -0.35]);
+  b.add(G.sph(1), HAIR, [0, DY + 1.56, -0.45], [0.38, 0.16, 0.34]);
+  b.add(G.sph(1), HAIR, [0.05, DY + 1.6, -0.06], [0.46, 0.13, 0.2], [0, 0.12, -0.14]);
+  b.add(G.sph(1), HAIR, [-0.3, DY + 1.55, -0.02], [0.18, 0.09, 0.13], [0.2, 0.4, -0.35]);
+  b.add(G.cone(8), HAIR, [-0.45, DY + 1.5, 0.0], [0.06, 0.18, 0.06], [0, 0, 1.9]);
   // left arm on the table, legs under it, the ankle monitor (a black band and a red light that blinks)
   b.add(G.box(), SUIT, [-0.42, DY + 0.45, 0.15], [0.22, 0.2, 0.75]);
   b.add(G.sph(0), SKIN, [-0.42, DY + 0.45, 0.55], [0.11, 0.1, 0.11]);

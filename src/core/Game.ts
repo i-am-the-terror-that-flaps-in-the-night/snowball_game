@@ -1263,6 +1263,7 @@ export class Game {
     ctx.impact.update(dt);
     ctx.world.update(dt);
     ctx.cameraRig.update(dt);
+    if (this.protocol) this.chairman.camera(dt);
     ctx.input.endFrame();
   }
 

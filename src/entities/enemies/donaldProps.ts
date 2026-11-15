@@ -226,6 +226,8 @@ class DonaldProps {
    *  CHAIRMAN's office partitions (gold panels, a gold-white stripe) instead of snow bricks. */
   buildWalls(h: Host, lines: WallLine[], tele: number, life: number, gold = false): void {
     this.init(h.ctx);
+    const terrain = h.ctx.terrain;
+    const decks = terrain && terrain.decks.length ? terrain.decks : null;
     for (const line of lines) {
       const n = Math.max(2, Math.round(line.len / SEG));
       const w: Wall = { line, segs: [], tele, teleDur: tele, life, risen: false, decal: this.decals!.stripe() };
@@ -237,6 +239,8 @@ class DonaldProps {
         const z = line.z + line.dz * a;
         const m = SEG_R + 0.4;
         if (x < ARENA.minX + m || x > ARENA.maxX - m || z < ARENA.minZ + m || z > ARENA.maxZ - m) continue;
+        // never inside a deck / ramp block (PROTOCOL C's waves 6-7): the line just breaks there
+        if (decks && decks.some((d) => terrain!.inDeck(d, x, z, SEG_R))) continue;
         const s: Seg = { x, z, ry: ry + (Math.random() - 0.5) * 0.06, tilt: (Math.random() - 0.5) * 0.04, o: { x, z, r: SEG_R }, k: 0, up: false, die: -1, delay: 0, dead: false, skip: false, gold };
         w.segs.push(s);
         this.segs.push(s);
@@ -728,7 +732,7 @@ class DonaldProps {
       _q.setFromEuler(_e.set(s.tilt, s.ry, -s.tilt, 'YXZ'));
       if (s.gold) {
         // a partition: thinner panel, a touch taller, no cap
-        _m.compose(_p.set(s.x, y, s.z), _q, _s.set(SEG * 1.02 * sc, WALL_H * 1.1, 0.42 * sc));
+        _m.compose(_p.set(s.x, y, s.z), _q, _s.set(SEG * 1.14 * sc, WALL_H * 1.1, 0.42 * sc));
         panels.setMatrixAt(np++, _m);
         continue;
       }

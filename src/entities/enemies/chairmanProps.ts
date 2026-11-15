@@ -3,6 +3,7 @@ import type { GameContext } from '../../core/types';
 import { currentPreset, scaleCount } from '../../core/settings';
 import type { Bot, Host } from './Bot';
 import { DecalPool, type Decal } from './decals';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { waveHitPlow } from '../combat/shared';
 
 /* THE CHAIRMAN's arena props (PROTOCOL C wave 7), owned by the EnemyManager (update / clear) and driven by his AI
@@ -26,7 +27,7 @@ const STORM_TOP = 6;
 /** The storm centre drifts after the plow at this speed (m/s). */
 const STORM_DRIFT = 2.2;
 const GOLD = 0xffc233;
-const CASE_RING = 0xffb21a;
+const CASE_RING = 0xff9a10;
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -52,6 +53,8 @@ interface Case {
   dmg: number;
   daze: number;
   spin: number;
+  /** Seconds to the next paper sheet shed along the flight. */
+  trail: number;
   owner: Bot | null;
   ring: Decal | null;
   fill: Decal | null;
@@ -174,10 +177,16 @@ class ChairmanProps {
     this.storm = null;
     this.stormRing = this.stormFill = null;
     this.decals = new DecalPool(scene);
-    const leather = new THREE.MeshStandardMaterial({ color: 0x2a1a12, roughness: 0.55, flatShading: true });
+    const leather = new THREE.MeshStandardMaterial({ color: 0x7a4a26, roughness: 0.5, flatShading: true, emissive: 0x2a1406, emissiveIntensity: 1 });
     const trim = new THREE.MeshStandardMaterial({ color: 0xf2c033, roughness: 0.3, metalness: 0.45, emissive: 0x3a2400, emissiveIntensity: 0.4, flatShading: true });
     this.caseBody = new THREE.InstancedMesh(new THREE.BoxGeometry(1.3, 0.95, 0.42), leather, MAX_CASES);
-    const trimGeo = new THREE.BoxGeometry(1.36, 0.14, 0.46).translate(0, 0.38, 0);
+    // gold trim: the clasp band round the top and a handle
+    const trimGeo = mergeGeometries([
+      new THREE.BoxGeometry(1.36, 0.16, 0.46).translate(0, 0.38, 0),
+      new THREE.BoxGeometry(0.5, 0.1, 0.12).translate(0, 0.62, 0),
+      new THREE.BoxGeometry(0.08, 0.2, 0.12).translate(-0.22, 0.52, 0),
+      new THREE.BoxGeometry(0.08, 0.2, 0.12).translate(0.22, 0.52, 0),
+    ])!;
     this.caseTrim = new THREE.InstancedMesh(trimGeo, trim, MAX_CASES);
     for (const im of [this.caseBody, this.caseTrim]) {
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -188,7 +197,7 @@ class ChairmanProps {
       scene.add(im);
     }
     for (let i = 0; i < MAX_CASES; i++) {
-      this.cases.push({ active: false, x0: 0, y0: 0, z0: 0, x1: 0, z1: 0, wait: 0, waitDur: 1, t: 0, dur: 1, r: 1, dmg: 0, daze: 0, spin: 0, owner: null, ring: null, fill: null });
+      this.cases.push({ active: false, x0: 0, y0: 0, z0: 0, x1: 0, z1: 0, wait: 0, waitDur: 1, t: 0, dur: 1, r: 1, dmg: 0, daze: 0, spin: 0, trail: 0, owner: null, ring: null, fill: null });
     }
     const paperMat = new THREE.MeshStandardMaterial({ map: paperTexture(), roughness: 0.8, side: THREE.DoubleSide, emissive: 0x404040, emissiveIntensity: 0.6 });
     this.papers = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.62, 0.78), paperMat, STORM_PAPERS);
@@ -257,6 +266,7 @@ class ChairmanProps {
     c.dmg = dmg;
     c.daze = daze;
     c.spin = 0;
+    c.trail = 0;
     c.owner = owner;
     c.ring = this.decals!.ring(false);
     c.fill = this.decals!.ring(true);
@@ -361,7 +371,7 @@ class ChairmanProps {
       const fill = c.fill!;
       ring.x = fill.x = c.x1;
       ring.z = fill.z = c.z1;
-      ring.r0 = c.r - 0.25;
+      ring.r0 = c.r - 0.35;
       ring.r1 = c.r;
       fill.r0 = 0;
       // the fill grows over the whole wait + flight: it reaches the edge as the case lands
@@ -371,14 +381,20 @@ class ChairmanProps {
       fill.r1 = c.r * p;
       ring.mat.color.setHex(CASE_RING);
       fill.mat.color.setHex(CASE_RING);
-      ring.mat.opacity = 0.85 * (0.75 + 0.25 * Math.sin(this.time * 22));
-      fill.mat.opacity = 0.22 + 0.25 * p;
+      ring.mat.opacity = 0.95 * (0.75 + 0.25 * Math.sin(this.time * 22));
+      fill.mat.opacity = 0.3 + 0.3 * p;
       if (c.wait > 0) {
         c.wait -= dt;
         continue;
       }
       c.t += dt;
       c.spin += dt * 9;
+      // loose pages flutter off it in flight
+      if ((c.trail -= dt) <= 0) {
+        c.trail = 0.09;
+        caseAt(c, _v);
+        ctx.fx.burst(_v, PAGE_TRAIL);
+      }
       if (c.t >= c.dur) this.land(h, c, ctx);
     }
     this.syncCases();
@@ -414,13 +430,9 @@ class ChairmanProps {
     let n = 0;
     for (const c of this.cases) {
       if (!c.active || c.wait > 0) continue;
-      const k = Math.min(1, c.t / c.dur);
-      const x = c.x0 + (c.x1 - c.x0) * k;
-      const z = c.z0 + (c.z1 - c.z0) * k;
-      const arc = 4 * k * (1 - k) * (6 + Math.hypot(c.x1 - c.x0, c.z1 - c.z0) * 0.25);
-      const y = c.y0 + (0.6 - c.y0) * k + arc;
+      caseAt(c, _p);
       _q.setFromEuler(_e.set(c.spin, Math.atan2(c.x1 - c.x0, c.z1 - c.z0), c.spin * 0.3));
-      _m.compose(_p.set(x, y, z), _q, _s.set(1, 1, 1));
+      _m.compose(_p, _q, _s.set(1.25, 1.25, 1.25));
       body.setMatrixAt(n, _m);
       trim.setMatrixAt(n, _m);
       n++;
@@ -538,5 +550,13 @@ class ChairmanProps {
 }
 
 const _tmpQ = new THREE.Quaternion();
+const PAGE_TRAIL = { color: 0xfbfaf4, count: 1, speed: 1.5, size: 0.2, gravity: 2, life: 0.9 };
+
+/** A briefcase's position along its lob (a parabola over the straight line, higher for longer throws). */
+function caseAt(c: Case, out: THREE.Vector3): THREE.Vector3 {
+  const k = Math.min(1, c.t / c.dur);
+  const arc = 4 * k * (1 - k) * (6 + Math.hypot(c.x1 - c.x0, c.z1 - c.z0) * 0.25);
+  return out.set(c.x0 + (c.x1 - c.x0) * k, c.y0 + (0.6 - c.y0) * k + arc, c.z0 + (c.z1 - c.z0) * k);
+}
 
 export const chairmanProps = new ChairmanProps();

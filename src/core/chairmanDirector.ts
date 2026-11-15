@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { EnemyHandle, GameContext } from './types';
 import { BOARDROOM } from '../world/environment/ProtocolScenery';
 import { PROTOCOL_WAVES } from '../config/protocol';
@@ -13,23 +14,34 @@ import {
  *    between lines; a line arriving inside the gap waits in a one-line queue (a newer one replaces it; the wave intro
  *    and the reveal lines always go out). Never more than one line in COMMENT_GAP s apart from those.
  *  - THE REVEAL (wave 7's countdown, REVEAL_COUNTDOWN s): the box lights up (silhouette -> THE DONALD, lit, ankle
- *    monitor on), the camera swings up to it, two lines. The fight then opens with his descent (enemies/chairman.ts).
+ *    monitor on), two lines, and the camera eases onto a shot looking up at the box from the north end of the arena
+ *    (camera(): blended over the follow camera after CameraRig.update, so the rig itself is untouched). The fight
+ *    then opens with his descent (enemies/chairman.ts, the rig's kill-cam orbit on the landing spot).
  *  - THE DEFEAT HOOK: onChairmanDefeated (his wreck after the PROTOCOL C button): the echoes power down, the rest of
  *    the wave queue is dropped, so wave 7 ends and the run's victory follows. TODO(stage 4): startWhiteout() here.
- * Pure timing logic + ctx calls (ui toasts, world.boardroom, cameraRig); no per-frame allocation.
+ * Pure timing logic + ctx calls (ui toasts, world.boardroom, the camera); no per-frame allocation.
  */
 
 /** Minimum seconds between two commentary lines. */
 export const COMMENT_GAP = 7;
 /** Below this HP fraction the player's plow is "low" (one line a wave). */
 export const LOW_HP_FRAC = 0.3;
-/** Reveal timeline (s into wave 7's countdown): lights ramp from REVEAL_LIGHT over REVEAL_RAMP; the camera finds the
- *  box at REVEAL_CAM for REVEAL_CAM_T; the reveal line at REVEAL_LINE. */
+/** Reveal timeline (s into wave 7's countdown): lights ramp from REVEAL_LIGHT over REVEAL_RAMP; the camera shot eases
+ *  in from REVEAL_CAM over REVEAL_CAM_IN (and back out over REVEAL_CAM_OUT once the fight starts); the reveal line at
+ *  REVEAL_LINE. */
 export const REVEAL_LIGHT = 0.6;
 export const REVEAL_RAMP = 1.6;
 export const REVEAL_CAM = 0.2;
-export const REVEAL_CAM_T = 5.4;
+export const REVEAL_CAM_IN = 1.2;
+export const REVEAL_CAM_OUT = 0.6;
 export const REVEAL_LINE = 2.4;
+/** The reveal shot: a slow dolly from SHOT_A to SHOT_B, looking up at the box's face. */
+const SHOT_A = new THREE.Vector3(7, 15.5, -17);
+const SHOT_B = new THREE.Vector3(3.5, 15.8, -23.5);
+const SHOT_LOOK = new THREE.Vector3(BOARDROOM.x + 4, BOARDROOM.y - 2.2, BOARDROOM.z);
+const _pose = new THREE.PerspectiveCamera();
+const _p = new THREE.Vector3();
+const _q = new THREE.Quaternion();
 
 /** The toast prefix: a phone line from the box. */
 export const CHAIRMAN_PREFIX = '📞 THE CHAIRMAN: ';
@@ -46,7 +58,9 @@ export class ChairmanDirector {
   /** Wave 7 countdown: seconds into the reveal (-1 = not revealing). */
   private revealT = -1;
   private revealLine = false;
-  private revealCam = false;
+  /** The reveal shot's blend weight (0..1) and, after the fight starts, its ease-out timer. */
+  private camW = 0;
+  private camOut = 0;
   /** Lines said (tests / probes read the log; capped). */
   readonly log: string[] = [];
   /** The whiteout hook ran (THE CHAIRMAN fell this run). */
@@ -69,7 +83,8 @@ export class ChairmanDirector {
     this.chairmanDown = false;
     this.revealT = wave >= PROTOCOL_WAVES ? 0 : -1;
     this.revealLine = false;
-    this.revealCam = false;
+    this.camW = 0;
+    this.camOut = 0;
     this.ctx.world.boardroom?.('shadow');
     const intro = CHAIRMAN_INTRO[wave];
     if (intro) this.say(intro, true);
@@ -80,6 +95,8 @@ export class ChairmanDirector {
     this.active = false;
     this.revealT = -1;
     this.queued = null;
+    this.camW = 0;
+    this.camOut = 0;
   }
 
   get revealing(): boolean {
@@ -100,8 +117,36 @@ export class ChairmanDirector {
 
   /** The fight began (Game.startRound): the reveal hands over to his descent; the box stays lit until it detaches. */
   fight(): void {
-    if (this.revealT >= 0) this.ctx.world.boardroom?.('lit', 1);
+    if (this.revealT >= 0) {
+      this.ctx.world.boardroom?.('lit', 1);
+      this.camOut = REVEAL_CAM_OUT;
+    }
     this.revealT = -1;
+  }
+
+  /** After CameraRig.update (Game.tick): blend the reveal shot over the follow camera. */
+  camera(dt: number): void {
+    let w = 0;
+    let u = 1;
+    if (this.revealT >= REVEAL_CAM) {
+      const k = Math.min(1, (this.revealT - REVEAL_CAM) / REVEAL_CAM_IN);
+      w = k * k * (3 - 2 * k);
+      u = Math.min(1, (this.revealT - REVEAL_CAM) / 5.5);
+    } else if (this.camOut > 0) {
+      this.camOut = Math.max(0, this.camOut - dt);
+      const k = this.camOut / REVEAL_CAM_OUT;
+      w = this.camW > 0 ? k * k * (3 - 2 * k) : 0;
+    }
+    if (this.revealT >= 0) this.camW = w;
+    if (w <= 0) return;
+    const cam = this.ctx.camera;
+    _p.copy(SHOT_A).lerp(SHOT_B, u * u * (3 - 2 * u));
+    _pose.position.copy(_p);
+    _pose.lookAt(SHOT_LOOK);
+    _q.copy(cam.quaternion).slerp(_pose.quaternion, w);
+    cam.position.lerp(_p, w);
+    cam.quaternion.copy(_q);
+    cam.updateMatrixWorld();
   }
 
   private updateReveal(dt: number): void {
@@ -109,11 +154,6 @@ export class ChairmanDirector {
     const t = this.revealT;
     const k = Math.max(0, Math.min(1, (t - REVEAL_LIGHT) / REVEAL_RAMP));
     this.ctx.world.boardroom?.(k > 0 ? 'lit' : 'shadow', k);
-    if (!this.revealCam && t >= REVEAL_CAM) {
-      this.revealCam = true;
-      // the kill-cam orbit framed on the box (it looks at y + 0.5, from 12 m above and 17 m out)
-      this.ctx.cameraRig.cinematic(BOARDROOM.x, BOARDROOM.z, REVEAL_CAM_T, BOARDROOM.y - 0.5);
-    }
     if (!this.revealLine && t >= REVEAL_LINE) {
       this.revealLine = true;
       this.say(CHAIRMAN_REVEAL, true);
