@@ -1,3 +1,4 @@
+import { SPEED_LIMITS } from '../entities/plow/handling';
 import { PLOWS, type PlowKind } from '../config/plows';
 import './settings.css';
 import type { GameContext } from '../core/types';
@@ -37,6 +38,9 @@ export class SettingsMenu {
   private flashBtns = new Map<boolean, HTMLButtonElement>();
   private bloomBtns = new Map<boolean, HTMLButtonElement>();
   private ultCamBtns = new Map<boolean, HTMLButtonElement>();
+  private limitBtns = new Map<number, HTMLButtonElement>();
+  private assistBtns = new Map<boolean, HTMLButtonElement>();
+  private speedFovBtns = new Map<boolean, HTMLButtonElement>();
   private kitBtns: { k: PlowKind; on: boolean; b: HTMLButtonElement }[] = [];
   private reduceShakeBtns = new Map<boolean, HTMLButtonElement>();
   private sliders: { input: HTMLInputElement; val: HTMLElement; get: () => number }[] = [];
@@ -199,6 +203,39 @@ export class SettingsMenu {
       }, uSeg));
     }
 
+    const drv = this.section('🏁 Driving');
+    el('div', 'ss-set-note', 'Speed limiter caps your cruising speed (acceleration and dashes stay full). Steering assist nudges you very slightly toward a bot or boss just ahead. Both are off in the online Duel.', drv);
+    const lRow = el('div', 'ss-set-row', undefined, drv);
+    el('span', 'ss-set-label', 'Speed limiter', lRow);
+    const lSeg = el('div', 'ss-set-seg', undefined, lRow);
+    for (const v of SPEED_LIMITS) {
+      this.limitBtns.set(v, this.btn(`${Math.round(v * 100)}%`, 'ss-ice ss-small', () => {
+        settings.speedLimit = v;
+        saveSettings();
+        this.refresh();
+      }, lSeg));
+    }
+    const aRow = el('div', 'ss-set-row', undefined, drv);
+    el('span', 'ss-set-label', 'Steering assist', aRow);
+    const aSeg = el('div', 'ss-set-seg', undefined, aRow);
+    for (const [on, label] of [[false, 'OFF'], [true, 'ON']] as [boolean, string][]) {
+      this.assistBtns.set(on, this.btn(label, 'ss-ice ss-small', () => {
+        settings.steerAssist = on;
+        saveSettings();
+        this.refresh();
+      }, aSeg));
+    }
+    const vRow = el('div', 'ss-set-row', undefined, drv);
+    el('span', 'ss-set-label', 'Widen view at speed', vRow);
+    const vSeg = el('div', 'ss-set-seg', undefined, vRow);
+    for (const [on, label] of [[false, 'OFF'], [true, 'ON']] as [boolean, string][]) {
+      this.speedFovBtns.set(on, this.btn(label, 'ss-ice ss-small', () => {
+        settings.speedFov = on;
+        saveSettings();
+        this.refresh();
+      }, vSeg));
+    }
+
     const kit = this.section('🚜 Main attacks');
     el('div', 'ss-set-note', "SPECIAL = each vehicle's own SPACE / E. SNOWBALL = plow snow, slam with a SPACE tap and whirl with E (F and the ultimate stay). Takes effect on the next run; the Duel always uses SPECIAL.", kit);
     for (const k of ['volt', 'brute', 'isotope', 'arsenal', 'revenant'] as const) {
@@ -263,6 +300,9 @@ export class SettingsMenu {
     for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
     for (const [on, b] of this.bloomBtns) b.classList.toggle('ss-set-on', settings.bloom === on);
     for (const [on, b] of this.ultCamBtns) b.classList.toggle('ss-set-on', settings.ultCam === on);
+    for (const [v, b] of this.limitBtns) b.classList.toggle('ss-set-on', settings.speedLimit === v);
+    for (const [on, b] of this.assistBtns) b.classList.toggle('ss-set-on', settings.steerAssist === on);
+    for (const [on, b] of this.speedFovBtns) b.classList.toggle('ss-set-on', settings.speedFov === on);
     for (const { k, on, b } of this.kitBtns) b.classList.toggle('ss-set-on', !!settings.snowKit[k] === on);
     for (const [on, b] of this.reduceShakeBtns) b.classList.toggle('ss-set-on', settings.reduceShake === on);
     for (const a of ACTIONS) {

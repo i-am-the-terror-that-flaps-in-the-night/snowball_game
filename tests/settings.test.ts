@@ -13,7 +13,14 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('settings', () => {
   it('defaults when nothing is stored', async () => {
-    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {} });
+    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true });
+  });
+
+  it('keeps a valid speed limiter and the driving toggles, rejects odd limiter values', async () => {
+    const a = await loadWith(JSON.stringify({ speedLimit: 0.8, steerAssist: false, speedFov: false }));
+    expect([a.speedLimit, a.steerAssist, a.speedFov]).toEqual([0.8, false, false]);
+    const b = await loadWith(JSON.stringify({ speedLimit: 0.5 }));
+    expect(b.speedLimit).toBe(1);
   });
 
   it('defaults on corrupted storage', async () => {

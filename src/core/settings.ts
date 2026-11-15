@@ -90,10 +90,16 @@ export interface Settings {
   snowKit: Partial<Record<PlowKind, boolean>>;
   /** Rebound primary key per action (KeyboardEvent.code). Missing = default. */
   keys: Partial<Record<Action, string>>;
+  /** Speed limiter: cruise at this share of top speed (1 / 0.9 / 0.8); acceleration and dashes unchanged. */
+  speedLimit: number;
+  /** Steering assist: a slight nudge toward a bot or the boss just ahead. */
+  steerAssist: boolean;
+  /** Widen the field of view a little at speed. */
+  speedFov: boolean;
 }
 
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {} };
+  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -123,6 +129,9 @@ function load(): Settings {
       ultCam: p.ultCam !== false,
       snowKit: p.snowKit && typeof p.snowKit === 'object' ? Object.fromEntries(Object.entries(p.snowKit).filter(([, v]) => v === true)) : {},
       keys,
+      speedLimit: p.speedLimit === 0.9 || p.speedLimit === 0.8 ? p.speedLimit : 1,
+      steerAssist: p.steerAssist !== false,
+      speedFov: p.speedFov !== false,
     };
   } catch {
     return d;

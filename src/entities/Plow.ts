@@ -23,6 +23,9 @@ import { knockScale } from '../config/plows';
 import { MOMENTUM_BOOST, RUSH_CHARGE_SLOW, RUSH_CHARGE_SLOW_PVP, RUSH_MAX, RUSH_SPEED } from './combat/classicRush';
 import { streakSpeed } from './combat/classicStreak';
 import { PHASE_SPEED } from './combat/revenant';
+import { settings } from '../core/settings';
+import type { EnemyHandle } from '../core/types';
+import { HANDLING } from './plow/handling';
 
 /* The player / pilot plow. The class is layered over ./plow/ (PlowBase -> PlowVisuals -> PlowMotion -> Plow; see
  * plow/PlowBase.ts); this top layer holds the public API, the duel netcode, reset and the per-frame update. */
@@ -648,7 +651,10 @@ export class Plow extends PlowMotion implements PlowAPI {
       // STREAK: +8% top speed per stack (Combat reports -1 off the Classic and in the Duel: no change there).
       (classicKit ? streakSpeed(b.combat?.streak ?? 0) : 1) *
       // REVENANT PHASE: spectral, +30% top speed.
-      (this.phased ? PHASE_SPEED : 1);
+      (this.phased ? PHASE_SPEED : 1) *
+      // Speed limiter (Settings): cruise at a share of top speed; acceleration and dashes are untouched. Off in the
+      // Duel (host and guest simulate both plows and must agree).
+      (this.b.pvp ? 1 : settings.speedLimit);
     const accel = stats.accel;
     // KITING: VOLT-9 backs off at VOLT_KITE_REV x top speed while its Arc Lance fires (voltArc is set by the kit on
     // every pilot that simulates this plow: single player, the Duel host, and the guest's own prediction).
@@ -701,7 +707,24 @@ export class Plow extends PlowMotion implements PlowAPI {
     const absS = Math.abs(this.speed);
     const f = 0.35 + 0.65 * Math.min(1, absS / 4);
     const reversing = this.speed < -0.2 || (absS <= 0.2 && throttle < 0);
-    const turn = rushing ? 0 : steer * stats.turnRate * f * (reversing ? -1 : 1) * (this.dashing ? DASH_STEER : this.whirlT >= 0 ? WHIRL_STEER : 1) * (air ? AIR_STEER : 1);
+    // Assisted steering: the input builds up over a fraction of a second (snaps back faster), and past cruising speed
+    // a tap turns gentler; holding the key on hands back the full turn rate.
+    const hi = Math.min(1, Math.max(0, (absS - HANDLING.easeFrom) / HANDLING.easeSpan));
+    let steerIn = steer;
+    // Steering assist (Settings): near a bot / the boss roughly ahead, nudge very slightly toward it. Off in the Duel.
+    if (settings.steerAssist && !this.b.pvp && !rushing && !air && absS > HANDLING.assistMinSpeed) steerIn += this.assistNudge(steer);
+    steerIn = Math.max(-1, Math.min(1, steerIn));
+    const back = Math.abs(steerIn) < Math.abs(this.steerSm) || steerIn * this.steerSm < 0;
+    this.steerSm += (steerIn - this.steerSm) * (1 - Math.exp(-(back ? HANDLING.steerRelease : HANDLING.steerBuild) * dt));
+    if (Math.abs(steer) > 0.5 && Math.sign(steer) === this.steerHoldDir) this.steerHoldT += dt;
+    else {
+      this.steerHoldT = 0;
+      this.steerHoldDir = Math.abs(steer) > 0.5 ? Math.sign(steer) : 0;
+    }
+    const ease = 1 - HANDLING.highSpeedEase * hi;
+    const holdK = Math.min(1, this.steerHoldT / HANDLING.holdFull);
+    const steerK = ease + (1 - ease) * holdK;
+    const turn = rushing ? 0 : this.steerSm * steerK * stats.turnRate * f * (reversing ? -1 : 1) * (this.dashing ? DASH_STEER : this.whirlT >= 0 ? WHIRL_STEER : 1) * (air ? AIR_STEER : 1);
     this.heading += turn * dt;
 
     // ---- integrate
@@ -717,7 +740,8 @@ export class Plow extends PlowMotion implements PlowAPI {
       // keep velX / velZ
     } else if (iceK > 0 && !rushing) {
       // (A PLOW RUSH keeps full grip on ice: its line is committed.)
-      const grip = ICE_GRIP + (1 - iceK) * 30;
+      // More grip the faster you go: the old sideways slide is cancelled sooner at speed.
+      const grip = (ICE_GRIP + (1 - iceK) * 30) * (1 + HANDLING.speedGrip * Math.min(1, absS / HANDLING.gripFullAt));
       const k = 1 - Math.exp(-grip * dt);
       this.velX += (wantX - this.velX) * k;
       this.velZ += (wantZ - this.velZ) * k;
@@ -823,5 +847,45 @@ export class Plow extends PlowMotion implements PlowAPI {
     const burst = this.dashT > 0 || this.rushLeft > 0;
     if (burst || Math.abs(this.speed) > TRAIL_MIN_SPEED) this.emitTrail(dt, burst);
   }
+
+
+  /** Assisted steering state (smoothed input, how long the current full turn has been held). */
+  private steerSm = 0;
+  private steerHoldT = 0;
+  private steerHoldDir = 0;
+
+  /** Steering assist: a small steer toward the nearest bot (the boss first) roughly ahead and close, weaker the
+   *  harder the pilot is steering, never past HANDLING.assistMax. */
+  private assistNudge(steer: number): number {
+    const enemies = this.ctx.enemies;
+    if (!enemies) return 0;
+    const p = this.position;
+    const list = enemies.query(p.x, p.z, HANDLING.assistRange, this.assistBuf);
+    const sh = Math.sin(this.heading);
+    const ch = Math.cos(this.heading);
+    let best = 0;
+    let bestScore = Infinity;
+    for (const e of list) {
+      if (!e.alive) continue;
+      const dx = e.position.x - p.x;
+      const dz = e.position.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 1.5) continue;
+      // Signed angle off the nose (+ = to the left of heading, the way +steer turns).
+      const fwd = dx * sh + dz * ch;
+      const side = dx * ch - dz * sh;
+      const ang = Math.atan2(side, fwd);
+      if (Math.abs(ang) > HANDLING.assistCone) continue;
+      const score = d * (e.isBoss ? 0.5 : 1) + Math.abs(ang) * 6;
+      if (score < bestScore) {
+        bestScore = score;
+        best = ang;
+      }
+    }
+    if (bestScore === Infinity) return 0;
+    const n = Math.max(-HANDLING.assistMax, Math.min(HANDLING.assistMax, best * HANDLING.assistGain));
+    return n * (1 - Math.min(1, Math.abs(steer)) * 0.8);
+  }
+  private readonly assistBuf: EnemyHandle[] = [];
 
 }

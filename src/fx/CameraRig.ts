@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { HANDLING } from '../entities/plow/handling';
 import { ARENA } from '../core/types';
 import type { CameraRigAPI, GameContext } from '../core/types';
-import { shakeScale } from '../core/settings';
+import { settings, shakeScale } from '../core/settings';
 import type { RayHit } from '../world/Terrain';
 
 /* Close-quarters follow: high and a bit back so the bots around the plow stay in view. */
@@ -82,6 +83,8 @@ export class CameraRig implements CameraRigAPI {
   private look = new THREE.Vector3();
   private heading = Math.PI;
   private fov = BASE_FOV;
+  /** 0..1 smoothed high-speed framing (HANDLING.cam*). */
+  private fast = 0;
   private trauma = 0;
   private t = 0;
   private orbit = 0;
@@ -206,14 +209,18 @@ export class CameraRig implements CameraRigAPI {
       this.tmpLook.set(0, 0, 0);
       return;
     }
-    this.heading = dt > 0 ? angleLerp(this.heading, plow.heading, damp(3, dt)) : plow.heading;
+    // At speed: pull back, rise and look further ahead (absolute speed, so a maxed plow sees bots sooner), and swing
+    // round with the nose faster so a quick turn doesn't read as a sideways slide.
+    const fast = Math.min(1, Math.max(0, (Math.abs(plow.speed) - HANDLING.camFrom) / HANDLING.camSpan));
+    this.fast += (fast - this.fast) * damp(2.5, dt);
+    this.heading = dt > 0 ? angleLerp(this.heading, plow.heading, damp(3 + 3 * this.fast, dt)) : plow.heading;
     const sx = Math.sin(this.heading);
     const cz = Math.cos(this.heading);
     const p = plow.position;
     const max = this.ctx.stats.maxSpeed || 1;
     const big = ARENA.maxX > 50;
-    const back = (big ? BIG_BACK : BACK) + 1.5 * Math.min(1.3, Math.max(0, plow.speed) / max) + DASH_PULL * this.dashBlend;
-    const up = (big ? BIG_UP : UP) + 0.8 * this.dashBlend;
+    const back = (big ? BIG_BACK : BACK) + 1.5 * Math.min(1.3, Math.max(0, plow.speed) / max) + DASH_PULL * this.dashBlend + HANDLING.camBack * this.fast;
+    const up = (big ? BIG_UP : UP) + 0.8 * this.dashBlend + HANDLING.camUp * this.fast;
     let x = p.x - sx * back;
     let z = p.z - cz * back;
     // Keep the camera near the arena; when it is out past a wall, lift it so the wall never blocks the view.
@@ -238,7 +245,8 @@ export class CameraRig implements CameraRigAPI {
       py = this.followY;
     } else this.followInit = false;
     this.tmpPos.set(x, py + up + lift, z);
-    this.tmpLook.set(p.x + sx * AHEAD, py + 0.5, p.z + cz * AHEAD);
+    const ahead = AHEAD + HANDLING.camAhead * this.fast;
+    this.tmpLook.set(p.x + sx * ahead, py + 0.5, p.z + cz * ahead);
     if (this.cineT > 0) this.blendCinematic();
     if (terr && terr.active) this.occlude(dt, p.x, p.y + FOCUS_UP, p.z);
   }
@@ -318,7 +326,7 @@ export class CameraRig implements CameraRigAPI {
     const plow = this.ctx.plow;
     if (this.mode === 'follow' && plow) {
       const max = this.ctx.stats.maxSpeed || 1;
-      targetFov = BASE_FOV + 5 * Math.min(1, Math.abs(plow.speed) / max);
+      targetFov = BASE_FOV + 5 * Math.min(1, Math.abs(plow.speed) / max) + (settings.speedFov ? HANDLING.camFov * this.fast : 0);
       const dashing = plow.dashing;
       if (dashing && !this.wasDashing) this.kickFov(DASH_FOV_KICK);
       this.wasDashing = dashing;
