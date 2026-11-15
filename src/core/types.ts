@@ -601,6 +601,9 @@ export interface FxAPI {
   scorch(pos: THREE.Vector3, radius: number, strength?: number): void;
   /** A wreck that keeps smoking: dark rising smoke column, flames and embers for `seconds`. */
   smolder(pos: THREE.Vector3, opts?: SmolderOpts): void;
+  /** An ultimate is playing for `seconds`: dark (normal-blended) smoke and wreck smolder run lighter and shorter so
+   *  they don't bury its bright effects (absent on stub FX). */
+  hush?(seconds: number): void;
   /** Snow kicked up by a blade. `intensity` 0..1. Call every frame while plowing. */
   spray(pos: THREE.Vector3, dir: THREE.Vector3, intensity: number): void;
   /** Floating damage numbers / labels projected to screen. */
@@ -634,7 +637,7 @@ export interface CameraRigAPI {
 }
 
 /** Impact feel kinds (see fx/impact.ts for the per-kind light colour, hit-stop and camera numbers). */
-export type ImpactKind = 'slam' | 'wreck' | 'kill' | 'bossHit' | 'bossKill' | 'pound' | 'punch' | 'clap' | 'meltdown' | 'nuke' | 'player' | 'finisher';
+export type ImpactKind = 'slam' | 'wreck' | 'kill' | 'bossHit' | 'bossKill' | 'pound' | 'punch' | 'clap' | 'meltdown' | 'nuke' | 'firestorm' | 'collapse' | 'hunt' | 'player' | 'finisher';
 
 export interface ImpactOpts {
   /** false = light + camera only, no hit-stop (rival-vs-rival effects, slams that hit nothing). */

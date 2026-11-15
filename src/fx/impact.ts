@@ -32,6 +32,10 @@ interface KindDef {
   fov: number;
   /** Bypass the STOP_GAP cooldown. */
   force?: boolean;
+  /** Full-screen flash: peak opacity and seconds (none when absent), tinted `flashTint` (CSS colour, default white). */
+  flash?: number;
+  flashSec?: number;
+  flashTint?: string;
 }
 
 const KINDS: Record<ImpactKind, KindDef> = {
@@ -45,7 +49,13 @@ const KINDS: Record<ImpactKind, KindDef> = {
   punch: { color: 0xffa040, light: 55, range: 12, stop: 0.035, kick: 0.28, fov: -1.5, force: true },
   clap: { color: 0x8fd8ff, light: 150, range: 28, stop: 0.07, kick: 0.6, fov: -4 },
   meltdown: { color: 0x6dff3a, light: 120, range: 26, stop: 0.065, kick: 0.55, fov: -3.5 },
-  nuke: { color: 0x7dff4a, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true },
+  nuke: { color: 0x7dff4a, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true, flash: 0.9, flashSec: 0.6 },
+  /** The Classic's FIRESTORM: the NUKE's punch with a warm fire flash (not the ISOTOPE green). */
+  firestorm: { color: 0xff7a20, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true, flash: 0.55, flashSec: 0.5, flashTint: '#ffb060' },
+  /** ARSENAL's SINGULARITY detonation: cyan, and a far lighter screen flash (the collapse billboard is the flash). */
+  collapse: { color: 0x8fe8ff, light: 420, range: 60, stop: 0.16, kick: 1.4, fov: -9, force: true, flash: 0.3, flashSec: 0.4, flashTint: '#bff4ff' },
+  /** THE WILD HUNT's finale: violet. */
+  hunt: { color: 0xc890ff, light: 520, range: 60, stop: 0.16, kick: 1.4, fov: -9, force: true, flash: 0.45, flashSec: 0.5, flashTint: '#e6c8ff' },
   player: { color: 0xff5a4a, light: 0, range: 0, stop: 0.05, kick: 0.5, fov: 0 },
   /** The Classic's STREAK SHOCKWAVE FINISHER (combat/classicStreak.ts FINISHER_HITSTOP): a forced 0.08 s stop, a hot
    *  flash and a big punch. */
@@ -122,7 +132,7 @@ export class Impact implements ImpactAPI {
       this.stop(sec, def.force);
     }
     if (def.kick > 0) this.kick(pos, def.kick * Math.min(1.6, s) * (opts?.falloff ?? 1), def.fov * Math.min(1.5, s));
-    if (kind === 'nuke') this.screenFlash(0.9, 0.6);
+    if (def.flash) this.screenFlash(def.flash, def.flashSec ?? 0.5, def.flashTint);
     // (A rival's finisher, judged remote by stop: false, lights and punches but never flashes the player's screen.)
     else if (kind === 'finisher' && opts?.stop !== false) this.screenFlash(0.45, 0.35);
   }
@@ -227,8 +237,10 @@ export class Impact implements ImpactAPI {
     if (fov) rig.punchFov(fov * fall);
   }
 
-  private screenFlash(opacity: number, seconds: number): void {
+  private screenFlash(opacity: number, seconds: number, tint?: string): void {
     const reduce = settings.reduceFlash;
+    // A tinted flash is a flat colour wash; untinted keeps the stylesheet's white radial.
+    this.flashEl.style.background = tint ? `radial-gradient(ellipse at 50% 55%, #ffffff 0%, ${tint} 60%, ${tint} 100%)` : '';
     const peak = reduce ? Math.min(0.2, opacity * 0.25) : opacity;
     this.flashEl.getAnimations().forEach((a) => a.cancel());
     this.flashEl.animate(

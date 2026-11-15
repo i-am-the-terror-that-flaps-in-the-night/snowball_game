@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { REV_BONE, REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE, revenantHullGeometry } from '../vehicles/revenant';
+import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE, revenantHullGeometry } from '../vehicles/revenant';
 import { addMat, paintMat } from './arsenalFx';
 
 /* REVENANT ability visuals (pooled; nothing allocated per frame). Every effect is a solid, normal-blended violet layer
@@ -8,7 +8,8 @@ import { addMat, paintMat } from './arsenalFx';
  *   - Chains: wavy ghost chains (instanced links, drawn immediate-mode each frame): Haunt tethers and SOUL GRASP;
  *   - HauntMarks: the pale overlay shell + floating skull wisp over a Haunted bot (immediate mode);
  *   - PhantomMeshes: the hooded ghost a Haunted wreck rises as;
- *   - RiderMeshes: THE WILD HUNT's phantom hearses (the REVENANT hull silhouette, translucent with a dark outline);
+ *   - RiderMeshes: THE WILD HUNT's phantom hearses (the REVENANT hull silhouette, solid violet in a glowing outline,
+ *     white-hot eyes and a ghostfire plume);
  *   - HuntDome: the arena tint while the Hunt rides. */
 
 const _m = new THREE.Matrix4();
@@ -355,53 +356,154 @@ export class PhantomMeshes {
 
 /* ------------------------------------------------------------------ Wild Hunt riders */
 
-/** Phantom hearses: the REVENANT hull silhouette in translucent violet over a dark outline shell (BackSide, scaled),
- *  with a bright additive skin on top. */
-const CAM_FADE_IN = 5;
-const CAM_FADE_OUT = 12;
+/** Phantom hearses: the REVENANT hull silhouette as a solid violet ghost (it has to read on sunlit snow) inside a glowing
+ *  additive outline shell (BackSide, scaled), a bright additive skin, white-hot slit eyes and a trailing ghostfire
+ *  plume. Camera-near fade: a rider fades out inside CAM_FADE_IN m of the camera, fully drawn from CAM_FADE_OUT m. */
+const CAM_FADE_IN = 2.5;
+const CAM_FADE_OUT = 6.5;
+/** Peak opacities: body fill, glow shell, additive skin, eye glow, ghostfire plume. */
+const RIDER_FILL = 0.8;
+const RIDER_RIM = 0.85;
+const RIDER_SKIN = 0.12;
+const RIDER_EYE_GLOW = 0.8;
+const RIDER_PLUME = 0.42;
+
+/** Ghostfire plume: two crossed ribbons trailing back from the origin along -Z (length 1, unit half-height), alpha and
+ *  width falling off toward the tail, scaled per rider. */
+function plumeGeometry(): THREE.BufferGeometry {
+  const N = 8;
+  const pos: number[] = [];
+  const col: number[] = [];
+  const idx: number[] = [];
+  for (let r = 0; r < 2; r++) {
+    const base = pos.length / 3;
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      const w = (1 - u) ** 0.7 * (0.55 + 0.45 * Math.sin(Math.min(1, u * 4) * Math.PI * 0.5));
+      const a = (1 - u) ** 1.6;
+      // Ribbon 0 stands vertical (y), ribbon 1 lies flat (x); both lift a little toward the tail.
+      const lift = u * 0.35;
+      if (r === 0) pos.push(0, lift + w, -u, 0, lift - w * 0.6, -u);
+      else pos.push(-w * 0.45, lift, -u, w * 0.45, lift, -u);
+      // White-hot at the root, violet down the tail.
+      const hot = Math.max(0, 1 - u * 2.5);
+      const cr = 0.62 + 0.25 * hot, cg = 0.28 + 0.4 * hot, cb = 1;
+      col.push(cr, cg, cb, a, cr, cg, cb, a);
+      if (i < N) {
+        const k = base + i * 2;
+        idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  g.setIndex(idx);
+  return g;
+}
+
+/** The hull with a baked key-light shade as vertex colours (unlit MeshBasic still shows the hearse's form: lit roof,
+ *  darker flanks), shared by every rider. */
+let shadedHull: THREE.BufferGeometry | null = null;
+function shadedHullGeometry(): THREE.BufferGeometry {
+  if (shadedHull) return shadedHull;
+  const g = revenantHullGeometry().clone();
+  if (!g.getAttribute('normal')) g.computeVertexNormals();
+  const n = g.getAttribute('normal');
+  const col = new Float32Array(n.count * 3);
+  const L = new THREE.Vector3(0.35, 1, 0.45).normalize();
+  for (let i = 0; i < n.count; i++) {
+    const d = n.getX(i) * L.x + n.getY(i) * L.y + n.getZ(i) * L.z;
+    const k = 0.42 + 0.78 * Math.max(0, d);
+    col[i * 3] = k;
+    col[i * 3 + 1] = k;
+    col[i * 3 + 2] = Math.min(1.2, k * 1.05);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return (shadedHull = g);
+}
 
 export class RiderMeshes {
   readonly roots: THREE.Group[] = [];
   private fills: THREE.MeshBasicMaterial[] = [];
   private rims: THREE.MeshBasicMaterial[] = [];
+  private skins: THREE.MeshBasicMaterial[] = [];
+  private glows: THREE.MeshBasicMaterial[] = [];
+  private plumeMats: THREE.MeshBasicMaterial[] = [];
+  private plumes: THREE.Mesh[] = [];
+  private clock = 0;
 
   constructor(scene: THREE.Scene, n: number) {
     const hull = revenantHullGeometry();
+    const shaded = shadedHullGeometry();
+    hull.computeBoundingBox();
+    const box = hull.boundingBox!;
+    const rear = box.min.z;
+    const midY = (box.min.y + box.max.y) * 0.5;
+    const plume = plumeGeometry();
+    const eyeGeo = new THREE.BoxGeometry(0.5, 0.1, 0.1);
+    const eyeGlowGeo = new THREE.SphereGeometry(0.42, 10, 6);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
     for (let i = 0; i < n; i++) {
-      const fill = paintMat(REV_CORE, 0.3);
+      const fill = paintMat(0x9a4cf4, RIDER_FILL);
+      fill.vertexColors = true;
       fill.side = THREE.DoubleSide;
-      const rim = new THREE.MeshBasicMaterial({ color: REV_EDGE, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.BackSide });
-      const skin = addMat(REV_BRIGHT, 0.1);
+      // Light lavender outline (normal blend: overlapping riders never saturate to white).
+      const rim = paintMat(0xc690ff, RIDER_RIM);
+      rim.side = THREE.BackSide;
+      const skin = addMat(REV_CORE, RIDER_SKIN);
+      const glow = addMat(0xd8b0ff, RIDER_EYE_GLOW);
+      const pm = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: RIDER_PLUME, depthWrite: false, toneMapped: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
       const root = new THREE.Group();
       const r = new THREE.Mesh(hull, rim);
-      r.scale.setScalar(1.06);
-      r.position.y = -0.04;
-      const f = new THREE.Mesh(hull, fill);
+      r.scale.setScalar(1.07);
+      r.position.y = -0.05;
+      const f = new THREE.Mesh(shaded, fill);
       const s = new THREE.Mesh(hull, skin);
       s.scale.setScalar(1.01);
       r.renderOrder = 2;
       f.renderOrder = 3;
       s.renderOrder = 4;
       root.add(r, f, s);
-      // Bone-white slit eyes for headlights.
+      // White-hot slit eyes for headlights, each in a soft violet glow.
       for (const sx of [-1, 1]) {
-        const eye = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.07, 0.07), new THREE.MeshBasicMaterial({ color: REV_BONE }));
-        eye.position.set(sx * 0.55, 0.98, 2.7);
+        const eye = new THREE.Mesh(eyeGeo, eyeMat);
+        eye.position.set(sx * 0.55, 0.98, 2.72);
         eye.rotation.y = sx * -0.28;
-        root.add(eye);
+        eye.renderOrder = 5;
+        const g = new THREE.Mesh(eyeGlowGeo, glow);
+        g.position.set(sx * 0.55, 0.98, 2.78);
+        g.scale.set(1.3, 0.55, 0.6);
+        g.renderOrder = 5;
+        root.add(eye, g);
       }
+      // Ghostfire plume streaming off the tail.
+      const p = new THREE.Mesh(plume, pm);
+      p.position.set(0, midY, rear + 0.3);
+      p.scale.set(1, 0.9, 6);
+      p.renderOrder = 4;
+      root.add(p);
       root.visible = false;
       root.traverse((o) => (o.frustumCulled = false));
       scene.add(root);
       this.roots.push(root);
       this.fills.push(fill);
       this.rims.push(rim);
+      this.skins.push(skin);
+      this.glows.push(glow);
+      this.plumeMats.push(pm);
+      this.plumes.push(p);
     }
   }
 
   /** Riders follow the hearse's exact path, which is where the chase camera rides: one closer than CAM_FADE_IN m to
    *  `camera` (when given) fades out completely, fully drawn again from CAM_FADE_OUT m, so none fills the screen. */
   camera: THREE.Camera | null = null;
+
+  /** Advance the plume / glow flicker clock (once a frame while the Hunt rides). */
+  tick(dt: number): void {
+    this.clock += dt;
+  }
 
   /** Pose rider i (feet at (x, y, z), heading), `alpha` 0..1 fade. */
   set(i: number, x: number, y: number, z: number, heading: number, alpha: number, bob: number): void {
@@ -415,8 +517,15 @@ export class RiderMeshes {
     if (!r.visible) return;
     r.position.set(x, y + 0.15 + bob, z);
     r.rotation.set(-0.04, heading, 0);
-    this.fills[i].opacity = 0.3 * alpha;
-    this.rims[i].opacity = 0.85 * alpha;
+    const fl = 0.85 + 0.15 * Math.sin(this.clock * 23 + i * 2.1) * Math.sin(this.clock * 7.3 + i);
+    this.fills[i].opacity = RIDER_FILL * alpha;
+    this.rims[i].opacity = RIDER_RIM * alpha * fl;
+    this.skins[i].opacity = RIDER_SKIN * alpha * (0.8 + 0.2 * fl);
+    this.glows[i].opacity = RIDER_EYE_GLOW * alpha;
+    this.plumeMats[i].opacity = RIDER_PLUME * alpha * fl;
+    const p = this.plumes[i];
+    p.scale.z = 5 + 1.4 * Math.sin(this.clock * 11 + i * 1.3);
+    p.scale.y = 0.9 * (0.9 + 0.2 * fl);
   }
 
   hide(i: number): void {
@@ -433,6 +542,9 @@ export class RiderMeshes {
 /** The darkening while THE WILD HUNT rides: a huge back-faced sphere drawn first among the transparents with no depth
  *  test (it tints the whole opaque scene; the riders and effects draw over it), plus the scene fog pulled in and
  *  tinted. Restores the fog on release. */
+/** Peak darkening of the Hunt dome. */
+const DOME_DARK = 0.28;
+
 export class HuntDome {
   private mesh: THREE.Mesh;
   private mat: THREE.MeshBasicMaterial;
@@ -457,12 +569,13 @@ export class HuntDome {
     }
     this.mesh.visible = true;
     this.mesh.position.set(x, 0, z);
-    this.mat.opacity = 0.42 * k;
+    // Light enough that the riders (bright violet) still pop against the darkened arena.
+    this.mat.opacity = DOME_DARK * k;
     if (fog && (fog as THREE.Fog).isFog) {
       if (!this.saved) this.saved = { color: fog.color.clone(), near: fog.near, far: fog.far };
-      fog.color.copy(this.saved.color).lerp(this.purple, 0.7 * k);
-      fog.near = this.saved.near * (1 - 0.6 * k);
-      fog.far = this.saved.far * (1 - 0.45 * k);
+      fog.color.copy(this.saved.color).lerp(this.purple, 0.55 * k);
+      fog.near = this.saved.near * (1 - 0.45 * k);
+      fog.far = this.saved.far * (1 - 0.3 * k);
     }
   }
 

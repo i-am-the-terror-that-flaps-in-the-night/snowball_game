@@ -44,7 +44,18 @@ interface Smolder {
   t: number; dur: number; scale: number;
   smokeAcc: number; emberAcc: number; fireAcc: number;
   active: boolean;
+  /** Started during an ultimate (Fx.hush): paler, thinner smoke. */
+  hushed: boolean;
 }
+
+/** While an ultimate plays (Fx.hush): dark normal-blended smoke (luminance below HUSH_DARK) keeps this share of its
+ *  opacity and life; wreck smolders started then burn HUSH_SMOLDER as long, paler and thinner. */
+const HUSH_DARK = 0.3;
+const HUSH_ALPHA = 0.45;
+const HUSH_LIFE = 0.65;
+const HUSH_SMOLDER = 0.5;
+/** Hush length for an ultimate that doesn't say (FIRESTORM, the NUKE: their fields burn ~4 s). */
+const HUSH_DEFAULT = 4.5;
 
 export class Fx implements FxAPI {
   private ctx: GameContext;
@@ -119,8 +130,11 @@ export class Fx implements FxAPI {
     ctx.scene.add(this.ghost.mesh);
 
     for (let i = 0; i < MAX_SMOLDER; i++) {
-      this.smolders.push({ x: 0, y: 0, z: 0, t: 0, dur: 0, scale: 1, smokeAcc: 0, emberAcc: 0, fireAcc: 0, active: false });
+      this.smolders.push({ x: 0, y: 0, z: 0, t: 0, dur: 0, scale: 1, smokeAcc: 0, emberAcc: 0, fireAcc: 0, active: false, hushed: false });
     }
+    ctx.events?.on('ability', ({ nuke }) => {
+      if (nuke) this.hush(HUSH_DEFAULT);
+    });
 
     // Floating text overlay
     const ov = document.createElement('div');
@@ -275,11 +289,16 @@ export class Fx implements FxAPI {
     const rise = opts?.rise ?? 1;
     const drag = opts?.drag ?? 1.5;
     const spread = opts?.spread ?? 0.4;
-    const alpha = opts?.opacity ?? 0.6;
+    let alpha = opts?.opacity ?? 0.6;
     const add = opts?.additive ?? 0;
     const radial = opts?.radial ?? false;
     const dir = opts?.dir;
     const c = this.tmpColor.set(opts?.color ?? 0x34363c);
+    let lifeK = 1;
+    if (this.hushT > 0 && add < 0.05 && 0.3 * c.r + 0.59 * c.g + 0.11 * c.b < HUSH_DARK) {
+      alpha *= HUSH_ALPHA;
+      lifeK = HUSH_LIFE;
+    }
     const pb = this.puffBatch;
     for (let k = 0; k < count; k++) {
       const u = Math.random() * Math.PI * 2;
@@ -304,7 +323,7 @@ export class Fx implements FxAPI {
       pb.emit(
         pos.x + Math.cos(a) * r, pos.y + (Math.random() - 0.5) * spread * 0.6, pos.z + Math.sin(a) * r,
         vx, vy, vz,
-        life * (0.7 + Math.random() * 0.6), s0, s0 * grow * (0.8 + Math.random() * 0.4), rise, drag,
+        life * lifeK * (0.7 + Math.random() * 0.6), s0, s0 * grow * (0.8 + Math.random() * 0.4), rise, drag,
         Math.min(4, c.r * tint), Math.min(4, c.g * tint), Math.min(4, c.b * tint), alpha * (0.75 + Math.random() * 0.25), add,
       );
     }
@@ -348,6 +367,13 @@ export class Fx implements FxAPI {
     this.smoke(pos, { count: Math.round(4 + 3 * scale), color: 0x2a2a2e, size: 0.6 * scale, grow: 3, life: 1.6, speed: 3 * scale, up: 2, rise: 1.2, drag: 2, spread: 0.4 * scale, opacity: 0.7 });
   }
 
+  /** Seconds left of an ultimate's hush (see hush()). */
+  private hushT = 0;
+
+  hush(seconds: number): void {
+    this.hushT = Math.max(this.hushT, seconds);
+  }
+
   smolder(pos: THREE.Vector3, opts?: SmolderOpts): void {
     let s = this.smolders.find((x) => !x.active);
     if (!s) {
@@ -359,6 +385,8 @@ export class Fx implements FxAPI {
     s.t = 0;
     s.dur = opts?.seconds ?? 2.5;
     s.scale = THREE.MathUtils.clamp(opts?.scale ?? 1, 0.3, 3);
+    s.hushed = this.hushT > 0;
+    if (s.hushed) s.dur *= HUSH_SMOLDER;
     s.smokeAcc = 0; s.emberAcc = 0; s.fireAcc = 0;
   }
 
@@ -374,18 +402,18 @@ export class Fx implements FxAPI {
       }
       const k = 1 - s.t / s.dur;
       const sc = s.scale;
-      s.smokeAcc += dt * 15 * Math.sqrt(sc) * (0.35 + 0.65 * k);
+      s.smokeAcc += dt * 15 * Math.sqrt(sc) * (0.35 + 0.65 * k) * (s.hushed ? 0.6 : 1);
       s.emberAcc += dt * 16 * sc * k;
       s.fireAcc += dt * 14 * Math.sqrt(sc) * Math.max(0, k - 0.35);
       while (s.smokeAcc >= 1) {
         s.smokeAcc -= 1;
-        const g = 0.018 + Math.random() * 0.03;
+        const g = s.hushed ? 0.13 + Math.random() * 0.06 : 0.018 + Math.random() * 0.03;
         const s0 = (0.35 + Math.random() * 0.25) * sc;
         pb.emit(
           s.x + (Math.random() - 0.5) * 0.8 * sc, s.y + 0.2 + Math.random() * 0.4, s.z + (Math.random() - 0.5) * 0.8 * sc,
           WIND_X * 0.6 + (Math.random() - 0.5) * 0.7, 1.6 + Math.random() * 1.4, WIND_Z * 0.6 + (Math.random() - 0.5) * 0.7,
           1.7 + Math.random() * 0.8, s0, s0 * (3.6 + Math.random() * 1.6), 0.7, 0.45,
-          g, g, g * 1.08, 0.6 * (0.55 + 0.45 * k), 0,
+          g, g, g * 1.08, 0.6 * (0.55 + 0.45 * k) * (s.hushed ? 0.55 : 1), 0,
         );
       }
       while (s.fireAcc >= 1) {
@@ -508,6 +536,7 @@ export class Fx implements FxAPI {
   }
 
   clear(): void {
+    this.hushT = 0;
     this.n = 0;
     this.mesh.count = 0;
     this.mesh.visible = false;
@@ -531,6 +560,7 @@ export class Fx implements FxAPI {
 
   update(dt: number): void {
     this.lastDt = dt > 0 ? dt : 1 / 60;
+    if (this.hushT > 0) this.hushT = Math.max(0, this.hushT - dt);
     const snow = this.ctx.snow;
     const decks = !!this.ctx.terrain && this.ctx.terrain.decks.length > 0;
     const { px, py, pz, vx, vy, vz, age, life, size, grav, drag, rot, rotV, col } = this;

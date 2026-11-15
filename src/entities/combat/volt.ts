@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, type AbilityDesc, type VehicleKit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
+import { StormCloud } from '../../fx/stormCloud';
+import { currentPreset } from '../../core/settings';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const PRIMARY_SPARKS = { color: 0x9fe8ff, count: 4, speed: 5, size: 0.06, length: 0.04, gravity: 10, life: 0.25 };
@@ -98,6 +100,21 @@ const SUPERCELL_GAP = 0.5;
 const SUPERCELL_MULT = 2.85;
 /** SUPERCELL also leans a little on the coil (coilBoost to this power) so late ults keep pace with the others. */
 const SUPERCELL_COIL_EXP = 0.12;
+/** SUPERCELL visuals (no damage): the storm cloud's life (s), the window its constant cosmetic strikes fall in, and
+ *  the gap between them (s, random in [min, min + spread]; LOW quality: double). */
+const SC_CLOUD_SECONDS = 3.3;
+const SC_STRIKES_UNTIL = 2.7;
+const SC_STRIKE_GAP = 0.04;
+const SC_STRIKE_SPREAD = 0.05;
+const SC_BOLT = { life: 0.5, width: 0.5, jag: 1.8, color: 0xa8e8ff };
+const SC_BOLT_2 = { life: 0.45, width: 0.42, jag: 1.6, color: 0xd2f4ff };
+const SC_FORK = { life: 0.35, width: 0.2, jag: 0.9, color: 0x7fd0ff };
+/** Cosmetic strikes keep this far (m, ground distance) from the viewing camera, so no bolt fills the screen. */
+const SC_CAM_CLEAR = 9;
+const SC_SPARKS = { color: 0x9fe8ff, count: 8, speed: 9, size: 0.07, length: 0.05, gravity: 8, life: 0.4 };
+/** A strike's ground glow pool (additive, flat, short) and a lingering blue haze over it. */
+const SC_POOL = { count: 1, color: 0x8fdcff, additive: 1, size: 1.4, grow: 1.9, life: 0.45, speed: 0, up: 0, rise: 0, drag: 0, spread: 0, opacity: 0.95 };
+const SC_HAZE = { count: 2, color: 0x6fb8ff, additive: 0.6, size: 0.9, grow: 2.4, life: 0.8, speed: 1.5, up: 1.4, rise: 0.8, drag: 1.5, spread: 0.6, opacity: 0.5 };
 /** Thunderclap storm: duration, extra sky strikes (each = share of clap damage), field dps share. */
 const STORM_SECONDS = 2.5;
 const STORM_STRIKES = 6;
@@ -466,6 +483,14 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
   private stormStrikeT = 0;
   private stormTickT = 0;
   private ultStep = 0;
+  /** SUPERCELL visuals: the cloud (built lazily; prewarm builds it at load), time since the cast (-1 idle), centre,
+   *  cast floor and the next cosmetic strike. */
+  private cloud: StormCloud | null = null;
+  private scT = -1;
+  private scX = 0;
+  private scZ = 0;
+  private readonly scFrom: CastOrigin = { y: 0, deck: -1 };
+  private scNext = 0;
 
   /** Chain Lightning: a hit on `from` arcs to the nearest other bots (hop by hop). `heal` is inherited from the
    *  triggering hit (arcs off a Thunderclap don't feed Salvage Rig either). */
@@ -742,15 +767,17 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     const ctx = this.ctx;
     const st = this.b.stats;
     const top = from.y;
+    const cloud = this.storm;
+    cloud.sheet();
     for (let k = 0; k < 6; k++) {
       const a = Math.random() * Math.PI * 2;
       const rr = Math.sqrt(Math.random()) * SUPERCELL_RADIUS;
       const qx = x + Math.sin(a) * rr;
       const qz = z + Math.cos(a) * rr;
+      const cam = ctx.camera;
+      if (cam && Math.hypot(cam.position.x - qx, cam.position.z - qz) < SC_CAM_CLEAR) continue;
       _q.set(qx, waveFloor(ctx.terrain, top, qx, qz) + 0.2, qz);
-      _p.set(_q.x + (Math.random() - 0.5) * 4, 28, _q.z + (Math.random() - 0.5) * 4);
-      this.lightning.bolt(_p, _q, { life: 0.3, width: 0.45, jag: 2.2, color: 0x9fe8ff });
-      ctx.fx.sparks(_q, null, { color: 0x9fe8ff, count: 10, speed: 9, size: 0.07, length: 0.05, gravity: 8, life: 0.4 });
+      this.skyStrike(cloud.strikeAt(qx, qz, _p), _q, k % 2 ? SC_BOLT_2 : SC_BOLT);
     }
     _q.set(x, top + 0.12, z);
     ctx.fx.ring(_q, SUPERCELL_RADIUS * (0.4 + 0.3 * i), 0xbff0ff);
@@ -758,6 +785,73 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     this.impactHit('clap', _q.set(x, top + 1, z));
     this.b.audio.play('thunder', { pitch: 0.85 + 0.15 * i });
     ultBlast(this.h, x, z, 0, SUPERCELL_RADIUS, st.clapDamage * SUPERCELL_MULT * coilBoost(st.clapDamage) ** SUPERCELL_COIL_EXP, { knock: 8, freeze: st.clapStun * 1.5, text: '⚡', color: '#bff0ff', bolt: true });
+  }
+
+  /** The SUPERCELL's storm cloud (built on first use). */
+  private get storm(): StormCloud {
+    return (this.cloud ??= Object.assign(new StormCloud(this.ctx.scene), { camera: this.ctx.camera ?? null }));
+  }
+
+  /** Build the storm cloud now (hidden) so the load-time warm-up compiles it (render/warmup.ts). */
+  prewarm(): void {
+    void this.storm;
+  }
+
+  /** One visual sky strike from `a` (under the cloud) to the ground at `b`: the bolt, a fork, sparks, a glow pool,
+   *  haze and a light scorch. No damage. */
+  private skyStrike(a: THREE.Vector3, b: THREE.Vector3, bolt: { life: number; width: number; jag: number; color: number }): void {
+    const fx = this.ctx.fx;
+    this.lightning.bolt(a, b, bolt);
+    if (Math.random() < 0.45) {
+      // A fork off the main channel, two thirds of the way down, to the ground nearby.
+      _r.lerpVectors(a, b, 0.6 + Math.random() * 0.15);
+      _f.set(b.x + (Math.random() - 0.5) * 7, b.y, b.z + (Math.random() - 0.5) * 7);
+      this.lightning.bolt(_r, _f, SC_FORK);
+    }
+    fx.sparks(b, null, SC_SPARKS);
+    _r.set(b.x, b.y + 0.15, b.z);
+    fx.smoke(_r, SC_POOL);
+    fx.smoke(_r, SC_HAZE);
+    fx.scorch(b, 1.1 + Math.random() * 0.6, 0.5);
+  }
+
+  /** SUPERCELL visuals, every frame: the cloud, and a constant rain of cosmetic strikes (half on bots in range) while
+   *  the damage waves (ultTick) land on schedule. Pure show: nothing here deals damage. */
+  updateSupercellFx(dt: number): void {
+    if (this.scT < 0) return;
+    const cloud = this.storm;
+    this.scT += dt;
+    cloud.update(dt);
+    if (this.scT >= SC_CLOUD_SECONDS || !cloud.active) {
+      this.scT = -1;
+      cloud.clear();
+      return;
+    }
+    if (this.scT > SC_STRIKES_UNTIL) return;
+    this.scNext -= dt;
+    const low = currentPreset().fxScale < 1;
+    let guard = 3;
+    while (this.scNext <= 0 && guard-- > 0) {
+      this.scNext += (SC_STRIKE_GAP + Math.random() * SC_STRIKE_SPREAD) * (low ? 2 : 1);
+      let sx: number;
+      let sz: number;
+      const near = Math.random() < 0.5 ? this.b.enemies.query(this.scX, this.scZ, SUPERCELL_RADIUS, this.chainBuf) : null;
+      if (near && near.length) {
+        const e = near[Math.floor(Math.random() * near.length)];
+        sx = e.position.x + (Math.random() - 0.5) * 2;
+        sz = e.position.z + (Math.random() - 0.5) * 2;
+      } else {
+        const a = Math.random() * Math.PI * 2;
+        const rr = Math.sqrt(Math.random()) * SUPERCELL_RADIUS;
+        sx = this.scX + Math.sin(a) * rr;
+        sz = this.scZ + Math.cos(a) * rr;
+      }
+      const cam = this.ctx.camera;
+      if (cam && Math.hypot(cam.position.x - sx, cam.position.z - sz) < SC_CAM_CLEAR) continue;
+      _q.set(sx, waveFloor(this.ctx.terrain, this.scFrom.y, sx, sz) + 0.2, sz);
+      this.skyStrike(cloud.strikeAt(sx, sz, _p), _q, Math.random() < 0.5 ? SC_BOLT : SC_BOLT_2);
+      if (Math.random() < 0.3) this.b.audio.play('zap', { pitch: 0.55 + Math.random() * 0.3, volume: 0.35 });
+    }
   }
 
   /** Battery Shield soaks damage before HP (hitPlow, after armour). Returns what gets through. */
@@ -779,6 +873,13 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
 
   ultStart(x: number, z: number, plow: PlowAPI): number {
     this.ultStep = 0;
+    // The storm cloud rolls in overhead and strikes keep falling under it for SC_CLOUD_SECONDS (visual only).
+    castOrigin(plow, this.scFrom);
+    this.scX = x;
+    this.scZ = z;
+    this.scT = 0;
+    this.scNext = 0.08;
+    this.storm.start(x, this.scFrom.y, z, SUPERCELL_RADIUS + 3, SC_CLOUD_SECONDS, currentPreset().fxScale);
     _q.set(x, (plow.surfaceY || 0) + 0.12, z);
     this.ctx.fx.ring(_q, SUPERCELL_RADIUS, 0x2fb8ff);
     this.ctx.fx.ring(_q, SUPERCELL_RADIUS * 0.5, 0xbff0ff);
@@ -802,6 +903,8 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     this.lastClapAt = -999;
     this.stormT = 0;
     this.stormStrikes = 0;
+    this.scT = -1;
+    this.cloud?.clear();
     this.shield = this.b.stats.shieldMax;
     this.shieldDelay = 0;
     this.arcLock = null;

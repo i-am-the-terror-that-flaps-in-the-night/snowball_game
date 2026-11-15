@@ -125,6 +125,12 @@ function puffTexture(): THREE.DataTexture {
   });
 }
 
+let sharedPuff: THREE.DataTexture | null = null;
+/** The soft cloudy puff (luminance; use it as an alphaMap), built once and shared (fx/stormCloud.ts). */
+export function softPuffTexture(): THREE.DataTexture {
+  return (sharedPuff ??= puffTexture());
+}
+
 /** Irregular soot blotch with radial streaks for scorch decals. */
 function scorchTexture(): THREE.DataTexture {
   const r = rng(31);

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, Reach, _p, _q, castOrigin, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './shared';
+import { Kit, Reach, _p, _q, castOrigin, waveFloor, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 import { Shockwaves, type ShockPalette } from './arsenalFx';
 import { Chains, HauntMarks, HuntDome, PhantomMeshes, RiderMeshes, ScytheArcs } from './revenantFx';
@@ -105,14 +105,19 @@ const REAP_HIT = { color: REV_CORE, count: 5, speed: 4, size: 0.14, gravity: 4, 
 const PH_TRAIL = { count: 1, color: 0xcfb0ff, size: 0.4, grow: 2, life: 0.5, speed: 0.3, up: 0.4, rise: 0.4, drag: 2, spread: 0.3, opacity: 0.55 };
 const PH_BURST = { color: REV_BRIGHT, count: 26, speed: 9, size: 0.22, gravity: 2, life: 0.55 };
 const PH_BURST_DARK = { count: 8, color: REV_DEEP, size: 0.8, grow: 2.4, life: 0.8, speed: 5, up: 1, rise: 0.6, drag: 2, spread: 0.6, opacity: 0.7, radial: true };
-const RIDER_TRAIL = { count: 1, color: REV_CORE, size: 0.7, grow: 2.4, life: 0.6, speed: 0.4, up: 0.6, rise: 0.5, drag: 1.5, spread: 0.8, opacity: 0.45 };
-const HUNT_FOG = { count: 3, color: 0x3a1858, size: 2.4, grow: 1.8, life: 2.2, speed: 1.2, up: 0, rise: 0.05, drag: 0.6, spread: 6, opacity: 0.35, radial: true };
+/** Rider wake: violet-white ghostfire puffs (glowing, not smoke) + a few bright streaking embers. */
+const RIDER_TRAIL = { count: 1, color: 0xc89cff, size: 0.55, grow: 2.2, life: 0.7, speed: 0.4, up: 0.8, rise: 0.8, drag: 1.5, spread: 0.8, opacity: 0.55, additive: 0.5 };
+const RIDER_EMBERS = { color: REV_BRIGHT, count: 2, speed: 3, spread: 1, size: 0.07, length: 0.06, gravity: -3, life: 0.5 };
+/** Hunt ground mist: a pale violet haze (light, so the riders stay the darkest-edged, brightest thing on screen). */
+const HUNT_FOG = { count: 3, color: 0x7a4ab0, size: 2.4, grow: 1.8, life: 2, speed: 1.2, up: 0, rise: 0.05, drag: 0.6, spread: 6, opacity: 0.22, additive: 0.25, radial: true };
 const TRAMPLE_HIT = { color: REV_BRIGHT, count: 8, speed: 6, size: 0.16, gravity: 6, life: 0.4 };
 const PHASE_PUFF = { count: 10, color: REV_CORE, size: 0.7, grow: 2.4, life: 0.7, speed: 3, up: 1.5, rise: 0.6, drag: 2, spread: 0.9, opacity: 0.6 };
 const GRASP_BURST = { color: REV_BRIGHT, count: 30, speed: 7, size: 0.2, gravity: -2, life: 0.6 };
 const GRASP_SMOKE = { count: 10, color: REV_DEEP, size: 0.8, grow: 2, life: 0.8, speed: 4, up: 1, rise: 0.4, drag: 2, spread: 0.4, opacity: 0.7 };
 const PH_RISE_SMOKE = { count: 6, color: 0xcfb0ff, size: 0.6, grow: 2, life: 0.6, speed: 1.5, up: 2.5, rise: 1, drag: 2, spread: 0.5, opacity: 0.6 };
-const FINALE_SMOKE = { count: 30, color: REV_DEEP, size: 1.4, grow: 2.4, life: 1.2, speed: 14, up: 2, rise: 0.6, drag: 2.2, spread: 1, opacity: 0.8, radial: true };
+const FINALE_SMOKE = { count: 30, color: 0x8a50d0, size: 1.4, grow: 2.4, life: 1.1, speed: 14, up: 2, rise: 0.6, drag: 2.2, spread: 1, opacity: 0.7, additive: 0.45, radial: true };
+/** Finale: a column of violet ghostfire bursting up from the hearse. */
+const FINALE_PILLAR = { count: 16, color: 0xe0b8ff, size: 1.1, grow: 2, life: 0.9, speed: 2, up: 12, rise: 3, drag: 1.2, spread: 1.2, opacity: 0.9, additive: 0.85 };
 const FINALE_BURST = { color: REV_BRIGHT, count: 60, speed: 16, size: 0.3, gravity: 1, life: 0.8 };
 const FINALE_WHITE = { color: 0xffffff, count: 20, speed: 9, size: 0.25, gravity: -2, life: 0.6 };
 /** Share of MANIFEST and PHANTOM burst damage that fills THE WILD HUNT's meter (area bursts chain through a pack:
@@ -772,6 +777,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const floor = plow.surfaceY || 0;
     const trample = (st.graspDamage || 34) * HUNT_TRAMPLE;
     const riders = this.vis.riders;
+    riders.tick(dt);
     for (let i = 0; i < this.riders; i++) {
       const rp = this.riderPos[i];
       const delay = (i + 1) * RIDER_GAP;
@@ -807,17 +813,20 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
           rp.h += Math.atan2(Math.sin(th - rp.h), Math.cos(th - rp.h)) * kk;
         }
         if (appear > 0.5) this.trample(i, rp.x, rp.z, trample);
-        if (Math.random() < dt * 6) {
-          _p.set(rp.x, floor + 0.8, rp.z);
+        // Each rider runs on the ground under it (hills, the hearse's deck level), not at the hearse's height.
+        const fy = waveFloor(ctx.terrain, floor, rp.x, rp.z);
+        if (appear > 0.3 && Math.random() < dt * 9) {
+          _p.set(rp.x - Math.sin(rp.h) * 2.6, fy + 0.9, rp.z - Math.cos(rp.h) * 2.6);
           ctx.fx.smoke(_p, RIDER_TRAIL);
+          if (Math.random() < 0.5) ctx.fx.sparks(_p, null, RIDER_EMBERS);
         }
-        riders.set(i, rp.x, floor, rp.z, rp.h, appear, 0.08 * Math.sin(this.clock * 9 + i));
+        riders.set(i, rp.x, fy, rp.z, rp.h, appear, 0.08 * Math.sin(this.clock * 9 + i));
       } else {
         // Finale: converge on the hearse, then erupt.
         const c = Math.min(1, (t - end) / FINALE_IN);
         const x = rp.x + (px - rp.x) * c * c;
         const z = rp.z + (pz - rp.z) * c * c;
-        riders.set(i, x, floor, z, Math.atan2(px - rp.x, pz - rp.z), 1 - c * 0.6, 0);
+        riders.set(i, x, waveFloor(ctx.terrain, floor, x, z), z, Math.atan2(px - rp.x, pz - rp.z), 1 - c * 0.6, 0);
       }
     }
     if (!this.finaleDone && t >= end + FINALE_IN) {
@@ -863,10 +872,11 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     ctx.fx.ring(_q, R, REV_CORE);
     ctx.fx.ring(_q, R * 1.12, REV_EDGE);
     ctx.fx.smoke(_q, FINALE_SMOKE);
+    ctx.fx.smoke(_q, FINALE_PILLAR);
     ctx.fx.burst(_q, FINALE_BURST);
     ctx.fx.burst(_q, FINALE_WHITE);
     this.shake(1.2);
-    this.impactHit('nuke', _q.set(px, floor + 1.5, pz), 0.8);
+    this.impactHit('hunt', _q.set(px, floor + 1.5, pz), 0.8);
     this.b.audio.play('explosion', { volume: 0.8, pitch: 0.8 });
     this.b.audio.play('roar', { volume: 0.5, pitch: 0.5 });
     const dmg = (st.graspDamage || 34) * (FINALE_BASE + FINALE_SOUL * souls);

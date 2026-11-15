@@ -424,15 +424,19 @@ export class IsotopeKit extends Kit implements VehicleKit {
     ctx.fx.smoke(_q, { count: 2, color: 0xffffff, additive: 1, size: 9, grow: 1.6, life: 0.35, speed: 0, up: 0, rise: 0, spread: 0, opacity: 1 });
     ctx.fx.smoke(_q, { count: 28, color: 0xd9d6c2, size: 1.6, grow: 2.6, life: 2.4, speed: 17, up: 1, rise: 0.4, drag: 1.6, spread: 2, opacity: 0.75, radial: true });
     ctx.fx.scorch(_q, R * 0.4, 1);
-    for (let i = 0; i < 8; i++) {
-      _q.set(px, top + 0.8 + i * 1.1, pz);
-      const hot = i < 3;
-      ctx.fx.smoke(_q, { count: 5, color: hot ? 0xffa43a : i < 5 ? 0xb8b088 : 0x8f8f78, additive: hot ? 0.3 : 0, size: 1.3 + i * 0.1, grow: 2, life: 2.6 + i * 0.12, speed: 0.8, up: 5 - i * 0.5, rise: 1, drag: 0.9, spread: 0.9, opacity: hot ? 0.8 : 0.72 });
+    // The mushroom: a hot stem rising into a rolling cap low enough (~5 m) for the chase camera (~8 m up) to frame it,
+    // with a glowing underside and a ring of churning cloud round its rim.
+    for (let i = 0; i < 7; i++) {
+      _q.set(px, top + 0.6 + i * 0.68, pz);
+      const hot = i < 4;
+      ctx.fx.smoke(_q, { count: 5, color: hot ? 0xffb050 : 0xc8b890, additive: hot ? 0.55 : 0.1, size: 0.9 + i * 0.08, grow: 2, life: 2.4 + i * 0.1, speed: 0.5, up: 3.2 - i * 0.3, rise: 0.7, drag: 1, spread: 0.55, opacity: hot ? 0.9 : 0.8 });
     }
-    _q.set(px, top + 9.5, pz);
-    ctx.fx.smoke(_q, { count: 30, color: 0xa8a48a, size: 2.2, grow: 2.3, life: 3.4, speed: 6, up: 1.8, rise: 0.5, drag: 0.8, spread: 2.2, opacity: 0.8, radial: true });
-    ctx.fx.smoke(_q, { count: 14, color: 0xffc860, additive: 0.35, size: 2, grow: 2, life: 1.6, speed: 3, up: 1, rise: 0.6, drag: 1, spread: 1.5, opacity: 0.75 });
-    ctx.fx.smoke(_q, { count: 10, color: 0x7dff4a, additive: 0.3, size: 1.6, grow: 2.2, life: 2.2, speed: 7, up: 0.6, rise: 0.2, drag: 1, spread: 2, opacity: 0.5, radial: true });
+    _q.set(px, top + 5.4, pz);
+    ctx.fx.smoke(_q, { count: 26, color: 0xb8ae8a, size: 1.7, grow: 2.2, life: 3.2, speed: 5, up: 1.2, rise: 0.35, drag: 1, spread: 1.2, opacity: 0.85, radial: true });
+    ctx.fx.smoke(_q, { count: 12, color: 0xd8cca0, size: 2, grow: 2, life: 3, speed: 1.5, up: 1.6, rise: 0.4, drag: 1, spread: 1.5, opacity: 0.85 });
+    _q.set(px, top + 4.9, pz);
+    ctx.fx.smoke(_q, { count: 16, color: 0xffb048, additive: 0.6, size: 1.6, grow: 2, life: 1.8, speed: 4, up: 0.4, rise: 0.2, drag: 1, spread: 1.2, opacity: 0.85, radial: true });
+    ctx.fx.smoke(_q, { count: 10, color: 0x9dff6a, additive: 0.45, size: 1.4, grow: 2.2, life: 2.2, speed: 6, up: 0.5, rise: 0.2, drag: 1, spread: 1.6, opacity: 0.5, radial: true });
     this.shake(1.8);
     this.impactHit('nuke', _q.set(px, top + 2, pz));
     this.b.audio.play('explosion');
