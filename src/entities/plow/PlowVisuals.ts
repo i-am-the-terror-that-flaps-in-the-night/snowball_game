@@ -19,6 +19,7 @@ import {
 import { _a, _b, _c, _dir, _q, _m, _s, _col, _e, _p, _one, _up, _ballSurf } from './scratch';
 import type { Streak } from './assets';
 import { floorTop } from '../combat/shared';
+import { installPinstripe, type Pinstripe } from './pinstripe';
 
 /** STREAK underglow: radius (m) at which the snow round the hull is sampled for the ring's height. */
 const STREAK_GLOW_R = 3.4;
@@ -35,6 +36,8 @@ const REV_WISP = { count: 1, color: 0xb04dff, size: 0.45, grow: 2.2, life: 0.7, 
 const REV_WISP_DARK = { count: 1, color: 0x4a1a7a, size: 0.5, grow: 2, life: 0.8, speed: 0.4, up: 0.5, rise: 0.4, drag: 1.5, spread: 0.5, opacity: 0.45 };
 
 export abstract class PlowVisuals extends PlowBase {
+  /** Paint pattern shader patch (entities/plow/pinstripe.ts), installed the first time a patterned paint is worn. */
+  private pin: Pinstripe | null = null;
   /** REVENANT rig input (filled per frame, never reallocated) and the headlight ghostfire timer. */
   private revState: RevenantRigState = { speed: 0, phase: 0, souls: 0, tolls: 0, reap: 0, hunt: false };
   private revSpillT = 0;
@@ -114,6 +117,9 @@ export abstract class PlowVisuals extends PlowBase {
     // hazard stripes and the blade keep their own materials.
     const f = FACTORY_PAINT[this.kind];
     const p = look.paint;
+    // Paint pattern (Hostile Takeover's gold pinstripes): the shader patch goes in the first time a patterned paint is
+    // worn, then a uniform switches it on / off.
+    if (p.pattern || this.pin) (this.pin ??= installPinstripe(this.paintMat, this.body)).set(p.pattern === 'pinstripe' ? (p.patternColor ?? 0xd9ad3c) : null);
     this.paintBase.setHex(p.body ?? f.body);
     this.bedBase.setHex(p.trim ?? f.trim);
     // ARSENAL's factory finish is gunmetal: semi-metallic panels that pick up the sky (env map) instead of going black.
@@ -136,10 +142,18 @@ export abstract class PlowVisuals extends PlowBase {
       this.paintMat.metalness = 0;
       this.paintMat.roughness = 0.3;
     }
+    // A trim finish of its own (Hostile Takeover: polished gold trim on matte black).
+    if (p.trimMetalness != null) this.bedMat.metalness = p.trimMetalness;
+    if (p.trimRoughness != null) this.bedMat.roughness = p.trimRoughness;
     const env = p.mirror || gunmetal || gloss || hearse ? getPaintEnvMap(this.ctx.renderer) : null;
+    const bedEnv = env ?? ((p.trimMetalness ?? 0) >= 0.5 ? getPaintEnvMap(this.ctx.renderer) : null);
     if (this.paintMat.envMap !== env) {
-      this.paintMat.envMap = this.bedMat.envMap = env;
-      this.paintMat.needsUpdate = this.bedMat.needsUpdate = true;
+      this.paintMat.envMap = env;
+      this.paintMat.needsUpdate = true;
+    }
+    if (this.bedMat.envMap !== bedEnv) {
+      this.bedMat.envMap = bedEnv;
+      this.bedMat.needsUpdate = true;
     }
     this.paintMat.envMapIntensity = this.bedMat.envMapIntensity = gunmetal ? 0.8 : gloss ? 0.3 : 1;
     // Classic chrome / tinted glass / polished blade steel reflect the sky; the other kinds' blade steel doesn't.

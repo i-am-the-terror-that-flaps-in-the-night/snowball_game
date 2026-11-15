@@ -71,6 +71,19 @@ export function emitKillFx(ctx: GameContext, kill: KillDef, at: THREE.Vector3, p
       ctx.audio.play('steal', { volume: 0.6, pitch: 0.7 });
       break;
     }
+    case 'avalanche': {
+      // A snowball rolls out of the wreck (away from the player), gathers the scrap, swells and implodes (fx/frostFx.ts).
+      _q.set(at.x, at.y, at.z);
+      const pl = ctx.plow?.position;
+      let dx = pl ? at.x - pl.x : Math.random() - 0.5;
+      let dz = pl ? at.z - pl.z : Math.random() - 0.5;
+      if (Math.hypot(dx, dz) < 0.1) { dx = 0; dz = 1; }
+      // Paint Shop sample: the wreck sits between the plow and the camera, so roll across the view instead.
+      if (preview) { const t = dx; dx = dz; dz = -t; }
+      if (fx.frost) fx.frost.avalanche(_q, dx, dz);
+      else for (const col of c) fx.burst(_p, { color: col, count: 10, speed: 5, size: 0.25, gravity: 6, life: 1.2 });
+      break;
+    }
     default:
       break;
   }

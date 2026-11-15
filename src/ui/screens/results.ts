@@ -3,7 +3,9 @@ import type { GameContext, RunSummary, UIHandlers } from '../../core/types';
 import { ZONES } from '../../config/zones';
 import { CHAPTERS, EPILOGUE, HARD_CHAPTERS, HARD_EPILOGUE, ZONE_BEATS } from '../../config/lore';
 import { activeDaily } from '../../meta/daily';
-import { hardUnlocked, lastChallengeReport } from '../../meta/challenges';
+import { hardUnlocked, lastChallengeReport, lastProtocolReport } from '../../meta/challenges';
+import { PROTOCOL_COSMETICS } from '../../meta/cosmetics';
+import { protocolChallengeText } from '../../config/challenges';
 import { renderDailyResult } from '../DailyResult';
 import { renderLoot } from '../LootReveal';
 import type { Story } from '../Story';
@@ -144,6 +146,30 @@ function renderCampaignChallenges(p: HTMLElement, sum: RunSummary): void {
   });
 }
 
+/** PROTOCOL C's own five stars (meta/challenges.ts ProtocolStarTracker), laid out like the campaign's challenge box. */
+function renderProtocolStars(p: HTMLElement, cleared: boolean): void {
+  const rep = lastProtocolReport();
+  if (!rep) return;
+  const box = el('div', `ss-chal-result ss-protocol-stars ${rep.newStars ? 'has-new' : ''}`, undefined, p);
+  const head = el('div', 'ss-chal-result-head', undefined, box);
+  el('span', 'ss-chal-result-stars', undefined, head).innerHTML = starsHtml(rep.stars, rep.results.filter((r) => r.isNew).length, rep.results.length);
+  el('span', 'ss-chal-result-title', 'PROTOCOL C STARS', head);
+  if (rep.bonus > 0) el('span', 'ss-chal-result-bonus', `+${fmt(rep.bonus)} 🪙 star bonus`, head);
+  else if (!rep.won) el('span', 'ss-chal-result-hint', 'Clear PROTOCOL C to earn stars', head);
+  rep.results.forEach((r, i) => {
+    const t = protocolChallengeText(r.def, cleared);
+    const row = el('div', `ss-chal-row ${r.met ? 'met' : ''} ${r.isNew ? 'new' : ''} ${r.owned ? 'owned' : ''}`, undefined, box);
+    row.style.animationDelay = `${520 + i * 110}ms`;
+    el('span', 'ss-chal-row-mark', r.met ? '✓' : r.owned ? '★' : t.icon, row);
+    const tx = el('span', 'ss-chal-row-text', undefined, row);
+    el('b', '', t.name, tx);
+    el('small', '', t.goal, tx);
+    if (!r.met && !r.owned && t.tip) el('small', 'ss-chal-row-tip', `💡 ${t.tip}`, tx);
+    if (r.isNew) el('span', 'ss-chal-row-new', 'NEW ★', row);
+    else if (r.owned) el('span', 'ss-chal-row-owned', '★', row);
+  });
+}
+
 /** PROTOCOL C results (config/protocol.ts): waves, run time vs best, checkpoint retries; a loss offers RETRY WAVE n
  *  (the wave-start checkpoint) before a full restart. Its own screen: the campaign's finale / story logic is not used. */
 function renderProtocolResult(ui: ResultDeps, sum: RunSummary, win: boolean): void {
@@ -173,6 +199,12 @@ function renderProtocolResult(ui: ResultDeps, sum: RunSummary, win: boolean): vo
     el('span', 'ss-coin', undefined, r);
     el('span', '', `+${fmt(sum.clearReward)} ${sum.firstClear ? 'first-clear reward!' : 'clear reward'}`, r);
   }
+  // The first clear unlocks the PROTOCOL C exclusives in the Paint Shop (meta/protocol.ts recordProtocolClear).
+  if (win && sum.firstClear) {
+    const ex = el('div', 'ss-reward ss-protocol-exclusive', undefined, p);
+    el('span', '', `🎨 Paint Shop exclusives unlocked: ${PROTOCOL_COSMETICS.map((c) => c.name).join(' · ')}`, ex);
+  }
+  renderProtocolStars(p, ui.ctx.progression.data.protocol?.cleared === true);
   if (sum.loot?.length) renderLoot(p, sum.loot);
   const btns = el('div', 'ss-result-btns', undefined, p);
   // (wave 1's checkpoint is a plain restart: offering it as RETRY WAVE 1 would only spend a checkpoint use)

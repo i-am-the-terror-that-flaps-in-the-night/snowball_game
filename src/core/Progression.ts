@@ -37,12 +37,17 @@ export interface ProtocolSave {
   bestWave: number;
   /** Cleared once without a checkpoint retry. */
   cleanClear: boolean;
+  /** PROTOCOL C's own challenge stars (config/challenges.ts PROTOCOL_CHALLENGES ids; not in the campaign star total).
+   *  Optional: saves from before stage 5 lack it (read as none). */
+  stars?: string[];
   /** The current run's last wave-start checkpoint (kept across a quit / reload), null when none. */
   checkpoint: ProtocolCheckpoint | null;
 }
 
 /** Protocol C's wave count (config/protocol.ts PROTOCOL_WAVES; repeated here to keep the save module free of it). */
 const PROTOCOL_SAVE_WAVES = 7;
+/** At most this many PROTOCOL C star ids are kept (there are five; a little headroom for later ones). */
+const PROTOCOL_SAVE_MAX_STARS = 10;
 
 /** Validate a stored / imported protocol record: well-formed fields survive, anything else falls back. */
 export function sanitizeProtocol(raw: unknown): ProtocolSave | undefined {
@@ -71,6 +76,10 @@ export function sanitizeProtocol(raw: unknown): ProtocolSave | undefined {
     bestTime: fin(r.bestTime, 0, 1e6),
     bestWave: fin(r.bestWave, 0, PROTOCOL_SAVE_WAVES, true),
     cleanClear: r.cleanClear === true,
+    // (only when present: records from before the PROTOCOL C stars keep their exact shape)
+    ...(Array.isArray(r.stars)
+      ? { stars: [...new Set(r.stars.filter((id): id is string => typeof id === 'string' && /^[a-z0-9_]{1,24}$/.test(id)))].slice(0, PROTOCOL_SAVE_MAX_STARS) }
+      : {}),
     checkpoint,
   };
 }

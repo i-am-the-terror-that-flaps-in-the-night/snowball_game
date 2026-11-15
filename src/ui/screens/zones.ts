@@ -1,7 +1,8 @@
 import type { GameContext, SoundName, UIHandlers } from '../../core/types';
 import { ZONES, type ZoneDef } from '../../config/zones';
 import { ENEMIES, type EnemyDef } from '../../config/enemies';
-import { HARD, earnedIds, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, maxStars, starReward, zoneChallenges, zoneStars } from '../../meta/challenges';
+import { HARD, earnedIds, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, maxStars, protocolStarIds, starReward, zoneChallenges, zoneStars } from '../../meta/challenges';
+import { PROTOCOL_CHALLENGES, PROTOCOL_STAR_REWARD, protocolChallengeText } from '../../config/challenges';
 import { totalStars } from '../../meta/progress';
 import { bossColor, bossCount, el, fmt, hex, restart, starsHtml, type BtnFn } from '../uiKit';
 import { PROTOCOL_WAVES, PROTOCOL_ZONE } from '../../config/protocol';
@@ -106,6 +107,25 @@ function zoneChallengeList(ui: ZonesDeps, zoneIndex: number, parent: HTMLElement
   }
 }
 
+/** PROTOCOL C card: its own five combat stars (save.protocol.stars; not part of the campaign star total). */
+function protocolChallengeList(ui: ZonesDeps, parent: HTMLElement): void {
+  const got = protocolStarIds(ui.ctx.progression);
+  const n = PROTOCOL_CHALLENGES.filter((c) => got.has(c.id)).length;
+  const box = el('div', `ss-zone-chals ss-protocol-chals ${n >= PROTOCOL_CHALLENGES.length ? 'all' : ''}`, undefined, parent);
+  const head = el('div', 'ss-zone-chal-head', undefined, box);
+  el('span', 'ss-zone-stars', undefined, head).innerHTML = starsHtml(n, 0, PROTOCOL_CHALLENGES.length);
+  el('small', '', `+${fmt(PROTOCOL_STAR_REWARD)} 🪙 / star · not in the campaign total`, head);
+  const cleared = ui.ctx.progression.data.protocol?.cleared === true;
+  for (const def of PROTOCOL_CHALLENGES) {
+    const done = got.has(def.id);
+    const c = protocolChallengeText(def, cleared);
+    const row = el('div', `ss-zone-chal ${done ? 'done' : ''}`, undefined, box);
+    el('span', 'ss-zone-chal-mark', done ? '✓' : c.icon, row);
+    el('span', 'ss-zone-chal-goal', c.goal, row);
+    row.title = `${c.name}: ${c.goal}${done ? ' ✓' : ''}${c.tip ? `\n${c.tip}` : ''}`;
+  }
+}
+
 /** Under each card: the HARD button once the arena is cleared (💀 ✓ once beaten), a locked hint before that. */
 function zoneHardStrip(ui: ZonesDeps, zoneIndex: number, slot: HTMLElement): void {
   const p = ui.ctx.progression;
@@ -155,6 +175,7 @@ function protocolCard(ui: ZonesDeps): void {
   const bottom = el('div', 'ss-zone-bottom', undefined, card);
   if (open) {
     if (rec.cleared) el('div', 'ss-zone-badge', '✓ CLEARED', el('div', 'ss-zone-badges', undefined, bottom));
+    protocolChallengeList(ui, bottom);
     el('div', 'ss-zone-stat', `☠ ${PROTOCOL_WAVES} boss waves  ·  ⏱ best ${formatRunTime(rec.bestTime)}  ·  🏁 ${rec.bestWave > 0 ? `wave ${rec.bestWave}/${PROTOCOL_WAVES}` : 'wave —'}`, bottom);
     el('div', 'ss-zone-stat ss-zone-reward', `🪙 ${fmt(protocolReward(p))} clear reward`, bottom);
   } else {

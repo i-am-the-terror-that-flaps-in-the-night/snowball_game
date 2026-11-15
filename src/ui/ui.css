@@ -838,6 +838,11 @@
 }
 .ss-reward { background: var(--hazard); color: var(--ink-inv); }
 .ss-unlock { background: var(--green); color: var(--ink-inv); animation-delay: 0.65s; }
+/* PROTOCOL C first clear: the Paint Shop exclusives (matte black, gold pinstripes, like the paint). */
+.ss-reward.ss-protocol-exclusive {
+  font-size: 14px; padding: 7px 14px; color: #f2d27a; animation-delay: 0.65s;
+  background: repeating-linear-gradient(90deg, #15161a 0 9px, #3a2f14 9px 10px); box-shadow: inset 0 0 0 2px #d4a537;
+}
 .ss-result-btns { display: flex; gap: 14px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 
 /* ------------------------------------------------------------ HUD */

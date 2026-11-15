@@ -177,6 +177,42 @@
   transform: translateY(calc(-50% - var(--i) % 2 * 4px));
   animation: ss-style-ghost 1.6s ease-in-out calc(var(--i) * -0.23s) infinite;
 }
+/* PROTOCOL C exclusives: gold boardroom trim and a ribbon. */
+.ss-style-card.ss-style-exclusive { position: relative; box-shadow: inset 0 0 0 2px #d4a537; }
+.ss-style-ribbon {
+  position: absolute; bottom: 6px; right: 6px; padding: 1px 6px; border-radius: 3px;
+  font-size: 9px; font-weight: 900; letter-spacing: 0.08em; color: #15161a; background: linear-gradient(180deg, #f2d27a, #c99a2e);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); pointer-events: none;
+}
+/* Hostile Takeover: matte black with thin gold pinstripes (no gloss). */
+.ss-style-paint .ss-style-swatch.ss-style-pinstripe {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 7px, var(--stripe, #d9ad3c) 7px 8px),
+    linear-gradient(135deg, var(--body, #15161a) 0 72%, var(--trim, #d4a537) 72% 100%);
+}
+.ss-style-paint .ss-style-swatch.ss-style-pinstripe::after { background: linear-gradient(160deg, rgba(255, 255, 255, 0.12), transparent 40%, rgba(0, 0, 0, 0.2)); }
+/* Whiteout: a little blizzard: white streaks swirling behind the plow, an ice-blue glint, a blinking eye. */
+.ss-style-swatch.ss-style-trail-whiteout { background: radial-gradient(ellipse at 62% 55%, #3d6a92, #10233a 78%); }
+.ss-style-trail-whiteout::before {
+  content: ''; position: absolute; left: 20px; right: 4px; top: calc(50% + 9px); height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, #dff4ff, rgba(159, 212, 255, 0.4) 50%, transparent); box-shadow: 0 0 4px #9fd4ff;
+}
+.ss-style-trail-whiteout::after {
+  content: ''; position: absolute; right: 12px; top: calc(50% - 10px); width: 13px; height: 7px; z-index: 1;
+  border-radius: 50%; background: radial-gradient(circle, #10233a 0 28%, #bfe8ff 32% 100%);
+  box-shadow: 0 0 5px #bfe8ff; animation: ss-style-blink 2.4s ease-in-out infinite;
+}
+.ss-style-trail-whiteout .ss-style-puff {
+  width: calc(14px - var(--i) * 0.9px); height: 2px; border-radius: 2px; background: #f4fbff; box-shadow: 0 0 4px #bfe8ff;
+  transform: translateY(calc(-50% + (var(--i) % 3 - 1) * 6px)) rotate(calc((var(--i) % 3 - 1) * -14deg));
+  animation: ss-style-gust 1.1s linear calc(var(--i) * -0.16s) infinite;
+}
+@keyframes ss-style-blink { 0%, 70%, 100% { scale: 1 0.12; } 76%, 90% { scale: 1 1; } }
+@keyframes ss-style-gust { 0% { opacity: 0; translate: -6px 0; } 30% { opacity: 1; } 100% { opacity: 0; translate: 10px 0; } }
+/* Avalanche: a rolling snowball with a white flash halo. */
+.ss-style-swatch.ss-style-icon.ss-style-kill-avalanche { background: radial-gradient(circle at 50% 50%, #ffffff 0 18%, #bfe3ff 36%, #2b5b86 80%); }
+.ss-style-kill-avalanche .ss-style-icon-glyph { animation: ss-style-roll 2.2s ease-in-out infinite; }
+@keyframes ss-style-roll { 0% { rotate: 0deg; scale: 0.7; } 60% { rotate: 300deg; scale: 1.1; } 72% { scale: 0.35; } 100% { rotate: 360deg; scale: 0.7; } }
 @keyframes ss-style-bolt { 0%, 62%, 80% { opacity: 0; } 64%, 74%, 84%, 88% { opacity: 1; } }
 @keyframes ss-style-ghost { 50% { opacity: 0.55; translate: 0 -3px; } }
 @keyframes ss-style-drift { 50% { opacity: 0.45; } }
