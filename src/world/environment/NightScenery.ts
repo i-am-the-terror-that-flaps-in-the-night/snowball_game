@@ -38,15 +38,14 @@ export class NightScenery extends VenueScenery {
   /** Scrolling LED ribbon (offset advanced in update). */
   protected ledTex: THREE.Texture | null = null;
 
-  /** Campaign / Plaza arenas (stands on the north, west and east). */
+  /** Campaign / Plaza arenas (stands on all four sides). */
   protected buildNightStadium(zone: ZoneDef, G: number): void {
     const rally = this.isRally;
     const topH = G + 0.25 + ROWS * ROW_RISE;
     const backN = STAND_N0 + ROWS * ROW_D + 0.15;
     const banks: Bank[] = [];
     for (const side of SIDES) {
-      if (side.key === 's') continue;
-      const range = side.key === 'n' ? [ARENA.minX - 1, ARENA.maxX + 1] : [ARENA.minZ - 1, ARENA.maxZ + 1];
+      const range = side.key === 'n' || side.key === 's' ? [ARENA.minX - 1, ARENA.maxX + 1] : [ARENA.minZ - 1, ARENA.maxZ + 1];
       const gaps = gapsFor(side.key, GATE_HALF + 2.2);
       if (side.key === 'n' && rally) gaps.push([-(STAGE_HALF + 0.6), STAGE_HALF + 0.6]);
       for (const [a, b] of subtract(range[0], range[1], gaps)) {
@@ -57,7 +56,7 @@ export class NightScenery extends VenueScenery {
       }
     }
     this.buildBanks(banks);
-    this.buildLedRibbon(['SNOWPLOW', 'SHOWDOWN', zone.name.toUpperCase().slice(0, 14), 'LIVE ★ NIGHT'], WALL_C + 0.22, 0.46, 6, (side) => side.key !== 's', (side) => side.h, GATE_HALF + PILLAR_W);
+    this.buildLedRibbon(['SNOWPLOW', 'SHOWDOWN', zone.name.toUpperCase().slice(0, 14), 'LIVE ★ NIGHT'], WALL_C + 0.22, 0.46, 6, () => true, (side) => side.h, GATE_HALF + PILLAR_W);
     this.buildFloodCones();
   }
 
@@ -81,7 +80,7 @@ export class NightScenery extends VenueScenery {
   }
 
   /** THE OMEGA WORKS: a packed spectator gallery rising behind the 9 m factory walls (all four sides, the three gates
-   *  left clear), light banks on its back wall and on the four corner towers. */
+   *  left clear), day and night; at night, light banks on its back wall and on the four corner towers. */
   protected buildNightOmega(): void {
     const B = ARENA.maxX;
     const terrain = this.ctx.terrain;
@@ -142,7 +141,11 @@ export class NightScenery extends VenueScenery {
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.85 }), tiers, false, true);
     this.inst(unitBox(), this.std(st.trim === 0x18e8ff ? 0x2b2e3a : st.trim, { metalness: 0.4, roughness: 0.55 }), backs);
     this.inst(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), fronts);
-    // the four corner light towers (OmegaSet, 26 m) get a lamp bank each, aimed at the middle
+    // the gallery crowd bobs (the Works' own bob amplitude is 0 otherwise)
+    this.bobAmp.value = 0.2;
+    this.addCrowd([], fill);
+    if (!this.night) return;
+    // Night: the four corner light towers (OmegaSet, 26 m) get a lamp bank each, aimed at the middle.
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
       const x = sx * (B + 6);
       const z = sz * (B + 6);
@@ -150,9 +153,6 @@ export class NightScenery extends VenueScenery {
       banks.push({ x: x + Math.sin(ry) * 1.6, y: 24.2, z: z + Math.cos(ry) * 1.6, ry, k: 2.2, post: 0 });
     }
     this.buildBanks(banks);
-    // the gallery crowd bobs (the Works' own bob amplitude is 0: no stands by day)
-    this.bobAmp.value = 0.2;
-    this.addCrowd([], fill);
     this.buildFloodCones();
   }
 

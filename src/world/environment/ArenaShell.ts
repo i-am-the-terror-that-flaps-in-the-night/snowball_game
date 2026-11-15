@@ -257,8 +257,7 @@ export class ArenaShell extends EnvironmentCore {
     const fill: Item[] = [];
     let section = 0;
     for (const side of SIDES) {
-      if (side.key === 's') continue;
-      const range = side.key === 'n' ? [ARENA.minX - 1, ARENA.maxX + 1] : [ARENA.minZ - 1, ARENA.maxZ + 1];
+      const range = side.key === 'n' || side.key === 's' ? [ARENA.minX - 1, ARENA.maxX + 1] : [ARENA.minZ - 1, ARENA.maxZ + 1];
       const gaps = gapsFor(side.key, GATE_HALF + 2.2);
       if (side.key === 'n' && skipN > 0) gaps.push([-skipN, skipN]);
       const runs = subtract(range[0], range[1], gaps);

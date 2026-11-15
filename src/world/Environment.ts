@@ -256,7 +256,8 @@ export class Environment extends NightScenery implements WorldAPI {
       this.ctx.scene.add(works.group, set.group);
       this.bobAmp.value = 0;
       this.buildMountains(mountainLook);
-      if (this.night) this.buildNightOmega();
+      // The spectator gallery over the walls stands day and night (floodlight banks and cones only at night).
+      this.buildNightOmega();
       this.finishDecor();
       return;
     }

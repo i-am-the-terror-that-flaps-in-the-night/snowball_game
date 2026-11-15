@@ -725,7 +725,6 @@ export class ThemeScenery extends ArenaShell {
     const balloons: Item[] = [];
     const strings: Item[] = [];
     for (const side of SIDES) {
-      if (side.key === 's') continue;
       for (let k = 0; k < 6; k++) {
         const s = ARENA.minX + 4 + k * ((ARENA.maxX - ARENA.minX - 8) / 5);
         if (side.key === 'n' && Math.abs(s) < STAGE_HALF + 2) continue;
