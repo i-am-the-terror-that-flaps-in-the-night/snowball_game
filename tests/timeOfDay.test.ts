@@ -37,3 +37,17 @@ describe('time of day', () => {
     }
   });
 });
+
+describe('PROTOCOL C is always night', () => {
+  it('forceNight overrides a DAY setting for the current arena', async () => {
+    const tod = await import('../src/core/timeOfDay');
+    const { settings } = await import('../src/core/settings');
+    const prev = settings.timeOfDay;
+    settings.timeOfDay = 'day';
+    tod.commitTimeOfDay();
+    expect(tod.isNight()).toBe(false);
+    tod.forceNight();
+    expect(tod.isNight()).toBe(true);
+    settings.timeOfDay = prev;
+  });
+});

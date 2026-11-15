@@ -4,7 +4,7 @@ import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
 import { AutoSampler, applyAllSettings, commitAutoQuality, renderHooks, reportAutoFrameTime, reportFrameCapMs, setBrawlPerf, settings, settingsUi } from './settings';
-import { commitTimeOfDay } from './timeOfDay';
+import { commitTimeOfDay, forceNight } from './timeOfDay';
 import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, DUEL_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, EnemyHandle, GameContext, HudState, RadarState, RunSummary, UIHandlers } from './types';
 import { BIOME_ZONE, BRAWL_ZONE, ZONES, pickBrawlZone } from '../config/zones';
@@ -525,6 +525,7 @@ export class Game {
     const ck = resume ? (this.protocolCk ?? protocolSave(p).checkpoint) : null;
     const w = ck ? ck.wave : Math.max(1, Math.min(PROTOCOL_WAVES, Math.round(wave) || 1));
     this.arenaStart();
+    forceNight(); // PROTOCOL C is always at night
     this.setMode('campaign');
     this.protocol = true;
     this.zoneIndex = PROTOCOL_INDEX;

@@ -23,6 +23,11 @@ export function commitTimeOfDay(): void {
   night = resolveNight(settings.timeOfDay, starts);
 }
 
+/** PROTOCOL C is always at night, whatever the setting (call after commitTimeOfDay at its arena start). */
+export function forceNight(): void {
+  night = true;
+}
+
 /** Night for the arena being built now. */
 export function isNight(): boolean {
   return night ?? resolveNight(settings.timeOfDay, 0);
