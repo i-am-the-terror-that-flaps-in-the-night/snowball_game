@@ -1,5 +1,7 @@
 import type { Progression, ProtocolCheckpoint, ProtocolSave } from '../core/Progression';
 import { ZONES } from '../config/zones';
+import { UPGRADES, upgradeCost } from '../config/upgrades';
+import { GEAR_BY_ID, gearSpent } from '../config/gear';
 import { PROTOCOL_CLEAR_REWARD, PROTOCOL_REPEAT_FRAC, PROTOCOL_WAVES } from '../config/protocol';
 
 /* PROTOCOL C meta (config/protocol.ts): the unlock rule, the clear / best-time record and the per-wave checkpoint.
@@ -116,4 +118,19 @@ export function formatRunTime(t: number): string {
   const m = Math.floor(t / 60);
   const s = t - m * 60;
   return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+}
+
+/** Coins the pilot has spent getting stronger: every upgrade level bought and every gear item level (PROTOCOL C's
+ *  enemy scaling, config/protocol.ts spendScale). Cosmetics and plow unlocks don't count. */
+export function protocolSpent(p: Progression): number {
+  let t = 0;
+  for (const u of UPGRADES) {
+    const n = Math.min(p.level(u.id), u.maxLevel, 999);
+    for (let l = 0; l < n; l++) t += upgradeCost(u, l);
+  }
+  for (const [id, lvl] of Object.entries(p.data.gear?.owned ?? {})) {
+    const def = GEAR_BY_ID[id];
+    if (def && typeof lvl === 'number') t += gearSpent(def, lvl);
+  }
+  return Math.round(t);
 }

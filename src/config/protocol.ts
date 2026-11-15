@@ -13,8 +13,8 @@ import { STAGE_FROM_WAVE, protocolTerrain, splitWave } from '../world/protocol/l
  * campaign boss n PROTOCOL-upgraded (protocolBossHp: at least its Hard-campaign HP +15%; HEADLINE_DMG x damage;
  * faster cooldowns), and the bosses already beaten come back as ECHOES (ECHO_HP x home HP, one or two signature moves, no phase 2 / summons: Bot.echo, bosses.ts),
  * walking in one after another (ECHO_FIRST + ECHO_GAP), with at most MAX_ACTIVE bosses fighting at once (the rest
- * circle on a leash: EnemyManager.leash). Base difficulty is Hard's (HARD.hpMult / dmgMult, scaled with the pilot's
- * power like hardZone).
+ * circle on a leash: EnemyManager.leash). Base difficulty is Hard's (HARD.hpMult / dmgMult), scaled by the coins the
+ * pilot has spent on upgrades + gear (spendScale).
  */
 
 /** Zone index of PROTOCOL C (past the six campaign arenas; Game / Environment seed their rngs with it). */
@@ -108,7 +108,7 @@ export const PROTOCOL_ZONE: ZoneDef = {
   terrain: protocolTerrain(1), theme: 'protocol', maxActiveBosses: MAX_ACTIVE,
 };
 
-/** Pilot-power scaled base (like hardZone): `k` = hardScale(power). */
+/** Scaled base: `k` = spendScale(protocolSpent) (coins spent on upgrades + gear). */
 export function protocolZone(k: { hp: number; dmg: number } = { hp: 1, dmg: 1 }): ZoneDef {
   return { ...PROTOCOL_ZONE, enemyHpMult: HARD.hpMult * k.hp, enemyDmgMult: HARD.dmgMult * k.dmg };
 }
@@ -130,4 +130,22 @@ export function waveBossCount(wave: number): { total: number; echoes: number } {
     if (g.echo) echoes += g.count;
   }
   return { total, echoes };
+}
+
+/** Enemy scaling in PROTOCOL C follows the coins the pilot has put into getting stronger (upgrades + gear; cosmetics
+ *  and plows don't count): at SPEND_REF coins (about what a pilot has spent by the unlock: every arena cleared on
+ *  normal and Hard) bots are at the plain Hard-based numbers; HP grows with the square root of the spend ratio and
+ *  damage more gently, both clamped (the floor keeps a thrifty pilot's run a real final test, the caps match Hard's
+ *  pilot-power caps). */
+export const SPEND_REF = 30000;
+export const SPEND_HP_EXP = 0.5;
+export const SPEND_DMG_EXP = 0.3;
+export const SPEND_HP_RANGE: readonly [number, number] = [0.8, 2.5];
+export const SPEND_DMG_RANGE: readonly [number, number] = [0.85, 1.8];
+
+/** HP / damage multipliers for a pilot who has spent `spent` coins on upgrades and gear. */
+export function spendScale(spent: number): { hp: number; dmg: number } {
+  const r = Math.max(0, spent) / SPEND_REF;
+  const clamp = (v: number, [lo, hi]: readonly [number, number]) => Math.min(hi, Math.max(lo, v));
+  return { hp: clamp(r ** SPEND_HP_EXP, SPEND_HP_RANGE), dmg: clamp(r ** SPEND_DMG_EXP, SPEND_DMG_RANGE) };
 }

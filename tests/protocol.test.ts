@@ -693,3 +693,16 @@ describe('stage 2: review cleanups', () => {
     }
   });
 });
+
+describe('PROTOCOL C scales with coins spent', () => {
+  it('is 1x at the reference spend, gentler below / above, clamped', async () => {
+    const { spendScale, SPEND_REF, SPEND_HP_RANGE, SPEND_DMG_RANGE } = await import('../src/config/protocol');
+    expect(spendScale(SPEND_REF)).toEqual({ hp: 1, dmg: 1 });
+    const hi = spendScale(SPEND_REF * 4);
+    expect(hi.hp).toBeCloseTo(2, 5);
+    expect(hi.dmg).toBeGreaterThan(1);
+    expect(hi.dmg).toBeLessThan(hi.hp);
+    expect(spendScale(0)).toEqual({ hp: SPEND_HP_RANGE[0], dmg: SPEND_DMG_RANGE[0] });
+    expect(spendScale(1e9)).toEqual({ hp: SPEND_HP_RANGE[1], dmg: SPEND_DMG_RANGE[1] });
+  });
+});

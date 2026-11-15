@@ -27,7 +27,7 @@ import { Impact } from '../fx/impact';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
-import { ChallengeTracker, hardCleared, hardPower, hardScale, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
+import { ChallengeTracker, hardCleared, hardPower, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
 import { renderFrame } from '../render/post';
@@ -48,8 +48,8 @@ import { NavGraph } from '../world/omega/nav';
 import { OMEGA_NAV } from '../world/omega/layout';
 import { PROTOCOL_NAV, deckWave } from '../world/protocol/layout';
 import { ZONE_BEATS } from '../config/lore';
-import { PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, protocolWaveZone, protocolZone, waveBossCount } from '../config/protocol';
-import { protocolRecordsRun, protocolSave, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint, saveCheckpoint, takeCheckpoint } from '../meta/protocol';
+import { PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, protocolWaveZone, protocolZone, spendScale, waveBossCount } from '../config/protocol';
+import { protocolRecordsRun, protocolSave, protocolSpent, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint, saveCheckpoint, takeCheckpoint } from '../meta/protocol';
 import type { ProtocolCheckpoint } from './Progression';
 import type { ZoneDef } from '../config/zones';
 
@@ -541,7 +541,8 @@ export class Game {
     this.roundIndex = w - 1;
     this.run = this.newRun();
     this.combo = 0;
-    this.protocolBase = protocolZone(hardScale(hardPower((id) => p.statLevel(id), p.data.plow)));
+    // Enemy HP / damage follow the coins spent on upgrades + gear (config/protocol.ts spendScale).
+    this.protocolBase = protocolZone(spendScale(protocolSpent(p)));
     ctx.zone = protocolWaveZone(this.protocolBase, w);
     this.refreshStats();
     this.clearArena();
