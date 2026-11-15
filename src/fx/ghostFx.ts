@@ -375,6 +375,8 @@ export class GhostFx implements GhostFxAPI {
     this.mat = new THREE.ShaderMaterial({
       fog: true,
       transparent: true,
+      // Streaks and track marks are oriented quads: two-sided, or they vanish when seen from behind.
+      side: THREE.DoubleSide,
       depthWrite: false,
       depthTest: true,
       blending: THREE.CustomBlending,
