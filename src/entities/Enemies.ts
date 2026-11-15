@@ -80,6 +80,16 @@ export const LEASH_SWAP = 9;
 export const LEASH_R = 15;
 /** Boss AI states where a boss is between moves (it can be put on hold without cutting an attack short). */
 const BOSS_NEUTRAL = new Set(['approach', 'hunt', 'lineup', 'pin']);
+/** An echo between moves (it can be put on hold without cutting an attack short). */
+function leashNeutral(b: Bot): boolean {
+  return b.echo && !b.entering && !b.atk && BOSS_NEUTRAL.has(b.state);
+}
+/** The boss held back longest, or null. */
+function longestHeld(list: readonly Bot[]): Bot | null {
+  let best: Bot | null = null;
+  for (const b of list) if (b.held && (!best || b.leashT > best.leashT)) best = b;
+  return best;
+}
 const _v = new THREE.Vector3();
 /** Last-bot hunt: with this many campaign minions (or fewer) left, they stop wandering and drive at the player. */
 export const HUNT_LEFT = 2;
@@ -752,28 +762,22 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       b.leashT += dt;
       if (!b.held) active++;
     }
-    const neutral = (b: Bot) => b.echo && !b.entering && !b.atk && BOSS_NEUTRAL.has(b.state);
     for (let i = list.length - 1; i >= 0 && active > max; i--) {
       const b = list[i];
-      if (b.held || !neutral(b)) continue;
+      if (b.held || !leashNeutral(b)) continue;
       this.hold(b, true);
       active--;
     }
-    const longestHeld = (): Bot | null => {
-      let best: Bot | null = null;
-      for (const b of list) if (b.held && (!best || b.leashT > best.leashT)) best = b;
-      return best;
-    };
     while (active < max) {
-      const b = longestHeld();
+      const b = longestHeld(list);
       if (!b) break;
       this.hold(b, false);
       active++;
     }
-    const inn = longestHeld();
+    const inn = longestHeld(list);
     if (!inn || inn.leashT < 3) return;
     let out: Bot | null = null;
-    for (const b of list) if (!b.held && neutral(b) && b.leashT >= LEASH_SWAP && (!out || b.leashT > out.leashT)) out = b;
+    for (const b of list) if (!b.held && leashNeutral(b) && b.leashT >= LEASH_SWAP && (!out || b.leashT > out.leashT)) out = b;
     if (!out) return;
     this.hold(out, true);
     this.hold(inn, false);

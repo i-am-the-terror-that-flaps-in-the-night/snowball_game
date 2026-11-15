@@ -146,7 +146,8 @@ class DonaldProps {
   /** Set when the player smashes the rally podium; the boss AI consumes it. */
   podiumBroken = false;
   /** The THE DONALD whose walls / beam / podium are up (claim()): two can share a fight in PROTOCOL C (an echo and
-   *  the headline), and the props collapse with their owner, not with the first Donald in the list. */
+   *  the headline). When the owner goes down the props pass to a Donald still fighting (a dead echo's walls must
+   *  not tear down the headline's podium mid-rally); they collapse when the last Donald falls. */
   private owner: Bot | null = null;
 
   private depth = (x: number, z: number): number => (this.ctx?.snow ? this.ctx.snow.getDepth(x, z) : 0);
@@ -284,8 +285,10 @@ class DonaldProps {
       this.init(ctx);
     }
     this.time += dt;
-    // the props' owner (claim()); before any claim, the first Donald in the fight
-    const boss = this.owner ? (this.owner.alive ? this.owner : null) : h.findBoss('donald');
+    // the props' owner (claim()); before any claim, or once the owner is down while another Donald still fights (an
+    // echo and the headline in PROTOCOL C), the first living Donald: the props only collapse with the last of them
+    if (!this.owner?.alive) this.owner = h.findBoss('donald');
+    const boss = this.owner;
     const plow = ctx.plow;
 
     // the boss is gone: everything collapses

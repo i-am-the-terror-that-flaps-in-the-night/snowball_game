@@ -226,8 +226,9 @@ export class GameHud {
     this.last.combo = 0;
     for (const s of this.bossSlots) freeSlot(s);
     this.last.bossCount = -1;
+    this.last.bossLayout = '';
     this.rootEl.classList.remove('has-boss', 'has-twin');
-    this.h.bosses.classList.remove('twin');
+    this.h.bosses.classList.remove('twin', 'many');
     this.endIntro();
     this.bh.setActive(false);
     this.bh.reset();

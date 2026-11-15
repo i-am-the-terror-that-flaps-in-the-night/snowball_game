@@ -119,6 +119,9 @@ export class Game {
   private protocolCk: ProtocolCheckpoint | null = null;
   private protocolUses = 0;
   private protocolKills0 = 0;
+  /** Sim time this attempt (a fresh start or a checkpoint retry) began: runFinished's duration, so lifetime play time
+   *  never counts the waves before a checkpoint twice (run.start is rewound to keep the run clock going). */
+  private protocolAttempt0 = 0;
   private hud: HudState;
   private mode: Mode = 'campaign';
   /** Ultimate kill-cam trigger (3+ kills from one ultimate -> slow-mo + camera swing). */
@@ -231,7 +234,10 @@ export class Game {
       onStartTutorial: () => this.startTutorial(),
       onRetry: () => (this.mode === 'survival' ? this.startSurvival(this.daily) : this.protocol ? this.startProtocol(1) : this.startRun(this.zoneIndex, this.hard)),
       onStartProtocol: (resume) => {
-        if (protocolUnlocked(progression)) this.startProtocol(1, !!resume);
+        if (!protocolUnlocked(progression)) return;
+        // the zone select's RESUME is the SAVED checkpoint (an import / reset since the last run may have changed it)
+        this.protocolCk = null;
+        this.startProtocol(1, !!resume);
       },
       onRetryCheckpoint: () => this.startProtocol(1, true),
       onResetSave: () => {
@@ -539,6 +545,7 @@ export class Game {
     ctx.plow.reset();
     this.protocolUses = 0;
     this.protocolKills0 = 0;
+    this.protocolAttempt0 = ctx.time;
     if (ck) {
       const r = restoreCheckpoint(ck, ctx.plow.maxHp, ctx.time);
       ctx.plow.hp = r.hp;
@@ -951,7 +958,7 @@ export class Game {
       loot: this.run.loot,
       protocol: { wave: PROTOCOL_WAVES, time, bestTime: rec.bestTime, newBest: rec.newBest, uses: this.protocolUses, checkpointWave: null },
     };
-    this.emitRunFinished({ mode: 'campaign', won: true, protocol: true, roundsCleared: ctx.zone.rounds.length });
+    this.emitRunFinished({ mode: 'campaign', won: true, protocol: true, roundsCleared: ctx.zone.rounds.length, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
     ctx.audio.setEngine(0, 0);
     ctx.audio.setPlowing(0);
     ctx.audio.play('victory');
@@ -968,7 +975,7 @@ export class Game {
     p.data.totalKills += Math.max(0, this.run.kills - this.protocolKills0);
     this.protocolKills0 = this.run.kills;
     p.commit();
-    this.emitRunFinished({ mode: 'campaign', won: false, protocol: true, roundsCleared: this.roundIndex });
+    this.emitRunFinished({ mode: 'campaign', won: false, protocol: true, roundsCleared: this.roundIndex, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
     ctx.audio.play('gameOver');
     ctx.ui.setHudVisible(false);
     const time = Math.max(0, ctx.time - this.run.start);

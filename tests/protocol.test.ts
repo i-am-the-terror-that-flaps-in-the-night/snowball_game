@@ -427,3 +427,47 @@ describe('echo bosses', () => {
     for (const e of echoes) expect(everActive.has(e)).toBe(true);
   });
 });
+
+describe('review fixes', () => {
+  it('destructible props never stand in or against the low decks (waves 6-7)', async () => {
+    const { Props } = await import('../src/world/Props');
+    for (const w of [6, 7]) {
+      const t = new Terrain(protocolTerrain(w));
+      expect(t.decks.length).toBeGreaterThan(0);
+      for (let seed = 0; seed < 25; seed++) {
+        const ctx = { scene: new THREE.Scene(), fx: noop, audio: noop, pickups: { spawnCoins: () => {} }, terrain: t } as unknown as GameContext;
+        const obs: { x: number; z: number; r: number; breakable?: boolean }[] = [];
+        new Props(ctx).reset(obs, true, 777 + PROTOCOL_INDEX * 131 + seed, false, true);
+        const mine = obs.filter((o) => o.breakable);
+        expect(mine.length).toBeGreaterThan(4);
+        for (const o of mine) for (const d of t.decks) expect(t.inDeck(d, o.x, o.z, o.r)).toBe(false);
+      }
+    }
+  });
+
+  it("THE DONALD's props outlive a fallen owner while another Donald fights, and collapse with the last one", async () => {
+    const { boss, run, mgr, ctx } = await arena();
+    const { donaldProps } = await import('../src/entities/enemies/donaldProps');
+    const h = boss('donald', -12, -14, { headline: true });
+    const e = boss('donald', 12, -14, { echo: true });
+    const calm = () => {
+      for (const b of [h, e]) if (b.alive) b.cd = 99;
+    };
+    run(0.2, calm);
+    donaldProps.claim(e);
+    donaldProps.buildWalls(mgr, [{ x: -6, z: 12, dx: 1, dz: 0, len: 12 }], 0.1, 60);
+    run(1, calm);
+    const segs = (donaldProps as unknown as { segs: { die: number }[] }).segs;
+    expect(segs.length).toBeGreaterThan(0);
+    expect(segs.every((s) => s.die < 0)).toBe(true);
+    mgr.damage(e, 1e9, {});
+    run(0.5, calm);
+    expect(e.alive).toBe(false);
+    expect(segs.length).toBeGreaterThan(0);
+    expect(segs.every((s) => s.die < 0)).toBe(true);
+    mgr.damage(h, 1e9, {});
+    run(0.2);
+    expect(segs.length === 0 || segs.every((s) => s.die >= 0)).toBe(true);
+    donaldProps.clear(ctx as unknown as GameContext);
+  });
+});

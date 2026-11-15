@@ -154,7 +154,7 @@ function renderProtocolResult(ui: ResultDeps, sum: RunSummary, win: boolean): vo
   el('h2', 'ss-h2 ss-result-title', win ? 'PROTOCOL C CLEARED!' : 'WRECKED!', p);
   el('div', 'ss-sub', win
     ? `All ${sum.totalRounds} waves down in ${formatRunTime(pr.time)}.${pr.newBest ? ' 🌟 NEW BEST TIME!' : ` Best: ${formatRunTime(pr.bestTime)}.`}`
-    : `Scrapped on wave ${pr.wave} of ${sum.totalRounds}. The checkpoint keeps your plow as it was when wave ${pr.checkpointWave ?? pr.wave} started.`, p);
+    : `Scrapped on wave ${pr.wave} of ${sum.totalRounds}.${pr.checkpointWave && pr.checkpointWave > 1 ? ` The checkpoint keeps your plow as it was when wave ${pr.checkpointWave} started.` : ''}`, p);
   const grid = el('div', 'ss-stats', undefined, p);
   const stat = (icon: string, label: string, value: string, delay: number) => {
     const s = el('div', 'ss-stat', undefined, grid);
@@ -175,7 +175,8 @@ function renderProtocolResult(ui: ResultDeps, sum: RunSummary, win: boolean): vo
   }
   if (sum.loot?.length) renderLoot(p, sum.loot);
   const btns = el('div', 'ss-result-btns', undefined, p);
-  if (!win && pr.checkpointWave) {
+  // (wave 1's checkpoint is a plain restart: offering it as RETRY WAVE 1 would only spend a checkpoint use)
+  if (!win && pr.checkpointWave && pr.checkpointWave > 1) {
     ui.btn(`↺ RETRY WAVE ${pr.checkpointWave}`, 'ss-primary ss-big', () => ui.handlers.onRetryCheckpoint?.(), btns).dataset.primary = '1';
     ui.btn('↻ RESTART RUN', 'ss-ice', () => ui.handlers.onRetry(), btns);
   } else if (!win) {

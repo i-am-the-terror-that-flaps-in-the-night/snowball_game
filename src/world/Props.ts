@@ -168,7 +168,8 @@ export class Props {
   }
 
   /** Terrain height for a prop of radius r at (x, z), or null where it can't stand: touching lava (centre + 8 points
-   *  on its rim, with a little margin), a ramp's run-up / launch / landing corridor, a steep slope. Flat arenas: 0. */
+   *  on its rim, with a little margin), on or next to a deck, a ramp's run-up / launch / landing corridor, a steep
+   *  slope. Flat arenas: 0. */
   private groundSpot(x: number, z: number, r: number): number | null {
     const t = this.ctx.terrain;
     if (!t) return 0;
@@ -180,6 +181,8 @@ export class Props {
         if (t.materialAt(x + Math.cos(a) * rr, z + Math.sin(a) * rr) === 'lava') return null;
       }
     }
+    // never in or against a deck (PROTOCOL C's low decks and their ramps): a crate would poke through the slab
+    for (const d of t.decks) if (t.inDeck(d, x, z, r + 0.8)) return null;
     if (!t.active) return 0;
     for (const sh of t.shapes) {
       if (sh.kind !== 'ramp') continue;

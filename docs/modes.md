@@ -83,17 +83,17 @@ later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (u
   minions and bot hits, scaled with your power like Hard). The normal upgrade shop runs between waves.
 - **Echoes** keep one or two signature moves and never reach phase 2 or summon: FROSTBYTE ball slam · BULLDOZA charge +
   leap · THE GRINDER auger pull · SLUSH charge / SLEET shove (as a pair) · THE DONALD wall (+ its steamroll) · Ω ground
-  pound. Twins pair by spawn partner and THE DONALD's props follow the Donald that raised them, so two of a kind can
-  share a fight.
+  pound. Twins pair by spawn partner and THE DONALD's props follow the Donald that raised them (passing to the other
+  Donald if it falls; they collapse with the last one), so two of a kind can share a fight.
 - **Boss leash**: at most 4 bosses fight at once (`ZoneDef.maxActiveBosses`); headlines always do, the extra echoes
   circle 15 m out ("ON HOLD", dimmed bar) and rotate in every ~9 s. The HUD stacks up to 8 boss bars: the headline
   full width, echoes compact, two per row (the campaign's one / two bar layouts are unchanged).
 - **Restructuring**: during each shop the floor is swapped: 1 ice rink · 2 + a broken lava ring · 3 + craters and two
   launch ramps · 4 rink + hot (lava vents, scorched) west / cold (ice) east · 5 + a rally stage behind the north wall
   (in front of THE DONALD's rally spot) · 6 + two low gold decks with ramps · 7 everything. The plow is set back on
-  its spawn with its HP.
-- **Checkpoints**: each wave's start is saved (HP fraction, kills, coins, run time, retries). Wrecked, the results
-  screen offers RETRY WAVE n (restores it, +1 retry) or a full restart; a saved run can also be resumed from the card.
+  its spawn with its HP; destructible props never stand on or against the decks.
+- **Checkpoints**: each wave's start is saved (HP fraction, kills, coins, run time, retries). Wrecked on wave 2 or
+  later, the results screen offers RETRY WAVE n (restores it, +1 retry) or a full restart; a saved run can also be resumed from the card.
   Coins and upgrades are permanent as everywhere else. A clear records the best total time (fights only) and whether
   it used no retries, and pays 6,000 coins the first time (40% after) plus Hard-grade loot.
 - **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock.
