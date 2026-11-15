@@ -44,8 +44,9 @@ export interface ProtocolSave {
   checkpoint: ProtocolCheckpoint | null;
 }
 
-/** Protocol C's wave count (config/protocol.ts PROTOCOL_WAVES; repeated here to keep the save module free of it). */
-const PROTOCOL_SAVE_WAVES = 7;
+/** Protocol C's highest checkpoint / best "wave": the finale (config/protocol.ts PROTOCOL_FINALE = 8, after its seven
+ *  waves; repeated here to keep the save module free of it). */
+const PROTOCOL_SAVE_WAVES = 8;
 /** At most this many PROTOCOL C star ids are kept (there are five; a little headroom for later ones). */
 const PROTOCOL_SAVE_MAX_STARS = 10;
 

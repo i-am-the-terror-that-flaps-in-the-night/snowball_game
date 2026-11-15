@@ -35,6 +35,10 @@ import { Warmup, webglBackend } from '../render/warmup';
 import { donaldProps } from '../entities/enemies/donaldProps';
 import { chairmanProps } from '../entities/enemies/chairmanProps';
 import { ChairmanDirector } from './chairmanDirector';
+import { WhiteoutDirector } from './whiteoutDirector';
+import { whiteoutGiant } from '../world/protocol/WhiteoutGiant';
+import { whiteoutEnding } from '../world/protocol/WhiteoutEnding';
+import { whiteoutProps } from '../entities/enemies/whiteoutProps';
 import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
@@ -50,7 +54,7 @@ import { NavGraph } from '../world/omega/nav';
 import { OMEGA_NAV } from '../world/omega/layout';
 import { PROTOCOL_NAV, deckWave } from '../world/protocol/layout';
 import { ZONE_BEATS } from '../config/lore';
-import { PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, REVEAL_COUNTDOWN, protocolWaveZone, protocolZone, spendScale, waveBossCount } from '../config/protocol';
+import { PROTOCOL_FINALE, PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, REVEAL_COUNTDOWN, protocolWaveLabel, protocolWaveZone, protocolZone, spendScale, waveBossCount } from '../config/protocol';
 import { protocolRecordsRun, protocolSave, protocolSpent, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint, saveCheckpoint, takeCheckpoint } from '../meta/protocol';
 import type { ProtocolCheckpoint } from './Progression';
 import type { ZoneDef } from '../config/zones';
@@ -129,6 +133,9 @@ export class Game {
   /** Sim time this attempt (a fresh start or a checkpoint retry) began: runFinished's duration, so lifetime play time
    *  never counts the waves before a checkpoint twice (run.start is rewound to keep the run clock going). */
   private protocolAttempt0 = 0;
+  /** This PROTOCOL C attempt starts at THE WHITEOUT (a FINALE checkpoint retry / startProtocol(8)): wave 7's round with
+   *  THE CHAIRMAN already down. */
+  private protocolFinale = false;
   private hud: HudState;
   private mode: Mode = 'campaign';
   /** Ultimate kill-cam trigger (3+ kills from one ultimate -> slow-mo + camera swing). */
@@ -149,6 +156,8 @@ export class Game {
   private survival: SurvivalManager;
   /** PROTOCOL C: THE CHAIRMAN's commentary from the box, the wave 7 reveal, the defeat hook (core/chairmanDirector.ts). */
   private chairman: ChairmanDirector;
+  /** PROTOCOL C finale: THE WHITEOUT (core/whiteoutDirector.ts), started by THE CHAIRMAN's wreck. */
+  private whiteout: WhiteoutDirector;
   private tutorial: Tutorial;
   private ui: UI;
   /** Online 1v1 duel (idle outside it). */
@@ -224,6 +233,13 @@ export class Game {
     ctx.waves = new WaveDirector(ctx);
     this.survival = new SurvivalManager(ctx);
     this.chairman = new ChairmanDirector(ctx);
+    this.whiteout = new WhiteoutDirector(ctx);
+    // THE CHAIRMAN's wreck starts THE WHITEOUT (wave 7 stays one round; the finale gets its own checkpoint)
+    this.chairman.whiteout = (echoes) => this.whiteout.start(echoes, false);
+    this.whiteout.onCheckpoint = () => {
+      // (a FINALE retry took its checkpoint as it started: re-taking it here would bank the takeover's time into it)
+      if (this.protocol && !this.protocolFinale) this.protocolCheckpoint(PROTOCOL_FINALE);
+    };
     ctx.pickups = new Pickups(ctx);
     if (this.warmup.enabled) {
       // Warm set: effects otherwise built on first use (mid-fight) are built now, hidden or off-scene, so every
@@ -232,7 +248,13 @@ export class Game {
       combat.prewarm();
       donaldProps.prewarm(scene);
       chairmanProps.prewarm(scene);
-      this.warmExtras = [...this.campaignEnemies.warmSet(), ...brawl.warmSet()];
+      // THE WHITEOUT: the giant and its attack props, built hidden in the scene
+      whiteoutGiant.prewarm(scene);
+      whiteoutProps.prewarm(scene);
+      this.whiteout.ball.prewarm(scene);
+      whiteoutEnding.prewarm(scene);
+      // (+ visible stand-ins of THE WHITEOUT's hidden visuals: a warm-up compiles only what is visible)
+      this.warmExtras = [...this.campaignEnemies.warmSet(), ...brawl.warmSet(), ...whiteoutGiant.warmMeshes(), ...whiteoutProps.warmMeshes(), ...this.whiteout.ball.warmMeshes(), ...whiteoutEnding.warmMeshes()];
     }
 
     const handlers: UIHandlers = {
@@ -460,7 +482,9 @@ export class Game {
   /** Every arena start (before the arena is built): apply a pending AUTO quality decision, start a new sample. */
   private arenaStart(): void {
     this.protocol = false;
+    this.protocolFinale = false;
     this.chairman.end();
+    this.whiteout.end();
     commitAutoQuality(this.ctx);
     commitTimeOfDay();
     this.autoSampler.reset();
@@ -474,6 +498,7 @@ export class Game {
     ctx.pickups.clear();
     ctx.waves.clear();
     ctx.impact.clear();
+    this.whiteout.end();
   }
 
   private newRun(): RunTally {
@@ -535,7 +560,9 @@ export class Game {
     const { ctx } = this;
     const p = ctx.progression;
     const ck = resume ? (this.protocolCk ?? protocolSave(p).checkpoint) : null;
-    const w = ck ? ck.wave : Math.max(1, Math.min(PROTOCOL_WAVES, Math.round(wave) || 1));
+    // wave PROTOCOL_FINALE (8): THE WHITEOUT straight away (wave 7's round, THE CHAIRMAN already down)
+    const w = ck ? ck.wave : Math.max(1, Math.min(PROTOCOL_FINALE, Math.round(wave) || 1));
+    const round = Math.min(PROTOCOL_WAVES, w);
     this.arenaStart();
     forceNight(); // PROTOCOL C is always at night
     this.setMode('campaign');
@@ -545,17 +572,18 @@ export class Game {
     this.protocolRecord = fromMemory ? this.protocolRecord && protocolUnlocked(p) : protocolRecordsRun(protocolUnlocked(p), w, !!ck);
     this.zoneIndex = PROTOCOL_INDEX;
     this.hard = false;
-    this.roundIndex = w - 1;
+    this.roundIndex = round - 1;
+    this.protocolFinale = w >= PROTOCOL_FINALE;
     this.run = this.newRun();
     this.combo = 0;
     // Enemy HP / damage follow the coins spent on upgrades + gear (config/protocol.ts spendScale).
     this.protocolBase = protocolZone(spendScale(protocolSpent(p)));
-    ctx.zone = protocolWaveZone(this.protocolBase, w);
+    ctx.zone = protocolWaveZone(this.protocolBase, round);
     this.refreshStats();
     this.clearArena();
     setArenaHalfSize(CAMPAIGN_ARENA_HALF);
     setBrawlPerf(ctx, false);
-    this.protocolNav(w);
+    this.protocolNav(round);
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
@@ -573,19 +601,20 @@ export class Game {
     }
     ctx.ui.hideOverlays();
     ctx.ui.setHudVisible(true);
-    ctx.ui.toast(ck ? `PROTOCOL C · RETRY WAVE ${w}` : 'PROTOCOL C', 'big');
+    ctx.ui.toast(ck ? `PROTOCOL C · RETRY ${protocolWaveLabel(w)}` : 'PROTOCOL C', 'big');
     ctx.cameraRig.setMode('follow');
     ctx.cameraRig.snap();
-    this.protocolCheckpoint();
+    this.protocolCheckpoint(w);
     this.beginCountdown();
     this.warmNow();
   }
 
-  /** PROTOCOL C: snapshot the run at this wave's start (memory + save) for RETRY WAVE n. */
-  private protocolCheckpoint(): void {
+  /** PROTOCOL C: snapshot the run at this wave's start (memory + save) for RETRY WAVE n (`wave` PROTOCOL_FINALE: THE
+   *  WHITEOUT starting, RETRY FINALE). */
+  private protocolCheckpoint(wave = this.roundIndex + 1): void {
     const { ctx } = this;
     this.protocolCk = takeCheckpoint({
-      wave: this.roundIndex + 1, hp: ctx.plow.hp, maxHp: ctx.plow.maxHp, time: ctx.time, start: this.run.start,
+      wave, hp: ctx.plow.hp, maxHp: ctx.plow.maxHp, time: ctx.time, start: this.run.start,
       kills: this.run.kills, coins: this.run.coins, uses: this.protocolUses,
     });
     if (this.protocolRecord) saveCheckpoint(ctx.progression, this.protocolCk);
@@ -875,6 +904,13 @@ export class Game {
       const w = this.roundIndex + 1;
       const { echoes } = waveBossCount(w);
       const more = echoes ? ` · + ${echoes} ECHO${echoes > 1 ? 'ES' : ''}` : '';
+      if (this.protocolFinale) {
+        // FINALE retry: straight into THE WHITEOUT (the giant's own card comes as its eye opens)
+        this.countdown = BOSS_COUNTDOWN_SECONDS;
+        ctx.ui.bossIntro('PROTOCOL C', 'FINALE · THE STORM IS STILL HERE');
+        ctx.audio.play('boss');
+        return;
+      }
       if (w >= PROTOCOL_WAVES) {
         // THE REVEAL: a longer countdown while the boardroom box lights up; THE CHAIRMAN's own card comes as he lands
         this.countdown = REVEAL_COUNTDOWN;
@@ -896,7 +932,11 @@ export class Game {
     const { ctx } = this;
     this.state = 'playing';
     ctx.waves.start(ctx.zone, this.roundIndex);
-    if (this.protocol) this.chairman.fight();
+    if (this.protocol && this.protocolFinale) {
+      // FINALE retry: wave 7's round without its spawns; THE WHITEOUT holds the round open until it is beaten
+      ctx.waves.cancel?.();
+      this.whiteout.start([], true);
+    } else if (this.protocol) this.chairman.fight();
     this.ultCam.reset();
     if (this.mode === 'campaign' && this.isBossRound) this.run.bossDamage = 0;
     ctx.events.emit('roundStarted', { round: this.roundIndex + 1, total: ctx.zone.rounds.length, boss: this.isBossRound });
@@ -1009,7 +1049,9 @@ export class Game {
     const { ctx } = this;
     this.state = 'gameover';
     const p = ctx.progression;
-    if (this.protocolRecord) recordProtocolWave(p, this.roundIndex + 1);
+    // a death in THE WHITEOUT counts as reaching the finale (PROTOCOL_FINALE)
+    const wave = this.whiteout.active || this.protocolFinale ? PROTOCOL_FINALE : this.roundIndex + 1;
+    if (this.protocolRecord) recordProtocolWave(p, wave);
     p.data.totalKills += Math.max(0, this.run.kills - this.protocolKills0);
     this.protocolKills0 = this.run.kills;
     p.commit();
@@ -1019,7 +1061,7 @@ export class Game {
     const time = Math.max(0, ctx.time - this.run.start);
     ctx.ui.showGameOver({
       ...this.summaryBase(this.roundIndex), firstClear: false, clearReward: 0, unlockedZoneName: null,
-      protocol: { wave: this.roundIndex + 1, time, bestTime: protocolSave(p).bestTime, newBest: false, uses: this.protocolUses, checkpointWave: this.protocolCk?.wave ?? null },
+      protocol: { wave, time, bestTime: protocolSave(p).bestTime, newBest: false, uses: this.protocolUses, checkpointWave: this.protocolCk?.wave ?? null },
     });
   }
 
@@ -1227,6 +1269,7 @@ export class Game {
       ctx.enemies.update(simDt);
       ctx.combat.update(simDt);
       ctx.pickups.update(simDt);
+      if (this.protocol) this.whiteout.update(simDt);
       this.ultCam.update(simDt);
 
       if (this.comboT > 0) {
@@ -1247,8 +1290,9 @@ export class Game {
         if (n !== this.lastCountdownInt && n > 0 && n <= 3) ctx.audio.play('countdown');
         this.lastCountdownInt = n;
         if (this.countdown <= 0) this.startRound();
-      } else if (ctx.waves.done && !ctx.impact.holding) {
-        // The clearing kill's slow-mo plays out before the shop / next wave.
+      } else if (ctx.waves.done && !ctx.impact.holding && !this.whiteout.holding) {
+        // The clearing kill's slow-mo plays out before the shop / next wave. PROTOCOL C: THE WHITEOUT holds wave 7
+        // open until it is beaten (core/whiteoutDirector.ts).
         this.roundCleared();
       }
 
@@ -1264,7 +1308,10 @@ export class Game {
     ctx.impact.update(dt);
     ctx.world.update(dt);
     ctx.cameraRig.update(dt);
-    if (this.protocol) this.chairman.camera(dt);
+    if (this.protocol) {
+      this.chairman.camera(dt);
+      this.whiteout.camera(dt);
+    }
     ctx.input.endFrame();
   }
 
@@ -1497,9 +1544,10 @@ export class Game {
     hud.overload = ctx.combat.overloadHeat;
     hud.overloadCost = ctx.combat.overloadCost;
     hud.snowFraction = ctx.snow.totalSnowFraction();
+    hud.avalanche = this.protocol ? this.whiteout.ballHud : null;
     hud.bosses = ctx.enemies.bosses.map((b) => ({
-      name: b.echo ? `ECHO ${ENEMIES[b.type].name}` : ENEMIES[b.type].name,
-      title: b.echo ? 'Echo' : b.headline && b.type !== 'chairman' ? `PROTOCOL · ${ENEMIES[b.type].title}` : ENEMIES[b.type].title,
+      name: b.snow ? `SNOW ${ENEMIES[b.type].name}` : b.echo ? `ECHO ${ENEMIES[b.type].name}` : ENEMIES[b.type].name,
+      title: b.snow ? 'Snow copy' : b.echo ? 'Echo' : b.headline && b.type !== 'chairman' ? `PROTOCOL · ${ENEMIES[b.type].title}` : ENEMIES[b.type].title,
       hp: b.hp, maxHp: b.maxHp, type: b.type, echo: !!b.echo, held: !!b.held,
     }));
     hud.combo = this.combo;

@@ -29,6 +29,18 @@ const STORM_TINT = 0.6;
 /** The gale laid over the zone's own weather: dense, fast, wind-driven flakes (the Blizzard Bowl's look, thicker). */
 const STORM_GALE: WeatherLayerDef = { count: 7000, colors: [0xffffff], size: 0.17, fall: 5, wind: [17, 6], sway: 1.6, opacity: 0.95 };
 
+/** PROTOCOL C finale (whiteoutSky): the sky goes black, the fog a dark storm blue pulled in to these (m), the
+ *  ambient dimmed to this share; the Blizzard gale on top. */
+const WO_SKY = new THREE.Color(0x020306);
+const WO_HORIZON = new THREE.Color(0x0d1626);
+const WO_FOG = new THREE.Color(0x121c2c);
+const WO_FOG_NEAR = 26;
+const WO_FOG_FAR = 125;
+const WO_AMBIENT = 0.7;
+/** ... and the floodlights to this share (a darker, moodier floor; telegraph decals are unlit and keep their colour). */
+const WO_FLOODS = 0.62;
+const _wc = new THREE.Color();
+
 export class Environment extends NightScenery implements WorldAPI {
   /** Survival Blizzard gale on (setStorm); setZone clears it. */
   private storm = false;
@@ -154,6 +166,42 @@ export class Environment extends NightScenery implements WorldAPI {
     (this.ctx.scene.background as THREE.Color).copy(this.fog.color);
     this.skyMat.uniforms.horizon.value.copy(this.fog.color);
     this.buildWeather(z);
+  }
+
+  /** PROTOCOL C finale: THE WHITEOUT's storm over the arena, `k` 0 (the zone's own night) .. 1 (black sky, dark storm
+   *  fog, the Blizzard gale on). Colours / fog only (plus the gale's weather layer when it turns on or off); `gale`
+   *  (default: k > 0) = the gale's snow layer (off: the ending's calm, the zone's own gentle snowfall); setZone turns it
+   *  all off. No-op off PROTOCOL C. */
+  whiteoutSky(k: number, gale = k > 0): void {
+    if (!this.zone || this.zone.theme !== 'protocol') return;
+    const z = this.zone;
+    const look = this.look ?? z;
+    const u = Math.max(0, Math.min(1, k));
+    if (gale !== this.storm) {
+      this.storm = gale;
+      this.buildWeather(z);
+    }
+    this.fog.color.setHex(look.fogColor).lerp(WO_FOG, u);
+    this.fog.near = z.fogNear + (WO_FOG_NEAR - z.fogNear) * u;
+    this.fog.far = z.fogFar + (WO_FOG_FAR - z.fogFar) * u;
+    (this.ctx.scene.background as THREE.Color).copy(this.fog.color);
+    const su = this.skyMat.uniforms;
+    su.top.value.setHex(look.skyTop).lerp(WO_SKY, u);
+    su.bottom.value.setHex(look.skyBottom).lerp(WO_SKY, u);
+    su.horizon.value.copy(_wc.setHex(look.fogColor).lerp(WO_HORIZON, u));
+    su.uStars.value = (this.nightDef?.sky?.stars ?? 0) * (1 - u);
+    su.uSunSize.value = (this.nightDef?.sky?.sun?.size ?? 0) * Math.max(0, 1 - u * 2);
+    this.hemi.intensity = look.ambientIntensity * (1 - (1 - WO_AMBIENT) * u);
+    const flood = this.style.spot * (this.night ? (this.style.spot > 2000 ? NIGHT_SPOT_BOOST_BIG : NIGHT_SPOT_BOOST) : 1) * (1 - (1 - WO_FLOODS) * u);
+    for (const sp of this.spots) sp.intensity = flood;
+    // the mountains vanish into the storm; the fascia under the boardroom is torn away with its roof
+    if (this.mountains) this.mountains.visible = u < 0.5;
+    this.tearFascia(u > 0);
+  }
+
+  /** PROTOCOL C finale (THE AVALANCHE): the floor's ice sheets go under the dumped snow (k 0..1); setZone restores. */
+  whiteoutBury(k: number): void {
+    this.decals?.bury(k);
   }
 
   /** Shadow map size from the quality preset. Brawl trades shadow sharpness for frame rate (HIGH: 1024 there,

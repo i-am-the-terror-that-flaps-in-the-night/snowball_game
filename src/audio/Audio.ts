@@ -890,6 +890,19 @@ export class AudioSystem implements AudioAPI {
         this.tone('sawtooth', 130, 65, t + 1.1, 1.2, 0.12, o, 0.05);
         return 2.3;
       }
+      case 'cheer': {
+        // a stadium roaring back to life: a swelling band of voices, claps and a few whistles
+        this.noise(t, 2.8, 0.22, o, 'bandpass', 700, 1100, 0.7, 0.6);
+        this.noise(t + 0.1, 2.6, 0.12, o, 'bandpass', 1800, 2400, 1.2, 0.5);
+        this.noise(t, 2.2, 0.08, o, 'highpass', 3500, 4200, 0.7, 0.3, 1.4);
+        for (let i = 0; i < 3; i++) {
+          const w = t + 0.3 + Math.random() * 1.4;
+          const f = 1700 + Math.random() * 900;
+          this.tone('sine', f, f * 1.5, w, 0.35, 0.05, o, 0.02, 'lin');
+          this.tone('sine', f * 1.5, f * 1.1, w + 0.38, 0.4, 0.04, o, 0.02, 'lin');
+        }
+        return 3;
+      }
       case 'victory': {
         const notes = [523, 659, 784, 1047, 1319, 1568];
         notes.forEach((n, i) => this.bell(n, t + i * 0.12, 0.7, 0.25, o));

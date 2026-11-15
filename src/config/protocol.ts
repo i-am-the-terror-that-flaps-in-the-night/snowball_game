@@ -21,6 +21,14 @@ import { STAGE_FROM_WAVE, protocolTerrain, splitWave } from '../world/protocol/l
 export const PROTOCOL_INDEX = ZONES.length;
 export const PROTOCOL_ID = 'protocol';
 export const PROTOCOL_WAVES = 7;
+/** THE WHITEOUT finale's checkpoint "wave" (internal wave 8: wave 7's round with THE CHAIRMAN already down; a death in
+ *  the finale retries the finale, not wave 7). The run still has seven rounds. */
+export const PROTOCOL_FINALE = 8;
+
+/** Results / zone select label of a checkpoint wave: 'WAVE n' or 'FINALE'. */
+export function protocolWaveLabel(wave: number): string {
+  return wave >= PROTOCOL_FINALE ? 'FINALE' : `WAVE ${wave}`;
+}
 /** Headline (PROTOCOL-upgraded) boss: HP = home-arena HP x max(HEADLINE_HP, HARD.hpMult x HEADLINE_HARD), i.e. at
  *  least its Hard-campaign strength plus 15% (x1.6 home alone was only ~0.89x Hard); x outgoing damage; its cooldowns
  *  between moves run HEADLINE_CD x as fast (wind-ups / telegraphs keep their length: EnemyManager.step). */

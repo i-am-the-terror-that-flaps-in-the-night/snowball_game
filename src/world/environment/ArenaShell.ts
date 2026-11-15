@@ -11,6 +11,9 @@ import { EnvironmentCore } from './EnvironmentCore';
 
 /** Arena shell: walls, gates, stands, towers, jumbotron, south dressing, mountains and drifts. */
 export class ArenaShell extends EnvironmentCore {
+  /** The distant mountain ring of the current build (PROTOCOL C's finale storm hides it: Environment.whiteoutSky). */
+  protected mountains: THREE.Object3D | null = null;
+
   /** Scatter points outside the arena + stands. `huge` items (>18 m) stay clear of the menu orbit (r=50, y=24). */
   protected scatter(count: number, minR: number, maxR: number, huge = false): { x: number; z: number }[] {
     const out: { x: number; z: number }[] = [];
@@ -522,6 +525,7 @@ export class ArenaShell extends EnvironmentCore {
       cItems = cItems.filter((it) => !glowing(it));
     }
     const mm = this.inst(mGeo, mat, [...mItems, ...cItems]);
+    this.mountains = mm ?? null;
     if (mm) {
       for (let i = 0; i < mm.count; i++) {
         const cap = i >= mItems.length;

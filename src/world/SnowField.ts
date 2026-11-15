@@ -870,6 +870,48 @@ export class SnowField implements SnowFieldAPI {
     }
   }
 
+  /**
+   * Bury the arena (THE WHITEOUT's AVALANCHE): `depth` m more snow everywhere it can lie (never on lava; the lava fringe
+   * gets its usual share of it, ice sheets all of it), with a gentle wind-drift variation; the floor paint's ghost fades. The initial depth rises with it (regen
+   * refills ploughed trails toward the new level) and so does the add cap; the snow meter rebases (100% = buried).
+   * Call it in steps to let the snow fall over time. Returns the volume added (m^3, inside the arena).
+   */
+  dump(depth: number): number {
+    if (depth <= 0 || !this.V) return 0;
+    const { V, CELL, HALF } = this;
+    const d = this.depth;
+    const init = this.initial;
+    const mask = this.lavaMask;
+    const base = Math.max(0.05, this.ctx.zone?.snowDepth ?? 0.5);
+    const before = this.total;
+    const t = this.ctx.terrain;
+    const ice = !!t && t.patches.some((p) => p.material === 'ice');
+    // the floor paint no longer shows through: it is under a metre of snow (trenches still reveal it)
+    this.paintGhost = Math.min(this.paintGhost, 0.06);
+    for (let iz = EDGE; iz < V - EDGE; iz++) {
+      const z = -HALF + iz * CELL;
+      const row = iz * V;
+      for (let ix = EDGE; ix < V - EDGE; ix++) {
+        const i = row + ix;
+        if (mask[i]) continue;
+        // the lava fringe holds less snow: the same share of the dump as of the zone's own depth; ice is buried whole
+        const x = -HALF + ix * CELL;
+        const share = ice && t!.materialAt(x, z) === 'ice' ? 1 : Math.min(1, init[i] / base);
+        if (share <= 0) continue;
+        const drift = 0.88 + 0.24 * valueNoise(x * 0.09 + 11, z * 0.09 - 5, 4242);
+        const add = depth * share * drift;
+        d[i] += add;
+        init[i] += add;
+      }
+    }
+    this.addCap += depth * 1.15;
+    this.regen(0);
+    const added = this.total - before;
+    this.initialTotal = Math.max(1e-6, this.total);
+    this.markEdit(0, V - 1, 0, V - 1);
+    return added;
+  }
+
   /* ------------------------------------------------------------------ update */
 
   update(dt: number): void {

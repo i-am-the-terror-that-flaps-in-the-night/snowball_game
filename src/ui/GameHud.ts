@@ -360,5 +360,41 @@ export class GameHud {
     this.radar.update(s.radar);
 
     updateHudPanels({ h: H, last: L, hud: this.hud, refreshKeys: () => this.refreshKeys() }, s);
+    this.updateAvalanche(s.avalanche ?? null);
+  }
+
+  /** PROTOCOL C finale: THE AVALANCHE's giant snowball size meter (built on first use; text / classes change only when
+   *  the state does). */
+  private avEl: { root: HTMLElement; fill: HTMLElement; text: HTMLElement } | null = null;
+  private avLast = { on: false, pct: -1, full: false, forming: false };
+  private updateAvalanche(a: { frac: number; full: boolean; forming: boolean } | null): void {
+    const on = !!a;
+    if (!on && !this.avLast.on) return;
+    if (!this.avEl) {
+      // bottom right, over the snow meter: clear of the eye on the stand front (top centre) and the ability row
+      const root = el('div', 'ss-avalanche hidden', undefined, this.hud);
+      el('div', 'ss-av-title', 'GIANT SNOWBALL', root);
+      const bar = el('div', 'ss-av-bar', undefined, root);
+      const fill = el('div', 'ss-av-fill', undefined, bar);
+      el('div', 'ss-av-goal', 'EYE', bar);
+      const text = el('div', 'ss-av-text', '', root);
+      this.avEl = { root, fill, text };
+    }
+    const E = this.avEl;
+    const L = this.avLast;
+    if (on !== L.on) {
+      L.on = on;
+      E.root.classList.toggle('hidden', !on);
+    }
+    if (!a) return;
+    const pct = a.forming ? 0 : Math.round(a.frac * 100);
+    if (pct !== L.pct || a.full !== L.full || a.forming !== L.forming) {
+      L.pct = pct;
+      E.fill.style.transform = `scaleX(${pct / 100})`;
+      L.full = a.full;
+      L.forming = a.forming;
+      E.root.classList.toggle('full', a.full);
+      E.text.textContent = a.forming ? 'FORMING...' : a.full ? 'FULL SIZE! RAM IT INTO THE EYE!' : `${pct}% · ROLL IT THROUGH DEEP SNOW`;
+    }
   }
 }

@@ -285,7 +285,7 @@ export function getLavaMaterial(): THREE.ShaderMaterial {
  *  coverage (0..1): the arena floor keeps snow showing through, the skirt outside the walls is nearly solid. */
 export function scorchMaterial(side: number, floor = 0.3): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    uniforms: { ...THREE.UniformsLib.fog, uTime: lavaTime, uSide: { value: side }, uFloor: { value: floor } },
+    uniforms: { ...THREE.UniformsLib.fog, uTime: lavaTime, uSide: { value: side }, uFloor: { value: floor }, uBury: { value: 0 } },
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
       varying vec2 vW;
@@ -300,6 +300,7 @@ export function scorchMaterial(side: number, floor = 0.3): THREE.ShaderMaterial 
       uniform float uTime;
       uniform float uSide;
       uniform float uFloor;
+      uniform float uBury;
       varying vec2 vW;
       float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float n(vec2 p) {
@@ -321,7 +322,7 @@ export function scorchMaterial(side: number, floor = 0.3): THREE.ShaderMaterial 
         float v2 = smoothstep(0.03, 0.0, abs(n(vW * 0.45 + 17.0) - 0.5)) * 0.35;
         float vein = max(v1, v2) * smoothstep(0.25, 0.5, n(vW * 0.07 + 11.0));
         c = mix(c, vec3(1.0, 0.36, 0.06) * (1.7 + 0.4 * sin(uTime * 2.0 + vW.y * 0.3)), vein);
-        float alpha = clamp(max(ash, vein), 0.0, 1.0) * edge;
+        float alpha = clamp(max(ash, vein), 0.0, 1.0) * edge * (1.0 - uBury);
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(c, alpha);
         #include <colorspace_fragment>
@@ -535,6 +536,7 @@ export class GroundDecals {
     if (biome === 'divide') {
       const m = scorchMaterial(-1);
       this.mats.push(m);
+      this.scorch = m;
       // on the snow grid's own vertices (-half is a whole, even number of cells from the field's edge)
       this.add(terrain, [gridStrip(-half, 0, -half, half, cell)], m, false, 1, { lift: SCORCH_LIFT });
       // the divide itself: a glowing seam down x = 0, magma on the west lip, ice on the east (one snow cell each)
@@ -543,6 +545,7 @@ export class GroundDecals {
         sm.color.multiplyScalar(1.4);
         this.mats.push(sm);
         this.add(terrain, [gridStrip(x0, x1, -half, half, cell)], sm, false, 2, { lift: SCORCH_LIFT * 2 });
+        this.seams.push(this.draped[this.draped.length - 1].mesh);
       }
     }
     const lava: Strip[] = [];
@@ -584,12 +587,13 @@ export class GroundDecals {
       });
     }
     if (ice.length) {
-      const m = new THREE.MeshStandardMaterial({
+      const m = (this.iceMat = new THREE.MeshStandardMaterial({
         color: 0xffffff, map: getIceTex(), roughness: 0.06, metalness: 0.15, transparent: true, opacity: 0.86,
         emissive: 0x174a6a, emissiveIntensity: 0.35, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-      });
+      }));
       this.mats.push(m);
       this.add(terrain, ice, m, true, 2, { worldUv: true });
+      this.iceMesh = this.draped[this.draped.length - 1].mesh;
     }
     for (const [tint, list] of decks) {
       // tinted decks (Rust Basin, The Thermal Divide) are lifted with a little self-light from the plate texture, so a
@@ -689,6 +693,24 @@ export class GroundDecals {
     mesh.matrixAutoUpdate = false;
     this.group.add(mesh);
     this.draped.push({ mesh, pos: attr, base, onSnow });
+  }
+
+  private iceMat: THREE.MeshStandardMaterial | null = null;
+  private iceMesh: THREE.Mesh | null = null;
+
+  private scorch: THREE.ShaderMaterial | null = null;
+  private readonly seams: THREE.Mesh[] = [];
+
+  /** THE WHITEOUT's AVALANCHE: the ice sheets and the scorched half vanish under the dumped snow (k 0 = shown .. 1 =
+   *  buried; lava, its crust and the ramps stay). */
+  bury(k: number): void {
+    const u = Math.max(0, Math.min(1, k));
+    if (this.iceMat && this.iceMesh) {
+      this.iceMat.opacity = 0.86 * (1 - u);
+      this.iceMesh.visible = u < 0.99;
+    }
+    if (this.scorch) this.scorch.uniforms.uBury.value = u;
+    for (const m of this.seams) m.visible = u < 0.5;
   }
 
   /** Re-seat every snow-riding vertex on ground + snow. */

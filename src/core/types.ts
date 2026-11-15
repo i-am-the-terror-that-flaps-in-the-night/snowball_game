@@ -243,6 +243,9 @@ export interface SnowFieldAPI {
   melt(x: number, z: number, radius: number, amount: number): void;
   /** Remaining snow volume as a fraction of the zone's initial volume (0..1+). */
   totalSnowFraction(): number;
+  /** Bury the arena under `depth` m more snow (THE WHITEOUT's AVALANCHE; the initial depth rises with it). Returns the
+   *  volume added (m^3). Optional: the campaign field only. */
+  dump?(depth: number): number;
   /** Refill to the zone's initial depth (with gentle natural variation) and apply zone tint. */
   reset(zone: ZoneDef): void;
   /** Regenerates snow and pushes changed heights to the GPU. */
@@ -266,6 +269,12 @@ export interface WorldAPI {
    *  unseen lit silhouette (waves 1-6), 'lit' = revealed (THE DONALD, lit; `k` 0..1 ramps the lights), 'gone' = the
    *  box has detached (his descent). No-op on any other arena. */
   boardroom?(mode: 'shadow' | 'lit' | 'gone', k?: number): void;
+  /** PROTOCOL C finale: THE WHITEOUT's storm, `k` 0 (the zone's night) .. 1 (black sky, dark storm fog, the gale).
+   *  `gale` (default k > 0): the gale's snow layer (THE IMPLOSION calms it while the sky is still dark).
+   *  No-op on any other arena; setZone clears it. */
+  whiteoutSky?(k: number, gale?: boolean): void;
+  /** PROTOCOL C finale, THE AVALANCHE: the floor's ice sheets go under the dumped snow (k 0 shown .. 1 buried). */
+  whiteoutBury?(k: number): void;
   /** Flash/open the gate with this index (0..2) — call when a bot drives in through it. No-op in Brawl. */
   openGate(index: number): void;
   /** Solid circle obstacles inside the ARENA (empty in the campaign; pillars/containers/rocks in Brawl).
@@ -312,6 +321,8 @@ export interface PlowAPI {
   readonly invulnerable: boolean;
   /** REVENANT PHASE: spectral (invulnerable, no pushes / pulls, drives through bots and props). Absent = never. */
   phased?: boolean;
+  /** A cinematic is playing (THE WHITEOUT's ending): invulnerable while true. Absent = never. */
+  cinematic?: boolean;
   /** 0..1 growth of the BRUTUS Buzzsaw halos (0 = idle or no saws). Grows with saw spin, which rises with plow
    *  speed and saw fury; Combat widens the saw reach with it. */
   readonly sawHalo: number;
@@ -432,6 +443,8 @@ export interface EnemyHandle {
   readonly held?: boolean;
   /** PROTOCOL C: seconds left on THE CHAIRMAN's HOSTILE TAKEOVER buff on this echo (> 0 = ACQUIRED; Bot.acquired). */
   readonly acquired?: number;
+  /** PROTOCOL C finale: a snow copy (an echo in white). */
+  readonly snow?: boolean;
 }
 
 export interface DamageOpts {
@@ -474,7 +487,8 @@ export interface DamageOpts {
 }
 
 export interface EnemyManagerAPI {
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean }): EnemyHandle;
+  /** `snow`: a PROTOCOL C finale snow copy (with `echo`: a white hologram echo that bursts into powder). */
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean; snow?: boolean }): EnemyHandle;
   /** Living enemies whose collision circle overlaps the given circle. Reuses `out` if provided. */
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[];
   /** Callers pass RAW damage. The manager applies armor (min 1; reduced for `direct` hits), directional armor, and vulnerability
@@ -487,7 +501,7 @@ export interface EnemyManagerAPI {
   readonly bosses: readonly EnemyHandle[];
   /** Optional (the campaign manager): remove a bot quietly (a gold flash, no kill events, no coins): PROTOCOL C's
    *  echoes powering down once THE CHAIRMAN falls. */
-  dismiss?(e: EnemyHandle): void;
+  dismiss?(e: EnemyHandle, color?: number): void;
   clear(): void;
   /** AI, movement, wall clamping, bot-bot separation, plow contact resolution (see Enemies.ts). */
   update(dt: number): void;
@@ -704,7 +718,9 @@ export type SoundName =
   // Paint Shop horns (slam sound cosmetics)
   | 'hornAir' | 'hornClown' | 'hornBoom' | 'hornBell' | 'hornPixel'
   // Terrain / biomes (level overhaul)
-  | 'jump' | 'land' | 'airSlam' | 'lavaBurn';
+  | 'jump' | 'land' | 'airSlam' | 'lavaBurn'
+  // PROTOCOL C finale: the crowd digging out of the snow, roaring
+  | 'cheer';
 
 /** Per-biome ambience loop (AudioAPI.setAmbience; ZoneDef.biome.ambience). */
 export type AmbienceKind = 'none' | 'wind' | 'lava' | 'dust' | 'factory' | 'crowd';
@@ -777,6 +793,9 @@ export interface HudState {
   overload?: number;
   overloadCost?: number;
   snowFraction: number;
+  /** PROTOCOL C finale, THE AVALANCHE: the giant snowball's size meter (frac 0..1 of the way to full size; forming =
+   *  no ball right now / still forming; bursts so far), or null / absent. */
+  avalanche?: { frac: number; full: boolean; forming: boolean; bursts: number } | null;
   bosses: HudBoss[];
   /** Consecutive hits without a 2.5s gap (0/1 = no combo). */
   combo: number;

@@ -25,6 +25,8 @@ interface BoardroomRig {
   lit: THREE.Object3D;
   warm: THREE.MeshStandardMaterial;
   glow: THREE.Sprite;
+  /** The pylons, arms, fascia and light bar holding the box (torn away by THE WHITEOUT's storm). */
+  sign: THREE.Object3D | null;
 }
 
 /**
@@ -36,6 +38,12 @@ interface BoardroomRig {
 export class ProtocolScenery extends VenueScenery {
   /** The current PROTOCOL C build's boardroom (null before the first one; stale off PROTOCOL C: boardroom() checks). */
   private boardroomRig: BoardroomRig | null = null;
+
+  /** THE WHITEOUT's storm tears the PROTOCOL C fascia away (on) / it is back (off: a new build has it anyway). */
+  protected tearFascia(on: boolean): void {
+    const r = this.boardroomRig;
+    if (r?.sign && this.zone.theme === 'protocol') r.sign.visible = !on;
+  }
 
   /** WorldAPI.boardroom: the box's state (see core/types.ts). */
   boardroom(mode: 'shadow' | 'lit' | 'gone', k = 1): void {
@@ -73,11 +81,20 @@ export class ProtocolScenery extends VenueScenery {
     const y0 = y - hh;
     // pylons from behind the north stand, a cross brace
     const backZ = ARENA.minZ - (STAND_N0 + ROWS * ROW_D) - 1.2;
+    // (its own group, not baked: THE WHITEOUT's storm tears the whole rig away: tearFascia)
+    const frame = new THREE.Group();
+    frame.name = 'BoardroomFrame';
+    // (no shadow casting: a static shadow proxy would outlive the torn frame)
+    const part = (w: number, h: number, d: number, px: number, py: number, pz: number, mat: THREE.Material) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(px, py, pz);
+      frame.add(m);
+    };
     for (const sx of [-1, 1]) {
-      box(1.0, y0, 1.0, sx * (hw - 2), y0 / 2, backZ, gold);
-      box(0.5, 0.5, Math.abs(z - backZ) + hd, sx * (hw - 2), y0 - 0.5, (z + backZ) / 2, gold);
+      part(1.0, y0, 1.0, sx * (hw - 2), y0 / 2, backZ, gold);
+      part(0.5, 0.5, Math.abs(z - backZ) + hd, sx * (hw - 2), y0 - 0.5, (z + backZ) / 2, gold);
     }
-    box(2 * hw - 4, 0.45, 0.45, 0, y0 * 0.55, backZ, gold);
+    part(2 * hw - 4, 0.45, 0.45, 0, y0 * 0.55, backZ, gold);
     this.buildBoardroomBox(gold, navy);
     // fascia under the front edge: PROTOCOL C in gold on navy
     const [c, g] = canvas(1024, 128);
@@ -95,9 +112,11 @@ export class ProtocolScenery extends VenueScenery {
     this.zoneTex.push(tex);
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(2 * hw, 2 * hw * 0.125), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
     sign.position.set(x, y0 - 0.55 - hw * 0.125, z + hd + 0.32);
-    this.add(sign);
+    frame.add(sign);
     // a gold light bar along the box's underside
-    box(2 * hw, 0.14, 0.14, x, y0 - 0.6, z + hd + 0.3, this.emissive(0xffd257, 1.6, { speed: 2.2 }), false);
+    part(2 * hw, 0.14, 0.14, x, y0 - 0.6, z + hd + 0.3, this.emissive(0xffd257, 1.6, { speed: 2.2 }));
+    this.add(frame);
+    if (this.boardroomRig) this.boardroomRig.sign = frame;
   }
 
   /** The box itself, in its own group (merged per material): slabs, gold frame, the lit back wall, the long table and
@@ -219,7 +238,7 @@ export class ProtocolScenery extends VenueScenery {
     B.dispose();
     SPH.dispose();
     this.add(group);
-    this.boardroomRig = { group, shadow, lit: litGroup, warm, glow };
+    this.boardroomRig = { group, shadow, lit: litGroup, warm, glow, sign: null };
   }
 
   /** Waves 5+: a low stage behind the north wall, a podium, two gold light posts (no collider: decor only). */

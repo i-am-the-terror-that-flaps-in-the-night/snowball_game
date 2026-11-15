@@ -114,6 +114,16 @@ export function hologramMaterial(seed = 0): THREE.ShaderMaterial {
   return m;
 }
 
+/** THE WHITEOUT's snow copies (and the echoes frozen into snow statues): the same hologram in packed-snow white with a
+ *  cold blue rim (a uniform change only: same program, nothing to compile). */
+export const HOLO_SNOW = new THREE.Color(0xd6ecff);
+
+/** Recolour a rig's hologram to snow. */
+export function snowHologram(m: THREE.ShaderMaterial): THREE.ShaderMaterial {
+  (m.uniforms.uColor.value as THREE.Color).copy(HOLO_SNOW);
+  return m;
+}
+
 /** Materials that stay as they are on a hologram: lit-up parts (eyes, glow strips) and the snowball. */
 const KEEP_ROLES = new Set(['eye', 'glow', 'ball']);
 

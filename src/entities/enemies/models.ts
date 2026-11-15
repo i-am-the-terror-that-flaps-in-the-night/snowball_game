@@ -1367,6 +1367,43 @@ function twinlink(): Tpl {
   return { root, height: 2.1, stacks, front: 1.0 };
 }
 
+/** THE WHITEOUT's STORM HEART (PROTOCOL C finale): a tall jagged ice crystal (self-lit, cold blue) turning slowly over a
+ *  cracked dark-ice plinth ringed with shards (the paint: it flashes on hits), two glowing halo bands (the glow: the
+ *  director pulses it with the beam to the giant). The beam leaves its tip at STORMHEART_TIP_Y. */
+export const STORMHEART_TIP_Y = 4.1;
+function stormheart(): Tpl {
+  const t: EnemyType = 'stormheart';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const plinth = mat('paint_stormheart', 0x41587a, { roughness: 0.4, metalness: 0.15 }, 'paint');
+  const shard = mat('stormheartShard', 0x9fd4f2, { roughness: 0.2, metalness: 0.1, emissive: 0x2a6aa8, emissiveIntensity: 0.6 });
+  base.add(G.cyl(7), plinth, [0, 0.22, 0], [1.25, 0.44, 1.25]);
+  base.add(G.taper(0.7, 7), plinth, [0, 0.62, 0], [0.95, 0.4, 0.95], [0, 0.3, 0]);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * PI * 2 + 0.4;
+    const r = 1.05 + (i % 3) * 0.12;
+    base.add(G.oct(), shard, [Math.sin(a) * r, 0.42, Math.cos(a) * r], [0.2, 0.5 + (i % 2) * 0.25, 0.2], [Math.cos(a) * 0.5, a, -Math.sin(a) * 0.5]);
+  }
+  base.flush();
+  const { b } = sub(root, 'spinY', [0, 0, 0], { dir: 1 });
+  const ice = mat('stormheartIce', 0xd8f4ff, { roughness: 0.12, metalness: 0.05, emissive: 0x4aa8ff, emissiveIntensity: 0.85 });
+  b.add(G.oct(), ice, [0, 2.45, 0], [0.62, 1.65, 0.62]);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * PI * 2;
+    b.add(G.oct(), ice, [Math.sin(a) * 0.5, 1.75, Math.cos(a) * 0.5], [0.26, 0.85, 0.26], [Math.cos(a) * 0.45, 0, -Math.sin(a) * 0.45]);
+  }
+  const halo = glowMat(t, 0x7fdcff, 1.4);
+  b.add(G.torus(), halo, [0, 2.2, 0], [0.95, 0.95, 0.95], [PI / 2 - 0.25, 0, 0]);
+  b.add(G.torus(), halo, [0, 2.9, 0], [0.7, 0.7, 0.7], [PI / 2 + 0.3, 0, 0.2]);
+  b.flush();
+  return { root, height: 3.9, stacks: [], front: 1.2 };
+}
+
+/** THE WHITEOUT's EYE as a bot: no mesh of its own (the giant draws the eye: world/protocol/WhiteoutGiant.ts). */
+function whiteoutEye(): Tpl {
+  return { root: new THREE.Group(), height: 4.5, stacks: [], front: 3.4 };
+}
+
 /** Slushlings are scrappers shrunk to this scale (their radius is ~0.65 of a scrapper's). */
 const SLUSHLING_SCALE = 0.64;
 function slushling(): Tpl {
@@ -1384,6 +1421,8 @@ const BUILDERS: Record<EnemyType, () => Tpl> = {
   rallybot: () => scrapper('rallybot'),
   donald,
   chairman,
+  stormheart,
+  whiteout: whiteoutEye,
   bulldoza,
   frostbyte,
   grinder,
