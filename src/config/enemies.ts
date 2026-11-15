@@ -1,5 +1,6 @@
 /** Every enemy is a BOT (robot vehicle). Combat is close-quarters (rams, shoves, slams, spins, short-range
- *  shockwaves) with ONE exception: the Flurry Gunner's slow, telegraphed snowball bolt (dodgeable, see GUNNER_*). */
+ *  shockwaves) with two ranged exceptions: the Flurry Gunner's slow, telegraphed snowball bolt (dodgeable, see
+ *  GUNNER_*) and the Mirror Plow's copied beam (telegraphed by a ground stripe, see MIRROR_*). */
 export type EnemyType =
   | 'scrapper'
   | 'brute'
@@ -23,7 +24,13 @@ export type EnemyType =
   /** Splitter minion: bursts into SPLIT_COUNT slushlings when wrecked. */
   | 'slushpile'
   /** A Slushpile's mini (a shrunken scrapper): never in a wave list, only spawned by a split. */
-  | 'slushling';
+  | 'slushling'
+  /** Elite copycat: watches the plow's abilities and copies them back (MIRROR_*), then stalls, exposed. */
+  | 'mirror'
+  /** Elite area denial: anchors in place, drags the plow in, zaps it up close; two anchored towers chain a fence. */
+  | 'magnet'
+  /** Elite pair: two bots on an energy tether; a wrecked twin is revived by its partner unless both go down. */
+  | 'twinlink';
 
 export interface EnemyDef {
   type: EnemyType;
@@ -115,6 +122,18 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
     type: 'slushling', name: 'Slushling', title: '', hp: 12, speed: 9, radius: 0.6, mass: 0.35, ramDamage: 4, armor: 0, coins: 1, isBoss: false, color: 0xb6cad6, accent: 0x3fd1a8,
     special: 'A Slushpile\'s mini: a shrunken scrapper that circles and darts in. Only spawned by a split.',
   },
+  mirror: {
+    type: 'mirror', name: 'Mirror Plow', title: '', hp: 260, speed: 9, radius: 1.5, mass: 1.6, ramDamage: 16, armor: 2, coins: 40, isBoss: false, color: 0xc9d4e2, accent: 0xff3bd0,
+    special: 'A chrome rival plow with a magenta "recording" halo. It shadows the plow at mid range and WATCHES: every dash, slam, whirl or F ability the player uses is recorded (the halo turns the move\'s colour, "COPYING ...!") and played back 1.5 s later at copy strength: DASH (a telegraphed charge), RING (a ground ring that slams down), BEAM (a ground stripe, then a beam along it) or CONE (a wedge blast ahead). After every copy it STALLS for 1.5 s, EXPOSED (x1.5 damage taken). Bait a copy, dodge it, punish the stall. Never copies ultimates.',
+  },
+  magnet: {
+    type: 'magnet', name: 'Magnet Tower', title: '', hp: 160, speed: 4.5, radius: 1.3, mass: 4, ramDamage: 8, armor: 4, coins: 22, isBoss: false, color: 0xb8262c, accent: 0xdde4ec,
+    special: 'A tracked horseshoe-magnet tower. Drives to a spot 10-16 m from the plow and ANCHORS (three legs stamp down, 1.5 s, vulnerable), then drags the plow toward it (within 14 m, ~35% of the plow\'s top speed, heavy plows resist) and ZAPS it inside 4 m. Every 6 s its coil OVERHEATS for 2 s (no pull, x1.5 damage taken). Two anchored towers within 18 m chain an ELECTRIC FENCE: crossing it zaps and throws the plow back. Outrange it, hit it overheated, or come in from outside the fence.',
+  },
+  twinlink: {
+    type: 'twinlink', name: 'Tether Twin', title: '', hp: 90, speed: 7.5, radius: 1.1, mass: 1.1, ramDamage: 10, armor: 1, coins: 12, isBoss: false, color: 0x3a3f9a, accent: 0xffd23a,
+    special: 'Always spawned as a PAIR joined by a gold energy tether (driving through it zaps you and throws you off). Wreck one and it drops as a smoking HUSK: its partner ENRAGES (faster) and rushes over to REVIVE it (2.5 s channel, a gold beam; a big hit or knockback interrupts it), back at 50% HP. Wreck the partner while the other is a husk and both go down: within 4 s of each other = SEVERED! bonus coins.',
+  },
   omega: {
     type: 'omega', name: 'MEGAPLOW Ω', title: 'The Final Machine', hp: 2400, speed: 4.5, radius: 3.2, mass: 10, ramDamage: 30, armor: 8, coins: 400, isBoss: true, color: 0x22252b, accent: 0xff1744,
     special: 'Colossal black-and-chrome mega plow with a triple blade, glowing red core and hazard lights. Three phases (announce each with a roar + shake). P1 (100-66%): CHARGE (1.0s telegraph, 18 m/s, wall-hit = 2s stun) and SHOVE (0.6s, when within 6m). P2 (66-33%): adds GROUND POUND — 1.1s telegraph (it rears up, a red ring of radius 8 appears on the ground), slams down: ramDamage x1.2 to anything within 8m + knockback (get out of the ring!); summons 3 scrappers at the start of P2. P3 (<33%): ENRAGED (red core pulsing, speed x1.35), combos CHARGE -> GROUND POUND, summons 2 brutes once. Core vulnerability: after a ground pound it is exposed for 1.5s (takes x1.5).',
@@ -151,3 +170,46 @@ export const BULWARK_REAR_MULT = 1.3;
 /** Slushlings a wrecked Slushpile bursts into, and their outward kick (m/s). */
 export const SPLIT_COUNT = 3;
 export const SPLIT_KICK = 8;
+
+/** Mirror Plow: seconds between seeing a move and playing it back; the stall (EXPOSED) after each copy and its damage
+ *  multiplier; the cooldown before it records again; the move ranges / sizes. */
+export const MIRROR_DELAY = 1.5;
+export const MIRROR_STALL = 1.5;
+export const MIRROR_EXPOSED = 1.5;
+export const MIRROR_COOLDOWN = 2.5;
+export const MIRROR_RING_R = 5.5;
+export const MIRROR_BEAM_LEN = 16;
+export const MIRROR_BEAM_W = 1.4;
+export const MIRROR_CONE_LEN = 8;
+export const MIRROR_CONE_W = 4.5;
+/** Damage of each copied move, as a multiple of the Mirror's ramDamage (the "copy strength"). */
+export const MIRROR_DMG = { dash: 1, ring: 1.2, beam: 0.9, cone: 1.1 } as const;
+
+/** Magnet Tower: anchoring time (vulnerable), pull reach (m) and strength (share of the plow's own top speed, Plow.tow),
+ *  zap reach / damage / interval, the overheat cycle (pull seconds, then overheated seconds, x damage taken), and the
+ *  fence (max link length, damage, throw speed, per-hit cooldown). */
+export const MAGNET_ANCHOR = 1.5;
+export const MAGNET_PULL_R = 14;
+export const MAGNET_PULL = 0.35;
+export const MAGNET_ZAP_R = 4;
+export const MAGNET_ZAP_DMG = 8;
+export const MAGNET_ZAP_GAP = 0.5;
+export const MAGNET_ON = 6;
+export const MAGNET_HOT = 2;
+export const MAGNET_HOT_MULT = 1.5;
+export const FENCE_MAX = 18;
+export const FENCE_DMG = 15;
+export const FENCE_THROW = 12;
+export const FENCE_CD = 0.8;
+
+/** Tether Twins: max tether length (the pair regroups past it), revive channel (s) and HP share, enrage speed, the
+ *  SEVERED window (s) and bonus coins (x a twin's coins), the tether zap (damage, throw, cooldown). */
+export const TWIN_TETHER_MAX = 12;
+export const TWIN_REVIVE = 2.5;
+export const TWIN_REVIVE_HP = 0.5;
+export const TWIN_ENRAGE_SPEED = 1.3;
+export const TWIN_SEVER_WINDOW = 4;
+export const TWIN_SEVER_BONUS = 3;
+export const TWIN_TETHER_DMG = 10;
+export const TWIN_TETHER_THROW = 9;
+export const TWIN_TETHER_CD = 0.8;

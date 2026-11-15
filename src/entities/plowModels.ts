@@ -908,8 +908,11 @@ const _trailCol = new THREE.Color();
 const pick = (colors: readonly number[]) => colors[(Math.random() * colors.length) | 0] ?? 0xffffff;
 
 /** One trail puff at `at` (world). Called a few dozen times a second while driving; `dash` makes it denser and
- *  livelier. `t` (seconds) drives the rainbow's hue cycle. */
-export function emitTrail(fx: FxAPI, trail: TrailDef, at: THREE.Vector3, dash: boolean, t: number): void {
+ *  livelier. `t` (seconds) drives the rainbow's hue cycle. Ghostfire also takes the heading this corner moved along
+ *  (`yaw`), the metres it `moved` since its last puff (its glowing track mark) and the `groundY` under it. */
+export function emitTrail(
+  fx: FxAPI, trail: TrailDef, at: THREE.Vector3, dash: boolean, t: number, yaw = 0, moved = 0, groundY = at.y - 0.85,
+): void {
   const c = trail.colors;
   switch (trail.style) {
     case 'ice':
@@ -927,6 +930,10 @@ export function emitTrail(fx: FxAPI, trail: TrailDef, at: THREE.Vector3, dash: b
     case 'rainbow':
       _trailCol.setHSL((t * 0.45) % 1, 0.9, 0.58);
       fx.burst(at, { color: _trailCol.getHex(), count: dash ? 8 : 4, speed: dash ? 1 : 0.4, size: dash ? 0.3 : 0.22, gravity: 0.3, life: 1.2 });
+      break;
+    case 'ghostfire':
+      if (fx.ghost) fx.ghost.trail(at.x, at.y, at.z, groundY, yaw, moved, dash);
+      else fx.burst(at, { color: pick(c), count: dash ? 5 : 2, speed: 1.2, size: 0.3, gravity: -5, life: 0.6 });
       break;
     default:
       break;

@@ -5,11 +5,14 @@ import { bodyBand, heightOk, waveHitPlow } from './combat/shared';
 import {
   BULWARK_BLOCK, BULWARK_REAR_MULT, BULWARK_SHIELD_COS, ENEMIES, GUNNER_BOLT_KNOCK, GUNNER_BOLT_R, GUNNER_BOLT_RANGE,
   GUNNER_BOLT_SPEED, GUNNER_MAX_AIMING, GUNNER_RANGE_MAX, SPLIT_COUNT, SPLIT_KICK, type EnemyType,
+  FENCE_CD, FENCE_DMG, FENCE_MAX, FENCE_THROW, TWIN_SEVER_BONUS, TWIN_SEVER_WINDOW, TWIN_TETHER_CD, TWIN_TETHER_DMG, TWIN_TETHER_THROW,
 } from '../config/enemies';
-import { Bot, Vuln, type Host } from './enemies/Bot';
-import { HpBars, createRig, debrisGeometry, debrisMaterials, debrisWarmMaterials, disposeRig, rollWheels } from './enemies/models';
+import { Bot, MirrorMove, Vuln, type Host } from './enemies/Bot';
+import {
+  HpBars, MAGNET_TOP_Y, TWIN_PYLON_Y, createRig, debrisGeometry, debrisMaterials, debrisWarmMaterials, disposeRig, rollWheels,
+} from './enemies/models';
 import { DecalPool } from './enemies/decals';
-import { MINION_AI, aroundAngle, clamp, initAI, orbit, resetAI, wrap } from './enemies/ai';
+import { MINION_AI, MOVE_COLOR, aroundAngle, clamp, initAI, orbit, resetAI, segDist, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
 import { donaldProps } from './enemies/donaldProps';
 import type { KillSource, KillWeapon } from '../core/events';
@@ -29,6 +32,8 @@ import {
  *    CLASH, vulnerability multipliers, freeze, knockback / mass, hit flash, minion HP bars, death explosions with
  *    flying debris, the Slushpile's split into slushlings
  *  - the Flurry Gunner's snowball bolts (a small pooled projectile set: flight, plow hits, walls / props / terrain)
+ *  - the elites' links: Magnet Tower fences and Tether Twin tethers (pooled beams, plow crossing zaps), the twins'
+ *    husk / revive / SEVERED, and the player-move cues the Mirror Plow copies
  *  - telegraph ground decals (charge stripes, warning rings) */
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
@@ -61,7 +66,7 @@ const _dv = new THREE.Vector3();
 const POWER_DOWN_GAP = 0.15;
 /** Share of a bot's armour that rapid weapon hits (DamageOpts.direct: minigun rounds, laser ticks) still face. */
 const DIRECT_ARMOR = 0.5;
-const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff, donald: 0xffc400 };
+const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { twinlink: 0xffb020, slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff, donald: 0xffc400 };
 
 const _c = new THREE.Color();
 const _ec = new THREE.Color();
@@ -122,6 +127,20 @@ interface Bolt {
   active: boolean;
 }
 let _boltGeo: THREE.BufferGeometry | null = null;
+let _beamGeo: THREE.BufferGeometry | null = null;
+interface LinkBeam {
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+}
+const FENCE_COLOR = new THREE.Color(0x58b8ff);
+const TWIN_COLOR = new THREE.Color(0xffb81a);
+/** Dark sheath drawn round every link beam so it reads on white snow (BEAM_EDGE x the beam radius). */
+const BEAM_EDGE_COLOR = new THREE.Color(0x0a1430);
+const BEAM_EDGE = 1.9;
+const FENCE_ZAP_BURST = { color: 0xcfe8ff, count: 22, speed: 9, size: 0.1, gravity: 6, life: 0.4 };
+const TETHER_ZAP_BURST = { color: 0xffd23a, count: 18, speed: 8, size: 0.1, gravity: 6, life: 0.4 };
+const TWIN_REVIVE_BURST = { color: 0xffd23a, count: 26, speed: 6, size: 0.16, gravity: -2, life: 0.8 };
+const HUSK_SMOKE = { color: 0x2a2a30, count: 2, speed: 1.2, size: 0.4, gravity: -3, life: 1 };
 let _boltMat: THREE.MeshStandardMaterial | null = null;
 
 export class EnemyManager implements EnemyManagerAPI, Host {
@@ -147,6 +166,17 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private aimers = 0;
   private bolts: Bolt[] = [];
   private nextTokenT = 0;
+  /** Pooled link beams (fences / tethers / revive beams), filled per frame by links(). */
+  private beams: LinkBeam[] = [];
+  private beamN = 0;
+  /** Seconds until a fence / tether can zap the plow again. */
+  private fenceCd = 0;
+  private tetherCd = 0;
+  /** Player moves the Mirror Plow copies (Host.cueMove / cueT) and last frame's dash / whirl state (rising edges). */
+  cueMove = 0;
+  cueT = -1;
+  private wasDashing = false;
+  private wasWhirling = false;
   private lastSfx = new Map<string, number>();
   private plowAlive = true;
   private bossAlive = false;
@@ -186,6 +216,20 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.ctx = ctx;
     this.decals = new DecalPool(ctx.scene);
     this.bars = new HpBars(ctx.scene);
+    // What the Mirror Plow watches: slams and Plow Rushes, and each plow's F ability (by plow kind).
+    ctx.events.on('slam', () => this.cue(MirrorMove.Ring));
+    ctx.events.on('plowRush', () => this.cue(MirrorMove.Dash));
+    ctx.events.on('ability', ({ nuke }) => {
+      if (nuke) return;
+      const k = ctx.stats.plowKind as string;
+      this.cue(k === 'volt' ? MirrorMove.Beam : k === 'isotope' ? MirrorMove.Cone : k === 'brute' || k === 'arsenal' ? MirrorMove.Ring : MirrorMove.Dash);
+    });
+  }
+
+  /** The player just used a move the Mirror Plow can copy. */
+  private cue(m: number): void {
+    this.cueMove = m;
+    this.cueT = this.time;
   }
 
   /* ------------------------------------------------------------------ API */
@@ -225,6 +269,15 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.desHeading = e.heading;
     initAI(e);
     if (type === 'sleet') e.cd3 = 3;
+    if (type === 'twinlink') {
+      // pair with a waiting twin (spawned just before), else wait for the next one
+      const mate = this.list.find((b) => b.alive && b.type === 'twinlink' && !b.partner);
+      if (mate) {
+        mate.partner = e;
+        e.partner = mate;
+        e.orbitDir = mate.orbitDir;
+      }
+    }
     // Feet on the surface at the spawn height (ground by default; flat arenas: 0) plus the snow sink (ground only).
     const terr = ctx.terrain;
     const sy = terr && terr.active ? terr.surfaceAt(x, z, opts?.y ?? 0, this.surf).y : 0;
@@ -278,7 +331,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   query(x: number, z: number, radius: number, out: EnemyHandle[] = []): EnemyHandle[] {
     out.length = 0;
     for (const e of this.list) {
-      if (!e.alive) continue;
+      if (!e.alive || e.husk) continue;
       const r = radius + e.radius;
       const dx = e.position.x - x;
       const dz = e.position.z - z;
@@ -289,7 +342,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
 
   damage(enemy: EnemyHandle, amount: number, opts?: DamageOpts): boolean {
     const e = enemy as Bot;
-    if (!e.alive || !(e instanceof Bot)) return false;
+    if (!e.alive || !(e instanceof Bot) || e.husk) return false;
     const ctx = this.ctx;
     const src = opts?.source ?? 'other';
     const fromX = opts?.fromX ?? ctx.plow?.position.x ?? e.position.x;
@@ -415,6 +468,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     for (const d of this.debris) d.active = false;
     this.syncDebris();
     for (const b of this.bolts) this.dropBolt(b);
+    this.beamN = 0;
+    for (const b of this.beams) b.mesh.visible = false;
+    this.cueMove = 0;
+    this.cueT = -1;
     this.attackers = 0;
     this.thieves = 0;
     this.aimers = 0;
@@ -439,6 +496,12 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.pr = plow.radius;
     this.plowBall = plow.heldBallRadius;
     this.plowAlive = !plow.dead;
+    if (plow.dashing && !this.wasDashing) this.cue(MirrorMove.Dash);
+    if (plow.whirling && !this.wasWhirling) this.cue(MirrorMove.Ring);
+    this.wasDashing = plow.dashing;
+    this.wasWhirling = plow.whirling;
+    this.fenceCd -= dt;
+    this.tetherCd -= dt;
 
     // recount tokens (robust against any missed release)
     let att = 0;
@@ -469,6 +532,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     this.separate();
     this.plowContact();
+    this.links();
     this.updateBolts(dt);
     this.barQ.copy(ctx.camera.quaternion);
     for (let i = 0; i < this.list.length; i++) {
@@ -691,7 +755,121 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     return Math.max(0.5, t);
   }
 
+  towPlow(dirX: number, dirZ: number, frac: number, dt: number): void {
+    if (!this.plowAlive) return;
+    (this.ctx.plow as { tow?(dx: number, dz: number, f: number, dt: number): void }).tow?.(dirX, dirZ, frac, dt);
+  }
+
+  revive(e: Bot, hpFrac: number): void {
+    if (!e.alive || !e.husk) return;
+    e.husk = false;
+    e.hp = Math.max(1, Math.round(e.maxHp * hpFrac));
+    e.flash = FLASH_T * 3;
+    e.downAt = -1;
+    resetAI(this, e);
+    this.label(e, 'REVIVED!', '#ffd23a', 0.95);
+    this.sfx('heal', 0.6, 1.1, 0.1);
+    _v.set(e.position.x, e.groundY + 0.1, e.position.z);
+    this.ctx.fx.ring(_v, 3.2, 0xffd23a);
+    _v.y += 1;
+    this.ctx.fx.burst(_v, TWIN_REVIVE_BURST);
+  }
+
   /* ------------------------------------------------------------------ internals */
+
+  /** Elite links, once per frame after motion: Magnet Tower FENCES (any two anchored, not overheated towers within
+   *  FENCE_MAX) and Tether Twin TETHERS (a live pair, neither a husk) are drawn as pooled beams and zap + throw the plow
+   *  when it touches the line; a twin channelling a revive draws its beam to the husk. */
+  private links(): void {
+    this.beamN = 0;
+    const L = this.list;
+    const t = this.time;
+    for (let i = 0; i < L.length; i++) {
+      const a = L[i];
+      if (!a.alive) continue;
+      if (a.type === 'magnet' && a.anchored && a.state === 'pull') {
+        for (let j = i + 1; j < L.length; j++) {
+          const b = L[j];
+          if (!b.alive || b.type !== 'magnet' || !b.anchored || b.state !== 'pull') continue;
+          if (Math.hypot(b.position.x - a.position.x, b.position.z - a.position.z) > FENCE_MAX) continue;
+          const y = MAGNET_TOP_Y - 0.86;
+          this.beam(a.position.x, a.groundY + y, a.position.z, b.position.x, b.groundY + y, b.position.z, 0.14 + 0.06 * Math.sin(t * 40 + i), FENCE_COLOR);
+          this.beam(a.position.x, a.groundY + 0.7, a.position.z, b.position.x, b.groundY + 0.7, b.position.z, 0.12 + 0.05 * Math.sin(t * 33 + j), FENCE_COLOR);
+          if (this.fenceCd <= 0 && this.lineZap(a, b, FENCE_DMG, FENCE_THROW)) this.fenceCd = FENCE_CD;
+        }
+      } else if (a.type === 'twinlink' && a.partner && a.partner.alive && a.id < a.partner.id) {
+        const b = a.partner;
+        if (a.husk || b.husk) {
+          const r = a.husk ? b : a;
+          const h = a.husk ? a : b;
+          if (r.state === 'revive' && r.channel > 0) {
+            this.beam(r.position.x, r.groundY + TWIN_PYLON_Y, r.position.z, h.position.x, h.groundY + 0.8, h.position.z, 0.16 + 0.08 * Math.sin(t * 30), TWIN_COLOR);
+          }
+          continue;
+        }
+        this.beam(a.position.x, a.groundY + TWIN_PYLON_Y, a.position.z, b.position.x, b.groundY + TWIN_PYLON_Y, b.position.z, 0.1 + 0.03 * Math.sin(t * 25 + a.id), TWIN_COLOR);
+        if (this.tetherCd <= 0 && this.lineZap(a, b, TWIN_TETHER_DMG, TWIN_TETHER_THROW)) this.tetherCd = TWIN_TETHER_CD;
+      }
+    }
+    for (let i = this.beamN; i < this.beams.length; i++) this.beams[i].mesh.visible = false;
+  }
+
+  /** The plow touching the line between bots `a` and `b` takes `dmg` and is thrown off the line at `throwV`. */
+  private lineZap(a: Bot, b: Bot, dmg: number, throwV: number): boolean {
+    if (!this.plowAlive) return false;
+    const dx = b.position.x - a.position.x;
+    const dz = b.position.z - a.position.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1) return false;
+    const s = segDist(this.px, this.pz, a.position.x, a.position.z, dx / len, dz / len, len);
+    if (s.along <= a.radius || s.along >= len - b.radius || s.d > this.pr * 0.75) return false;
+    const cx = a.position.x + (dx / len) * s.along;
+    const cz = a.position.z + (dz / len) * s.along;
+    this.hitPlow(a, dmg, { knockback: throwV, unblockable: true, fromX: cx, fromZ: cz });
+    _v.set(cx, this.ctx.plow.position.y + 1, cz);
+    this.ctx.fx.burst(_v, a.type === 'magnet' ? FENCE_ZAP_BURST : TETHER_ZAP_BURST);
+    this.sfx('zap', 0.6, a.type === 'magnet' ? 1.2 : 1.6, 0.1);
+    return true;
+  }
+
+  /** Draw one link beam from (x0, y0, z0) to (x1, y1, z1), radius `r`: a bright core inside a dark sheath. */
+  private beam(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r: number, color: THREE.Color): void {
+    this.beamMesh(x0, y0, z0, x1, y1, z1, r * BEAM_EDGE, BEAM_EDGE_COLOR, 0.55, 3);
+    this.beamMesh(x0, y0, z0, x1, y1, z1, r, color, 1, 4);
+  }
+
+  private beamMesh(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r: number, color: THREE.Color, opacity: number, order: number): void {
+    let b = this.beams[this.beamN];
+    if (!b) {
+      _beamGeo ??= (() => {
+        const g = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+        g.rotateX(Math.PI / 2);
+        g.translate(0, 0, 0.5);
+        return g;
+      })();
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false });
+      const mesh = new THREE.Mesh(_beamGeo, mat);
+      mesh.frustumCulled = false;
+      this.ctx.scene.add(mesh);
+      b = { mesh, mat };
+      this.beams.push(b);
+    }
+    this.beamN++;
+    const m = b.mesh;
+    m.visible = true;
+    m.position.set(x0, y0, z0);
+    _v.set(x1, y1, z1);
+    m.lookAt(_v);
+    m.scale.set(r, r, Math.max(0.01, _v.distanceTo(m.position)));
+    m.renderOrder = order;
+    b.mat.color.copy(color);
+    b.mat.opacity = opacity;
+  }
+
+  /** Link beams drawn this frame (tests / probes). */
+  get linkCount(): number {
+    return this.beamN;
+  }
 
   private refreshBosses(): void {
     this.bossList.length = 0;
@@ -832,6 +1010,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
    *  zone's level routing when one is set and the player is on another level). Close in, its own AI attacks. */
   private hunt(e: Bot): void {
     if (e.entering || e.atk || e.windup > 0 || e.state === 'flee' || e.stun > 0 || e.stagger > 0) return;
+    if (e.husk || e.anchored || e.state === 'revive') return;
     const d = Math.hypot(this.px - e.position.x, this.pz - e.position.z);
     // A Flurry Gunner at its standoff ring is not a straggler: only hunt it in from well beyond the ring.
     if (d < (e.type === 'gunner' ? GUNNER_RANGE_MAX + 3 : HUNT_RANGE)) return;
@@ -1149,6 +1328,12 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private kill(e: Bot, source: KillSource = 'other', weapon?: KillWeapon, areaAmt = 0, areaOpts?: DamageOpts): void {
     const ctx = this.ctx;
     const def = e.def;
+    // Tether Twins: the first of a pair to go down only drops as a HUSK for its partner to revive.
+    const twin = e.type === 'twinlink' ? e.partner : null;
+    if (twin && !e.husk && twin.alive && !twin.husk) {
+      this.down(e);
+      return;
+    }
     e.alive = false;
     this.aliveN = Math.max(0, this.aliveN - 1);
     this.releaseToken(e);
@@ -1202,6 +1387,40 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (e.isBoss) ctx.events.emit('bossDefeated', { enemy: e, name: def.name });
     ctx.pickups?.spawnCoins(p.clone(), coins);
     if (e.type === 'slushpile') this.split(e, areaAmt, areaOpts);
+    // The other twin was a husk: it goes down for good too. Both within TWIN_SEVER_WINDOW s: SEVERED! bonus coins.
+    if (twin && twin.alive && twin.husk) {
+      const severed = this.time - twin.downAt <= TWIN_SEVER_WINDOW;
+      twin.husk = false;
+      this.kill(twin, source, weapon);
+      if (severed) {
+        _v.set((p.x + twin.position.x) / 2, e.groundY + e.rig.height + 1.2, (p.z + twin.position.z) / 2);
+        fx.floatText(_v, 'SEVERED!', '#ffd23a', 1.25);
+        ctx.pickups?.spawnCoins(_v.clone().setY(e.groundY + 0.5), Math.round(def.coins * TWIN_SEVER_BONUS * ctx.zone.coinMult));
+        this.sfx('streak', 0.8, 1.1, 0.1);
+      }
+    }
+  }
+
+  /** A Tether Twin wrecked while its partner stands: it drops as a smoking HUSK (alive for the wave count, untargetable,
+   *  takes no damage) until its partner revives it or goes down too. */
+  private down(e: Bot): void {
+    e.husk = true;
+    e.hp = 0;
+    e.downAt = this.time;
+    e.endAtk();
+    this.clearTele(e);
+    this.releaseToken(e);
+    e.windup = 0;
+    e.glow = 0;
+    e.stun = 0;
+    e.rig.barShow = false;
+    const fx = this.ctx.fx;
+    _v.set(e.position.x, e.groundY + e.rig.height * 0.5, e.position.z);
+    fx.burst(_v, { color: e.def.color, count: 14, speed: 6, size: 0.14, gravity: 16, life: 0.7 });
+    fx.burst(_v, { color: 0xffa23a, count: 10, speed: 8, size: 0.1, gravity: 14, life: 0.4 });
+    fx.shake(0.15);
+    this.label(e, 'DOWN! KILL ITS TWIN', '#ffd23a', 0.85);
+    this.sfx('kill', 0.6, 1.4, 0.05);
   }
 
   /** A wrecked Slushpile bursts into SPLIT_COUNT slushlings, kicked outward from where it died (same hp scaling as the
@@ -1366,7 +1585,25 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       body.scale.set(1 + w, 1 - w, 1 + w);
     }
     body.rotation.x = -e.windup * 0.06 + clamp(e.speed * 0.004, -0.04, 0.06) * (e.type === 'thief' ? 4 : 1);
-    if (rig.lift) rig.lift.rotation.x = -e.rear * 0.42;
+    if (e.type === 'magnet') {
+      // anchor legs slide down to the ground as it plants
+      if (rig.lift) rig.lift.position.y = 0.9 + (1 - e.rear) * 0.45;
+    } else if (rig.lift) rig.lift.rotation.x = -e.rear * 0.42;
+    if (e.type === 'twinlink') {
+      // a husk slumps on its side and smokes
+      body.rotation.z = e.husk ? 0.32 : 0;
+      if (e.husk) body.position.y = by - 0.12;
+      if (e.husk && (e.puffT -= dt * 3) <= 0) {
+        e.puffT = 0.5;
+        _v.set(p.x, e.groundY + rig.height * 0.7, p.z);
+        this.ctx.fx.burst(_v, HUSK_SMOKE);
+      }
+    }
+    if (e.type === 'mirror' && rig.glow) {
+      // the recording halo takes the colour of the move being copied (magenta idle)
+      rig.glow.emissive.setHex(MOVE_COLOR[e.mimic] ?? MOVE_COLOR[0]);
+      rig.glow.color.copy(rig.glow.emissive);
+    }
 
     const roll = e.speed * dt;
     rollWheels(rig, roll);
@@ -1380,6 +1617,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       if (e.disabled) k = 0.35 + 0.3 * (Math.sin(t * 9) > 0 ? 1 : 0);
       if (!this.plowAlive) k = Math.sin(t * 5 + e.bob) > 0.2 ? 1.6 : 0.2;
       if (e.type === 'thief' && e.carry > 0.05) k *= 1.4;
+      if (e.husk) k = 0.05;
       rig.eye.emissiveIntensity = rig.eyeBase * k;
     }
     if (rig.glow) {
@@ -1411,6 +1649,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       const m = rig.paint[i];
       m.emissive.copy(_c);
       if (frozen) m.color.copy(rig.paintBase[i]).lerp(ICE, 0.55);
+      else if (e.husk) m.color.copy(rig.paintBase[i]).multiplyScalar(0.3);
       else m.color.copy(rig.paintBase[i]);
     }
     rig.crust.visible = frozen;
@@ -1441,7 +1680,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
 
     // minion HP bar
     if (rig.bar) {
-      rig.barShow = e.hp < e.maxHp;
+      rig.barShow = e.hp < e.maxHp && !e.husk;
       if (rig.barShow) {
         rig.barPos.set(p.x, e.groundY + rig.height + (e.type === 'thief' ? 0.95 : 0.5), p.z);
         rig.barFill = e.hp / e.maxHp;

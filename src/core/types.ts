@@ -568,7 +568,17 @@ export interface SmolderOpts {
   scale?: number;
 }
 
+/** Spectral purple sprites for the Ghostfire trail / Soul Harvest kill (fx/ghostFx.ts). */
+export interface GhostFxAPI {
+  /** One Ghostfire puff from a rear corner; `moved` m since the last puff lays a glowing track mark (0 = parked). */
+  trail(x: number, y: number, z: number, groundY: number, yaw: number, moved: number, dash: boolean): void;
+  /** A skull-faced soul rises out of the wreck at `at`, spirals up and darts into `target` (null = just fades). */
+  soul(at: THREE.Vector3, target: THREE.Vector3 | null): void;
+}
+
 export interface FxAPI {
+  /** Ghostfire / Soul Harvest sprites (absent on stub FX: callers fall back to plain bursts). */
+  ghost?: GhostFxAPI;
   /** Tumbling chunks. Routing: rising bursts (gravity < 0) render as soft puffs (saturated colours glow);
    *  small (size <= 0.12), short (life <= 0.6), coloured bursts render as streak sparks. */
   burst(pos: THREE.Vector3, opts?: { color?: number; count?: number; speed?: number; size?: number; gravity?: number; life?: number }): void;

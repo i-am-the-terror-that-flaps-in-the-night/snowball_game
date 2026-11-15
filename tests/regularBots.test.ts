@@ -29,7 +29,7 @@ async function arena() {
   };
   const ctx = {
     scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), fx: noop, audio: noop, impact: noop,
-    events: { emit: (name: string, p: { enemy: Bot; coins: number }) => name === 'enemyKilled' && kills.push({ type: p.enemy.type, coins: p.coins }) },
+    events: { emit: (name: string, p: { enemy: Bot; coins: number }) => name === 'enemyKilled' && kills.push({ type: p.enemy.type, coins: p.coins }), on: () => () => {} },
     plow,
     combat: {
       hitPlow: (dmg: number, fromX: number, fromZ: number) => {

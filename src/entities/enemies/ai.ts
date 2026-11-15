@@ -1,10 +1,14 @@
+import * as THREE from 'three';
 import { ARENA } from '../../core/types';
 import {
   GUNNER_AIM, GUNNER_BOLT_RANGE, GUNNER_COOLDOWN, GUNNER_COOLDOWN_RAND, GUNNER_PANIC, GUNNER_RANGE_MAX, GUNNER_RANGE_MIN,
+  MAGNET_ANCHOR, MAGNET_HOT, MAGNET_HOT_MULT, MAGNET_ON, MAGNET_PULL, MAGNET_PULL_R, MAGNET_ZAP_DMG, MAGNET_ZAP_GAP, MAGNET_ZAP_R,
+  MIRROR_BEAM_LEN, MIRROR_BEAM_W, MIRROR_CONE_LEN, MIRROR_CONE_W, MIRROR_COOLDOWN, MIRROR_DELAY, MIRROR_DMG, MIRROR_EXPOSED,
+  MIRROR_RING_R, MIRROR_STALL, TWIN_ENRAGE_SPEED, TWIN_REVIVE, TWIN_REVIVE_HP, TWIN_TETHER_MAX,
   type EnemyType,
 } from '../../config/enemies';
 import { GUNNER_MUZZLE_Y } from './models';
-import { Bot, Vuln, type Host } from './Bot';
+import { Bot, MirrorMove, Vuln, type Host } from './Bot';
 
 /* Minion AI + shared steering helpers. Each AI function runs once per frame per bot (unless the bot is
  * wall-stunned / staggered) and only sets desired heading/speed + state; the manager integrates motion,
@@ -84,6 +88,9 @@ const TUNE: Record<EnemyType, [turn: number, accel: number]> = {
   bulwark: [1.0, 7],
   slushpile: [3, 11],
   slushling: [5, 18],
+  mirror: [3.2, 15],
+  magnet: [1.6, 8],
+  twinlink: [4.2, 16],
 };
 
 const DEFAULT_STATE: Record<EnemyType, string> = {
@@ -104,6 +111,9 @@ const DEFAULT_STATE: Record<EnemyType, string> = {
   bulwark: 'guard',
   slushpile: 'circle',
   slushling: 'circle',
+  mirror: 'shadow',
+  magnet: 'roam',
+  twinlink: 'circle',
 };
 
 export function initAI(e: Bot): void {
@@ -119,7 +129,9 @@ export function initAI(e: Bot): void {
         ? GUNNER_RANGE_MIN + 0.5 + (e.id % 3) * ((GUNNER_RANGE_MAX - GUNNER_RANGE_MIN - 1) / 2)
         : e.type === 'slushpile'
           ? 4.6
-          : 6;
+          : e.type === 'mirror'
+            ? 8 + (e.id % 2) * 1.5
+            : 6;
 }
 
 /** Cancel whatever the bot was doing (stagger / plow died): drop attack, telegraphs, tokens. */
@@ -133,6 +145,9 @@ export function resetAI(h: Host, e: Bot): void {
   e.rear = 0;
   if (e.isBoss) {
     if (e.state !== 'approach' && e.state !== 'hunt' && e.state !== 'lineup' && e.state !== 'pin') e.set('recover', 0.5);
+  } else if (e.type === 'magnet' && e.anchored) {
+    // a staggered tower stays planted (its legs are down); it just restarts its pull cycle
+    e.set('pull', MAGNET_ON);
   } else {
     e.set(DEFAULT_STATE[e.type], e.type === 'spinner' ? 2 : 0);
     if (e.vuln !== Vuln.None) {
@@ -555,6 +570,335 @@ function slushpile(h: Host, e: Bot, dt: number): void {
   }
 }
 
+/* ------------------------------------------------------------------ elites */
+
+const MOVE_NAME = ['', 'DASH', 'RING', 'BEAM', 'BLAST'];
+/** Halo / telegraph colour per copied move (Enemies.render recolours the Mirror's halo with it). */
+export const MOVE_COLOR = [0xff3bd0, 0xff8a1a, 0xffd23a, 0xb04dff, 0xff3a3a];
+const MOVE_CSS = ['#ff3bd0', '#ff9a3a', '#ffd23a', '#c27bff', '#ff5a5a'];
+
+/** Distance from (px, pz) to the segment (x0, z0) + t (dx, dz), t in [0, len]; `along` gets t. */
+export function segDist(px: number, pz: number, x0: number, z0: number, dx: number, dz: number, len: number): { d: number; along: number } {
+  const t = clamp((px - x0) * dx + (pz - z0) * dz, 0, len);
+  _seg.along = t;
+  _seg.d = Math.hypot(px - (x0 + dx * t), pz - (z0 + dz * t));
+  return _seg;
+}
+const _seg = { d: 0, along: 0 };
+
+/** Mirror Plow: shadows the plow at mid range. When the player uses a copyable move (Host.cueMove: a dash, slam, whirl
+ *  or F ability) it RECORDS it (MIRROR_DELAY: halo turns the move's colour, "COPYING ...!"; for a RING it rushes in
+ *  to slam range meanwhile), winds up the copy with a
+ *  telegraph aimed where the plow is at that moment (so moving dodges it) and fires it at copy strength (MIRROR_DMG x
+ *  ramDamage): DASH charge, RING slam, BEAM line, CONE blast. Then it STALLS (MIRROR_STALL, EXPOSED x MIRROR_EXPOSED). */
+function mirror(h: Host, e: Bot, dt: number): void {
+  const d = h.dist(e);
+  const dmg = (k: keyof typeof MIRROR_DMG) => e.def.ramDamage * MIRROR_DMG[k];
+  const fx = Math.sin(e.heading);
+  const fz = Math.cos(e.heading);
+  switch (e.state) {
+    case 'record':
+      // watching, the halo charging up in the move's colour: a RING copy closes in to slam range, the rest keep
+      // circling at mid range
+      if (e.mimic === MirrorMove.Ring) {
+        face(e, h.px, h.pz);
+        e.desSpeed = d > 3 + h.pr ? e.def.speed * 1.15 : 0;
+      } else orbit(h, e, e.orbitR, e.def.speed * 0.45, dt);
+      e.glow = 0.3 + 0.7 * e.prog;
+      if (e.stateT <= 0) {
+        face(e, h.px, h.pz);
+        e.heading = e.desHeading;
+        e.aimH = e.heading;
+        const m = e.mimic;
+        h.sfx('charge', 0.35, m === MirrorMove.Ring ? 0.8 : 1.4, 0.1);
+        e.set(m === MirrorMove.Dash ? 'cDashWind' : m === MirrorMove.Ring ? 'cRingWind' : m === MirrorMove.Beam ? 'cBeamWind' : 'cConeWind', m === MirrorMove.Ring ? 0.6 : 0.5);
+      }
+      break;
+    case 'cDashWind': {
+      e.desHeading = e.aimH;
+      e.turnRate = 0.5;
+      e.desSpeed = -1.5;
+      e.windup = e.prog;
+      e.glow = 1;
+      h.stripe(e, e.position.x, e.position.z, Math.sin(e.aimH), Math.cos(e.aimH), Math.min(18, d + 5), e.radius * 1.6, MOVE_COLOR[1], 0.2 + 0.45 * e.prog);
+      if (e.stateT <= 0) {
+        h.clearTele(e);
+        e.windup = 0;
+        e.set('cDash', 0.65);
+        e.startAtk(dmg('dash'), 14);
+        e.speed = 8;
+      }
+      break;
+    }
+    case 'cDash':
+      e.desHeading = e.aimH;
+      e.turnRate = 0.3;
+      e.desSpeed = 22;
+      e.accel = 80;
+      if (e.sparkT <= 0) {
+        e.sparkT = 0.05;
+        h.fxAt(e.position.x - fx * e.radius, e.groundY + 0.6, e.position.z - fz * e.radius, MOVE_COLOR[1], 3, 2, 0.16, 2, 0.35);
+      }
+      if (e.atkHits > 0 || e.stateT <= 0) {
+        e.endAtk();
+        stall(h, e);
+      }
+      break;
+    case 'cRingWind':
+      e.desSpeed = 0;
+      e.windup = e.prog;
+      e.rear = e.prog;
+      e.glow = 1;
+      h.ring(e, e.position.x, e.position.z, MIRROR_RING_R, e.prog, MOVE_COLOR[2], 0.3 + 0.5 * e.prog);
+      if (e.stateT <= 0) {
+        h.clearTele(e);
+        e.windup = 0;
+        e.rear = 0;
+        if (d < MIRROR_RING_R + h.pr * 0.6) h.hitPlow(e, dmg('ring'), { knockback: 12 });
+        h.ctx.fx.ring(_tv.set(e.position.x, e.groundY + 0.15, e.position.z), MIRROR_RING_R, MOVE_COLOR[2]);
+        h.fxAt(e.position.x, e.groundY + 0.4, e.position.z, 0xffffff, 26, 9, 0.24, 14, 0.7);
+        h.fxAt(e.position.x, e.groundY + 0.4, e.position.z, MOVE_COLOR[2], 18, 11, 0.12, 10, 0.5);
+        h.ctx.fx.shake(0.25);
+        h.sfx('shockwave', 0.6, 1.2, 0.1);
+        stall(h, e);
+      }
+      break;
+    case 'cBeamWind':
+    case 'cConeWind': {
+      const beam = e.state === 'cBeamWind';
+      e.desHeading = e.aimH;
+      e.turnRate = 0.4;
+      e.desSpeed = 0;
+      e.windup = e.prog;
+      e.glow = 1;
+      const ax = Math.sin(e.aimH);
+      const az = Math.cos(e.aimH);
+      const x0 = e.position.x + ax * e.rig.front;
+      const z0 = e.position.z + az * e.rig.front;
+      const len = beam ? MIRROR_BEAM_LEN : MIRROR_CONE_LEN;
+      const w = beam ? MIRROR_BEAM_W : MIRROR_CONE_W;
+      const col = MOVE_COLOR[beam ? 3 : 4];
+      h.stripe(e, x0, z0, ax, az, len, w, col, 0.2 + 0.5 * e.prog);
+      if (e.stateT <= 0) {
+        h.clearTele(e);
+        e.windup = 0;
+        const s = segDist(h.px, h.pz, x0, z0, ax, az, len);
+        if (s.along > 0 && s.d < w / 2 + h.pr * 0.6) h.hitPlow(e, dmg(beam ? 'beam' : 'cone'), { knockback: beam ? 8 : 14, fromX: x0 + ax * (s.along - 3), fromZ: z0 + az * (s.along - 3) });
+        // the copy fires: a column of light (beam) or a rolling blast (cone) along the telegraph
+        const n = beam ? 9 : 6;
+        for (let i = 0; i <= n; i++) {
+          const k = (i / n) * len;
+          h.fxAt(x0 + ax * k, e.groundY + 0.9, z0 + az * k, col, beam ? 6 : 10, beam ? 2.5 : 6, beam ? 0.22 : 0.3, beam ? -1 : 6, beam ? 0.35 : 0.55);
+          if (beam) h.fxAt(x0 + ax * k, e.groundY + 0.9, z0 + az * k, 0xffffff, 3, 1.5, 0.14, 0, 0.25);
+        }
+        e.kvx -= ax * 4;
+        e.kvz -= az * 4;
+        h.ctx.fx.shake(0.18);
+        h.sfx(beam ? 'zap' : 'burst', 0.7, beam ? 0.8 : 1, 0.08);
+        stall(h, e);
+      }
+      break;
+    }
+    case 'stall':
+      e.desSpeed = 0;
+      e.glow = Math.max(0, e.glow - dt * 2);
+      e.jitter = 0.04;
+      if (e.sparkT <= 0) {
+        e.sparkT = 0.18;
+        h.sparks(e, MOVE_COLOR[0], 3);
+      }
+      if (e.stateT <= 0) {
+        e.jitter = 0;
+        e.mimic = MirrorMove.None;
+        h.releaseToken(e);
+        e.cd = MIRROR_COOLDOWN;
+        e.orbitA = aroundAngle(h, e);
+        e.set('shadow', 0);
+      }
+      break;
+    default:
+      // shadow: hold mid range, drifting round the plow
+      orbit(h, e, e.orbitR, e.def.speed * 0.7, dt);
+      e.glow = Math.max(0, e.glow - dt * 2);
+      if (h.cueMove !== MirrorMove.None && h.cueT > e.cueSeen) {
+        e.cueSeen = h.cueT;
+        if (e.cd <= 0 && d < 22 && h.time - h.cueT < 0.5 && h.tryToken(e)) {
+          e.mimic = h.cueMove;
+          e.set('record', MIRROR_DELAY);
+          h.label(e, `COPYING ${MOVE_NAME[e.mimic]}!`, MOVE_CSS[e.mimic], 0.85);
+          h.sfx('charge', 0.25, 2, 0.15);
+        }
+      }
+  }
+}
+
+/** The Mirror's stall after a copy: frozen, EXPOSED. */
+function stall(h: Host, e: Bot): void {
+  e.set('stall', MIRROR_STALL);
+  e.vuln = Vuln.Exposed;
+  e.vulnT = MIRROR_STALL;
+  e.vulnMult = MIRROR_EXPOSED;
+  h.label(e, 'EXPOSED!', '#ffe14a', 0.8);
+}
+
+/** Magnet Tower: ROAMs to a spot 10-16 m from the plow, ANCHORs (MAGNET_ANCHOR: legs stamp down, pinned), then cycles
+ *  PULL (MAGNET_ON s: drags the plow in within MAGNET_PULL_R via Host.towPlow, zaps it inside MAGNET_ZAP_R) and
+ *  OVERHEAT (MAGNET_HOT s: no pull, Vuln.Overheat x MAGNET_HOT_MULT). Re-anchors closer if the plow stays far away.
+ *  The fence between two anchored towers is the manager's (Enemies.fences). */
+function magnet(h: Host, e: Bot, dt: number): void {
+  const d = h.dist(e);
+  if (e.anchored) {
+    // planted: nothing moves it
+    e.desSpeed = 0;
+    e.speed = 0;
+    e.kvx = 0;
+    e.kvz = 0;
+  }
+  switch (e.state) {
+    case 'anchor':
+      e.rear = e.prog;
+      e.anchored = true;
+      if (e.stateT <= 0) {
+        h.fxAt(e.position.x, e.groundY + 0.1, e.position.z, 0xdde4ec, 16, 5, 0.25, 10, 0.5);
+        h.sfx('thud', 0.5, 0.9, 0.1);
+        e.set('pull', MAGNET_ON);
+      }
+      break;
+    case 'pull': {
+      e.rear = 1;
+      e.spinRate = 0;
+      e.augerRate = 0;
+      e.sawRate = 14;
+      e.glow = 0.55 + 0.35 * Math.sin(h.time * 18);
+      if (d < MAGNET_PULL_R && d > 1) {
+        h.towPlow(-h.ux, -h.uz, MAGNET_PULL * Math.min(1, (MAGNET_PULL_R - d) / 3 + 0.4), dt);
+        if (e.sparkT <= 0) {
+          e.sparkT = 0.09;
+          // field lines: sparks streaming from the plow side toward the poles
+          const k = 0.3 + Math.random() * 0.6;
+          h.fxAt(e.position.x + h.ux * d * k, e.groundY + 1.2, e.position.z + h.uz * d * k, 0xcfd8ff, 2, 3, 0.1, 0, 0.3);
+        }
+      }
+      if (d < MAGNET_ZAP_R + h.pr && e.cd2 <= 0) {
+        e.cd2 = MAGNET_ZAP_GAP;
+        h.hitPlow(e, MAGNET_ZAP_DMG, { knockback: 2, unblockable: true });
+        h.fxAt(h.px, e.groundY + 1, h.pz, 0xcfd8ff, 10, 7, 0.1, 6, 0.3);
+        h.sfx('zap', 0.4, 1.5, 0.1);
+      }
+      if (e.stateT <= 0) {
+        e.vuln = Vuln.Overheat;
+        e.vulnT = MAGNET_HOT;
+        e.vulnMult = MAGNET_HOT_MULT;
+        h.label(e, 'OVERHEATED!', '#ff7a3a', 0.8);
+        h.sfx('stun', 0.3, 1.2, 0.1);
+        e.set('hot', MAGNET_HOT);
+      }
+      break;
+    }
+    case 'hot':
+      e.rear = 1;
+      e.sawRate = Math.max(1, e.sawRate * Math.exp(-2 * dt));
+      e.glow = 0;
+      if (e.stateT <= 0) {
+        // plow drifted far: pull the legs up and move closer
+        if (d > MAGNET_PULL_R + 6) {
+          e.anchored = false;
+          e.set('roam', 0);
+        } else e.set('pull', MAGNET_ON);
+      }
+      break;
+    default: {
+      // roam: pick a spot 12 m from the plow on our side, drive there, anchor
+      e.rear = Math.max(0, e.rear - dt * 2);
+      e.anchored = false;
+      if (e.retargetT <= 0) {
+        e.retargetT = 1.5;
+        const a = aroundAngle(h, e) + (e.id % 2 ? 0.5 : -0.5);
+        e.tx = h.px + Math.sin(a) * 12;
+        e.tz = h.pz + Math.cos(a) * 12;
+      }
+      goTo(e, e.tx, e.tz, e.def.speed, 2);
+      const at = Math.hypot(e.tx - e.position.x, e.tz - e.position.z);
+      if ((at < 1.5 || (e.cd <= 0 && d > 9 && d < 16)) && e.stateT <= 0) {
+        e.set('anchor', MAGNET_ANCHOR);
+        h.sfx('charge', 0.3, 0.6, 0.2);
+      }
+    }
+  }
+}
+
+/** Tether Twin: scrapper-style circle-and-ram, but the pair holds flanking spots ~70° apart round the plow (so the
+ *  tether between them is a chord the plow must not drive through) and regroups past TWIN_TETHER_MAX. When its partner
+ *  is a downed husk it ENRAGES and rushes over to REVIVE it (TWIN_REVIVE s channel within 3.2 m; a stagger or a hard
+ *  knock resets the channel). The husk itself just lies there. */
+function twinlink(h: Host, e: Bot, dt: number): void {
+  const p = e.partner && e.partner.alive ? e.partner : null;
+  if (e.husk) {
+    e.desSpeed = 0;
+    e.endAtk();
+    return;
+  }
+  const down = !!p && p.husk;
+  e.enraged = down;
+  e.spdMult = down ? TWIN_ENRAGE_SPEED : 1;
+  if (down && e.state !== 'revive') {
+    e.endAtk();
+    h.clearTele(e);
+    h.releaseToken(e);
+    e.windup = 0;
+    e.channel = 0;
+    e.set('revive', 0);
+  }
+  if (e.state === 'revive') {
+    if (!down) {
+      e.set('circle', 0);
+      e.channel = 0;
+      return;
+    }
+    const dx = p!.position.x - e.position.x;
+    const dz = p!.position.z - e.position.z;
+    const dp = Math.hypot(dx, dz);
+    if (dp > 3.2) {
+      goTo(e, p!.position.x, p!.position.z, e.def.speed * 1.1, 1);
+      e.channel = 0;
+    } else {
+      face(e, p!.position.x, p!.position.z);
+      e.desSpeed = 0;
+      if (e.kvx * e.kvx + e.kvz * e.kvz > 16) e.channel = 0;
+      e.channel += dt;
+      e.glow = 0.5 + 0.5 * Math.sin(h.time * 20);
+      if (e.sparkT <= 0) {
+        e.sparkT = 0.12;
+        h.fxAt(p!.position.x, p!.groundY + 1, p!.position.z, 0xffd23a, 4, 3, 0.12, -2, 0.5);
+      }
+      if (e.channel >= TWIN_REVIVE) {
+        e.channel = 0;
+        h.revive(p!, TWIN_REVIVE_HP);
+        e.set('circle', 0);
+      }
+    }
+    return;
+  }
+  // keep the pair together and flanking
+  if (p) {
+    const dp = Math.hypot(p.position.x - e.position.x, p.position.z - e.position.z);
+    if (dp > TWIN_TETHER_MAX && e.state === 'circle') {
+      goTo(e, p.position.x, p.position.z, e.def.speed, 2);
+      return;
+    }
+    if (e.state === 'circle' && e.id > p.id) {
+      // the younger twin follows its partner round at a flank ~70° behind
+      const want = wrap(p.orbitA - p.orbitDir * 1.2);
+      e.orbitA = wrap(e.orbitA + clamp(wrap(want - e.orbitA), -dt * 1.5, dt * 1.5));
+      e.orbitDir = p.orbitDir;
+    }
+  }
+  scrapper(h, e, dt);
+}
+
+/** Scratch point for fx calls. */
+const _tv = new THREE.Vector3();
+
 export const MINION_AI: Partial<Record<EnemyType, (h: Host, e: Bot, dt: number) => void>> = {
   scrapper,
   brute,
@@ -565,4 +909,7 @@ export const MINION_AI: Partial<Record<EnemyType, (h: Host, e: Bot, dt: number) 
   bulwark,
   slushpile,
   slushling: scrapper,
+  mirror,
+  magnet,
+  twinlink,
 };

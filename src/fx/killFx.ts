@@ -61,6 +61,16 @@ export function emitKillFx(ctx: GameContext, kill: KillDef, at: THREE.Vector3, p
       ctx.audio.play('zap', { volume: 0.8 });
       break;
     }
+    case 'soul': {
+      // The wreck's spirit rises, spirals up and darts into the player's plow (Fx.ghost animates it).
+      _q.set(at.x, at.y + 0.2, at.z);
+      if (fx.ghost) fx.ghost.soul(_q, ctx.plow ? ctx.plow.position : null);
+      else for (const col of c) fx.burst(_p, { color: col, count: 8, speed: 2, size: 0.3, gravity: -4, life: 1.4 });
+      _q.y = 0.05;
+      fx.ring(_q, 3, 0xb04dff);
+      ctx.audio.play('steal', { volume: 0.6, pitch: 0.7 });
+      break;
+    }
     default:
       break;
   }
