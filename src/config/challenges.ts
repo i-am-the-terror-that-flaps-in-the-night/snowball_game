@@ -182,7 +182,7 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
       'ARSENAL: press F for a Polarity Burst. It drags a pack together, then blows it apart; kills from the blast count.'),
   ],
   // Golden Tower Plaza (arena 5, THE DONALD): break up the rally crowds, dodge the walls and the beam, keep the combo
-  // going bigly.
+  // going bigly. 'hunt' (REVENANT) replaced the 'speed' star (Rally Sprint).
   // Signature: ARSENAL's Mag Laser through the rally crowds (~44 bots; the laser finishes ~36-39% of ARSENAL's kills on
   // the sim's pack, so 15). 'speed': mid-garage clears run 0:50-1:04 (docs/balance.md).
   plaza: [
@@ -191,7 +191,9 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
     combo(25, 'Tremendous Combo'),
     weaponKills('magLaser', 'laser', '🔷', 9, 'Laser Light Show', 'Mag Laser',
       'ARSENAL: hold SPACE and steer the Mag Laser down a line of bots. Its bolts pierce, so a lined-up crowd melts fast.'),
-    speed(100, 'Rally Sprint'),
+    // Signature: REVENANT's WILD HUNT tramples the rally crowds (riders and the finale eruption count).
+    weaponKills('wildHunt', 'hunt', '⚰️', 8, 'Danse Macabre', 'Wild Hunt',
+      'REVENANT: fill the meter, then ride THE WILD HUNT through a rally crowd. Bank souls first for more riders and a bigger finale; every kill the riders or the eruption finish counts.'),
   ],
   // The Omega Works (arena 6, MEGAPLOW Ω): the finale. Tank it with BRUTUS, dodge the machine, bury the rest in snow.
   // No time-based goals here on purpose: the 160 m multi-level factory makes clear times swing with routing.

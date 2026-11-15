@@ -49,9 +49,9 @@ describe('challenge definitions', () => {
 
   it('every plow signature mechanic has a star somewhere in the campaign', () => {
     const all = ZONES.flatMap((z) => CHALLENGES[z.id].map((c) => c.id));
-    for (const id of ['rush', 'arc', 'laser', 'polarity', 'sing', 'soak', 'burn', 'plow-volt', 'plow-brute']) expect(all, id).toContain(id);
+    for (const id of ['rush', 'arc', 'laser', 'polarity', 'sing', 'soak', 'burn', 'hunt', 'plow-volt', 'plow-brute']) expect(all, id).toContain(id);
     // Signature goals that are not obvious explain themselves (zone card hover, results screen).
-    for (const z of ZONES) for (const c of CHALLENGES[z.id]) if (['rush', 'arc', 'laser', 'polarity', 'sing', 'soak', 'burn'].includes(c.id)) expect(c.tip, c.id).toBeTruthy();
+    for (const z of ZONES) for (const c of CHALLENGES[z.id]) if (['rush', 'arc', 'laser', 'polarity', 'sing', 'soak', 'burn', 'hunt'].includes(c.id)) expect(c.tip, c.id).toBeTruthy();
   });
 
   it('a plain win meets nothing; each crafted payload meets its own challenge', () => {
@@ -114,11 +114,13 @@ describe('challenge definitions', () => {
     expect(ids(evaluateRun(p, run(3, w({ arcLance: 5 }))))).toEqual([]);
     expect(ids(evaluateRun(p, run(3, w({ polarity: 2 }))))).toEqual(['polarity']);
     expect(ids(evaluateRun(p, run(3, w({ polarity: 1, magLaser: 99 }))))).toEqual([]);
-    // Golden Tower Plaza: Mag Laser kills, a 1:15 clear.
+    // Golden Tower Plaza: Mag Laser kills...
     expect(ids(evaluateRun(p, run(4, w({ magLaser: 9 }))))).toEqual(['laser']);
     expect(ids(evaluateRun(p, run(4, w({ magLaser: 8 }))))).toEqual([]);
-    expect(ids(evaluateRun(p, run(4, { duration: 99 })))).toEqual(['speed']);
-    expect(ids(evaluateRun(p, run(4, { duration: 100 })))).toEqual([]);
+    // ...and REVENANT's WILD HUNT kills (riders + finale), which replaced the clear-time star.
+    expect(ids(evaluateRun(p, run(4, w({ wildHunt: 8 }))))).toEqual(['hunt']);
+    expect(ids(evaluateRun(p, run(4, w({ wildHunt: 7, magLaser: 8 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(4, { duration: 1 })))).toEqual([]);
     // The Omega Works: BRUTUS tanks 400 HP (only BRUTUS), or any plow keeps it under 150.
     expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 250 })))).toEqual(['soak']);
     expect(ids(evaluateRun(p, run(5, { plow: 'isotope', damageTaken: 250 })))).toEqual([]);

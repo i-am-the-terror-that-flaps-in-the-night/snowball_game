@@ -7,8 +7,9 @@ import type { PlowKind } from '../config/plows';
 export type KillSource = 'slam' | 'ram' | 'whirl' | 'other' | 'stomp' | 'airSlam' | 'lava';
 /** The weapon behind a hit, where trophies / challenge stars need more than its KillSource: 'arcLance' = VOLT-9's ARC
  *  LANCE (any hop), 'magLaser' / 'polarity' / 'singularity' = ARSENAL's Mag Laser bolts, Polarity Burst blast and
- *  SINGULARITY (pull ticks and collapse), 'radBurn' = ISOTOPE's radiation burn tick (RAD DOSE + TANK-BUSTER). */
-export type KillWeapon = 'arcLance' | 'magLaser' | 'polarity' | 'singularity' | 'radBurn';
+ *  SINGULARITY (pull ticks and collapse), 'radBurn' = ISOTOPE's radiation burn tick (RAD DOSE + TANK-BUSTER),
+ *  'wildHunt' = REVENANT's WILD HUNT (rider tramples and the finale eruption). */
+export type KillWeapon = 'arcLance' | 'magLaser' | 'polarity' | 'singularity' | 'radBurn' | 'wildHunt';
 
 /** Cross-cutting game events. Modules call ctx.audio / ctx.fx directly for their own feedback;
  *  events exist so Game/UI can track stats and show toasts without modules knowing about each other. */

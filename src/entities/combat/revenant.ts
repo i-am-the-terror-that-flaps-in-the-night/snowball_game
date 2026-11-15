@@ -345,6 +345,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
       stunSeconds: opts?.stun,
       hold: opts?.hold,
       ult: opts?.ult,
+      weapon: opts?.ult ? 'wildHunt' : undefined,
       area: opts?.area,
       fromX: fx,
       fromZ: fz,
@@ -869,7 +870,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     this.b.audio.play('explosion', { volume: 0.8, pitch: 0.8 });
     this.b.audio.play('roar', { volume: 0.5, pitch: 0.5 });
     const dmg = (st.graspDamage || 34) * (FINALE_BASE + FINALE_SOUL * souls);
-    ultBlast(this.h, px, pz, 0, R, dmg, { knock: 16, text: '⚰️', color: '#e0a8ff', reach: Reach.Wave, from: this.huntFrom });
+    ultBlast(this.h, px, pz, 0, R, dmg, { knock: 16, text: '⚰️', color: '#e0a8ff', reach: Reach.Wave, from: this.huntFrom, weapon: 'wildHunt' });
     // Banked souls are spent (souls taken during the Hunt stay).
     this.souls = Math.max(0, this.souls - souls);
   }

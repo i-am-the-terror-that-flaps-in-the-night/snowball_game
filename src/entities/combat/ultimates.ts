@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { KillWeapon } from '../../core/events';
 import type { EnemyManagerAPI, PlayerStats, PlowAPI } from '../../core/types';
 import { DUEL_ULT_CHARGE, DUEL_ULT_KIND_CHARGE } from '../../config/duel';
 import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type UltKind } from './shared';
@@ -108,7 +109,7 @@ export function ultBlast(
   inner: number,
   R: number,
   dmg: number,
-  o: { knock: number; stun?: number; freeze?: number; text: string; color: string; bolt?: boolean; reach?: Reach; from?: CastOrigin },
+  o: { knock: number; stun?: number; freeze?: number; text: string; color: string; bolt?: boolean; reach?: Reach; from?: CastOrigin; weapon?: KillWeapon },
 ): number {
   h.smashProps(x, z, R);
   // Height rule (combat/shared.ts): ground quakes pass reach Wave (judged from their cast floor `from`); sky bolts hit
@@ -137,6 +138,7 @@ export function ultBlast(
       fromX: x,
       fromZ: z,
       ult: true,
+      weapon: o.weapon,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     h.onPlayerHit(dealt, killed, e, false, false);
