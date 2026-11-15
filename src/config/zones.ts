@@ -20,6 +20,8 @@ export interface SpawnGroup {
    *  wave's PROTOCOL-upgraded headline (Bot.headline: more damage). */
   echo?: boolean;
   headline?: boolean;
+  /** Spawn here (inside the arena, no gate) instead of at a gate: THE CHAIRMAN lands under his boardroom box. */
+  at?: { x: number; z: number; heading: number };
 }
 
 export interface RoundDef {

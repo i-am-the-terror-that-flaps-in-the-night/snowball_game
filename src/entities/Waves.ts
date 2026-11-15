@@ -25,6 +25,7 @@ interface QueuedSpawn {
   /** SpawnGroup.echo / headline (PROTOCOL C). */
   echo?: boolean;
   headline?: boolean;
+  at?: { x: number; z: number; heading: number };
 }
 
 export class WaveDirector implements WaveDirectorAPI {
@@ -67,12 +68,16 @@ export class WaveDirector implements WaveDirectorAPI {
             }
             gate = order[oi++];
           }
-          this.queue.push({ t: g.delay + i * g.interval, type: g.type, gate, hp: g.hpMult ?? 1, echo: g.echo, headline: g.headline });
+          this.queue.push({ t: g.delay + i * g.interval, type: g.type, gate, hp: g.hpMult ?? 1, echo: g.echo, headline: g.headline, at: g.at });
         }
       }
     }
     this.queue.sort((a, b) => a.t - b.t);
     this.started = true;
+  }
+
+  cancel(): void {
+    this.next = this.queue.length;
   }
 
   get done(): boolean {
@@ -122,6 +127,10 @@ export class WaveDirector implements WaveDirectorAPI {
 
   private spawn(s: QueuedSpawn): void {
     if (this.ctx.zone.theme === 'omega') return this.spawnHatch(s.type, s.hp);
+    if (s.at) {
+      this.ctx.enemies.spawn(s.type, s.at.x, s.at.z, { hpMult: this.hpMult * s.hp, heading: s.at.heading, echo: s.echo, headline: s.headline, noGate: true });
+      return;
+    }
     const def = ENEMIES[s.type];
     const g = ENEMY_GATES[s.gate];
     const fx = Math.sin(g.heading);

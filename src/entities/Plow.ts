@@ -37,6 +37,9 @@ const TOW_HEAVY = 0.5;
 const DASH_WAKE_BURST = { color: 0xffffff, count: 3, speed: 6, size: 0.26, gravity: 14, life: 0.6 };
 const DASH_WAKE_SMOKE = { count: 1, color: 0xe2ecf8, size: 0.45, grow: 3.4, life: 0.8, speed: 2.5, up: 1.5, rise: -1, drag: 2.4, spread: 0.3, opacity: 0.5 };
 
+/** A dazed plow's top speed (x): THE CHAIRMAN's briefcase burst. */
+export const DAZE_K = 0.12;
+
 export class Plow extends PlowMotion implements PlowAPI {
   /* ------------------------------------------------------------------ API */
 
@@ -70,6 +73,27 @@ export class Plow extends PlowMotion implements PlowAPI {
   /** Telegraphed rush distance (m) while charging. */
   get rushPreview(): number {
     return this.rushChargeK >= 0 ? this.rushDist : 0;
+  }
+  /** THE CHAIRMAN's QUARTERLY REPORTS (top speed x slowK while slowT lasts) and briefcase daze (DAZE_K x top speed
+   *  for dazeT s): two channels, so a paper storm re-applied every frame never stretches a daze. */
+  private slowT = 0;
+  private slowK = 1;
+  private dazeT = 0;
+  /** Slow the plow to `k` x its top speed for `seconds` (the strongest of the overlapping slows wins). */
+  slow(seconds: number, k: number): void {
+    if (!(seconds > 0) || this._dead) return;
+    if (this.slowT <= 0) this.slowK = 1;
+    this.slowK = Math.min(this.slowK, Math.max(0, k));
+    this.slowT = Math.max(this.slowT, seconds);
+  }
+  /** Daze: barely any drive for `seconds` (a briefcase burst). */
+  daze(seconds: number): void {
+    if (!(seconds > 0) || this._dead || this.phased) return;
+    this.dazeT = Math.max(this.dazeT, seconds);
+  }
+  /** Seconds of daze left (HUD / tests). */
+  get dazed(): number {
+    return this.dazeT;
   }
   /** MOMENTUM: seconds of the landed-tap-slam speed boost left. */
   get momentum(): number {
@@ -467,6 +491,8 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.rushLanding = false;
     this.puppetRush = false;
     this.momentumT = 0;
+    this.slowT = this.dazeT = 0;
+    this.slowK = 1;
     this.rushFx.hide();
     this.streakFx.hide();
     this.dashCharge = 1;
@@ -626,6 +652,8 @@ export class Plow extends PlowMotion implements PlowAPI {
     if ((input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight')) && !rushing) this.tryDash();
     if (!armed && !rushing && input.wasPressed('KeyE')) this.tryWhirl();
     if (this.momentumT > 0) this.momentumT = Math.max(0, this.momentumT - dt);
+    if (this.slowT > 0) this.slowT = Math.max(0, this.slowT - dt);
+    if (this.dazeT > 0) this.dazeT = Math.max(0, this.dazeT - dt);
 
     // ---- slam state machine
     this.lungeVel = 0;
@@ -652,6 +680,8 @@ export class Plow extends PlowMotion implements PlowAPI {
       (classicKit ? streakSpeed(b.combat?.streak ?? 0) : 1) *
       // REVENANT PHASE: spectral, +30% top speed.
       (this.phased ? PHASE_SPEED : 1) *
+      // THE CHAIRMAN (PROTOCOL C): paper storm slow, briefcase daze.
+      (this.slowT > 0 ? this.slowK : 1) * (this.dazeT > 0 ? DAZE_K : 1) *
       // Speed limiter (Settings): cruise at a share of top speed; acceleration and dashes are untouched. Off in the
       // Duel (host and guest simulate both plows and must agree).
       (this.b.pvp ? 1 : settings.speedLimit);

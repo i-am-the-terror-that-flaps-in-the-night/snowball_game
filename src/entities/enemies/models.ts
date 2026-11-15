@@ -151,6 +151,8 @@ export const G = {
   hemi: () => geo('hemi', () => new THREE.SphereGeometry(1, 14, 7, 0, PI * 2, 0, PI / 2)),
   cone: (n = 8) => geo('cone' + n, () => new THREE.ConeGeometry(1, 1, n)),
   torus: () => geo('torus', () => new THREE.TorusGeometry(1, 0.18, 6, 18)),
+  /** Three-quarter torus (THE CHAIRMAN's C monogram), open toward +X before rotation. */
+  arc: () => geo('arc', () => new THREE.TorusGeometry(1, 0.24, 6, 18, PI * 1.5)),
   oct: () => geo('oct', () => new THREE.OctahedronGeometry(1, 0)),
   /** Box whose top-front edge is pulled back: a sloped wedge nose (front = +Z). */
   wedge: (k = 0.45) =>
@@ -832,6 +834,291 @@ function donald(): Tpl {
   return { root, height: 5.9, stacks, front: 3.1 };
 }
 
+let _towerTex: THREE.Texture | null = null;
+/** THE CHAIRMAN's tread skirts: TOWER in gold block letters on black, a gold rule above and below. */
+function towerTexture(): THREE.Texture {
+  if (_towerTex) return _towerTex;
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 96;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#121216';
+  g.fillRect(0, 0, 512, 96);
+  g.fillStyle = '#e8b423';
+  g.fillRect(0, 6, 512, 6);
+  g.fillRect(0, 84, 512, 6);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = '900 64px "Arial Black", Impact, sans-serif';
+  g.fillStyle = '#f2c94c';
+  g.fillText('TOWER', 256, 50, 480);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  _towerTex = t;
+  return t;
+}
+
+let _winTex: THREE.Texture | null = null;
+/** Mirrored gold curtain wall: a 4 x 2 window grid per tile (dark gold mullions); some panes are lit (the emissive
+ *  map: they glow at night), the rest dark, so the lit panes read floor by floor. */
+function windowTexture(): THREE.Texture {
+  if (_winTex) return _winTex;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#5a3d08';
+  g.fillRect(0, 0, 256, 128);
+  const lit = [1, 1, 0, 1, 0, 1, 1, 1];
+  for (let r = 0; r < 2; r++)
+    for (let i = 0; i < 4; i++) {
+      const x = i * 64 + 7;
+      const y = r * 64 + 8;
+      const on = lit[r * 4 + i];
+      const grad = g.createLinearGradient(x, y, x + 50, y + 48);
+      grad.addColorStop(0, on ? '#fff3c4' : '#3a2a0a');
+      grad.addColorStop(1, on ? '#ffc94a' : '#141008');
+      g.fillStyle = grad;
+      g.fillRect(x, y, 50, 48);
+    }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  _winTex = t;
+  return t;
+}
+
+let _buttonTex: THREE.Texture | null = null;
+/** The plaque in front of THE CHAIRMAN's big red button. */
+function buttonTexture(): THREE.Texture {
+  if (_buttonTex) return _buttonTex;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#f2c94c';
+  g.fillRect(0, 0, 256, 64);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = '900 38px "Arial Black", Impact, sans-serif';
+  g.fillStyle = '#7a0716';
+  g.fillText('PROTOCOL C', 128, 34, 240);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  _buttonTex = t;
+  return t;
+}
+
+/** Named animated parts of THE CHAIRMAN's rig (enemies/chairman.ts looks them up by name on the clone). */
+export const CHAIRMAN_PART = {
+  cannon: 'cmCannon',
+  lid: 'cmLid',
+  finger: 'cmFinger',
+  chute: 'cmChute',
+  arm: 'cmArm',
+  button: 'cmButton',
+} as const;
+/** THE CHAIRMAN's local anchors (m, body frame, +Z forward): the briefcase cannon's mouth, the fingertip, the
+ *  boardroom floor; the ankle monitor's material key (it blinks). */
+export const CHAIRMAN_MUZZLE: V3 = [3.0, 7.2, 1.5];
+export const CHAIRMAN_FINGER: V3 = [-2.55, 6.7, 2.7];
+export const CHAIRMAN_ROOM_Y = 7.0;
+export const CHAIRMAN_MONITOR = 'cmMonitor';
+/** The shared ankle-monitor light material (one Chairman per fight: chairman.ts blinks it). */
+export const chairmanMonitor = (): THREE.MeshStandardMaterial => mat(CHAIRMAN_MONITOR, 0xff2020, { emissive: 0xff1010, emissiveIntensity: 2.5 });
+/** The red dome of the PROTOCOL C button (shared; it lights up when he slams it). */
+export const chairmanButton = (): THREE.MeshStandardMaterial => mat('cmButtonRed', 0xff1a1a, { emissive: 0xff0000, emissiveIntensity: 0.6 });
+
+/** THE CHAIRMAN (PROTOCOL C wave 7): THE DONALD's walking golden skyscraper. Two black-and-gold tread pods (TOWER on
+ *  the skirts, gold-tinted cleats), a stepped tower of mirrored gold glass (window grid, lit panes glow at night) with
+ *  a gold C monogram and folded red-carpet ramps, and on top the boardroom from the stand: through the glass THE
+ *  DONALD at a long table in a big gold chair (ankle monitor blinking, the PROTOCOL C button on the table), a flag on
+ *  the roof. Crane arms: right a giant BRIEFCASE CANNON (the lid snaps open to fire), left a golden POINTING FINGER.
+ *  Phase 2 pops a gold parachute from the roof. A stylised toy, not a likeness. */
+function chairman(): Tpl {
+  const t: EnemyType = 'chairman';
+  const root = new THREE.Group();
+  const base = new Part(root);
+  const stacks: number[] = [];
+  const wheels = new Wheels();
+  const GOLD = M.gold();
+  const P = paint(t);
+  const A = accent(t);
+  const goldCleat = mat('cmCleat', 0x8a6a1c, { roughness: 0.6, metalness: 0.3 });
+  const skirt = mat('cmSkirt', 0xffffff, { map: towerTexture(), roughness: 0.45, flatShading: false });
+  // ---- tread pods: rubber belts with gold-tinted cleats, gold road-wheel hubs, TOWER skirts
+  const PX = 1.95;
+  const PL = 5.6;
+  const PH = 1.5;
+  const PW = 1.25;
+  for (const sx of [-1, 1]) {
+    base.add(G.box(), M.rubber(), [sx * PX, PH / 2, 0], [PW, PH, PL]);
+    for (const sz of [-1, 1]) base.add(G.cyl(12), M.rubber(), [sx * PX, PH / 2, (sz * PL) / 2], [PH / 2, PW, PH / 2], [0, 0, PI / 2]);
+    const n = 16;
+    for (let i = 0; i < n; i++) base.add(G.box(), goldCleat, [sx * PX, PH + 0.04, -PL / 2 + ((i + 0.5) * PL) / n], [PW * 1.04, 0.08, (PL / n) * 0.45]);
+    for (let j = 0; j < 6; j++) wheels.add(sx * (PX + PW / 2 + 0.05), PH * 0.42, -PL / 2 + 0.5 + ((PL - 1) * (j + 0.5)) / 6, PH * 0.3, 0.12, GOLD, M.steel());
+    // skirt over the upper belt: TOWER on black, a gold edge
+    base.add(G.box(), skirt, [sx * (PX + PW / 2 + 0.2), PH * 0.95, 0], [0.06, 0.6, PL * 0.84]);
+    base.add(G.box(), A, [sx * PX, PH + 0.2, 0], [PW + 0.42, 0.16, PL * 0.9]);
+    base.add(G.box(), GOLD, [sx * (PX + PW / 2 + 0.22), PH + 0.2, 0], [0.04, 0.12, PL * 0.9]);
+  }
+  wheels.flush(root);
+  // chassis deck between the pods + two gold exhaust vents at the back
+  base.add(G.box(), A, [0, 1.7, 0], [2.7, 0.5, 5.0]);
+  for (const sx of [-1, 1]) stack(base, stacks, sx * 0.9, 1.95, -2.2, 0.22, 0.7, GOLD, M.black());
+
+  const { g: body, b } = sub(root, 'body', [0, 0, 0]);
+  // ---- storeys 1-2: mirrored gold glass, gold pilasters, black floor bands
+  const WIN = mat('cmWindow', 0xffffff, { map: windowTexture(), emissiveMap: windowTexture(), emissive: 0xffd98a, emissiveIntensity: 0.85, roughness: 0.18, metalness: 0.35, flatShading: false });
+  const storey = (w: number, d: number, y0: number, h: number) => {
+    b.add(G.box(), WIN, [0, y0 + h / 2, 0], [w, h, d]);
+    b.add(G.box(), A, [0, y0 + 0.06, 0], [w + 0.12, 0.12, d + 0.12]);
+    b.add(G.box(), P, [0, y0 + h - 0.06, 0], [w + 0.18, 0.14, d + 0.18]);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.box(), P, [(sx * w) / 2, y0 + h / 2, (sz * d) / 2], [0.22, h, 0.22]);
+  };
+  storey(3.5, 4.4, 1.95, 2.6);
+  storey(3.0, 3.7, 4.55, 2.45);
+  // folded red-carpet ramps on the storey-1 flanks, gold rails and stanchions
+  const CARPET = mat('cmCarpet', 0xb3122a, { roughness: 0.8 });
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), CARPET, [sx * 1.83, 3.15, 0.2], [0.12, 2.0, 3.2], [0, 0, sx * 0.06]);
+    b.add(G.box(), GOLD, [sx * 1.92, 4.18, 0.2], [0.1, 0.1, 3.3]);
+    for (const z of [-1.3, 1.7]) b.add(G.cyl(8), GOLD, [sx * 1.95, 3.2, z], [0.06, 1.9, 0.06]);
+  }
+  // the gold C monogram on a black plaque, storey 2 front
+  b.add(G.box(), GOLD, [0, 5.75, 1.89], [1.7, 1.7, 0.05]);
+  b.add(G.box(), A, [0, 5.75, 1.92], [1.5, 1.5, 0.04]);
+  const glow = glowMat(t, 0xffd257, 0.6);
+  b.add(G.arc(), glow, [0, 5.75, 1.96], [0.55, 0.55, 0.55], [0, 0, PI * 0.25]);
+  // headlights at the deck front (they strobe during wind-ups)
+  for (const sx of [-1, 1]) b.add(G.box(), eyeMat(t, 0xfff2c0, 2.0), [sx * 1.0, 1.75, 2.53], [0.6, 0.22, 0.06]);
+  b.add(G.box(), GOLD, [0, 1.75, 2.52], [0.9, 0.3, 0.05]);
+
+  // ---- the top floor: THE BOARDROOM (y 7.0 .. 9.3), glass, wider than the floor below
+  const RY0 = CHAIRMAN_ROOM_Y;
+  const RH = 2.3;
+  const RW = 3.8;
+  const RD = 3.4;
+  b.add(G.box(), A, [0, RY0 + 0.1, 0], [RW + 0.3, 0.2, RD + 0.3]);
+  b.add(G.box(), P, [0, RY0 + RH + 0.14, 0], [RW + 0.4, 0.28, RD + 0.4]);
+  b.add(G.box(), A, [0, RY0 + RH + 0.34, 0], [RW - 0.4, 0.14, RD - 0.4]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.box(), P, [(sx * RW) / 2, RY0 + RH / 2, (sz * RD) / 2], [0.18, RH, 0.18]);
+  for (const px of [-RW / 4, RW / 4]) b.add(G.box(), P, [px, RY0 + RH / 2, RD / 2], [0.08, RH, 0.08]);
+  // warm back wall (lit from inside), the long table, the big gold chair
+  b.add(G.box(), mat('cmWarm', 0xffd890, { emissive: 0xffc870, emissiveIntensity: 0.7 }), [0, RY0 + RH / 2, -RD / 2 + 0.1], [RW - 0.2, RH - 0.2, 0.1]);
+  const WOOD = mat('cmWood', 0x3a2416, { roughness: 0.5 });
+  b.add(G.box(), WOOD, [0, RY0 + 0.95, 0.75], [RW - 0.5, 0.12, 1.1]);
+  for (const sx of [-1, 1]) b.add(G.box(), WOOD, [sx * 1.3, RY0 + 0.55, 0.75], [0.25, 0.8, 0.9]);
+  b.add(G.box(), GOLD, [0, RY0 + 1.0, 1.3], [RW - 0.5, 0.05, 0.03]);
+  b.add(G.box(), GOLD, [0, RY0 + 1.25, -0.95], [1.3, 2.1, 0.3]);
+  b.add(G.box(), GOLD, [0, RY0 + 0.55, -0.55], [1.2, 0.18, 0.9]);
+  for (const sx of [-1, 1]) b.add(G.box(), GOLD, [sx * 0.62, RY0 + 0.8, -0.5], [0.14, 0.5, 0.9]);
+  // ---- THE DONALD at the table (the DONALD model's head / hair language, small)
+  const SKIN = mat('donaldSkin', 0xf08a2a, { roughness: 0.6 });
+  const HAIR = mat('donaldHair', 0xf6d55c, { roughness: 0.45, metalness: 0.15 });
+  const TIE = mat('donaldTie', 0xd0102a, { roughness: 0.5 });
+  const SUIT = mat('cmSuit', 0x1b2236, { roughness: 0.6 });
+  const DY = RY0 + 0.6; // seat height
+  b.add(G.box(), SUIT, [0, DY + 0.55, -0.35], [0.95, 0.85, 0.55]);
+  b.add(G.box(), M.white(), [0, DY + 0.78, -0.07], [0.32, 0.4, 0.04]);
+  b.add(G.box(), TIE, [0, DY + 0.62, -0.04], [0.13, 0.62, 0.04]);
+  b.add(G.box(), TIE, [0, DY + 0.28, -0.04], [0.2, 0.14, 0.04], [0, 0, PI / 4]);
+  b.add(G.box(), SKIN, [0, DY + 1.25, -0.3], [0.62, 0.6, 0.56]);
+  b.add(G.sph(1), SKIN, [0, DY + 1.0, -0.05], [0.26, 0.11, 0.12]);
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), M.white(), [sx * 0.14, DY + 1.32, -0.01], [0.13, 0.05, 0.02]);
+    b.add(G.box(), HAIR, [sx * 0.15, DY + 1.41, -0.01], [0.17, 0.04, 0.03], [0, 0, sx * 0.14]);
+  }
+  b.add(G.sph(1), HAIR, [0, DY + 1.55, -0.45], [0.36, 0.14, 0.32]);
+  b.add(G.sph(1), HAIR, [0.05, DY + 1.59, -0.08], [0.42, 0.1, 0.16], [0, 0.12, -0.14]);
+  b.add(G.sph(1), HAIR, [-0.28, DY + 1.55, -0.04], [0.15, 0.07, 0.1], [0.2, 0.4, -0.35]);
+  // left arm on the table, legs under it, the ankle monitor (a black band and a red light that blinks)
+  b.add(G.box(), SUIT, [-0.42, DY + 0.45, 0.15], [0.22, 0.2, 0.75]);
+  b.add(G.sph(0), SKIN, [-0.42, DY + 0.45, 0.55], [0.11, 0.1, 0.11]);
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), SUIT, [sx * 0.22, DY + 0.05, 0.05], [0.26, 0.22, 0.7]);
+    b.add(G.box(), SUIT, [sx * 0.22, DY - 0.28, 0.38], [0.22, 0.6, 0.22]);
+    b.add(G.box(), M.black(), [sx * 0.22, DY - 0.56, 0.48], [0.24, 0.1, 0.4]);
+  }
+  b.add(G.box(), M.black(), [0.22, DY - 0.42, 0.38], [0.27, 0.1, 0.27]);
+  b.add(G.box(), chairmanMonitor(), [0.22, DY - 0.42, 0.53], [0.09, 0.07, 0.03]);
+  // the PROTOCOL C button on the table: gold base, a plaque, the red dome (its own group below)
+  b.add(G.cyl(12), GOLD, [0.65, RY0 + 1.05, 0.75], [0.2, 0.08, 0.2]);
+  b.add(G.box(), mat('cmPlaque', 0xffffff, { map: buttonTexture(), roughness: 0.5, flatShading: false }), [0.65, RY0 + 1.03, 1.08], [0.5, 0.05, 0.13]);
+  // glass shell (mirrored gold tint, translucent)
+  b.add(G.box(), mat('cmGlass', 0xffe2a0, { transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.4, depthWrite: false }), [0, RY0 + RH / 2 + 0.05, 0], [RW, RH - 0.1, RD]);
+  // roof: a flag (red / white / blue) and the parachute pack
+  b.add(G.cyl(6), M.chrome(), [1.4, RY0 + RH + 1.2, -1.2], [0.04, 2.0, 0.04]);
+  b.add(G.box(), M.capRed(), [1.85, RY0 + RH + 1.9, -1.2], [0.9, 0.5, 0.02]);
+  b.add(G.box(), M.white(), [1.85, RY0 + RH + 1.9, -1.2], [0.9, 0.18, 0.03]);
+  b.add(G.box(), M.flagBlue(), [1.62, RY0 + RH + 2.0, -1.2], [0.44, 0.3, 0.04]);
+  b.add(G.box(), GOLD, [-0.4, RY0 + RH + 0.65, -0.5], [1.6, 0.5, 1.2]);
+  b.add(G.box(), A, [-0.4, RY0 + RH + 0.92, -0.5], [1.4, 0.08, 1.0]);
+  // crane-arm shoulders on storey 2
+  for (const sx of [-1, 1]) {
+    b.add(G.cyl(12), A, [sx * 1.62, 6.1, 0.2], [0.42, 0.5, 0.42], [0, 0, PI / 2]);
+    b.add(G.cyl(12), GOLD, [sx * 1.9, 6.1, 0.2], [0.3, 0.1, 0.3], [0, 0, PI / 2]);
+  }
+  b.flush();
+
+  // right: the BRIEFCASE CANNON (pivots at the shoulder; the lid hinges along the case's top edge)
+  const { g: cg, b: cb } = sub(body, '', [2.0, 6.1, 0.2]);
+  cg.name = CHAIRMAN_PART.cannon;
+  cb.add(G.box(), P, [0.45, 0.45, 0.4], [0.32, 0.32, 1.6], [-0.5, 0, 0]);
+  cb.add(G.box(), A, [0.45, 0.85, 0.95], [0.5, 0.5, 0.5]);
+  const LEATHER = mat('cmLeather', 0x2a1a12, { roughness: 0.55 });
+  cb.add(G.box(), LEATHER, [0.95, 1.1, 1.3], [0.62, 1.05, 1.5]);
+  for (const sz of [-1, 1]) cb.add(G.box(), GOLD, [0.95, 1.12, 1.3 + sz * 0.76], [0.66, 1.09, 0.05]);
+  cb.add(G.box(), GOLD, [0.95, 1.7, 1.3], [0.14, 0.12, 0.5]);
+  cb.add(G.box(), glow, [1.27, 1.1, 1.3], [0.02, 0.7, 1.1]);
+  cb.flush();
+  const { g: lg, b: lb } = sub(cg, '', [1.28, 1.62, 1.3]);
+  lg.name = CHAIRMAN_PART.lid;
+  lb.add(G.box(), LEATHER, [0.02, -0.52, 0], [0.08, 1.06, 1.52]);
+  for (const sz of [-1, 1]) lb.add(G.box(), GOLD, [0.08, -0.12, sz * 0.5], [0.08, 0.18, 0.18]);
+  lb.flush();
+  // left: the golden POINTING FINGER
+  const { g: fg, b: fb } = sub(body, '', [-2.0, 6.1, 0.2]);
+  fg.name = CHAIRMAN_PART.finger;
+  fb.add(G.box(), P, [-0.4, 0.3, 0.55], [0.3, 0.3, 1.4], [-0.3, 0, 0]);
+  fb.add(G.box(), GOLD, [-0.55, 0.55, 1.35], [0.62, 0.62, 0.72]);
+  fb.add(G.box(), GOLD, [-0.55, 0.62, 2.05], [0.2, 0.2, 0.9]);
+  fb.add(G.box(), GOLD, [-0.82, 0.45, 1.55], [0.18, 0.18, 0.4], [0, -0.5, 0]);
+  for (const sy of [0.4, 0.62]) fb.add(G.box(), GOLD, [-0.48, sy - 0.08, 1.75], [0.5, 0.17, 0.2]);
+  fb.add(G.sph(1), glow, [-0.55, 0.62, 2.52], [0.12, 0.12, 0.12]);
+  fb.flush();
+  // THE DONALD's right forearm (raised; it slams the button on the defeat)
+  const { g: ag, b: ab } = sub(body, '', [0.42, RY0 + 1.12, -0.25]);
+  ag.name = CHAIRMAN_PART.arm;
+  ab.add(G.box(), SUIT, [0, 0.25, 0.3], [0.2, 0.2, 0.7], [-0.6, 0, 0]);
+  ab.add(G.sph(0), SKIN, [0, 0.47, 0.62], [0.12, 0.12, 0.12]);
+  ab.flush();
+  // the red dome of the button (its own group: it presses down)
+  const { g: bg, b: bb } = sub(body, '', [0.65, RY0 + 1.09, 0.75]);
+  bg.name = CHAIRMAN_PART.button;
+  bb.add(G.hemi(), chairmanButton(), [0, 0, 0], [0.15, 0.12, 0.15]);
+  bb.flush();
+  // phase 2: the GOLDEN PARACHUTE (hidden): a canopy over the roof, its lines and a cape down the back
+  const { g: pg, b: pb } = sub(body, '', [-0.4, RY0 + RH + 0.9, -0.5]);
+  pg.name = CHAIRMAN_PART.chute;
+  pg.visible = false;
+  const SILK = mat('cmSilk', 0xffcf3a, { roughness: 0.35, metalness: 0.25, emissive: 0x5a3a00, emissiveIntensity: 0.4 });
+  pb.add(G.hemi(), SILK, [0, 2.4, -0.8], [2.9, 1.4, 2.3], [-0.25, 0, 0]);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * PI * 2;
+    const x = Math.sin(a) * 2.2;
+    const z = Math.cos(a) * 1.7;
+    pb.add(G.cyl(4), M.white(), [x / 2, 1.2, -0.8 + z / 2], [0.02, 2.5, 0.02], [z * 0.32, 0, -x * 0.32]);
+  }
+  pb.add(G.box(), SILK, [0, -1.6, -2.2], [2.8, 3.4, 0.08], [0.18, 0, 0]);
+  pb.flush();
+  base.flush();
+  return { root, height: 10.6, stacks, front: 2.7 };
+}
+
 /** Flurry Gunner: a spindly four-wheeled snow cannon (tall mast turret, long barrel, cyan muzzle glow, a hopper of
  *  snowballs on its back). The muzzle sits GUNNER_MUZZLE_Y up, `front` m ahead of the centre. */
 export const GUNNER_MUZZLE_Y = 1.55;
@@ -1093,6 +1380,7 @@ const BUILDERS: Record<EnemyType, () => Tpl> = {
   thief,
   rallybot: () => scrapper('rallybot'),
   donald,
+  chairman,
   bulldoza,
   frostbyte,
   grinder,

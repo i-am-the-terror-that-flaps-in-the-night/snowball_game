@@ -33,6 +33,8 @@ import { installShadowProxies } from '../render/shadowProxy';
 import { renderFrame } from '../render/post';
 import { Warmup, webglBackend } from '../render/warmup';
 import { donaldProps } from '../entities/enemies/donaldProps';
+import { chairmanProps } from '../entities/enemies/chairmanProps';
+import { ChairmanDirector } from './chairmanDirector';
 import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
@@ -48,7 +50,7 @@ import { NavGraph } from '../world/omega/nav';
 import { OMEGA_NAV } from '../world/omega/layout';
 import { PROTOCOL_NAV, deckWave } from '../world/protocol/layout';
 import { ZONE_BEATS } from '../config/lore';
-import { PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, protocolWaveZone, protocolZone, waveBossCount } from '../config/protocol';
+import { PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, REVEAL_COUNTDOWN, protocolWaveZone, protocolZone, waveBossCount } from '../config/protocol';
 import { protocolRecordsRun, protocolSave, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint, saveCheckpoint, takeCheckpoint } from '../meta/protocol';
 import type { ProtocolCheckpoint } from './Progression';
 import type { ZoneDef } from '../config/zones';
@@ -145,6 +147,8 @@ export class Game {
   private radar: RadarState = { half: 30, me: { x: 0, y: 0, z: 0, heading: 0 }, blips: [], count: 0, obstacles: [], arrows: false };
   private radarQ: EnemyHandle[] = [];
   private survival: SurvivalManager;
+  /** PROTOCOL C: THE CHAIRMAN's commentary from the box, the wave 7 reveal, the defeat hook (core/chairmanDirector.ts). */
+  private chairman: ChairmanDirector;
   private tutorial: Tutorial;
   private ui: UI;
   /** Online 1v1 duel (idle outside it). */
@@ -219,6 +223,7 @@ export class Game {
     ctx.brawl = brawl;
     ctx.waves = new WaveDirector(ctx);
     this.survival = new SurvivalManager(ctx);
+    this.chairman = new ChairmanDirector(ctx);
     ctx.pickups = new Pickups(ctx);
     if (this.warmup.enabled) {
       // Warm set: effects otherwise built on first use (mid-fight) are built now, hidden or off-scene, so every
@@ -226,6 +231,7 @@ export class Game {
       // Built before any scene setup draws gameplay RNG; only three's UUIDs draw Math.random here.
       combat.prewarm();
       donaldProps.prewarm(scene);
+      chairmanProps.prewarm(scene);
       this.warmExtras = [...this.campaignEnemies.warmSet(), ...brawl.warmSet()];
     }
 
@@ -454,6 +460,7 @@ export class Game {
   /** Every arena start (before the arena is built): apply a pending AUTO quality decision, start a new sample. */
   private arenaStart(): void {
     this.protocol = false;
+    this.chairman.end();
     commitAutoQuality(this.ctx);
     commitTimeOfDay();
     this.autoSampler.reset();
@@ -867,9 +874,13 @@ export class Game {
       const w = this.roundIndex + 1;
       const { echoes } = waveBossCount(w);
       const more = echoes ? ` · + ${echoes} ECHO${echoes > 1 ? 'ES' : ''}` : '';
-      // TODO(protocol stage 3): wave 7 introduces THE CHAIRMAN; THE DONALD stands in for now.
-      ctx.ui.bossIntro(ctx.zone.bossName, `PROTOCOL C · ${w >= PROTOCOL_WAVES ? 'FINAL WAVE' : `WAVE ${w}/${PROTOCOL_WAVES}`}${more}`);
+      if (w >= PROTOCOL_WAVES) {
+        // THE REVEAL: a longer countdown while the boardroom box lights up; THE CHAIRMAN's own card comes as he lands
+        this.countdown = REVEAL_COUNTDOWN;
+        ctx.ui.bossIntro('PROTOCOL C', `FINAL WAVE · THE BOARD WILL SEE YOU NOW${more}`);
+      } else ctx.ui.bossIntro(ctx.zone.bossName, `PROTOCOL C · WAVE ${w}/${PROTOCOL_WAVES}${more}`);
       ctx.audio.play('boss');
+      this.chairman.begin(w);
     } else if (this.isBossRound) {
       this.countdown = BOSS_COUNTDOWN_SECONDS;
       ctx.ui.bossIntro(ctx.zone.bossName, bossIntroTitle(ctx.zone.rounds[this.roundIndex].groups.map((g) => g.type)));
@@ -884,6 +895,7 @@ export class Game {
     const { ctx } = this;
     this.state = 'playing';
     ctx.waves.start(ctx.zone, this.roundIndex);
+    if (this.protocol) this.chairman.fight();
     this.ultCam.reset();
     if (this.mode === 'campaign' && this.isBossRound) this.run.bossDamage = 0;
     ctx.events.emit('roundStarted', { round: this.roundIndex + 1, total: ctx.zone.rounds.length, boss: this.isBossRound });
@@ -1246,6 +1258,7 @@ export class Game {
       if (this.state !== 'menu') this.updateHud();
     }
 
+    if (this.protocol && active) this.chairman.update(dt);
     ctx.fx.update(dt * timeScale);
     ctx.impact.update(dt);
     ctx.world.update(dt);
@@ -1484,7 +1497,7 @@ export class Game {
     hud.snowFraction = ctx.snow.totalSnowFraction();
     hud.bosses = ctx.enemies.bosses.map((b) => ({
       name: b.echo ? `ECHO ${ENEMIES[b.type].name}` : ENEMIES[b.type].name,
-      title: b.echo ? 'Echo' : b.headline ? `PROTOCOL · ${ENEMIES[b.type].title}` : ENEMIES[b.type].title,
+      title: b.echo ? 'Echo' : b.headline && b.type !== 'chairman' ? `PROTOCOL · ${ENEMIES[b.type].title}` : ENEMIES[b.type].title,
       hp: b.hp, maxHp: b.maxHp, type: b.type, echo: !!b.echo, held: !!b.held,
     }));
     hud.combo = this.combo;
@@ -1547,6 +1560,8 @@ export class Game {
     r.count = n;
     const left = ctx.waves.remaining;
     r.arrows = this.state === 'playing' && n > 0 && left > 0 && left <= ARROW_MAX_BOTS;
+    // THE CHAIRMAN's QUARTERLY REPORTS paper storm scrambles the map
+    r.scramble = this.protocol ? chairmanProps.scramble : 0;
     return r;
   }
 

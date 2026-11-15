@@ -11,6 +11,7 @@ import { makeSurface } from '../../world/Terrain';
 import { CampWatch, deckLeap, pickHatches, type LeapPlan } from '../../world/omega/zone';
 import { OMEGA_HATCHES, OMEGA_TERRAIN } from '../../world/omega/layout';
 import { detour } from '../../world/omega/nav';
+import { chairman } from './chairman';
 
 /* Boss AI. Every big move has a readable wind-up (>= 0.6s): glowing parts, the bot backing up / revving,
  * and a ground decal (red chevron stripe for charges/dashes, a filling warning ring for AOE moves). */
@@ -1525,4 +1526,5 @@ export const BOSS_AI: Partial<Record<EnemyType, (h: Host, e: Bot, dt: number) =>
   sleet,
   omega,
   donald,
+  chairman,
 };

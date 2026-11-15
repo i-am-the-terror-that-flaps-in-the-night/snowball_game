@@ -126,6 +126,19 @@ export class Bot implements EnemyHandle {
   /** Buffs (RALLY minions): multipliers on outgoing hit damage and desired speed. */
   dmgOutMult = 1;
   spdMult = 1;
+  /** THE CHAIRMAN's HOSTILE TAKEOVER on an echo: a separate multiplier on damage taken (gold armour), so the echo's
+   *  own moves (THE DONALD's rally reset of dmgTakenMult) never clear it; `acquired` = seconds the buff has left. */
+  guardMult = 1;
+  acquired = 0;
+  /** Ultimates deal it no damage (THE CHAIRMAN). */
+  ultImmune = false;
+  /** In a scripted sequence (THE CHAIRMAN's descent / defeat): its AI runs every frame (plow dead or not), takes no
+   *  damage, no contact hits. */
+  scripted = false;
+  /** Visual offset of the rig from its (collision) position, world metres (the Chairman's descent from the box). */
+  hoverX = 0;
+  hoverY = 0;
+  hoverZ = 0;
 
   // --- type specific
   ballVol = 0;
@@ -272,6 +285,8 @@ export interface Host {
   readonly cueT: number;
   /** Drag the plow toward (dirX, dirZ) at `frac` of its own top speed this frame (Plow.tow; heavy plows resist). */
   towPlow(dirX: number, dirZ: number, frac: number, dt: number): void;
+  /** Wreck `e` now (a scripted end: THE CHAIRMAN's defeat sequence), with the usual kill events. */
+  wreck(e: Bot): void;
   /** Revive a downed twin husk at `hpFrac` of its max HP. */
   revive(e: Bot, hpFrac: number): void;
 }

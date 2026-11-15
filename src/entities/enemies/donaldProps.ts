@@ -64,6 +64,8 @@ interface Seg {
   delay: number;
   dead: boolean;
   skip: boolean;
+  /** THE CHAIRMAN's RESTRUCTURING: a gold office partition instead of a snow-brick block. */
+  gold: boolean;
 }
 
 interface Flight {
@@ -125,6 +127,8 @@ class DonaldProps {
   private decals: DecalPool | null = null;
   private blocks: THREE.InstancedMesh | null = null;
   private caps: THREE.InstancedMesh | null = null;
+  /** Gold office-partition panels (THE CHAIRMAN's RESTRUCTURING walls): same colliders / smashing as the bricks. */
+  private panels: THREE.InstancedMesh | null = null;
   private walls: Wall[] = [];
   private segs: Seg[] = [];
   /** Obstacles we inserted into ctx.world.obstacles (removed by identity every sync). */
@@ -182,7 +186,9 @@ class DonaldProps {
     this.blocks = new THREE.InstancedMesh(blockGeo, blockMat, MAX_SEGS);
     const capMat = new THREE.MeshStandardMaterial({ color: 0xf2c033, roughness: 0.3, metalness: 0.45, emissive: 0x3a2400, emissiveIntensity: 0.4 });
     this.caps = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), capMat, MAX_SEGS);
-    for (const im of [this.blocks, this.caps]) {
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0xf2c94c, roughness: 0.22, metalness: 0.5, emissive: 0x5a3c00, emissiveIntensity: 0.5 });
+    this.panels = new THREE.InstancedMesh(blockGeo, panelMat, MAX_SEGS);
+    for (const im of [this.blocks, this.caps, this.panels]) {
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       im.count = 0;
       im.castShadow = true;
@@ -216,8 +222,9 @@ class DonaldProps {
     return !!this.beam && !this.beam.fired;
   }
 
-  /** Telegraph + raise wall lines. Segments outside the arena or on top of the plow are skipped. */
-  buildWalls(h: Host, lines: WallLine[], tele: number, life: number): void {
+  /** Telegraph + raise wall lines. Segments outside the arena or on top of the plow are skipped. `gold`: THE
+   *  CHAIRMAN's office partitions (gold panels, a gold-white stripe) instead of snow bricks. */
+  buildWalls(h: Host, lines: WallLine[], tele: number, life: number, gold = false): void {
     this.init(h.ctx);
     for (const line of lines) {
       const n = Math.max(2, Math.round(line.len / SEG));
@@ -230,7 +237,7 @@ class DonaldProps {
         const z = line.z + line.dz * a;
         const m = SEG_R + 0.4;
         if (x < ARENA.minX + m || x > ARENA.maxX - m || z < ARENA.minZ + m || z > ARENA.maxZ - m) continue;
-        const s: Seg = { x, z, ry: ry + (Math.random() - 0.5) * 0.06, tilt: (Math.random() - 0.5) * 0.04, o: { x, z, r: SEG_R }, k: 0, up: false, die: -1, delay: 0, dead: false, skip: false };
+        const s: Seg = { x, z, ry: ry + (Math.random() - 0.5) * 0.06, tilt: (Math.random() - 0.5) * 0.04, o: { x, z, r: SEG_R }, k: 0, up: false, die: -1, delay: 0, dead: false, skip: false, gold };
         w.segs.push(s);
         this.segs.push(s);
       }
@@ -281,13 +288,13 @@ class DonaldProps {
     const ctx = h.ctx;
     if (this.ctx !== ctx) {
       // nothing to do until the boss first uses a prop
-      if (!h.findBoss('donald')) return;
+      if (!h.findBoss('donald') && !h.findBoss('chairman')) return;
       this.init(ctx);
     }
     this.time += dt;
     // the props' owner (claim()); before any claim, or once the owner is down while another Donald still fights (an
     // echo and the headline in PROTOCOL C), the first living Donald: the props only collapse with the last of them
-    if (!this.owner?.alive) this.owner = h.findBoss('donald');
+    if (!this.owner?.alive) this.owner = h.findBoss('donald') ?? h.findBoss('chairman');
     const boss = this.owner;
     const plow = ctx.plow;
 
@@ -341,7 +348,7 @@ class DonaldProps {
     // ---- GOLD PLATED: reflect queued damage back in small batches (whichever Donald is plated, owner or not)
     this.reflectT -= dt;
     let plated: Bot | null = null;
-    for (const b of ctx.enemies.bosses) if (b.alive && b.type === 'donald' && (b as Bot).reflectPool >= 1) plated = b as Bot;
+    for (const b of ctx.enemies.bosses) if (b.alive && (b.type === 'donald' || b.type === 'chairman') && (b as Bot).reflectPool >= 1) plated = b as Bot;
     if (plated && this.reflectT <= 0) {
       const amt = Math.min(22, plated.reflectPool);
       plated.reflectPool = 0;
@@ -436,7 +443,7 @@ class DonaldProps {
           d.dz = w.line.dz;
           d.len = w.line.len * Math.min(1, 0.25 + p * 1.2);
           d.w = 1.8;
-          d.mat.color.setHex(WALL_STRIPE);
+          d.mat.color.setHex(w.segs[0]?.gold ? 0xfff0a0 : WALL_STRIPE);
           d.mat.opacity = (0.5 + 0.45 * p) * (0.75 + 0.25 * Math.sin(this.time * 26));
         }
         if (w.tele <= 0) {
@@ -702,8 +709,10 @@ class DonaldProps {
   private syncMeshes(): void {
     const blocks = this.blocks;
     const caps = this.caps;
-    if (!blocks || !caps) return;
+    const panels = this.panels;
+    if (!blocks || !caps || !panels) return;
     let n = 0;
+    let np = 0;
     for (const s of this.segs) {
       if (s.dead || !s.up) continue;
       let k = s.k;
@@ -717,6 +726,12 @@ class DonaldProps {
       const pop = s.k < 1 ? Math.sin(s.k * Math.PI) * 0.12 : 0;
       const y = -WALL_H * (1 - k) + pop;
       _q.setFromEuler(_e.set(s.tilt, s.ry, -s.tilt, 'YXZ'));
+      if (s.gold) {
+        // a partition: thinner panel, a touch taller, no cap
+        _m.compose(_p.set(s.x, y, s.z), _q, _s.set(SEG * 1.02 * sc, WALL_H * 1.1, 0.42 * sc));
+        panels.setMatrixAt(np++, _m);
+        continue;
+      }
       _m.compose(_p.set(s.x, y, s.z), _q, _s.set(SEG * 1.1 * sc, WALL_H, 0.95 * sc));
       blocks.setMatrixAt(n, _m);
       _m.compose(_p.set(s.x, y + WALL_H + 0.06, s.z), _q, _s.set(SEG * 1.16 * sc, 0.16, 1.12 * sc));
@@ -728,6 +743,9 @@ class DonaldProps {
       im.visible = n > 0;
       if (n > 0) im.instanceMatrix.needsUpdate = true;
     }
+    panels.count = np;
+    panels.visible = np > 0;
+    if (np > 0) panels.instanceMatrix.needsUpdate = true;
   }
 }
 

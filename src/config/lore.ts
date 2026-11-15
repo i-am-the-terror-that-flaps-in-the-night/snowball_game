@@ -338,3 +338,69 @@ export const PLOW_LORE: Record<PlowKind, string> = {
     'and came back at dawn with more in the jar. The Road Crew insist it is on their side. It has never been seen to ' +
     'refuel, and nobody has been brave enough to ask who is driving.',
 };
+
+/* ---- PROTOCOL C: THE CHAIRMAN. On waves 1-6 he is an unseen voice in the glass boardroom box over the north stand
+ * (a radio toast through a distorted PA; core/chairmanDirector.ts rate-limits them), and the slips give him away:
+ * the Donald-isms. Wave 7 reveals him (THE DONALD, ankle monitor on) and he fights in his walking golden tower; in
+ * the fight he talks through his own taunt labels. One short line each (<= BEAT_MAX_CHARS). Written for the game;
+ * not quotes. */
+
+/** The wave intro line (keyed by wave). Wave 7's plays as the boardroom box lights up. */
+export const CHAIRMAN_INTRO: Record<number, string> = {
+  1: 'Welcome to PROTOCOL C. Think of it as an exit interview. Yours.',
+  2: 'We restructured the floor. The lava is a perk. Great perk.',
+  3: 'Broken ground, ramps. We call that agile. Very agile. The most agile.',
+  4: 'Hot desks, cold desks. Pick a side. Both sides report to me.',
+  5: 'Wave five. We built a stage. Tremendous stage, the best stage.',
+  6: 'Decks, ramps, the full portfolio. Nobody has ever seen a takeover like it.',
+  7: "You made it to the top floor. Let's skip the meeting.",
+};
+/** Wave 5: about the DONALD knock-off headlining it. */
+export const CHAIRMAN_KNOCKOFF = 'That DONALD down there? A knock-off. A very low-energy copy, honestly sad.';
+/** "Acquiring" each boss as it arrives (keyed by type). */
+export const CHAIRMAN_ACQUIRE: Record<string, string> = {
+  frostbyte: 'Welcome to the team, FROSTBYTE.',
+  bulldoza: 'BULLDOZA, acquired. Tremendous acquisition.',
+  grinder: 'THE GRINDER is with us now. Great benefits. The best benefits.',
+  slush: 'SLUSH and SLEET. Two for the price of one. Beautiful deal.',
+  sleet: 'SLEET is on board. SLUSH too, I think. Same thing.',
+  donald: 'Another DONALD? Fine. Welcome to the team, I suppose.',
+  omega: 'Ω reports to me now. Coffee boy, promoted. Big promotion.',
+};
+/** A boss of the rush falls (the type's line, or a generic one). */
+export const CHAIRMAN_KILL: Record<string, string> = {
+  frostbyte: "FROSTBYTE, you're fired. Clean out your server.",
+  bulldoza: 'BULLDOZA was a depreciating asset anyway.',
+  grinder: 'We are letting THE GRINDER go. Mutual decision.',
+  slush: 'SLUSH is restructured. Permanently.',
+  sleet: 'SLEET is restructured. Permanently.',
+  donald: 'The knock-off is down. Sad! Not me. Him.',
+  omega: 'Ω is out. I never met him. Very minor employee.',
+};
+export const CHAIRMAN_KILL_ANY = [
+  'That was a write-off. A tremendous write-off.',
+  'Nobody fires people better than me. Except you, apparently.',
+  'Fine. We have more. We have so many.',
+];
+/** The player's plow is low (once a wave). */
+export const CHAIRMAN_LOW_HP = [
+  'Your plow is looking very low energy.',
+  'That smoke? In my business we call it a quarterly loss.',
+  'Almost there. I love a hostile exit.',
+];
+/** The reveal (wave 7, as the box lights up). */
+export const CHAIRMAN_REVEAL = 'Surprise. It was me. It was always me. Tremendous twist, honestly.';
+/** In-fight taunts (labels over the tower, wave 7). */
+export const CHAIRMAN_TAUNTS = [
+  'YOU ARE NOT A CULTURE FIT!',
+  'THIS MEETING COULD HAVE BEEN AN EMAIL!',
+  "LET'S TAKE THIS OFFLINE!",
+  'TREMENDOUS SYNERGY!',
+  'I OWN THIS ARENA. I OWN THE SNOW.',
+  'PROBATION? NEVER HEARD OF IT.',
+  'MY TOWER. THE BIGGEST. EVERYBODY SAYS.',
+  'YOUR PLOW IS OVERHEAD. CUT IT!',
+  'NOBODY READS REPORTS BETTER THAN ME.',
+];
+/** Said as his HP hits zero and he reaches for the button. */
+export const CHAIRMAN_LAST = 'FINE. PROTOCOL C. EVERYBODY OUT.';

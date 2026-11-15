@@ -178,9 +178,18 @@ export class RadarHud {
     const v = mapView(r.half, r.me.x, r.me.z, this.view);
     const g = m.begin(v, r.half, r.obstacles, this.ctx.terrain ?? null);
     const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+    // PROTOCOL C paper storm: blips jump about (a hash of the blip index and a coarse clock), static over the map
+    const scr = r.scramble ?? 0;
+    const tick = Math.floor(now / 90);
     for (let i = 0; i < r.count; i++) {
       const b = r.blips[i];
       const p = m.at(b.x, b.z, true);
+      if (scr > 0) {
+        const hx = Math.sin((i + 1) * 12.9898 + tick * 78.233) * 43758.5453;
+        const hz = Math.sin((i + 1) * 39.3468 + tick * 11.135) * 24634.6345;
+        p.x += (hx - Math.floor(hx) - 0.5) * 60 * scr;
+        p.y += (hz - Math.floor(hz) - 0.5) * 60 * scr;
+      }
       const hc = heightClass(b.y, r.me.y);
       const k = p.clamped ? 0.75 : 1;
       g.globalAlpha = p.clamped ? 0.75 : hc < 0 ? 0.6 : 1;
@@ -230,6 +239,35 @@ export class RadarHud {
     }
     g.globalAlpha = 1;
     m.player(r.me.x, r.me.z, r.me.heading);
+    if (scr > 0) this.drawStatic(g, scr, tick);
+  }
+
+  /** Paper-storm static: drifting white bands + flecks over the map, and SIGNAL LOST once it is thick. */
+  private drawStatic(g: CanvasRenderingContext2D, k: number, tick: number): void {
+    const w = g.canvas.width / (window.devicePixelRatio || 1);
+    const h = g.canvas.height / (window.devicePixelRatio || 1);
+    g.save();
+    g.globalAlpha = 0.35 * k;
+    g.fillStyle = '#f4f1e6';
+    for (let i = 0; i < 7; i++) {
+      const s = Math.sin(i * 91.7 + tick * 3.1) * 9137.13;
+      const y = (s - Math.floor(s)) * h;
+      g.fillRect(0, y, w, 1 + (i % 3));
+    }
+    g.globalAlpha = 0.6 * k;
+    for (let i = 0; i < 40; i++) {
+      const sx = Math.sin(i * 17.31 + tick * 5.7) * 5123.7;
+      const sy = Math.sin(i * 41.17 + tick * 2.3) * 7321.3;
+      g.fillRect((sx - Math.floor(sx)) * w, (sy - Math.floor(sy)) * h, 2, 2);
+    }
+    if (k > 0.5) {
+      g.globalAlpha = Math.min(1, (k - 0.5) * 2) * (tick % 6 < 4 ? 1 : 0.4);
+      g.font = '700 12px sans-serif';
+      g.textAlign = 'center';
+      g.fillStyle = '#ffd24a';
+      g.fillText('SIGNAL LOST', w / 2, h / 2 + 4);
+    }
+    g.restore();
   }
 
   private setArrows(on: boolean): void {

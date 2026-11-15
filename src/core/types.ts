@@ -262,6 +262,10 @@ export interface WorldAPI {
   syncTimeOfDay?(): void;
   /** Falling snow particles, subtle ambient animation, gate lights. */
   update(dt: number): void;
+  /** PROTOCOL C's boardroom box over the north stand (environment/ProtocolScenery.ts): 'shadow' = THE CHAIRMAN an
+   *  unseen lit silhouette (waves 1-6), 'lit' = revealed (THE DONALD, lit; `k` 0..1 ramps the lights), 'gone' = the
+   *  box has detached (his descent). No-op on any other arena. */
+  boardroom?(mode: 'shadow' | 'lit' | 'gone', k?: number): void;
   /** Flash/open the gate with this index (0..2) — call when a bot drives in through it. No-op in Brawl. */
   openGate(index: number): void;
   /** Solid circle obstacles inside the ARENA (empty in the campaign; pillars/containers/rocks in Brawl).
@@ -282,6 +286,9 @@ export interface WorldAPI {
 /* ------------------------------------------------------------------ player */
 
 export interface PlowAPI {
+  /** Optional (the campaign plow): THE CHAIRMAN's paper storm slow (x top speed) and briefcase daze. */
+  slow?(seconds: number, k: number): void;
+  daze?(seconds: number): void;
   readonly object: THREE.Object3D;
   readonly position: THREE.Vector3;
   heading: number;
@@ -465,7 +472,7 @@ export interface DamageOpts {
 }
 
 export interface EnemyManagerAPI {
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; echo?: boolean; headline?: boolean }): EnemyHandle;
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean }): EnemyHandle;
   /** Living enemies whose collision circle overlaps the given circle. Reuses `out` if provided. */
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[];
   /** Callers pass RAW damage. The manager applies armor (min 1; reduced for `direct` hits), directional armor, and vulnerability
@@ -476,6 +483,9 @@ export interface EnemyManagerAPI {
   aliveCount(): number;
   /** Living bosses (for the HUD boss bars). */
   readonly bosses: readonly EnemyHandle[];
+  /** Optional (the campaign manager): remove a bot quietly (a gold flash, no kill events, no coins): PROTOCOL C's
+   *  echoes powering down once THE CHAIRMAN falls. */
+  dismiss?(e: EnemyHandle): void;
   clear(): void;
   /** AI, movement, wall clamping, bot-bot separation, plow contact resolution (see Enemies.ts). */
   update(dt: number): void;
@@ -506,6 +516,8 @@ export interface WaveDirectorAPI {
   readonly done: boolean;
   /** Enemies still to spawn + alive. */
   readonly remaining: number;
+  /** Optional: drop the spawns still queued in this round (PROTOCOL C: THE CHAIRMAN's defeat ends wave 7). */
+  cancel?(): void;
   clear(): void;
   update(dt: number): void;
 }
@@ -787,6 +799,8 @@ export interface RadarState {
   obstacles: readonly Obstacle[];
   /** Show the off-screen lost-bot arrows (1..ARROW_MAX_BOTS bots left in the round / wave, fighting). */
   arrows: boolean;
+  /** 0..1: the map is scrambled (PROTOCOL C: THE CHAIRMAN's paper storm): blips jitter, static, a SIGNAL LOST tag. */
+  scramble?: number;
 }
 
 /* ------------------------------------------------------------------ Brawl (free-for-all) mode */
@@ -961,8 +975,9 @@ export interface UIAPI {
   hideOverlays(): void;
   setHudVisible(visible: boolean): void;
   updateHud(state: HudState): void;
-  /** 'radio': a longer-lived, smaller story line (Road Crew dispatch at a campaign arena's start). */
-  toast(text: string, kind?: 'info' | 'good' | 'bad' | 'big' | 'radio'): void;
+  /** 'radio': a longer-lived, smaller story line (Road Crew dispatch at a campaign arena's start). 'chairman': the
+   *  same, as THE CHAIRMAN's distorted PA line from his box (PROTOCOL C; gold, a glitch flicker). */
+  toast(text: string, kind?: 'info' | 'good' | 'bad' | 'big' | 'radio' | 'chairman'): void;
   /** Non-blocking cinematic boss intro card (name + title), ~2.5s, e.g. "BOSS ROUND  BULLDOZA — The Yard Boss". */
   bossIntro(name: string, title: string): void;
   /** Brawl mode lobby: rules + difficulty pick -> handlers.onStartBrawl(difficulty). */

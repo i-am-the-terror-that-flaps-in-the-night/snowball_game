@@ -987,7 +987,7 @@ export class UI implements UIAPI {
     this.gameHud.updateHud(s);
   }
 
-  toast(text: string, kind: 'info' | 'good' | 'bad' | 'big' | 'radio' = 'info'): void {
+  toast(text: string, kind: 'info' | 'good' | 'bad' | 'big' | 'radio' | 'chairman' = 'info'): void {
     if (kind === 'big') {
       const box = this.bigBox;
       for (const c of Array.from(box.children)) c.classList.add('old');
