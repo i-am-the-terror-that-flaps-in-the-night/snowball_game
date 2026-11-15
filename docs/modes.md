@@ -155,9 +155,10 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
     down onto the north stand front for good (sealed: ONLY THE AVALANCHE) and a GIANT SNOWBALL forms
     (`src/entities/GiantSnowball.ts`) ahead of the plow. Any plow pushes it (contact: the plow's closing speed along the
     contact line, leaning toward its heading; a big ball is heavy); it rolls with drag (down slopes, off deck sides and
-    walls), grows as it rolls through snow (scooping a trench; ~70 m of fresh snow from 1.5 m to the full 3.3 m), picks up
+    walls; the arena edge is banked, so it never sits pinned in a corner), grows as it rolls through snow (scooping a trench; ~70 m of fresh snow from 1.5 m to the full 3.3 m), picks up
     the fight's wreckage (bot scrap, briefcases, gold, crate planks it smashes, THE CHAIRMAN's red cap). Gusts push it,
-    every other shard volley drops a ring on its path (a hit chips 0.2 m off), lava melts it; under 1 m it bursts into
+    every other shard volley drops a ring on its path (a spike striking the ball chips 0.2 m off; steer it off the ring's
+    middle to escape), lava melts it (0.35 m/s: steer round it); under 1 m it bursts into
     powder and a new one forms 1.6 s later. A size meter (bottom right) shows how far it is from full size. Rolled into
     the eye at full size: THE IMPLOSION; smaller, it bursts against the eye (NOT BIG ENOUGH) and a new one forms.
   - THE IMPLOSION (`END`, ~13.5 s, the plow untouchable, the HUD hidden, its own camera): the ball is swallowed, the eye

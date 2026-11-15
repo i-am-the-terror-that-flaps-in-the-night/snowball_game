@@ -270,6 +270,28 @@ describe('GiantSnowball (entities/GiantSnowball.ts)', () => {
     run(1);
     expect(ball.x + ball.r * 0.9).toBeLessThanOrEqual(30 + 1e-6);
   });
+
+  it('the banked edge rolls it back off a wall / out of a corner (a plow can get behind it again)', async () => {
+    const { ball, run } = await ballArena();
+    ball.spawn(26, 26);
+    run(AV.FORM_T + 0.05);
+    ball.vx = ball.vz = 0;
+    run(3);
+    const lim = 30 - ball.r * 0.9;
+    expect(ball.x).toBeLessThan(lim - 0.5);
+    expect(ball.z).toBeLessThan(lim - 0.5);
+  });
+
+  it('a shard chips it only when the spike strikes its body (ring centre within r + half the ring radius)', async () => {
+    const { ball, run } = await ballArena();
+    ball.spawn(0, 0);
+    run(AV.FORM_T + 0.05);
+    const r0 = ball.r;
+    ball.chip(ball.x + r0 + WO.SHARD_R * 0.8, ball.z);
+    expect(ball.r).toBe(r0);
+    ball.chip(ball.x + r0 + WO.SHARD_R * 0.3, ball.z);
+    expect(ball.r).toBeCloseTo(r0 - AV.CHIP, 6);
+  });
 });
 
 /* ------------------------------------------------------------------ the director */
@@ -322,6 +344,22 @@ async function director() {
 }
 
 describe('THE AVALANCHE (core/whiteoutDirector.ts)', () => {
+  it('starting in a STAGGER (the eye already down), the giant stays leaning: no snap back up and down', async () => {
+    const { wo, run } = await director();
+    const { whiteoutGiant } = await import('../src/world/protocol/WhiteoutGiant');
+    const eye = wo.eye!;
+    for (const h of wo.hearts) h.alive = false;
+    run(WO.LEAN_T + 0.5);
+    expect(wo.phase).toBe('stagger');
+    expect(whiteoutGiant.lean).toBe(1);
+    wo.startAvalanche();
+    for (let i = 0; i < 30; i++) {
+      run(1 / 60);
+      expect(whiteoutGiant.lean).toBeGreaterThan(0.999);
+      expect(eye.position.z).toBeCloseTo(EYE_DOWN.z, 3);
+    }
+  });
+
   it('the storm dumps its snow over DUMP_T s, the eye comes down onto the stand front sealed (only the ball), a ball forms', async () => {
     const { wo, run, dumps, mgr } = await director();
     const eye = wo.eye!;

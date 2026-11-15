@@ -75,8 +75,9 @@ const END_KEYS = [
   key(END_AT.implode - 0.1, 0, 15, 17, 0, 4, -30),
   key(END_AT.implode + 0.9, 0, 18, 23, 0, 2, -22),
   key(END_AT.silence, 0, 17, 24, 0, 2, -20),
-  key(END_AT.lights, -10, 10, -14, 5, 4, -38),
-  key(END_AT.done + 4, 10, 11, -13, -6, 4, -38),
+  // (close over the north drift: from mid-arena the phone lights on the drift tops read as a thin band)
+  key(END_AT.lights, -10, 9, -21, 6, 6.2, -38),
+  key(END_AT.done + 4, 10, 9.5, -20, -6, 6.2, -38),
 ]
 
 function smooth(x: number): number {
@@ -127,6 +128,8 @@ export class WhiteoutDirector {
   private avGustT = 0;
   private landed = false;
   private volleys = 0;
+  /** The giant's lean when THE AVALANCHE began (the eye comes down from there). */
+  private lean0 = 0;
   /** THE IMPLOSION: beats done (bit flags), snow laid by the shockwave so far (m), the camera's shot weight. */
   private beats = 0;
   private waveSnow = 0;
@@ -330,6 +333,9 @@ export class WhiteoutDirector {
     this.dumped = 0;
     this.landed = false;
     this.volleys = 0;
+    // (from wherever the eye is: THE AVALANCHE usually starts in a STAGGER, the eye already on the stand front)
+    this.lean0 = Math.max(0, Math.min(1, whiteoutGiant.lean));
+    this.landed = this.lean0 >= 0.999;
     this.avShardT = AV.BALL_AT + 3;
     this.avGustT = AV.BALL_AT + 5;
     whiteoutProps.calm();
@@ -374,7 +380,7 @@ export class WhiteoutDirector {
       ctx.fx.powder(_v, { size: 1.2 + Math.random(), color: 0xf2f8ff });
     }
     // the eye comes down onto the stand front, and stays
-    const k = Math.min(1, t / AV.DESCEND_T);
+    const k = this.lean0 + (1 - this.lean0) * Math.min(1, t / AV.DESCEND_T);
     whiteoutGiant.lean = k;
     whiteoutGiant.pupil = k;
     whiteoutGiant.open = 1;

@@ -237,7 +237,8 @@ export class Game {
     // THE CHAIRMAN's wreck starts THE WHITEOUT (wave 7 stays one round; the finale gets its own checkpoint)
     this.chairman.whiteout = (echoes) => this.whiteout.start(echoes, false);
     this.whiteout.onCheckpoint = () => {
-      if (this.protocol) this.protocolCheckpoint(PROTOCOL_FINALE);
+      // (a FINALE retry took its checkpoint as it started: re-taking it here would bank the takeover's time into it)
+      if (this.protocol && !this.protocolFinale) this.protocolCheckpoint(PROTOCOL_FINALE);
     };
     ctx.pickups = new Pickups(ctx);
     if (this.warmup.enabled) {

@@ -96,6 +96,8 @@ export class GiantSnowball {
   private debris: Debris[] = [];
   private warm: THREE.Object3D[] = [];
   private trailT = 0;
+  /** This frame's dt (collide's banked edge). */
+  private bankDt = 0;
   private flash = 0;
   private time = 0;
 
@@ -217,10 +219,12 @@ export class GiantSnowball {
     for (const d of this.debris) if (d.state === 'stuck') d.obj.visible = false;
   }
 
-  /** A shard landed at (x, z): inside its ring the ball loses a chunk. */
+  /** A shard landed at (x, z): the spike comes down through the ring's middle, so it chips the ball only when it
+   *  strikes the ball's body (ring centre within r + half the ring radius): a ball steered off the ring's middle in
+   *  the telegraph escapes (the whole ring touching its outline was a near-certain hit on a big ball). */
   chip(x: number, z: number): void {
     if (!this.active || this.forming > 0) return;
-    if (Math.hypot(x - this.x, z - this.z) > WO.SHARD_R + this.r) return;
+    if (Math.hypot(x - this.x, z - this.z) > WO.SHARD_R * 0.5 + this.r) return;
     this.r -= AV.CHIP;
     this.flash = 1;
     const fx = this.ctx.fx;
@@ -300,6 +304,7 @@ export class GiantSnowball {
     const oz = this.z;
     this.x += this.vx * dt;
     this.z += this.vz * dt;
+    this.bankDt = dt;
     this.collide();
     const ds = Math.hypot(this.x - ox, this.z - oz);
     this.rolled += ds;
@@ -403,6 +408,12 @@ export class GiantSnowball {
   private collide(): void {
     const ctx = this.ctx;
     const lim = ARENA.maxX - this.r * 0.9;
+    // the banked edge: rolls it back off the walls (no pinned ball in a corner)
+    const bx = Math.abs(this.x) - (lim - AV.BANK_W);
+    if (bx > 0) this.vx -= Math.sign(this.x) * AV.BANK * Math.min(1, bx / AV.BANK_W) * this.bankDt;
+    const limZ0 = ARENA.maxZ - this.r * 0.9;
+    const bz = Math.abs(this.z) - (limZ0 - AV.BANK_W);
+    if (bz > 0) this.vz -= Math.sign(this.z) * AV.BANK * Math.min(1, bz / AV.BANK_W) * this.bankDt;
     if (this.x > lim || this.x < -lim) {
       this.x = Math.max(-lim, Math.min(lim, this.x));
       this.vx *= -0.35;

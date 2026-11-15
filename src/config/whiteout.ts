@@ -247,9 +247,15 @@ export const AV = {
   HEAVY: 0.82,
   /** A gust shoves it at GUST x the gust's pull (m/s^2 per unit frac x top speed). */
   GUST: 0.55,
-  /** Shards: one landing on the ball (inside SHARD_R + r) knocks CHIP m off its radius. Lava melts LAVA m/s. */
+  /** Shards: one landing on the ball (inside SHARD_R + r) knocks CHIP m off its radius. Lava melts LAVA m/s (a fresh
+   *  ball survives ~1.4 s on it, a full one rolled across the ring loses a little: a hazard to steer round, not an
+   *  instant burst when a gust or a bad bounce puts it there). */
   CHIP: 0.2,
-  LAVA: 0.7,
+  LAVA: 0.35,
+  /** The arena edge is banked: within BANK_W m of the wall clamp the ball is pushed back in at BANK m/s^2 (it never
+   *  sits pinned in a corner or along a wall where no plow can get behind it). */
+  BANK: 5,
+  BANK_W: 1.4,
   /** Shard volleys / gusts in THE AVALANCHE: the gap (s) and shards per volley (fewer than the fight: it's a push);
    *  every other volley drops one ring on the ball's path. */
   SHARD_GAP: 5.5,
