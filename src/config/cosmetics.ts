@@ -42,6 +42,10 @@ export interface PaintDef extends CosmeticBase {
    *  lines in `patternColor`, laid out in the plow body's own space (stable on every panel of every plow). */
   pattern?: 'pinstripe';
   patternColor?: number;
+  /** Trim finish when it differs from the body's (e.g. polished gold trim on a matte body); a metallic trim
+   *  (>= 0.5) picks up the sky environment map so it reads as metal. */
+  trimMetalness?: number;
+  trimRoughness?: number;
 }
 
 /** How a decal is drawn and where it goes (entities/plowModels.ts maps it onto each plow's surfaces). */
@@ -112,7 +116,7 @@ export const COSMETICS: readonly CosmeticDef[] = [
   { id: 'paint_chrome', slot: 'paint', name: 'Ice Chrome', blurb: 'Mirror-polished frost.', price: 1200, req: { stars: 6 }, body: 0xf2f8ff, trim: 0xc6dcee, accent: 0x7fdcff, metalness: 1, roughness: 0.04, mirror: true },
   { id: 'paint_gold', slot: 'paint', name: 'Champion Gold', blurb: 'For plows that have seen it all.', price: 2000, req: { achievements: 15 }, body: 0xffbf2e, trim: 0xd9901a, accent: 0xfff3c4, metalness: 1, roughness: 0.12, mirror: true },
   // PROTOCOL C exclusive (req.protocol: granted on the first clear, never bought; the price is only a sort key).
-  { id: 'paint_takeover', slot: 'paint', name: 'Hostile Takeover', blurb: 'Matte black, gold pinstripes. Dressed for the boardroom. Taken from it.', price: 2000, req: { protocol: true }, body: 0x15161a, trim: 0xe8b83a, accent: 0xf0cc60, roughness: 0.86, metalness: 0.08, pattern: 'pinstripe', patternColor: 0xd9ad3c },
+  { id: 'paint_takeover', slot: 'paint', name: 'Hostile Takeover', blurb: 'Matte black, gold pinstripes. Dressed for the boardroom. Taken from it.', price: 2000, req: { protocol: true }, body: 0x15161a, trim: 0xe8b83a, accent: 0xf0cc60, roughness: 0.86, metalness: 0.08, trimMetalness: 0.9, trimRoughness: 0.28, pattern: 'pinstripe', patternColor: 0xd9ad3c },
   // ---- Decal
   { id: 'decal_none', slot: 'decal', name: 'Clean', blurb: 'Nothing but paint.', price: 0, style: null },
   { id: 'decal_stripes', slot: 'decal', name: 'Racing Stripes', blurb: 'Twin stripes nose to tail.', price: 150, style: 'stripes' },

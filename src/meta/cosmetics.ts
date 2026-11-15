@@ -33,7 +33,13 @@ export function sanitizeCosmetics(raw: unknown): CosmeticsState {
 
 /** The save's cosmetics, sanitized (read-only view; use the mutators below to change it). */
 export function cosmeticsState(p: Progression): CosmeticsState {
-  return sanitizeCosmetics(p.data.cosmetics);
+  const s = sanitizeCosmetics(p.data.cosmetics);
+  // PROTOCOL C exclusives never count as owned (or stay equipped) before a clear, whatever an imported save says.
+  if (!protocolClearedSave(p) && s.owned.some((id) => COSMETIC_BY_ID.get(id)?.req?.protocol)) {
+    s.owned = s.owned.filter((id) => !COSMETIC_BY_ID.get(id)?.req?.protocol);
+    for (const slot of COSMETIC_SLOTS) if (COSMETIC_BY_ID.get(s.equipped[slot])?.req?.protocol) s.equipped[slot] = DEFAULT_COSMETICS[slot];
+  }
+  return s;
 }
 
 export function isOwned(p: Progression, id: string): boolean {

@@ -304,6 +304,20 @@ export function awardProtocolRun(p: Progression, run: ProtocolRun): ProtocolStar
   return rep;
 }
 
+/** save.protocol.clears (0 when missing). */
+function protocolClears(p: Progression): number {
+  const n = p.data.protocol?.clears;
+  return typeof n === 'number' && Number.isFinite(n) ? n : 0;
+}
+
+/** A won run that recorded nothing (dev start): the verdict without banking anything (nothing new, no bonus). */
+function unrecordedReport(p: Progression, run: ProtocolRun): ProtocolStarReport {
+  const rep = evaluateProtocolRun(p, run);
+  const got = protocolStarIds(p);
+  const results = rep.results.map((r) => ({ ...r, isNew: false, owned: got.has(r.def.id) }));
+  return { ...rep, results, newStars: 0, bonus: 0, stars: results.filter((r) => r.owned).length };
+}
+
 let lastProtocol: ProtocolStarReport | null = null;
 
 /** Verdict of the most recent PROTOCOL C run (null after any other run). Read by the PROTOCOL C results screen. */
@@ -329,14 +343,19 @@ export class ProtocolStarTracker {
   private chairLand = -1;
   private chairTime = Infinity;
   private avalanche: boolean | null = null;
+  /** save.protocol.clears when this attempt began: a won run that did not bump it was not recorded (a dev start past
+   *  wave 1, __game.startProtocol(n), records nothing), so it earns no stars and pays nothing. */
+  private clears0 = -1;
 
   constructor(private ctx: GameContext) {
     const ev = ctx.events;
     ev.on('roundStarted', ({ round }) => {
       if (!this.active()) return;
       // A new run (fresh start, or a RETRY WAVE / RESUME from a checkpoint) never moves forward from the last wave.
-      if (round <= this.wave) this.reset();
-      else if (this.wave > 0) this.waveDamage[this.wave - 1] = this.waveDmg;
+      if (round <= this.wave || this.wave === 0) {
+        this.reset();
+        this.clears0 = protocolClears(ctx.progression);
+      } else this.waveDamage[this.wave - 1] = this.waveDmg;
       this.wave = round;
       this.waveDmg = 0;
     });
@@ -374,6 +393,7 @@ export class ProtocolStarTracker {
     this.sweepKills = 0;
     this.chairTime = Infinity;
     this.avalanche = null;
+    this.clears0 = -1;
   }
 
   /** The run so far as the stars see it (`won`: the last wave counts as played whole). */
@@ -395,8 +415,10 @@ export class ProtocolStarTracker {
       return;
     }
     const run = this.snapshot(r);
+    // Only a recorded clear (Game records it before emitting runFinished, so save.protocol.clears went up) banks stars.
+    const recorded = this.clears0 >= 0 && protocolClears(this.ctx.progression) > this.clears0;
     this.reset();
-    lastProtocol = awardProtocolRun(this.ctx.progression, run);
+    lastProtocol = recorded || !r.won ? awardProtocolRun(this.ctx.progression, run) : unrecordedReport(this.ctx.progression, run);
     const rep = lastProtocol;
     if (!rep.newStars) return;
     const names = rep.results.filter((x) => x.isNew).map((x) => x.def.name);

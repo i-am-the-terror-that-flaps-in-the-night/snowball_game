@@ -4,7 +4,7 @@ import { Progression, sanitizeProtocol } from '../src/core/Progression';
 import { ZONES } from '../src/config/zones';
 import { COSMETICS, COSMETIC_BY_ID } from '../src/config/cosmetics';
 import {
-  PROTOCOL_CHALLENGES, PROTOCOL_STAR_CHAIRMAN_S, PROTOCOL_STAR_HP, PROTOCOL_STAR_HP_WAVE, PROTOCOL_STAR_REWARD, PROTOCOL_STAR_SWEEP_S,
+  PROTOCOL_CHALLENGES, PROTOCOL_STAR_CHAIRMAN_S, protocolChallengeText, PROTOCOL_STAR_HP, PROTOCOL_STAR_HP_WAVE, PROTOCOL_STAR_REWARD, PROTOCOL_STAR_SWEEP_S,
   type ProtocolRun,
 } from '../src/config/challenges';
 import { PROTOCOL_ID, PROTOCOL_WAVES, PROTOCOL_ZONE, waveBossCount } from '../src/config/protocol';
@@ -127,6 +127,24 @@ describe('PROTOCOL C exclusive cosmetics', () => {
     expect(sanitizeCosmetics(q.data.cosmetics).equipped.paint).toBe('paint_takeover');
   });
 
+  it('an imported / hand-edited save that owns or wears an exclusive before the clear does not get it', () => {
+    const p = new Progression();
+    p.data.cosmetics = { owned: ['paint_takeover', 'trail_whiteout', 'kill_avalanche', 'paint_black'], equipped: { paint: 'paint_takeover', trail: 'trail_whiteout', kill: 'kill_avalanche' } };
+    for (const c of PROTOCOL_COSMETICS) {
+      expect(isOwned(p, c.id)).toBe(false);
+      expect(equipCosmetic(p, c.id)).toBe(false);
+    }
+    expect(isOwned(p, 'paint_black')).toBe(true);
+    const s = cosmeticsState(p);
+    expect(s.equipped.paint).not.toBe('paint_takeover');
+    expect(s.equipped.trail).not.toBe('trail_whiteout');
+    expect(s.equipped.kill).not.toBe('kill_avalanche');
+    // ...and once PROTOCOL C is cleared the same save wears them again
+    clearAll(p);
+    recordProtocolClear(p, 500, 0);
+    expect(cosmeticsState(p).equipped.paint).toBe('paint_takeover');
+  });
+
   it('a save that cleared PROTOCOL C before the exclusives existed gets them (grant on demand, or a free claim)', () => {
     const p = new Progression();
     clearAll(p);
@@ -231,6 +249,15 @@ describe('PROTOCOL C stars', () => {
     expect(metIds(evaluateProtocolRun(p, prun({ won: false, partial: false, avalancheFirstTry: true })))).toEqual([]);
   });
 
+  it('the finale star stays ??? until the first clear (no spoiler on the zone card / a lost run)', () => {
+    const ava = PROTOCOL_CHALLENGES.find((c) => c.id === 'avalanche')!;
+    expect(ava.secret).toBe(true);
+    const hidden = protocolChallengeText(ava, false);
+    expect(`${hidden.name} ${hidden.goal} ${hidden.tip}`).not.toMatch(/AVALANCHE|WHITEOUT|snowball/i);
+    expect(protocolChallengeText(ava, true).goal).toBe(ava.goal);
+    for (const c of PROTOCOL_CHALLENGES.filter((d) => !d.secret)) expect(protocolChallengeText(c, false).goal).toBe(c.goal);
+  });
+
   it('banks new stars once and pays PROTOCOL_STAR_REWARD each', () => {
     const p = new Progression();
     p.data.coins = 0;
@@ -281,6 +308,8 @@ describe('PROTOCOL C stars', () => {
           ev.emit('avalancheHit', { fullSize: false, attempt: 2 });
         }
       }
+      // Game records the clear in the save before it emits runFinished.
+      recordProtocolClear(p, 900, 0);
       ev.emit('runFinished', runFin());
       const rep = lastProtocolReport()!;
       expect(rep.results.filter((r) => r.met).map((r) => r.def.id).sort()).toEqual(['avalanche', 'chairman', 'clean', 'hp', 'sweep']);
@@ -314,9 +343,32 @@ describe('PROTOCOL C stars', () => {
       expect(lastProtocolReport()!.results.filter((r) => r.met)).toEqual([]);
     });
 
+    it('a dev start past wave 1 (records nothing) banks no stars and pays nothing, though it shows what it met', () => {
+      const { ctx, ev, p } = rig();
+      const coins = p.coins;
+      wave(ev, 6);
+      ctx.time = 10;
+      for (let k = 0; k < waveBossCount(6).echoes; k++) ev.emit('bossSpawned', { enemy: boss('frostbyte', true), name: 'x', title: '' });
+      for (let k = 0; k < waveBossCount(6).echoes; k++) ev.emit('bossDefeated', { enemy: boss('frostbyte', true), name: 'x' });
+      wave(ev, 7);
+      ctx.time = 20;
+      ev.emit('bossSpawned', { enemy: boss('chairman'), name: 'THE CHAIRMAN', title: '' });
+      ctx.time = 40;
+      ev.emit('bossDefeated', { enemy: boss('chairman'), name: 'THE CHAIRMAN' });
+      // no recordProtocolClear: Game's dev start records nothing
+      ev.emit('runFinished', runFin({ partial: true }));
+      const rep = lastProtocolReport()!;
+      expect(rep.results.filter((r) => r.met).map((r) => r.def.id).sort()).toEqual(['chairman', 'sweep']);
+      expect(rep.newStars).toBe(0);
+      expect(rep.bonus).toBe(0);
+      expect(protocolStars(p)).toBe(0);
+      expect(p.coins).toBe(coins);
+    });
+
     it('the finale may set runFinished.avalancheFirstTry directly; campaign runs are not judged here', () => {
-      const { ev, ctx } = rig();
+      const { ev, ctx, p } = rig();
       wave(ev, 1);
+      recordProtocolClear(p, 900, 1);
       ev.emit('runFinished', runFin({ partial: true, avalancheFirstTry: true }));
       expect(lastProtocolReport()!.results.find((r) => r.def.id === 'avalanche')!.met).toBe(true);
       (ctx as { zone: unknown }).zone = { ...ZONES[0] };

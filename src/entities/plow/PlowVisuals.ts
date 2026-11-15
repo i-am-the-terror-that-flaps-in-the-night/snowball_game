@@ -142,10 +142,18 @@ export abstract class PlowVisuals extends PlowBase {
       this.paintMat.metalness = 0;
       this.paintMat.roughness = 0.3;
     }
+    // A trim finish of its own (Hostile Takeover: polished gold trim on matte black).
+    if (p.trimMetalness != null) this.bedMat.metalness = p.trimMetalness;
+    if (p.trimRoughness != null) this.bedMat.roughness = p.trimRoughness;
     const env = p.mirror || gunmetal || gloss || hearse ? getPaintEnvMap(this.ctx.renderer) : null;
+    const bedEnv = env ?? ((p.trimMetalness ?? 0) >= 0.5 ? getPaintEnvMap(this.ctx.renderer) : null);
     if (this.paintMat.envMap !== env) {
-      this.paintMat.envMap = this.bedMat.envMap = env;
-      this.paintMat.needsUpdate = this.bedMat.needsUpdate = true;
+      this.paintMat.envMap = env;
+      this.paintMat.needsUpdate = true;
+    }
+    if (this.bedMat.envMap !== bedEnv) {
+      this.bedMat.envMap = bedEnv;
+      this.bedMat.needsUpdate = true;
     }
     this.paintMat.envMapIntensity = this.bedMat.envMapIntensity = gunmetal ? 0.8 : gloss ? 0.3 : 1;
     // Classic chrome / tinted glass / polished blade steel reflect the sky; the other kinds' blade steel doesn't.

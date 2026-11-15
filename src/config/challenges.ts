@@ -254,7 +254,15 @@ export interface ProtocolChallengeDef {
   name: string;
   goal: string;
   tip?: string;
+  /** About the finale (THE WHITEOUT): name / goal / tip stay "???" until PROTOCOL C is cleared (no spoilers). */
+  secret?: boolean;
   test(r: ProtocolRun): boolean;
+}
+
+/** What a PROTOCOL C star card may say: a secret star reads as ??? until the first clear. */
+export function protocolChallengeText(def: ProtocolChallengeDef, cleared: boolean): { icon: string; name: string; goal: string; tip?: string } {
+  if (!def.secret || cleared) return { icon: def.icon, name: def.name, goal: def.goal, tip: def.tip };
+  return { icon: '❔', name: '???', goal: '??? Clear PROTOCOL C to find out', tip: 'The meeting is not over when the boardroom empties.' };
 }
 
 /** "Quiet Quarter": the wave judged and the HP budget (wave 4: SLUSH & SLEET upgraded + three echoes). */
@@ -293,7 +301,7 @@ export const PROTOCOL_CHALLENGES: ProtocolChallengeDef[] = [
     test: (r) => r.chairmanTime <= PROTOCOL_STAR_CHAIRMAN_S,
   },
   {
-    id: 'avalanche', icon: '☃️', name: 'Avalanche Season', goal: 'Land THE AVALANCHE at full size, first try',
+    id: 'avalanche', icon: '☃️', name: 'Avalanche Season', goal: 'Land THE AVALANCHE at full size, first try', secret: true,
     tip: 'The finale: grow the ball all the way before you let it go.',
     test: (r) => r.avalancheFirstTry,
   },

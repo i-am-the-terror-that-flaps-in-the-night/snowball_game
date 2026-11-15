@@ -2,7 +2,7 @@ import type { GameContext, SoundName, UIHandlers } from '../../core/types';
 import { ZONES, type ZoneDef } from '../../config/zones';
 import { ENEMIES, type EnemyDef } from '../../config/enemies';
 import { HARD, earnedIds, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, maxStars, protocolStarIds, starReward, zoneChallenges, zoneStars } from '../../meta/challenges';
-import { PROTOCOL_CHALLENGES, PROTOCOL_STAR_REWARD } from '../../config/challenges';
+import { PROTOCOL_CHALLENGES, PROTOCOL_STAR_REWARD, protocolChallengeText } from '../../config/challenges';
 import { totalStars } from '../../meta/progress';
 import { bossColor, bossCount, el, fmt, hex, restart, starsHtml, type BtnFn } from '../uiKit';
 import { PROTOCOL_WAVES, PROTOCOL_ZONE } from '../../config/protocol';
@@ -115,8 +115,10 @@ function protocolChallengeList(ui: ZonesDeps, parent: HTMLElement): void {
   const head = el('div', 'ss-zone-chal-head', undefined, box);
   el('span', 'ss-zone-stars', undefined, head).innerHTML = starsHtml(n, 0, PROTOCOL_CHALLENGES.length);
   el('small', '', `+${fmt(PROTOCOL_STAR_REWARD)} 🪙 / star · not in the campaign total`, head);
-  for (const c of PROTOCOL_CHALLENGES) {
-    const done = got.has(c.id);
+  const cleared = ui.ctx.progression.data.protocol?.cleared === true;
+  for (const def of PROTOCOL_CHALLENGES) {
+    const done = got.has(def.id);
+    const c = protocolChallengeText(def, cleared);
     const row = el('div', `ss-zone-chal ${done ? 'done' : ''}`, undefined, box);
     el('span', 'ss-zone-chal-mark', done ? '✓' : c.icon, row);
     el('span', 'ss-zone-chal-goal', c.goal, row);
