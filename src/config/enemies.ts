@@ -15,6 +15,8 @@ export type EnemyType =
   /** THE DONALD's red-cap rally minion (a re-skinned scrapper). */
   | 'rallybot'
   | 'donald'
+  /** PROTOCOL C's final boss (wave 7): THE DONALD in his walking golden tower (enemies/chairman.ts). */
+  | 'chairman'
   /** Brawl mode rival plow (stats are the baseline; BrawlManager scales by difficulty). */
   | 'rival'
   /** Ranged minion: keeps a standoff and lobs slow, telegraphed snowball bolts (enemies/ai.ts gunner). */
@@ -137,6 +139,10 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
   omega: {
     type: 'omega', name: 'MEGAPLOW Ω', title: 'The Final Machine', hp: 2400, speed: 4.5, radius: 3.2, mass: 10, ramDamage: 30, armor: 8, coins: 400, isBoss: true, color: 0x22252b, accent: 0xff1744,
     special: 'Colossal black-and-chrome mega plow with a triple blade, glowing red core and hazard lights. Three phases (announce each with a roar + shake). P1 (100-66%): CHARGE (1.0s telegraph, 18 m/s, wall-hit = 2s stun) and SHOVE (0.6s, when within 6m). P2 (66-33%): adds GROUND POUND — 1.1s telegraph (it rears up, a red ring of radius 8 appears on the ground), slams down: ramDamage x1.2 to anything within 8m + knockback (get out of the ring!); summons 3 scrappers at the start of P2. P3 (<33%): ENRAGED (red core pulsing, speed x1.35), combos CHARGE -> GROUND POUND, summons 2 brutes once. Core vulnerability: after a ground pound it is exposed for 1.5s (takes x1.5).',
+  },
+  chairman: {
+    type: 'chairman', name: 'THE CHAIRMAN', title: 'Chairman of the Board', hp: 3000, speed: 4.6, radius: 3.3, mass: 14, ramDamage: 32, armor: 9, coins: 900, isBoss: true, color: 0xf0b928, accent: 0x15161c,
+    special: 'PROTOCOL C wave 7: THE DONALD revealed, driving a walking golden skyscraper (tank-tread pods, mirrored gold glass, the boardroom on top with him at the table, a BRIEFCASE CANNON crane arm and a golden POINTING FINGER). BRIEFCASE CANNON: lobbed briefcases onto telegraphed rings (paper burst + short stun). QUARTERLY REPORTS: a paper storm (scrambles the minimap, slows the plow inside). HOSTILE TAKEOVER: a gold beam ACQUIRES an echo (gold armour + speed until a damage threshold or a timeout). RESTRUCTURING: rows of gold partition walls (smashable). Upgraded DEPORTATION and RALLY (podium + rally bots). Phase 2 at 50%: GOLDEN PARACHUTE (reflects damage, faster, briefcase volleys of three). Ultimates have no effect on him. At 0 HP he slams the PROTOCOL C button.',
   },
 };
 

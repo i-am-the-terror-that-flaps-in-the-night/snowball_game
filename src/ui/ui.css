@@ -1276,6 +1276,9 @@
 .ss-toast.bad { background: var(--red); color: #fff; border-left-color: var(--ink-inv); }
 /* Story radio line (Road Crew dispatch as a campaign arena starts): body font, sentence case, long enough to read. */
 .ss-toast.radio { font-family: var(--body); text-transform: none; font-style: italic; font-size: 15px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.3; border-left-color: var(--cyan); animation-duration: 6s; }
+.ss-toast.chairman { font-family: var(--body); text-transform: none; font-size: 15px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.3; color: #ffe39a; background: #15131b; border-left-color: #e8b423; text-shadow: 1px 0 rgba(255, 60, 60, 0.55), -1px 0 rgba(80, 200, 255, 0.45); animation: ss-toast-life 6s ease both, ss-pa-glitch 2.3s steps(1) infinite; }
+/* the distorted PA: the colour fringe jumps now and then (text-shadow only: the toast's own life animation owns transform) */
+@keyframes ss-pa-glitch { 0%, 100% { text-shadow: 1px 0 rgba(255, 60, 60, 0.55), -1px 0 rgba(80, 200, 255, 0.45); } 41% { text-shadow: 4px 0 rgba(255, 60, 60, 0.8), -3px 0 rgba(80, 200, 255, 0.7); } 44% { text-shadow: -2px 0 rgba(255, 60, 60, 0.7), 2px 0 rgba(80, 200, 255, 0.6); } 77% { text-shadow: 3px 1px rgba(255, 60, 60, 0.8), -3px -1px rgba(80, 200, 255, 0.7); } }
 .ss-toast.out { animation: ss-toast-out 0.25s ease forwards; }
 
 .ss-bigtoasts { position: absolute; inset: 0; z-index: 41; display: grid; place-items: center; pointer-events: none; }

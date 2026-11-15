@@ -67,8 +67,8 @@ Boss clears drop gear: the first clear always does, repeat clears sometimes, and
 
 ## Protocol C
 
-The secret seventh arena (build stages 1-2 of 5: foundation, echo holograms + tuning; THE CHAIRMAN, THE WHITEOUT, rewards and its own stars come
-later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
+The secret seventh arena (build stages 1-3 of 5: foundation, echo holograms + tuning, THE CHAIRMAN; THE WHITEOUT,
+rewards and its own stars come later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
 `src/world/protocol/layout.ts` (floor), `src/world/environment/ProtocolScenery.ts` (venue).
 
 - **Not a campaign arena**: `PROTOCOL_ZONE` is not in `ZONES`, so the arena unlock prefix, the finale (results /
@@ -79,8 +79,7 @@ later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (u
   on ice; always night). Wave n = campaign boss n PROTOCOL-upgraded: at least its Hard-campaign HP +15% (home HP ×
   max(1.6, 1.8 × 1.15)), ×1.25 damage, and its cooldowns between moves run ×1.3 as fast (wind-ups and telegraphs keep
   their length); the bosses already beaten walk back in as **echoes** (×0.35 home HP, ×0.85 damage, "ECHO" in the
-  HUD) one by one, 6 s apart. Wave 7 is every headline as an echo, in two groups, around a stand-in final boss (THE DONALD at
-  headline strength until THE CHAIRMAN lands in stage 3). Base difficulty is Hard's (×1.8 HP / ×1.5 damage on summoned
+  HUD) one by one, 6 s apart. Wave 7 is every headline as an echo, in two groups, around THE CHAIRMAN (below). Base difficulty is Hard's (×1.8 HP / ×1.5 damage on summoned
   minions and bot hits, scaled with your power like Hard). The normal upgrade shop runs between waves.
 - **Echoes** keep one or two signature moves and never reach phase 2 or summon: FROSTBYTE ball slam · BULLDOZA charge +
   leap · THE GRINDER auger pull · SLUSH charge / SLEET shove (as a pair) · THE DONALD wall (+ its steamroll) · Ω ground
@@ -103,6 +102,36 @@ later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (u
   the deck waves: a boss between moves whose plow is up on a deck heads for the nearest ramp foot and drives up (or
   drops off the side to come back down), goes round a slab / ramp side that walls off its way, shoves through crates,
   and holds its next move until it is on the plow's level. Parking on a deck no longer keeps them off you.
+- **THE CHAIRMAN** (`src/entities/enemies/chairman.ts`, props `chairmanProps.ts`, commentary + reveal
+  `src/core/chairmanDirector.ts`, lines in `src/config/lore.ts`): THE DONALD, secretly the boss above Ω.
+  - Waves 1-6: an unseen voice in the boardroom box (a backlit silhouette in the gold chair) on the arena PA: gold
+    "📞 THE CHAIRMAN" toasts with a glitchy colour fringe. Wave intros, "acquiring" each echo as it walks in ("Welcome
+    to the team, FROSTBYTE."), reactions to boss kills and (once a wave) to your low HP, the wave 5 line about the
+    DONALD knock-off. At most one line every 7 s (one line can wait; a newer one replaces it).
+  - Wave 7 (the reveal): a 6 s countdown while the box lights up (THE DONALD, foot up on the table, ankle monitor
+    blinking) and the camera eases onto it; then the box detaches and the tower drops onto the floor under it (2.8 s,
+    untouchable, a filling landing ring and a shockwave; the camera follows it down), and the intro card "THE
+    CHAIRMAN · Chairman of the Board".
+  - The model: a walking golden skyscraper (~10.6 m, the tallest boss): black-and-gold tread pods with TOWER skirts, a
+    stepped tower of mirrored gold glass (lit panes glow at night), a gold C monogram, folded red-carpet ramps, the
+    boardroom on top with him at the table (the PROTOCOL C button in front of him), a flag; crane arms: a BRIEFCASE
+    CANNON (the lid snaps open to fire) and a golden POINTING FINGER.
+  - Moves (all telegraphed): BRIEFCASE CANNON (two shots; each aims cases at rings that fill until they land: a paper
+    burst, damage, a short daze) · QUARTERLY REPORTS (1.3 s gathering, then 5.5 s of paper storm that drifts after
+    you: the minimap scrambles, the plow is slowed to 55% inside) · HOSTILE TAKEOVER (the finger's thin beam locks an
+    echo for 1.3 s, then a gold beam ACQUIRES it: half damage taken and +35% speed until you knock 30% of its HP off it
+    or 12 s pass) · RESTRUCTURING (three rows of gold partitions across the arena, each with a gap; smashable like THE
+    DONALD's walls, never inside a deck) · DEPORTATION (a wider beam) · RALLY (the boardroom as a podium: rally bots,
+    60% less damage until half the bots or the podium are wrecked; it tops the floor up to at most 10 red caps) · a
+    shove up close. A ready BRIEFCASE CANNON always follows a big move. Deck routing never holds his moves (they are
+    ranged): parking on a deck he cannot climb still gets the whole fight.
+  - Phase 2 at 50%: GOLDEN PARACHUTE (a gold canopy pops from the roof): reflects 15% of the damage taken, +25%
+    speed, cooldowns ×0.7, briefcases in volleys of three.
+  - Ultimates hurt him like any boss. HP: Ω's PROTOCOL headline ×1.1 on a
+    3,000 base (the run's toughest boss), ×1.25 damage like every headline; he always counts as fighting on the leash.
+  - At 0 HP: the defeat (3.8 s, untouchable): the tower sags and lists, the treads seize, the echoes freeze, and
+    through the glass he slams the PROTOCOL C button. His wreck runs `ChairmanDirector.onChairmanDefeated`: everything
+    left on the floor (echoes, rally bots) powers down, the rest of the wave is dropped, and the run ends in victory (stage 4 hooks THE WHITEOUT in there).
 - **Checkpoints**: each wave's start is saved (HP fraction, kills, coins, run time, retries). Wrecked on wave 2 or
   later, the results screen offers RETRY WAVE n (restores it, +1 retry) or a full restart; a saved run can also be resumed from the card.
   Coins and upgrades are permanent as everywhere else. A clear records the best total time (fights only) and whether

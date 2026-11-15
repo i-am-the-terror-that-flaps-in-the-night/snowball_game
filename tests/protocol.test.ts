@@ -91,8 +91,8 @@ describe('wave composition', () => {
     expect(bossesOf(4)).toEqual(['H:slush', 'H:sleet', 'E:frostbyte', 'E:bulldoza', 'E:grinder']);
     expect(bossesOf(5)).toEqual(['H:donald', 'E:frostbyte', 'E:bulldoza', 'E:grinder', 'E:slush', 'E:sleet']);
     expect(bossesOf(6)).toEqual(['H:omega', 'E:frostbyte', 'E:bulldoza', 'E:grinder', 'E:slush', 'E:sleet', 'E:donald']);
-    // wave 7: the stand-in final boss (THE CHAIRMAN comes in stage 3) + every headline as an echo
-    expect(bossesOf(7)).toEqual(['H:donald', 'E:frostbyte', 'E:bulldoza', 'E:grinder', 'E:slush', 'E:sleet', 'E:donald', 'E:omega']);
+    // wave 7: THE CHAIRMAN (stage 3) + every headline as an echo
+    expect(bossesOf(7)).toEqual(['H:chairman', 'E:frostbyte', 'E:bulldoza', 'E:grinder', 'E:slush', 'E:sleet', 'E:donald', 'E:omega']);
     expect(waveBossCount(7)).toEqual({ total: 8, echoes: 7 });
     expect(waveBossCount(1)).toEqual({ total: 1, echoes: 0 });
   });
@@ -103,6 +103,7 @@ describe('wave composition', () => {
     expect(z.enemyDmgMult).toBeCloseTo(HARD.dmgMult * 1.2);
     for (const r of rounds) {
       for (const g of r.groups) {
+        if (g.type === 'chairman') continue; // no home arena (tests/chairman.test.ts)
         const home = homeZone(g.type)!.enemyHpMult;
         const net = PROTOCOL_ZONE.enemyHpMult * g.hpMult!;
         expect(net).toBeCloseTo(home * (g.echo ? ECHO_HP : Math.max(HEADLINE_HP, HARD.hpMult * HEADLINE_HARD)));

@@ -16,6 +16,8 @@ import { MINION_AI, MOVE_COLOR, aroundAngle, clamp, initAI, orbit, resetAI, segD
 import { BOSS_AI } from './enemies/bosses';
 import { ECHO_DMG, HEADLINE_CD, HEADLINE_DMG } from '../config/protocol';
 import { donaldProps } from './enemies/donaldProps';
+import { chairmanProps } from './enemies/chairmanProps';
+import { chairmanDown } from './enemies/chairman';
 import { applyHologram, holoTime, holoWarmSet, hologramMaterial } from './enemies/hologram';
 import type { KillSource, KillWeapon } from '../core/events';
 import type { BotNav } from '../core/types';
@@ -69,7 +71,7 @@ const _dv = new THREE.Vector3();
 const POWER_DOWN_GAP = 0.15;
 /** Share of a bot's armour that rapid weapon hits (DamageOpts.direct: minigun rounds, laser ticks) still face. */
 const DIRECT_ARMOR = 0.5;
-const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { twinlink: 0xffb020, slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff, donald: 0xffc400 };
+const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { twinlink: 0xffb020, slush: 0xff2020, sleet: 0x2080ff, omega: 0xff1030, bulldoza: 0xff6a00, grinder: 0xff6a00, frostbyte: 0x40e0ff, donald: 0xffc400, chairman: 0xffc400 };
 
 const _c = new THREE.Color();
 const _ec = new THREE.Color();
@@ -384,6 +386,16 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const e = enemy as Bot;
     if (!e.alive || !(e instanceof Bot) || e.husk) return false;
     const ctx = this.ctx;
+    // THE CHAIRMAN: untouchable while scripted (his descent, the defeat). (ultImmune: unused, kept for scripted bosses.)
+    if (e.scripted) return false;
+    if (opts?.ult && e.ultImmune) {
+      if (e.blockFxT <= 0 && ctx.fx) {
+        e.blockFxT = 0.4;
+        _v.set(e.position.x, e.groundY + e.rig.height + 0.8, e.position.z);
+        ctx.fx.floatText(_v, 'NO EFFECT', '#ffd24a', 0.9);
+      }
+      return false;
+    }
     const src = opts?.source ?? 'other';
     const fromX = opts?.fromX ?? ctx.plow?.position.x ?? e.position.x;
     const fromZ = opts?.fromZ ?? ctx.plow?.position.z ?? e.position.z;
@@ -433,7 +445,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     let vm = 1;
     if (e.stun > 0) vm = Math.max(vm, e.stunMult);
     if (e.vulnT > 0 && e.vuln !== Vuln.None) vm = Math.max(vm, e.vulnMult);
-    dmg *= vm * e.dmgTakenMult;
+    dmg *= vm * e.dmgTakenMult * e.guardMult;
 
     if (opts?.freezeSeconds && opts.freezeSeconds > 0) e.freeze = Math.max(e.freeze, opts.freezeSeconds);
     // Applied after the damage multiplier so the stunning hit itself gets no stun bonus; bosses shrug off half.
@@ -488,6 +500,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
 
     ctx.events.emit('enemyHit', { enemy: e, damage: dmg });
+    // THE CHAIRMAN does not just blow up: at 0 HP he plays his defeat (the PROTOCOL C button), then wrecks (wreck())
+    if (e.hp <= 0 && e.type === 'chairman' && chairmanDown(this, e)) {
+      e.hp = 1;
+      return false;
+    }
     if (e.hp <= 0) {
       e.hp = 0;
       this.kill(e, src, opts?.weapon, area ? amount : 0, opts);
@@ -505,6 +522,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.syncBars();
     this.decals.clear();
     donaldProps.clear(this.ctx);
+    chairmanProps.clear(this.ctx);
     for (const d of this.debris) d.active = false;
     this.syncDebris();
     for (const b of this.bolts) this.dropBolt(b);
@@ -584,6 +602,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.syncBars();
     this.updateDebris(dt);
     donaldProps.update(this, dt);
+    chairmanProps.update(this, dt);
     this.decals.update(dt, this.snowTopFn);
 
     // compact
@@ -851,6 +870,29 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     (this.ctx.plow as { tow?(dx: number, dz: number, f: number, dt: number): void }).tow?.(dirX, dirZ, frac, dt);
   }
 
+  wreck(e: Bot): void {
+    if (!e.alive) return;
+    e.hp = 0;
+    this.kill(e, 'other');
+  }
+
+  /** Remove a bot without a kill (no events, no coins, no kill credit): a gold flash where it stood. */
+  dismiss(enemy: EnemyHandle): void {
+    const e = enemy as Bot;
+    if (!(e instanceof Bot) || !e.alive) return;
+    e.alive = false;
+    this.aliveN = Math.max(0, this.aliveN - 1);
+    this.releaseToken(e);
+    this.removeVisual(e);
+    if (e.isBoss) this.refreshBosses();
+    const fx = this.ctx.fx;
+    if (fx) {
+      _v.set(e.position.x, e.groundY + e.rig.height * 0.5, e.position.z);
+      fx.burst(_v, { color: 0xffd257, count: 30, speed: 7, size: 0.16, gravity: 4, life: 1.0 });
+      fx.burst(_v, { color: 0xffffff, count: 16, speed: 5, size: 0.3, gravity: 8, life: 0.8 });
+    }
+  }
+
   revive(e: Bot, hpFrac: number): void {
     if (!e.alive || !e.husk) return;
     e.husk = false;
@@ -1019,7 +1061,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       }
     }
 
-    if (e.entering) {
+    if (e.scripted) {
+      // a scripted sequence (THE CHAIRMAN's descent / defeat) plays out whatever the plow does
+      BOSS_AI[e.type]?.(this, e, dt);
+    } else if (e.entering) {
       const g = ENEMY_GATES[e.gate];
       e.desHeading = g.heading;
       e.desSpeed = Math.max(4.5, e.def.speed);
@@ -1103,7 +1148,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.kvx *= kd;
     e.kvz *= kd;
     this.clampPos(e, true);
-    if (!e.entering && e.type !== 'donald') this.pushOutObstacles(e);
+    // THE DONALD and THE CHAIRMAN bulldoze through their own walls (DonaldProps smashes them)
+    if (!e.entering && e.type !== 'donald' && e.type !== 'chairman') this.pushOutObstacles(e);
     if (terr.decks.length) this.pushOutDecks(e);
   }
 
@@ -1162,6 +1208,9 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.desHeading = Math.atan2(o.x - e.position.x, o.z - e.position.z);
     e.desSpeed = Math.max(e.desSpeed, Math.max(4.5, e.def.speed) * 0.85 * e.spdMult);
     e.turnRate = Math.max(e.turnRate, 1.6);
+    // THE CHAIRMAN's moves are ranged (lobs, beams, the paper storm, walls): routing never holds them, so a plow
+    // parked on a deck he cannot climb (he is too wide for the ramps) still gets the full fight
+    if (e.type === 'chairman') return;
     e.cd = Math.max(e.cd, 0.4);
     e.cd2 = Math.max(e.cd2, 0.4);
   }
@@ -1359,7 +1408,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (plow.phased) return;
     for (let i = 0; i < this.list.length; i++) {
       const e = this.list[i];
-      if (!e.alive) continue;
+      if (!e.alive || (e.scripted && e.hoverY > 0.3)) continue;
       let dx = e.position.x - plow.position.x;
       let dz = e.position.z - plow.position.z;
       const rr = e.radius + pr;
@@ -1698,7 +1747,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     e.spinRate *= Math.exp(-3 * dt);
 
-    rig.root.position.set(p.x, e.groundY, p.z);
+    rig.root.position.set(p.x + e.hoverX, e.groundY + e.hoverY, p.z + e.hoverZ);
     rig.root.rotation.y = e.heading + e.spinVis;
 
     const body = rig.body;
@@ -1774,7 +1823,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       const u = e.holo.uniforms;
       const glitch = Math.sin(t * 23 + e.id * 3) > 0.93 ? 1 : 0;
       u.uFlash.value = fl * 0.9;
-      u.uBoost.value = (e.held ? 0.15 : 0) + 0.12 * Math.sin(t * 5 + e.id) + glitch * 0.6 + Math.max(e.windup, e.glow) * 0.6 + (e.enraged ? 0.3 : 0);
+      u.uBoost.value = (e.held ? 0.15 : 0) + 0.12 * Math.sin(t * 5 + e.id) + glitch * 0.6 + Math.max(e.windup, e.glow) * 0.6 + (e.enraged ? 0.3 : 0) + (e.acquired > 0 ? 0.55 + 0.2 * Math.sin(t * 7) : 0);
       u.uAlpha.value = (e.held ? 0.7 : 1) * (glitch ? 0.55 : 1) * (e.freeze > 0 ? 0.6 : 1);
       u.uBase.value = e.position.y;
     }
@@ -1951,8 +2000,13 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       b.count = 0;
       return b;
     });
-    // + PROTOCOL C's echo hologram (plain + instanced variants: hologram.ts)
-    return [...debris, ...holoWarmSet()];
+    // + PROTOCOL C's echo hologram (plain + instanced variants: hologram.ts) and THE CHAIRMAN's rig (its own canvas
+    // textures and materials; a spare instance that is never added to the scene)
+    const chair: THREE.Object3D[] = [];
+    createRig('chairman').root.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) chair.push(o);
+    });
+    return [...debris, ...holoWarmSet(), ...chair];
   }
 
   /** Write every active chunk's transform into its batch; empty batches are hidden, the rest get a fresh bounding

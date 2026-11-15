@@ -31,6 +31,12 @@ export const HEADLINE_CD = 1.3;
 /** Echoes: x home-arena HP, x outgoing damage. */
 export const ECHO_HP = 0.35;
 export const ECHO_DMG = 0.85;
+/** THE CHAIRMAN (wave 7's final boss, no home arena): his HP multiplier is MEGAPLOW Ω's PROTOCOL headline's x this
+ *  (with his bigger base HP: ~1.4x the Ω headline, the run's toughest boss); he lands at CHAIRMAN_SPAWN, under his box. */
+export const CHAIRMAN_HP_K = 1.1;
+export const CHAIRMAN_SPAWN = { x: 0, z: -19, heading: 0 } as const;
+/** Wave 7's countdown: long enough for the boardroom box to light up and the camera to find it (the reveal). */
+export const REVEAL_COUNTDOWN = 6;
 /** At most this many bosses attack at once; the others hold back on a leash. */
 export const MAX_ACTIVE = 4;
 /** Seconds into a wave the first echo walks in, and between echoes (a twin pair arrives together). */
@@ -41,7 +47,7 @@ export const PROTOCOL_CLEAR_REWARD = 6000;
 export const PROTOCOL_REPEAT_FRAC = 0.4;
 
 /** A boss "slot" of the rush: one bot, or the SLUSH & SLEET pair. */
-type BossKey = 'frostbyte' | 'bulldoza' | 'grinder' | 'twins' | 'donald' | 'omega';
+type BossKey = 'frostbyte' | 'bulldoza' | 'grinder' | 'twins' | 'donald' | 'omega' | 'chairman';
 /** Campaign order: wave n's headline is ORDER[n - 1]. */
 const ORDER: BossKey[] = ['frostbyte', 'bulldoza', 'grinder', 'twins', 'donald', 'omega'];
 const KEY_TYPES: Record<BossKey, EnemyType[]> = {
@@ -51,6 +57,7 @@ const KEY_TYPES: Record<BossKey, EnemyType[]> = {
   twins: ['slush', 'sleet'],
   donald: ['donald'],
   omega: ['omega'],
+  chairman: ['chairman'],
 };
 
 /** The campaign arena whose boss round holds `type` (its HP multiplier is the boss's "home" HP). */
@@ -61,6 +68,7 @@ export function homeZone(type: EnemyType): ZoneDef | undefined {
 /** Net HP multiplier of a Protocol boss (before the pilot-power scale): home x ECHO_HP for an echo; for the headline
  *  the larger of home x HEADLINE_HP and its Hard-campaign HP (home x HARD.hpMult) x HEADLINE_HARD. */
 export function protocolBossHp(type: EnemyType, echo: boolean): number {
+  if (type === 'chairman') return protocolBossHp('omega', false) * CHAIRMAN_HP_K;
   const home = homeZone(type)?.enemyHpMult ?? 1;
   return echo ? home * ECHO_HP : home * Math.max(HEADLINE_HP, HARD.hpMult * HEADLINE_HARD);
 }
@@ -69,6 +77,7 @@ function bossGroups(key: BossKey, delay: number, echo: boolean): SpawnGroup[] {
   // SpawnGroup.hpMult rides on top of zone.enemyHpMult (= Hard's, for the minions bosses summon): divide it back out.
   return KEY_TYPES[key].map((type, i) => ({
     type, count: 1, delay: delay + i * 0.6, interval: 1, hpMult: protocolBossHp(type, echo) / HARD.hpMult, echo, headline: !echo,
+    ...(type === 'chairman' ? { at: CHAIRMAN_SPAWN } : {}),
   }));
 }
 
@@ -80,9 +89,9 @@ export function protocolRounds(): RoundDef[] {
     ORDER.slice(0, w - 1).forEach((k, i) => groups.push(...bossGroups(k, ECHO_FIRST + i * ECHO_GAP, true)));
     rounds.push({ boss: true, groups });
   }
-  // Wave 7: the final boss + every headline as an echo, in two staggered groups.
-  // TODO(protocol stage 3): THE CHAIRMAN replaces this stand-in (THE DONALD at headline strength).
-  const finale = bossGroups('donald', 1, false);
+  // Wave 7: THE CHAIRMAN (straight away: his descent from the box opens the fight) + every headline as an echo, in two
+  // staggered groups.
+  const finale = bossGroups('chairman', 0, false);
   ORDER.forEach((k, i) => finale.push(...bossGroups(k, i < 3 ? 8 + i * 2 : 32 + (i - 3) * 2.5, true)));
   rounds.push({ boss: true, groups: finale });
   return rounds;
@@ -90,7 +99,7 @@ export function protocolRounds(): RoundDef[] {
 
 /** Headline boss name of each wave (the boss intro card, the results screen). */
 export function headlineName(wave: number): string {
-  if (wave >= PROTOCOL_WAVES) return 'THE DONALD'; // TODO(protocol stage 3): 'THE CHAIRMAN'
+  if (wave >= PROTOCOL_WAVES) return 'THE CHAIRMAN';
   const key = ORDER[Math.max(0, wave - 1)];
   return key === 'twins' ? 'SLUSH & SLEET' : key === 'frostbyte' ? 'FROSTBYTE' : key === 'bulldoza' ? 'BULLDOZA' : key === 'grinder' ? 'THE GRINDER' : key === 'donald' ? 'THE DONALD' : 'MEGAPLOW Ω';
 }
