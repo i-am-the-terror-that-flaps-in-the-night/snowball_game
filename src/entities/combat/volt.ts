@@ -112,6 +112,8 @@ const SC_FORK = { life: 0.35, width: 0.2, jag: 0.9, color: 0x7fd0ff };
 /** Cosmetic strikes keep this far (m, ground distance) from the viewing camera, so no bolt fills the screen. */
 const SC_CAM_CLEAR = 9;
 const SC_SPARKS = { color: 0x9fe8ff, count: 8, speed: 9, size: 0.07, length: 0.05, gravity: 8, life: 0.4 };
+/** Share of strikes (cosmetic and wave) that leave a light scorch decal. */
+const SC_SCORCH_CHANCE = 0.12;
 /** A strike's ground glow pool (additive, flat, short) and a lingering blue haze over it. */
 const SC_POOL = { count: 1, color: 0x8fdcff, additive: 1, size: 1.4, grow: 1.9, life: 0.45, speed: 0, up: 0, rise: 0, drag: 0, spread: 0, opacity: 0.95 };
 const SC_HAZE = { count: 2, color: 0x6fb8ff, additive: 0.6, size: 0.9, grow: 2.4, life: 0.8, speed: 1.5, up: 1.4, rise: 0.8, drag: 1.5, spread: 0.6, opacity: 0.5 };
@@ -798,7 +800,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
   }
 
   /** One visual sky strike from `a` (under the cloud) to the ground at `b`: the bolt, a fork, sparks, a glow pool,
-   *  haze and a light scorch. No damage. */
+   *  haze and (sometimes) a light scorch. No damage. */
   private skyStrike(a: THREE.Vector3, b: THREE.Vector3, bolt: { life: number; width: number; jag: number; color: number }): void {
     const fx = this.ctx.fx;
     this.lightning.bolt(a, b, bolt);
@@ -812,7 +814,8 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     _r.set(b.x, b.y + 0.15, b.z);
     fx.smoke(_r, SC_POOL);
     fx.smoke(_r, SC_HAZE);
-    fx.scorch(b, 1.1 + Math.random() * 0.6, 0.5);
+    // Only some strikes scorch: the decal pool is small (24, oldest evicted) and the wrecks' scorches must survive.
+    if (Math.random() < SC_SCORCH_CHANCE) fx.scorch(b, 1.1 + Math.random() * 0.6, 0.5);
   }
 
   /** SUPERCELL visuals, every frame: the cloud, and a constant rain of cosmetic strikes (half on bots in range) while
