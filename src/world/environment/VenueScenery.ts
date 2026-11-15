@@ -8,6 +8,7 @@ import { BRAWL_SKIN, CONFETTI, type BrawlSkin } from './styles';
 import { WALL_IN, WALL_C, GATE_HALF, PILLAR_W, DOME_TOWER_OFF, DOME_TOWER_K, DOME_N0, DOME_ROWS, DOME_ROW_D, DOME_RISE, DOME_CROWD_CAP, SPONSORS, CORE_X, CORE_Z, STAGE_HALF, STAGE_Y, STAGE_Z0, STAGE_Z1, GOLD_TOWER_X, GOLD_TOWER_Z, SIDES, domeK, DOME_COVER, domeCoverSite, gapsFor, subtract, mulberry32, colored, merge } from './layout';
 import { canvas, toTex, hexCss, wavyFlag } from './textures';
 import { ThemeScenery } from './ThemeScenery';
+import { currentPreset } from '../../core/settings';
 
 /** The big venues: Golden Tower Plaza (rally stage, carpet), Omega Summit and THE SNOWDOME (Brawl). */
 export class VenueScenery extends ThemeScenery {
@@ -145,9 +146,38 @@ export class VenueScenery extends ThemeScenery {
 
     // ---- the red carpet up the middle of the arena (draped over the snow every frame)
     this.buildCarpet();
+    // velvet-rope lines along both sides of the carpet's first 8 m in from the boss gate (decor only: no collider;
+    // skipped on LOW, like the crowd thinning)
+    if (currentPreset().crowdFraction >= 1) {
+      const posts: THREE.BufferGeometry[] = [];
+      const ropes: THREE.BufferGeometry[] = [];
+      const z0 = ARENA.minZ + 0.8;
+      for (const sx of [-1, 1]) {
+        const x = sx * 2.3;
+        for (let k = 0; k <= 4; k++) {
+          const z = z0 + k * 2;
+          posts.push(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 6).translate(x, G + 0.5, z));
+          posts.push(new THREE.CylinderGeometry(0.2, 0.24, 0.08, 10).translate(x, G + 0.04, z));
+          posts.push(new THREE.SphereGeometry(0.1, 8, 6).translate(x, G + 1.04, z));
+          if (k < 4) {
+            // a sagging rope: two tilted segments per span
+            for (const h of [0, 1]) {
+              const za = z + h;
+              const ya = G + (h ? 0.72 : 0.92);
+              const yb = G + (h ? 0.92 : 0.72);
+              const seg = new THREE.CylinderGeometry(0.035, 0.035, Math.hypot(1, ya - yb), 5).rotateX(Math.PI / 2 - Math.atan2(yb - ya, 1));
+              ropes.push(seg.translate(x, (ya + yb) / 2, za + 0.5));
+            }
+          }
+        }
+      }
+      this.bake(merge(posts), M.identity(), this.std(0xe2b030, { metalness: 0.4, roughness: 0.3, flatShading: false }));
+      this.bake(merge(ropes), M.identity(), this.std(0xa0101e, { roughness: 0.7, flatShading: false }));
+    }
 
     // ---- THE GOLD TOWER, far to the north-east, plus a cream skyline (fog-free so it looms on the horizon)
-    const towerGold = this.std(new THREE.Color(0xd9a520).lerp(new THREE.Color(this.zone.fogColor), 0.15).getHex(), { roughness: 0.4, metalness: 0.2, emissive: 0x3a2400, emissiveIntensity: 0.6, fog: false });
+    // polished gold (no environment map, so metalness stays moderate or it reads brown), lit from within
+    const towerGold = this.std(0xe2a91c, { roughness: 0.28, metalness: 0.4, emissive: 0x5a3a00, emissiveIntensity: 0.8, fog: false });
     const tM = (x: number, y: number, z: number) => M.makeTranslation(GOLD_TOWER_X + x, y, GOLD_TOWER_Z + z);
     this.bake(new THREE.BoxGeometry(30, 12, 30).translate(0, 6, 0), tM(0, 0, 0), towerGold);
     this.bake(new THREE.BoxGeometry(18, 80, 18).translate(0, 40, 0), tM(0, 12, 0), towerGold);
@@ -159,6 +189,14 @@ export class VenueScenery extends ThemeScenery {
     const bands: Item[] = [];
     for (let y = 16; y < 90; y += 4.2) bands.push({ x: GOLD_TOWER_X, y, z: GOLD_TOWER_Z, ry: 0, sx: 18.2, sy: 0.9, sz: 18.2 });
     for (let y = 95; y < 108; y += 4) bands.push({ x: GOLD_TOWER_X, y, z: GOLD_TOWER_Z, ry: 0, sx: 13.2, sy: 0.8, sz: 13.2 });
+    // vertical mullion lights on all four faces: with the bands they make a lit window grid
+    const faces: [number, number, number][] = [[0, 9.1, 0], [0, -9.1, 0], [9.1, 0, Math.PI / 2], [-9.1, 0, Math.PI / 2]];
+    for (const [fx, fz, ry] of faces) {
+      for (let k = -2; k <= 2; k++) {
+        const along = k * 3.4;
+        bands.push({ x: GOLD_TOWER_X + fx + (ry ? 0 : along), y: 52, z: GOLD_TOWER_Z + fz + (ry ? along : 0), ry, sx: 0.5, sy: 76, sz: 0.3 });
+      }
+    }
     this.inst(new THREE.BoxGeometry(1, 1, 1), winMat, bands);
     this.glowSprite(0xffd257, 0.9, 30, GOLD_TOWER_X, 128, GOLD_TOWER_Z, 1.2).material.fog = false;
     const cream = this.std(new THREE.Color(0xf1e6cf).lerp(new THREE.Color(this.zone.fogColor), 0.35).getHex(), { roughness: 0.7, fog: false });
@@ -173,6 +211,17 @@ export class VenueScenery extends ThemeScenery {
       const ry = Math.atan2(-p.x, -p.z);
       blocks.push({ x: p.x, y: 0, z: p.z, ry, sx: w, sy: h, sz: d });
       goldBands.push({ x: p.x, y: h - 1.2, z: p.z, ry, sx: w + 0.2, sy: 0.8, sz: d + 0.2 });
+    }
+    // downtown: a row of taller blocks on the north horizon behind the stage, so the tower stands in a city
+    for (let i = 0; i < 7; i++) {
+      const x = -96 + i * 30 + (rnd() - 0.5) * 8;
+      if (Math.abs(x - GOLD_TOWER_X) < 22) continue;
+      const z = -128 - rnd() * 22;
+      const w = 12 + rnd() * 10;
+      const d = 10 + rnd() * 8;
+      const h = 30 + rnd() * 34;
+      blocks.push({ x, y: 0, z, ry: 0, sx: w, sy: h, sz: d });
+      goldBands.push({ x, y: h - 1.2, z, ry: 0, sx: w + 0.2, sy: 0.8, sz: d + 0.2 });
     }
     this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), cream, blocks);
     this.inst(new THREE.BoxGeometry(1, 1, 1), this.emissive(0xf2c033, 0.8), goldBands);

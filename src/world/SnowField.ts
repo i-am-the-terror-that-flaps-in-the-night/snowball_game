@@ -3,6 +3,7 @@ import type { GameContext, SnowFieldAPI, ZoneDef } from '../core/types';
 import { ARENA, BRAWL_ARENA_HALF, ENEMY_GATES, GATE_WIDTH, snowFieldSize } from '../core/types';
 import { DUEL_SPAWNS } from '../config/duel';
 import { dequantDepth, quantDepth, type SnowPatch } from '../net/protocol';
+import { floorPaintFor } from './floorPaint';
 
 const EDGE = 2; // edits never touch the outermost vertices (keeps the field rim flush with the outer ground)
 const LUT_SIZE = 256;
@@ -22,6 +23,18 @@ const MAX_RECTS = 16;
 const ICE_SNOW = 0.3;
 /** Depth (m) melted off lava vertices per regen tick (snow shoved onto lava vanishes in a second or two). */
 const LAVA_MELT = 0.06;
+/** Floor paint (floorPaint.ts) shows fully on bare ground and fades out under this much snow (m). */
+const PAINT_FADE = 0.22;
+/**
+ * Sastrugi: low-frequency tonal ripples baked into the vertex colours (two value-noise octaves stretched along the wind),
+ * so flat snow has something to judge speed and distance by. Amplitude (brightness share) per biome / theme, and the
+ * channel weights that tint the darker troughs toward the biome's shadow colour (cool blue, or warm red-brown).
+ */
+const TONE_AMP: Record<string, number> = {
+  glacier: 0.06, mars: 0.065, quarry: 0.05, divide: 0.045, plaza: 0.025, omega: 0.035, brawl: 0.04,
+};
+const TONE_WARM = new Set(['quarry', 'mars']);
+const WIND_ANGLE = 0.6;
 
 /** Snow grid cell (m) for a field of `size` m: 0.5 on the campaign arenas, 1 on the big ones (Brawl, Omega). */
 export const snowCellFor = (size: number): number => (size <= 100 ? 0.5 : 1.0);
@@ -104,7 +117,12 @@ export class SnowField implements SnowFieldAPI {
   private terrShapes: unknown = null;
   private terrPatches: unknown = null;
 
-  private sparkle = new Float32Array(0);
+  /** Per-vertex colour multiplier (r, g, b): grain sparkle + sastrugi ripples (rebuilt per zone). */
+  private tone = new Float32Array(0);
+  /** Per-vertex floor paint (r, g, b, coverage), or empty when the zone has none. */
+  private paint = new Float32Array(0);
+  private paintGhost = 0;
+  private paintLut = new Float32Array(LUT_SIZE);
   private total = 0;
   private initialTotal = 1;
   private addCap = 1.25;
@@ -199,7 +217,7 @@ export class SnowField implements SnowFieldAPI {
     this.ground = new Float32Array(count);
     this.lavaMask = new Uint8Array(count);
     this.terrShapes = this.terrPatches = null;
-    this.sparkle = new Float32Array(count);
+    this.tone = new Float32Array(count * 3);
     const pos = new Float32Array(count * 3);
     const nor = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
@@ -209,7 +227,6 @@ export class SnowField implements SnowFieldAPI {
         pos[i * 3] = -HALF + ix * CELL;
         pos[i * 3 + 2] = -HALF + iz * CELL;
         nor[i * 3 + 1] = 1;
-        this.sparkle[i] = 0.965 + hash2(ix, iz, 99) * 0.05;
       }
     }
     const idx = new Uint32Array(N * N * 6);
@@ -377,12 +394,49 @@ export class SnowField implements SnowFieldAPI {
       this.lut[j * 3 + 1] = tmp.g;
       this.lut[j * 3 + 2] = tmp.b;
     }
+    for (let j = 0; j < LUT_SIZE; j++) this.paintLut[j] = 1 - smooth(0, PAINT_FADE, (j / (LUT_SIZE - 1)) * LUT_MAX_DEPTH);
+    this.bakeTone(zone);
     this.outerMat.color.copy(snow).multiplyScalar(0.97);
     this.outer.position.y = base;
 
     this.rectCount = 0;
     this.markDirty(0, V - 1, 0, V - 1);
     this.flush();
+  }
+
+  /** Per-vertex tone (sparkle + sastrugi) and floor paint for this zone (static: baked once per reset). */
+  private bakeTone(zone: ZoneDef): void {
+    const { V, CELL, HALF } = this;
+    const key = zone.biome?.key ?? zone.theme;
+    const amp = TONE_AMP[key] ?? 0.035;
+    const warm = TONE_WARM.has(key);
+    // trough tint: cool biomes lose red first (blue shadow), warm ones lose blue (red-brown shadow)
+    const kr = warm ? 0.7 : 1.25;
+    const kb = warm ? 1.3 : 0.65;
+    const ca = Math.cos(WIND_ANGLE);
+    const sa = Math.sin(WIND_ANGLE);
+    const tone = this.tone;
+    const paint = floorPaintFor(zone);
+    if (paint && this.paint.length !== V * V * 4) this.paint = new Float32Array(V * V * 4);
+    else if (!paint && this.paint.length) this.paint = new Float32Array(0);
+    this.paintGhost = paint?.ghost ?? 0;
+    for (let iz = 0; iz < V; iz++) {
+      const z = -HALF + iz * CELL;
+      for (let ix = 0; ix < V; ix++) {
+        const x = -HALF + ix * CELL;
+        const i = iz * V + ix;
+        // wind frame: u along the wind (long, ~8 m), v across it (short ridges, ~2.5 m)
+        const u = x * ca + z * sa;
+        const v = -x * sa + z * ca;
+        const r = (valueNoise(u / 8, v / 2.6, 501) * 0.65 + valueNoise(u / 3.6, v / 1.3, 502) * 0.35) * 2 - 1;
+        const s = 0.965 + hash2(ix, iz, 99) * 0.05;
+        const t = r * amp;
+        tone[i * 3] = s + t * (t < 0 ? kr : 1);
+        tone[i * 3 + 1] = s + t;
+        tone[i * 3 + 2] = s + t * (t < 0 ? kb : 1);
+        if (paint) paint.sample(x, z, this.paint, i * 4);
+      }
+    }
   }
 
   /** Deterministic Snowdome drift layout: clear of obstacles, walls, the center and the spawn ring (the Duel's shrunk
@@ -908,7 +962,11 @@ export class SnowField implements SnowFieldAPI {
     const nor = this.normAttr.array as Float32Array;
     const col = this.colAttr.array as Float32Array;
     const lut = this.lut;
-    const sp = this.sparkle;
+    const tone = this.tone;
+    const paint = this.paint;
+    const painted = paint.length > 0;
+    const ghost = this.paintGhost;
+    const plut = this.paintLut;
     const lutScale = (LUT_SIZE - 1) / LUT_MAX_DEPTH;
     const inv2c = 1 / (2 * this.CELL);
     for (let iz = z0; iz <= z1; iz++) {
@@ -938,11 +996,24 @@ export class SnowField implements SnowFieldAPI {
         else if (li < 0) li = 0;
         // slight shading: concave (lower than neighbours) gets a touch of blue shadow
         const curv = (hl + hr + hu + hd) * 0.25 - h;
-        const s = sp[i] - (curv > 0 ? Math.min(0.12, curv * 1.5) : 0);
+        const s = curv > 0 ? Math.min(0.12, curv * 1.5) : 0;
         const l3 = li * 3;
-        col[i3] = lut[l3] * s;
-        col[i3 + 1] = lut[l3 + 1] * s;
-        col[i3 + 2] = lut[l3 + 2] * (s + (curv > 0 ? Math.min(0.06, curv * 0.8) : 0));
+        let cr = lut[l3];
+        let cg = lut[l3 + 1];
+        let cb = lut[l3 + 2];
+        if (painted) {
+          const pa = paint[i * 4 + 3];
+          if (pa > 0) {
+            const pl = plut[li];
+            const w = pa * (pl > ghost ? pl : ghost);
+            cr += (paint[i * 4] - cr) * w;
+            cg += (paint[i * 4 + 1] - cg) * w;
+            cb += (paint[i * 4 + 2] - cb) * w;
+          }
+        }
+        col[i3] = cr * (tone[i3] - s);
+        col[i3 + 1] = cg * (tone[i3 + 1] - s);
+        col[i3 + 2] = cb * (tone[i3 + 2] - s + (curv > 0 ? Math.min(0.06, curv * 0.8) : 0));
       }
     }
     // upload only the touched span of each row band (ranges are cleared by the renderer after upload)

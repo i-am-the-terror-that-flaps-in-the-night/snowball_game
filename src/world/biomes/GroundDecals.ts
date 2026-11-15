@@ -20,7 +20,8 @@ import { lavaFringeFor, snowCellFor } from '../SnowField';
  * out (a per-vertex `fade` the crust material multiplies in) and triangles touching a fully faded vertex are dropped.
  * The Thermal Divide's scorch film uses the snow grid's own cells and diagonals so it hugs the snow mesh exactly.
  *
- * All decals of one material share one merged mesh: at most 6 draws (scorch, lava, crust, ice, ramp decks, lips).
+ * All decals of one material share one merged mesh: a handful of draws (scorch + seam, lava, crust, ice, one per ramp
+ * deck tint and lip colour).
  */
 
 const SNOW_REFRESH = 0.25;
@@ -278,8 +279,9 @@ export function getLavaMaterial(): THREE.ShaderMaterial {
   }));
 }
 
-/** Scorched ground over a whole half of the world (The Thermal Divide's hot side): patchy red basalt ash with thin
- *  glowing veins, fading out toward the centre line x = 0. Transparent, drawn over the snow. `floor` = minimum
+/** Scorched ground over a whole half of the world (The Thermal Divide's hot side): cooled lava rock, a clean charcoal
+ *  to ember-brown gradient (warmer toward the divide) with fine glowing vein lines, fading out toward the centre line
+ *  x = 0. Transparent, drawn over the snow. `floor` = minimum
  *  coverage (0..1): the arena floor keeps snow showing through, the skirt outside the walls is nearly solid. */
 export function scorchMaterial(side: number, floor = 0.3): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -306,14 +308,20 @@ export function scorchMaterial(side: number, floor = 0.3): THREE.ShaderMaterial 
         return mix(mix(h(i), h(i + vec2(1, 0)), u.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), u.x), u.y);
       }
       void main() {
-        float edge = smoothstep(0.0, 6.0, vW.x * uSide);
-        float a = n(vW * 0.18) * 0.6 + n(vW * 0.5 + 7.0) * 0.4;
-        float ash = smoothstep(0.3, 0.6, a) * 0.75 + uFloor;
-        float r = abs(n(vW * 0.22 + 3.0) - 0.5);
-        float vein = smoothstep(0.045, 0.0, r) * smoothstep(0.3, 0.55, n(vW * 0.09 + 11.0));
-        vec3 c = mix(vec3(0.27, 0.075, 0.05), vec3(0.5, 0.16, 0.09), n(vW * 0.7));
-        c = mix(c, vec3(1.0, 0.36, 0.06) * (1.6 + 0.4 * sin(uTime * 2.0 + vW.y * 0.3)), vein);
-        float alpha = clamp(max(ash * 0.88, vein), 0.0, 1.0) * edge;
+        float d = vW.x * uSide;
+        float edge = smoothstep(0.0, 4.0, d);
+        // broad, gentle plates (no blotchy mottle): coverage varies little
+        float a = n(vW * 0.08) * 0.7 + n(vW * 0.21 + 7.0) * 0.3;
+        float ash = 0.62 + 0.2 * smoothstep(0.35, 0.7, a) + uFloor * 0.5;
+        // charcoal far out, ember brown toward the divide
+        float warm = 1.0 - smoothstep(4.0, 26.0, d);
+        vec3 c = mix(vec3(0.085, 0.06, 0.06), vec3(0.34, 0.11, 0.06), warm * 0.85 + a * 0.15);
+        // fine veins: two isoline scales, thin and crisp
+        float v1 = smoothstep(0.022, 0.0, abs(n(vW * 0.16 + 3.0) - 0.5));
+        float v2 = smoothstep(0.03, 0.0, abs(n(vW * 0.45 + 17.0) - 0.5)) * 0.35;
+        float vein = max(v1, v2) * smoothstep(0.25, 0.5, n(vW * 0.07 + 11.0));
+        c = mix(c, vec3(1.0, 0.36, 0.06) * (1.7 + 0.4 * sin(uTime * 2.0 + vW.y * 0.3)), vein);
+        float alpha = clamp(max(ash, vein), 0.0, 1.0) * edge;
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(c, alpha);
         #include <colorspace_fragment>
@@ -481,8 +489,9 @@ function getIceTex(): THREE.Texture {
 
 let plateTex: THREE.Texture | null = null;
 /** Steel launch plate: tread pattern with a yellow / black hazard band at the lip (v = 1). */
-function getPlateTex(): THREE.Texture {
+function getPlateTex(): THREE.Texture | null {
   if (plateTex) return plateTex;
+  if (typeof document === 'undefined') return null; // headless (tests): untextured
   const c = document.createElement('canvas');
   c.width = 128;
   c.height = 256;
@@ -528,6 +537,13 @@ export class GroundDecals {
       this.mats.push(m);
       // on the snow grid's own vertices (-half is a whole, even number of cells from the field's edge)
       this.add(terrain, [gridStrip(-half, 0, -half, half, cell)], m, false, 1, { lift: SCORCH_LIFT });
+      // the divide itself: a glowing seam down x = 0, magma on the west lip, ice on the east (one snow cell each)
+      for (const [x0, x1, col] of [[-cell, 0, 0xff6a1a], [0, cell, 0x6fe0ff]] as const) {
+        const sm = new THREE.MeshBasicMaterial({ color: col, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+        sm.color.multiplyScalar(1.4);
+        this.mats.push(sm);
+        this.add(terrain, [gridStrip(x0, x1, -half, half, cell)], sm, false, 2, { lift: SCORCH_LIFT * 2 });
+      }
     }
     const lava: Strip[] = [];
     const crust: Strip[] = [];
@@ -543,14 +559,20 @@ export class GroundDecals {
         crust.push(ring);
       } else if (p.material === 'ice') ice.push(capsuleStrip(p, 0.9, 6));
     }
-    // ramps on ice patches are already glazed by the ice decal; the others get a deck by biome
-    const decks: ReturnType<typeof rampStrip>[] = [];
-    const lips: ReturnType<typeof rampStrip>[] = [];
+    // ramps on ice patches are already glazed by the ice decal; the others get a deck by biome. Deck tint and lip glow
+    // per biome; The Thermal Divide splits them by side (steel + ember lip west, frosted steel + ice lip east).
+    const decks = new Map<number, Strip[]>();
+    const lips = new Map<number, Strip[]>();
+    const push = (m: Map<number, Strip[]>, k: number, st: Strip) => (m.get(k) ?? m.set(k, []).get(k)!).push(st);
     for (const s of ramps) {
       const glazed = terrain.materialAt(s.x + Math.sin(s.rot) * s.len * 0.5, s.z + Math.cos(s.rot) * s.len * 0.5) === 'ice';
+      const west = s.x < 0;
+      const deckTint = biome === 'mars' ? 0xd88a58 : biome === 'divide' ? (west ? 0xe4e0dc : 0xdcecff) : 0xffffff;
+      const lipGlow =
+        biome === 'quarry' ? 0xffb340 : biome === 'mars' ? 0xffc830 : biome === 'divide' ? (west ? 0xff8a3a : 0x7fe8ff) : 0x9ff3ff;
       // both stay on the ramp's flat face: a straight strip running out over its soft sides cuts into them at the lip
-      if (!glazed && biome !== 'mars') decks.push(rampStrip(s, RAMP_EDGE_INSET));
-      lips.push(rampStrip(s, RAMP_EDGE_INSET, 0.93, 1));
+      if (!glazed) push(decks, deckTint, rampStrip(s, RAMP_EDGE_INSET));
+      push(lips, lipGlow, rampStrip(s, RAMP_EDGE_INSET, 0.93, 1));
     }
     if (lava.length) {
       this.add(terrain, lava, getLavaMaterial(), false, 3, { onSnow: false });
@@ -569,19 +591,24 @@ export class GroundDecals {
       this.mats.push(m);
       this.add(terrain, ice, m, true, 2, { worldUv: true });
     }
-    if (decks.length) {
+    for (const [tint, list] of decks) {
+      // tinted decks (Rust Basin, The Thermal Divide) are lifted with a little self-light from the plate texture, so a
+      // deck never reads as a dark pit in the floor from across the arena
+      const lift = tint !== 0xffffff;
       const m = new THREE.MeshStandardMaterial({
-        color: biome === 'divide' ? 0x9aa0aa : 0xffffff, map: getPlateTex(), roughness: 0.45, metalness: 0.55,
+        color: tint, map: getPlateTex(), roughness: 0.45, metalness: lift ? 0.2 : 0.55,
+        emissive: lift ? tint : 0x000000, emissiveMap: lift ? getPlateTex() : null, emissiveIntensity: lift ? 0.45 : 1,
         polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
       });
       this.mats.push(m);
-      this.add(terrain, decks, m, true, 3, { rampUv: true });
+      this.add(terrain, list, m, true, 3, { rampUv: true });
     }
-    if (lips.length) {
-      const glow = biome === 'quarry' ? 0xffb340 : biome === 'mars' ? 0xffe0b0 : biome === 'divide' ? 0xff9a6a : 0x9ff3ff;
+    for (const [glow, list] of lips) {
+      // HDR (past 1, untonemapped) so the bloom pass makes the launch edge read from across the arena
       const m = new THREE.MeshBasicMaterial({ color: glow, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+      m.color.multiplyScalar(1.5);
       this.mats.push(m);
-      this.add(terrain, lips, m, false, 4);
+      this.add(terrain, list, m, false, 4);
     }
     this.refresh();
   }

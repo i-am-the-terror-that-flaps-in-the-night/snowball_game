@@ -7,6 +7,7 @@ import { FOLIAGE } from './styles';
 import { STAND_N0, ROWS, ROW_D, ROW_RISE, STAGE_HALF, SIDES, colored, merge } from './layout';
 import { getDoorTex, latticeMast } from './textures';
 import { ArenaShell } from './ArenaShell';
+import { currentPreset } from '../../core/settings';
 
 /** Per-theme / per-biome scenery of the campaign arenas (and the smoke / steam puffs they use). */
 export class ThemeScenery extends ArenaShell {
@@ -322,11 +323,14 @@ export class ThemeScenery extends ArenaShell {
     }
     this.inst(new THREE.OctahedronGeometry(1, 0), this.emissive(0x8ff6ff, 0.9, { speed: 1.3 }), crystals);
 
-    // the relay station (north-west): a squat white block with blue bands, a roof dish and an ice crust
+    // the relay station, just behind the north-west stands and facing the arena: a squat white block with blue bands,
+    // a roof dish and an ice crust; its windows flicker the rogue AI's cyan / red
     const M = new THREE.Matrix4();
     const st = new THREE.Object3D();
-    st.position.set(-72, 0, -40);
-    st.rotation.y = Math.atan2(72, 40);
+    const SS = 1.3;
+    st.position.set(-50, 0, -48);
+    st.rotation.y = Math.atan2(50, 48);
+    st.scale.setScalar(SS);
     st.updateMatrix();
     const at = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true) =>
       this.bake(geo, M.makeTranslation(x, y, z).premultiply(st.matrix), mat, cast, cast);
@@ -336,8 +340,9 @@ export class ThemeScenery extends ArenaShell {
     at(new THREE.BoxGeometry(18.2, 0.8, 11.2), this.std(0x2f6fb0, { roughness: 0.5 }), 0, 6.2, 0, false);
     at(new THREE.BoxGeometry(8, 4, 7).translate(0, 2, 0), white, -4, 8, 0);
     at(new THREE.BoxGeometry(6, 4.5, 0.2).translate(0, 2.25, 0), steel, 3, 0, 5.6, false);
-    const winMat = this.emissive(0x7fe8ff, 1.2, { speed: 0.8 });
-    for (let i = 0; i < 4; i++) at(new THREE.BoxGeometry(1.6, 0.9, 0.1), winMat, -7 + i * 2.4, 4.6, 5.56, false);
+    const winMat = this.emissive(0x7fe8ff, 1.6, { speed: 0.8 });
+    const winRed = this.emissive(0xff3a4a, 1.8, { speed: 3.3, phase: 1.2 });
+    for (let i = 0; i < 6; i++) at(new THREE.BoxGeometry(1.6, 0.9, 0.1), i % 3 === 1 ? winRed : winMat, -7 + i * 2.4, 4.6, 5.56, false);
     // roof dish: a shallow bowl tilted at the sky, on a mast
     at(new THREE.CylinderGeometry(0.35, 0.45, 3, 8).translate(0, 1.5, 0), steel, 5, 8, -1);
     const dish = new THREE.SphereGeometry(3.4, 18, 8, 0, Math.PI * 2, 0, 0.9).rotateX(Math.PI).rotateX(-0.7);
@@ -347,13 +352,14 @@ export class ThemeScenery extends ArenaShell {
     crust.renderOrder = 3;
     crust.position.copy(st.position);
     crust.rotation.copy(st.rotation);
+    crust.scale.copy(st.scale);
     this.add(crust);
     const icicles: Item[] = [];
     for (let i = 0; i < 26; i++) {
       const lx = -9 + rnd() * 18;
       const lz = rnd() < 0.5 ? 5.6 : -5.6;
       const v = new THREE.Vector3(lx, 8, lz).applyMatrix4(st.matrix);
-      icicles.push({ x: v.x, y: 8, z: v.z, ry: 0, rx: Math.PI, sx: 0.22 + rnd() * 0.2, sy: 0.8 + rnd() * 1.8, sz: 0.22 + rnd() * 0.2 });
+      icicles.push({ x: v.x, y: 8 * SS, z: v.z, ry: 0, rx: Math.PI, sx: 0.22 + rnd() * 0.2, sy: 0.8 + rnd() * 1.8, sz: 0.22 + rnd() * 0.2 });
     }
     // antenna masts with blinking red beacons
     const masts: [number, number, number][] = [[-58, -66, 34], [84, -44, 28], [-88, 34, 24], [70, 70, 26]];
@@ -365,7 +371,9 @@ export class ThemeScenery extends ArenaShell {
 
     // frozen server racks: rows of dark cabinets with LED panels, sealed in ice
     const racks: Item[] = [];
-    const leds: Item[] = [];
+    // LEDs in three pulse groups (each rack row blinks at its own pace): calm cyan, frantic red, mid cyan
+    const leds: Item[][] = [[], [], []];
+    let row = 0;
     const shells: Item[] = [];
     const rows: [number, number, number][] = [[58, -66, 0.6], [-56, 66, 2.3], [88, 12, -1.4], [-90, -8, 1.6], [30, 86, 0.2]];
     for (const [cx, cz, ry] of rows) {
@@ -378,17 +386,30 @@ export class ThemeScenery extends ArenaShell {
         const z = cz - s * along;
         const tilt = (rnd() - 0.5) * 0.12;
         racks.push({ x, y: G - 0.3, z, ry, rz: tilt, sx: 1, sy: 1, sz: 1, color: rnd() < 0.2 ? 0x2a3a4a : 0x1a222c });
-        for (let k = 0; k < 5; k++) leds.push({ x: x + s * 0.56, y: G + 0.15 + k * 0.42, z: z + c * 0.56, ry, sx: 1, sy: 1, sz: 1, color: rnd() < 0.7 ? 0x4dffb0 : 0x5fd8ff });
+        for (let k = 0; k < 5; k++) leds[row % 3].push({ x: x + s * 0.56, y: G + 0.15 + k * 0.42, z: z + c * 0.56, ry, sx: 1, sy: 1, sz: 1 });
       }
       shells.push({ x: cx, y: G - 0.4, z: cz, ry, sx: n * 1.05 + 1.2, sy: 3.2, sz: 2.2 });
       for (let k = 0; k < 8; k++) icicles.push({ x: cx + c * (rnd() - 0.5) * n, y: G + 2.8, z: cz - s * (rnd() - 0.5) * n, ry: 0, rx: Math.PI, sx: 0.2, sy: 0.6 + rnd(), sz: 0.2 });
+      row++;
     }
     this.inst(new THREE.BoxGeometry(0.95, 2.4, 1.05).translate(0, 1.2, 0), this.std(0xffffff, { roughness: 0.5, metalness: 0.4 }), racks, true);
-    this.inst(new THREE.BoxGeometry(0.7, 0.08, 0.04), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), leds);
+    const ledMats = [this.emissive(0x5fe8ff, 2.2, { speed: 1.1 }), this.emissive(0xff3a4a, 2.4, { speed: 4.2, phase: 2 }), this.emissive(0x4dffd0, 2.2, { speed: 2.3, phase: 4 })];
+    for (let k = 0; k < 3; k++) this.inst(new THREE.BoxGeometry(0.7, 0.08, 0.04), ledMats[k], leds[k]);
     const shellMat = new THREE.MeshStandardMaterial({ color: 0xc8f2ff, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.32, depthWrite: false });
     const sh = this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), shellMat, shells);
     if (sh) sh.renderOrder = 3;
     this.inst(new THREE.ConeGeometry(1, 1, 5).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0xd8f6ff, roughness: 0.15, transparent: true, opacity: 0.85 }), icicles);
+    // the big frozen relay dish right behind the north jumbotron, turned to the arena: it frames the spawn view
+    this.bake(latticeMast(20, 2.2), M.makeTranslation(0, 0, -68), steel, true);
+    this.bake(new THREE.SphereGeometry(9, 24, 8, 0, Math.PI * 2, 0, 0.85).rotateX(Math.PI).rotateX(0.75), M.makeTranslation(0, 26, -68), this.std(0xe8f2fa, { roughness: 0.35, emissive: 0x123a58, emissiveIntensity: 0.35, side: THREE.DoubleSide }), true);
+    this.bake(new THREE.CylinderGeometry(0.25, 0.25, 7, 6).rotateX(-0.75 + Math.PI / 2).translate(0, 27.5, -66), M.identity(), steel);
+    this.glowSprite(0xff3a4a, 0.8, 4, 0, 30.2, -63.4, 3.7);
+    const dishIce: Item[] = [];
+    for (let k = 0; k < 14; k++) {
+      const a = (k / 14) * Math.PI * 2;
+      dishIce.push({ x: Math.cos(a) * 7.6, y: 26 + Math.sin(a) * 5 - 1, z: -68 + Math.sin(a) * 4.4, ry: 0, rx: Math.PI, sx: 0.3, sy: 1.2 + rnd() * 1.6, sz: 0.3 });
+    }
+    this.inst(new THREE.ConeGeometry(1, 1, 5).translate(0, 0.5, 0), this.std(0xd8f6ff, { roughness: 0.15 }), dishIce);
     // two big ground dishes listening north
     for (const [x, z] of [[38, -84], [-34, -88]] as [number, number][]) {
       this.bake(new THREE.CylinderGeometry(0.8, 1.4, 6, 8).translate(0, 3, 0), M.makeTranslation(x, 0, z), steel, true);
@@ -422,25 +443,52 @@ export class ThemeScenery extends ArenaShell {
     this.bake(merge(seams), M.identity(), this.emissive(0xff5a14, 1.8, { speed: 1.2 }));
     const stepY = (r: number) => (r < R0 ? 0 : Math.min(STEPS, Math.floor((r - R0) / STEP_R) + 1) * STEP_H);
 
-    // lava falls pouring down the terraces into pools at the bottom
+    // lava falls cascading down the terraces into pools at the bottom: each one a ribbon that follows the terrace
+    // profile (a run across every ledge, a short drop down every riser), so it reads as lava spilling step by step
     const lava = getLavaMaterial();
     const fallAngles = [0.55, 1.9, 2.6, 4.1, 5.3];
     for (const a of fallAngles) {
       const sx = Math.sin(a);
       const sz = Math.cos(a);
       const w = 3 + rnd() * 2;
-      const top = (STEPS - 1) * STEP_R;
-      const g = new THREE.PlaneGeometry(w, Math.hypot(top, STEPS * STEP_H), 1, 8);
-      const tilt = Math.atan2(top, STEPS * STEP_H);
-      g.rotateX(-tilt);
-      g.translate(0, (STEPS * STEP_H) / 2 + 0.3, -(R0 + top / 2 - 0.3));
-      const uv = g.getAttribute('uv');
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getY(i) * 12, uv.getX(i) * 2 - 1);
-      g.rotateY(Math.atan2(-sx, -sz));
+      // profile (r, y), outer top -> inner foot, lifted off the ledge tops and stood off the risers
+      const prof: [number, number][] = [[R0 + (STEPS - 1) * STEP_R + STEP_R * 0.55, STEPS * STEP_H + 0.08]];
+      for (let i = STEPS - 1; i >= 0; i--) {
+        const ri = R0 + i * STEP_R;
+        prof.push([ri + 0.05, (i + 1) * STEP_H + 0.08]);
+        prof.push([ri - 0.18, (i + 1) * STEP_H - 0.1]);
+        prof.push([i > 0 ? ri - 0.75 : ri - 0.2, i > 0 ? i * STEP_H + 0.08 : 0.06]);
+      }
+      prof.push([R0 - 1.6, 0.08]);
+      const tx = Math.cos(a);
+      const tz = -Math.sin(a);
+      const pos: number[] = [];
+      const uvs: number[] = [];
+      const idx: number[] = [];
+      let len = 0;
+      for (let k = 0; k < prof.length; k++) {
+        const [r, y] = prof[k];
+        if (k > 0) len += Math.hypot(r - prof[k - 1][0], y - prof[k - 1][1]);
+        // a touch wider at the foot, where it pools
+        const hw = (w / 2) * (1 + 0.25 * (1 - (r - R0) / (STEPS * STEP_R)));
+        for (const side of [-1, 1]) {
+          pos.push(sx * r + tx * hw * side, y, sz * r + tz * hw * side);
+          uvs.push(len * 0.3, side);
+        }
+        if (k > 0) {
+          const o = (k - 1) * 2;
+          idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
       this.bake(g, M.identity(), lava);
-      const pool = new THREE.CircleGeometry(3.2 + rnd(), 18).rotateX(-Math.PI / 2);
+      const pool = new THREE.CircleGeometry(4.4 + rnd(), 20).rotateX(-Math.PI / 2);
       this.bake(pool, M.makeTranslation(sx * (R0 - 2.6), 0.08, sz * (R0 - 2.6)), lava);
-      this.glowSprite(0xff6a1a, 0.55, 10, sx * (R0 - 2), 2, sz * (R0 - 2), 1.6);
+      this.glowSprite(0xff6a1a, 0.55, 12, sx * (R0 - 2), 2, sz * (R0 - 2), 1.6);
     }
 
     // basalt column clusters on the ledges and around the pit floor
@@ -530,14 +578,17 @@ export class ThemeScenery extends ArenaShell {
     });
     this.inst(new THREE.TorusGeometry(1, 0.22, 5, 18), this.std(0xb4643a, { roughness: 0.95 }), rims, false, true);
 
-    // THE GRINDER's drill rig (north-east): lattice derrick, spinning bit, dust plume
-    const rx = 66;
-    const rz = -66;
-    this.inst(latticeMast(28, 3), this.std(0xd8d2c8, { metalness: 0.4, roughness: 0.5 }), [{ x: rx, y: 0, z: rz, ry: 0.4, sx: 1, sy: 1, sz: 1 }], true);
-    this.bake(new THREE.BoxGeometry(9, 2, 9).translate(0, 1, 0), M.makeTranslation(rx, 0, rz), this.std(0x4a4f58, { metalness: 0.5 }), true);
+    // THE GRINDER's drill rig, just behind the north-east stands and big enough to tower over them from the spawn
+    // camera: lattice derrick, spinning bit, a hot glow where it bores into the ground, dust plume
+    const rx = 48;
+    const rz = -50;
+    const RS = 1.4;
+    this.inst(latticeMast(28, 3), this.std(0xd8d2c8, { metalness: 0.4, roughness: 0.5 }), [{ x: rx, y: 0, z: rz, ry: 0.4, sx: RS, sy: RS, sz: RS }], true);
+    this.bake(new THREE.BoxGeometry(9 * RS, 2, 9 * RS).translate(0, 1, 0), M.makeTranslation(rx, 0, rz), this.std(0x4a4f58, { metalness: 0.5 }), true);
     const drill = new THREE.Group();
     drill.position.set(rx, 2, rz);
     drill.rotation.x = -Math.PI / 2;
+    drill.scale.setScalar(RS);
     const bitMat = this.std(0xff8a3d, { metalness: 0.6, roughness: 0.35, emissive: 0x401800, emissiveIntensity: 0.6 });
     const bit = new THREE.Mesh(merge([
       new THREE.CylinderGeometry(0.7, 0.7, 20, 8).rotateX(Math.PI / 2).translate(0, 0, 10),
@@ -549,7 +600,10 @@ export class ThemeScenery extends ArenaShell {
     drill.add(bit);
     this.add(drill);
     this.spinners.push({ obj: bit, speed: 2.4 });
-    this.glowSprite(0xffa040, 0.8, 4, rx, 29, rz, 2.5);
+    this.glowSprite(0xffa040, 0.8, 5, rx, 28 * RS + 1, rz, 2.5);
+    // the bore: molten glow round the bit where it chews into the ground
+    this.bake(new THREE.RingGeometry(2.2 * RS, 4.2 * RS, 20).rotateX(-Math.PI / 2), M.makeTranslation(rx, 2.05, rz), this.emissive(0xff5a14, 1.8, { speed: 2.6 }));
+    this.glowSprite(0xff7a2a, 0.75, 14, rx, 3, rz, 1.9);
     // habitat: white domes, a tube and solar arrays (south-west)
     const hx = -70;
     const hz = 50;
@@ -563,7 +617,7 @@ export class ThemeScenery extends ArenaShell {
     for (let i = 0; i < 8; i++) panels.push({ x: hx + 16 + (i % 4) * 3.4, y: 1.6, z: hz - 8 + Math.floor(i / 4) * 4, ry: 0.3, rx: -0.6, sx: 1, sy: 1, sz: 1 });
     this.inst(new THREE.BoxGeometry(3, 0.12, 2.2), this.std(0x1f3d78, { metalness: 0.6, roughness: 0.3, emissive: 0x0a1838, emissiveIntensity: 0.5 }), panels);
     // dust plumes off the drill and the dunes
-    const stacks: Puff[] = [{ x: rx, y: 0, z: rz, r: 2.2, rise: 10, drift: 18 }];
+    const stacks: Puff[] = [{ x: rx, y: 0, z: rz, r: 2.6, rise: 16, drift: 18 }, { x: rx + 2, y: 0, z: rz + 1, r: 1.8, rise: 10, drift: 10 }];
     for (let i = 0; i < 4; i++) {
       const a = rnd() * Math.PI * 2;
       stacks.push({ x: Math.sin(a) * 90, y: 0, z: Math.cos(a) * 90, r: 3.5, rise: 8, drift: 26 });
@@ -611,6 +665,13 @@ export class ThemeScenery extends ArenaShell {
     for (const pt of this.ctx.terrain.patches) {
       if (pt.material !== 'lava') continue;
       stacks.push({ x: pt.x2 !== undefined ? (pt.x + pt.x2) / 2 : pt.x, y: this.ctx.terrain.ground(pt.x, pt.z) + G * 0.5, z: pt.z2 !== undefined ? (pt.z + pt.z2) / 2 : pt.z, r: 0.9, rise: 7, drift: 2.5 });
+    }
+    // a low steam curtain where hot meets cold, on the divide line at the north end of the arena (kept off the middle:
+    // the plow spawns on the line and fights cross it; fewer on lower quality)
+    const seamN = Math.max(1, Math.round(4 * currentPreset().weatherScale));
+    for (let i = 0; i < seamN; i++) {
+      const z = ARENA.minZ + 1.5 + i * 2.2;
+      stacks.push({ x: -0.6, y: this.ctx.terrain.ground(0, z) + G * 0.6, z, r: 0.6, rise: 5, drift: 1.2 });
     }
     this.addPuffs(stacks, 0xf4ece8, 0.42);
     // cold side: frozen pines and crystal clusters

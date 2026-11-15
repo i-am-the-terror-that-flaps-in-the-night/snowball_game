@@ -94,10 +94,10 @@ const g = (type: EnemyType, count: number, delay = 0, interval = 2.5): SpawnGrou
 /* Biomes of the campaign arenas 1-5 (arena 6, The Omega Works, has its own build). */
 export const BIOMES: Record<Exclude<BiomeKey, 'snowdome'>, BiomeDef> = {
   glacier: { key: 'glacier', particles: 'snow', snowColor: 0xeef7ff, groundColor: 0x5f86a8, ambience: 'wind' },
-  quarry: { key: 'quarry', particles: 'ash', snowColor: 0xd8683c, groundColor: 0x8c2a14, ambience: 'lava' },
-  mars: { key: 'mars', particles: 'dust', snowColor: 0xdc9670, groundColor: 0x7e3218, ambience: 'dust' },
+  quarry: { key: 'quarry', particles: 'ash', snowColor: 0x9e5a44, groundColor: 0x3a2220, ambience: 'lava' },
+  mars: { key: 'mars', particles: 'dust', snowColor: 0xdc9670, groundColor: 0x6a2814, ambience: 'dust' },
   divide: { key: 'divide', particles: 'steam', snowColor: 0xf3f0f5, groundColor: 0x5a4c58, ambience: 'wind' },
-  plaza: { key: 'plaza', particles: 'confetti', snowColor: 0xfff9ee, groundColor: 0x8a6a4a, ambience: 'crowd' },
+  plaza: { key: 'plaza', particles: 'confetti', snowColor: 0xf4eadb, groundColor: 0xb8a890, ambience: 'crowd' },
 };
 
 /* Campaign order (docs/level-overhaul.md "Arenas"). Save ids, rounds, challenges and difficulty multipliers belong to
@@ -129,7 +129,7 @@ export const ZONES: ZoneDef[] = [
       { boss: true, groups: [g('bulldoza', 1, 1, 1)] },
     ],
     enemyHpMult: 1.2, coinMult: 1.2, snowDepth: 0.55, snowRegenMult: 1, clearReward: 300,
-    skyTop: 0x8a3a5a, skyBottom: 0xff7a3a, fogColor: 0xe0703f, fogNear: 50, fogFar: 160,
+    skyTop: 0x8a3a5a, skyBottom: 0xff7a3a, fogColor: 0xb8562e, fogNear: 50, fogFar: 160,
     sunColor: 0xffc49a, sunIntensity: 2.4, ambientColor: 0xffa47a, ambientIntensity: 1.0, snowTint: BIOMES.quarry.snowColor, snowfall: 0.6,
     biome: BIOMES.quarry, terrain: QUARRY_TERRAIN, theme: 'pines',
   },
@@ -143,7 +143,7 @@ export const ZONES: ZoneDef[] = [
     ],
     enemyHpMult: 1.45, coinMult: 1.4, snowDepth: 0.45, snowRegenMult: 0.9, clearReward: 500,
     skyTop: 0xa4643c, skyBottom: 0xf1c18f, fogColor: 0xdba47c, fogNear: 45, fogFar: 150,
-    sunColor: 0xfff3e4, sunIntensity: 2.4, ambientColor: 0xffc49e, ambientIntensity: 0.9, snowTint: BIOMES.mars.snowColor, snowfall: 0.5,
+    sunColor: 0xfff3e4, sunIntensity: 2.4, ambientColor: 0xe0b0a0, ambientIntensity: 0.7, snowTint: BIOMES.mars.snowColor, snowfall: 0.5,
     biome: BIOMES.mars, terrain: MARS_TERRAIN, theme: 'meadow',
   },
   {
@@ -169,7 +169,7 @@ export const ZONES: ZoneDef[] = [
     ],
     enemyHpMult: 2.1, coinMult: 1.8, snowDepth: 0.6, snowRegenMult: 1.3, clearReward: 1200,
     skyTop: 0x2a78e0, skyBottom: 0xcfeaff, fogColor: 0xf3e4c6, fogNear: 60, fogFar: 180,
-    sunColor: 0xfff1cf, sunIntensity: 2.7, ambientColor: 0xfff0dc, ambientIntensity: 1.0, snowTint: BIOMES.plaza.snowColor, snowfall: 0.4,
+    sunColor: 0xfff1cf, sunIntensity: 2.3, ambientColor: 0xfff0dc, ambientIntensity: 0.85, snowTint: BIOMES.plaza.snowColor, snowfall: 0.4,
     biome: BIOMES.plaza, theme: 'rally',
   },
   {
@@ -181,7 +181,7 @@ export const ZONES: ZoneDef[] = [
       { boss: true, groups: [g('omega', 1, 1, 1)] },
     ],
     enemyHpMult: 2.4, coinMult: 2.0, snowDepth: 0.6, snowRegenMult: 1.4, clearReward: 1600,
-    // Night-time neon factory, 160 m across, decks / ramps / bridges (src/world/omega/*).
+    // Neon factory at late dusk, 160 m across, decks / ramps / bridges (src/world/omega/*).
     ...OMEGA_LOOK,
     theme: 'omega',
   },
@@ -193,7 +193,7 @@ export const BRAWL_ZONE: ZoneDef = {
   index: -1, id: 'snowdome', name: 'The Snowdome', tagline: 'Nine plows. One arena. Everyone hunts everyone.', bossName: '',
   rounds: [],
   enemyHpMult: 1, coinMult: 1, snowDepth: 0.55, snowRegenMult: 2.5, clearReward: 0,
-  skyTop: 0x22346b, skyBottom: 0xf0b48a, fogColor: 0xd8c4c8, fogNear: 70, fogFar: 230,
+  skyTop: 0x22346b, skyBottom: 0xf0b48a, fogColor: 0xd8c4c8, fogNear: 90, fogFar: 280,
   sunColor: 0xffd2a0, sunIntensity: 2.3, ambientColor: 0xb8c4ff, ambientIntensity: 0.95, snowTint: 0xffffff, snowfall: 0.3, theme: 'brawl',
 };
 

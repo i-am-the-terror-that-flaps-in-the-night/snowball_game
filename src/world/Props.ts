@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { ARENA, ENEMY_GATES, PLOW_SPAWN, type GameContext, type Obstacle } from '../core/types';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mulberry32 } from '../meta/daily';
+import { getPropSkin, PROP_SKIN_KEYS, type PropSkin, type PropSkinKey } from './propSkins';
 
 /**
- * Destructible props: wooden crates and ice blocks scattered around the arena. Deliberately cheap: exactly two
+ * Destructible props: crates and blocks scattered around the arena (dressed per arena by propSkins.ts). Deliberately cheap: exactly two
  * states (standing / destroyed), no HP, no physics. All props of a kind are ONE InstancedMesh (destroyed = a
  * zero-scale matrix), each standing prop is a circle collider in world.obstacles, and breaking one is a one-off
  * debris burst. Player attacks call blast() / blastRay(); ramming or dashing into a prop breaks it (Plow).
@@ -43,26 +45,9 @@ const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
-
-function crateTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#a8743f';
-  g.fillRect(0, 0, 64, 64);
-  g.fillStyle = '#8a5a2c';
-  for (let y = 0; y < 64; y += 16) g.fillRect(0, y, 64, 2);
-  g.strokeStyle = '#5a3a1a';
-  g.lineWidth = 6;
-  g.strokeRect(3, 3, 58, 58);
-  g.beginPath();
-  g.moveTo(6, 6);
-  g.lineTo(58, 58);
-  g.stroke();
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
+const _c = new THREE.Color();
+/** Props sit this far (in prop half-sizes) into the ground, so none hovers on a gentle slope. */
+const SINK = 0.08;
 
 export class Props {
   private props: Prop[] = [];
@@ -70,23 +55,35 @@ export class Props {
   private obstacles: Obstacle[] | null = null;
   private coins = false;
 
+  private skin: PropSkin;
+
   constructor(private ctx: GameContext) {
-    const box = new THREE.BoxGeometry(2, 2, 2);
+    // Chamfered 2 m box (same bounds as the old plain box): the bevel catches a highlight on every edge.
+    const box = new RoundedBoxGeometry(2, 2, 2, 1, 0.14);
     box.translate(0, 1, 0);
-    const crate = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ map: typeof document === 'undefined' ? null : crateTexture(), color: typeof document === 'undefined' ? 0xa8743f : 0xffffff, roughness: 0.8 }), MAX_PER_KIND);
-    const ice = new THREE.InstancedMesh(
-      box,
-      new THREE.MeshStandardMaterial({ color: 0x9fdcff, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.82, emissive: 0x1a5a8a, emissiveIntensity: 0.25 }),
-      MAX_PER_KIND,
-    );
+    // every arena's skin up front (a few small canvases): material / texture creation draws Math.random for uuids, so
+    // doing it here keeps each arena load drawing the same number every visit (deterministic probes / replays)
+    for (const k of PROP_SKIN_KEYS) getPropSkin(k);
+    this.skin = getPropSkin('classic');
+    const crate = new THREE.InstancedMesh(box, this.skin.crate, MAX_PER_KIND);
+    const ice = new THREE.InstancedMesh(box, this.skin.ice, MAX_PER_KIND);
     this.meshes = { crate, ice };
     for (const m of [crate, ice]) {
       m.castShadow = true;
       m.receiveShadow = true;
       m.count = 0;
       m.frustumCulled = false;
+      // per-instance tint (white except on The Thermal Divide's split skin)
+      for (let i = 0; i < MAX_PER_KIND; i++) m.setColorAt(i, _c.set(0xffffff));
       ctx.scene.add(m);
     }
+  }
+
+  /** Dress the props for an arena (Environment.resetProps): materials + debris colours only. */
+  private setSkin(key: PropSkinKey): void {
+    this.skin = getPropSkin(key);
+    this.meshes.crate.material = this.skin.crate;
+    this.meshes.ice.material = this.skin.ice;
   }
 
   /** Remove every prop (setZone calls this; the arena's obstacle list is about to be rebuilt anyway). */
@@ -101,7 +98,8 @@ export class Props {
    * (Duel, Tutorial, menus). Layout is deterministic per arena, avoiding the plow spawn, the gate lanes and
    * existing obstacles.
    */
-  reset(obstacles: Obstacle[], on: boolean, seed: number, brawl: boolean, coins: boolean): void {
+  reset(obstacles: Obstacle[], on: boolean, seed: number, brawl: boolean, coins: boolean, skin: PropSkinKey = 'classic'): void {
+    this.setSkin(skin);
     // Drop our old colliders from the list by identity, then start over.
     for (const p of this.props) {
       const i = obstacles.indexOf(p.obs);
@@ -142,8 +140,17 @@ export class Props {
     }
     this.meshes.crate.count = used.crate;
     this.meshes.ice.count = used.ice;
-    for (const p of this.props) this.place(p);
-    this.meshes.crate.instanceMatrix.needsUpdate = this.meshes.ice.instanceMatrix.needsUpdate = true;
+    const split = this.skin.split;
+    for (const p of this.props) {
+      this.place(p);
+      const hot = p.x < 0;
+      const tint = !split ? 0xffffff : p.kind === 'crate' ? (hot ? split.crateHot : split.crateCold) : (hot ? split.iceHot : split.iceCold);
+      this.meshes[p.kind].setColorAt(p.slot, _c.set(tint));
+    }
+    for (const m of [this.meshes.crate, this.meshes.ice]) {
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
   }
 
   private clearSpot(x: number, z: number, r: number, half: number, fixed: Obstacle[]): boolean {
@@ -189,7 +196,7 @@ export class Props {
 
   private place(p: Prop): void {
     _q.setFromAxisAngle(_up, p.yaw);
-    _m.compose(_v.set(p.x, p.y, p.z), _q, _s.setScalar(p.s));
+    _m.compose(_v.set(p.x, p.y - SINK * p.s, p.z), _q, _s.setScalar(p.s));
     this.meshes[p.kind].setMatrixAt(p.slot, _m);
   }
 
@@ -207,12 +214,13 @@ export class Props {
     }
     const fx = this.ctx.fx;
     _v.set(p.x, p.y + p.s, p.z);
+    const [c0, c1] = p.kind === 'crate' ? this.skin.crateDebris : this.skin.iceDebris;
     if (p.kind === 'crate') {
-      fx.burst(_v, { color: 0xa8743f, count: 16, speed: 8, size: 0.28, gravity: 18, life: 0.8 });
-      fx.burst(_v, { color: 0x5a3a1a, count: 8, speed: 6, size: 0.2, gravity: 18, life: 0.7 });
+      fx.burst(_v, { color: c0, count: 16, speed: 8, size: 0.28, gravity: 18, life: 0.8 });
+      fx.burst(_v, { color: c1, count: 8, speed: 6, size: 0.2, gravity: 18, life: 0.7 });
     } else {
-      fx.burst(_v, { color: 0xbfe8ff, count: 18, speed: 9, size: 0.24, gravity: 18, life: 0.7 });
-      fx.burst(_v, { color: 0xffffff, count: 10, speed: 5, size: 0.16, gravity: 10, life: 0.5 });
+      fx.burst(_v, { color: c0, count: 18, speed: 9, size: 0.24, gravity: 18, life: 0.7 });
+      fx.burst(_v, { color: c1, count: 10, speed: 5, size: 0.16, gravity: 10, life: 0.5 });
     }
     fx.smoke(_v, { count: 2, color: 0xe2ecf8, size: 0.8, grow: 2.5, life: 0.7, speed: 1.5, up: 1, rise: -0.5, drag: 2, spread: 0.5, opacity: 0.45 });
     this.ctx.audio?.play('wallHit', { volume: 0.55, pitch: p.kind === 'ice' ? 1.35 : 0.9 });

@@ -42,6 +42,8 @@ export class OmegaSet {
   private readonly owned: { dispose(): void }[] = [];
   private readonly pulse: THREE.MeshBasicMaterial[] = [];
   private readonly hatchMat: THREE.MeshBasicMaterial;
+  /** Hatch rims: hazard yellow that flares with the core's pulse. */
+  private readonly rimMat: THREE.MeshBasicMaterial;
 
   constructor(terrain: Terrain) {
     this.group.name = 'omega-set';
@@ -53,6 +55,7 @@ export class OmegaSet {
     const beacon = this.own(new THREE.MeshBasicMaterial({ color: NEON_MAGENTA, toneMapped: false, transparent: true }));
     const ember = this.own(new THREE.MeshBasicMaterial({ color: EMBER, toneMapped: false, transparent: true }));
     this.hatchMat = this.own(new THREE.MeshBasicMaterial({ color: NEON_MAGENTA, toneMapped: false, transparent: true }));
+    this.rimMat = this.own(new THREE.MeshBasicMaterial({ color: 0xffd400, toneMapped: false }));
     this.pulse.push(beacon, ember);
 
     // ---- perimeter walls, split around the gates
@@ -154,7 +157,7 @@ export class OmegaSet {
     }
     ringGeo.dispose();
     coreGeo.dispose();
-    this.mesh(merged(rings), hazard).renderOrder = 1;
+    this.mesh(merged(rings), this.rimMat).renderOrder = 1;
     this.mesh(merged(cores), this.hatchMat).renderOrder = 1;
 
     // ---- the Ω sign over the north wall
@@ -204,7 +207,10 @@ export class OmegaSet {
     const p = 0.55 + 0.45 * Math.sin(t * 3.1);
     this.pulse[0].opacity = 0.35 + 0.65 * p;
     this.pulse[1].opacity = 0.6 + 0.4 * Math.sin(t * 1.7 + 1);
-    this.hatchMat.opacity = 0.45 + 0.35 * Math.sin(t * 2.2);
+    const h = Math.sin(t * 2.2);
+    this.hatchMat.opacity = 0.45 + 0.35 * h;
+    // rims glow past white-hot at the top of the core's pulse (bloom picks it up)
+    this.rimMat.color.setRGB(1, 0.83, 0).multiplyScalar(1 + 0.6 * Math.max(0, h));
   }
 
   dispose(): void {

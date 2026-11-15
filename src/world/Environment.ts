@@ -13,6 +13,7 @@ import { PUFF_CAM_CLEAR, STYLES, BIOME_SKY } from './environment/styles';
 import { TOWER_OFF, DOME_TOWER_OFF, DOME_TOWER_H, STAGE_HALF, brawlMode, domeK, setBrawlMode, mulberry32 } from './environment/layout';
 import { chevronTex } from './environment/textures';
 import { VenueScenery } from './environment/VenueScenery';
+import { propSkinKey } from './propSkins';
 
 /** Survival's Blizzard wave (setStorm): fog pulled in to this (or the zone's own, if nearer), tinted toward white. */
 const STORM_FOG_NEAR = 12;
@@ -32,7 +33,7 @@ export class Environment extends VenueScenery implements WorldAPI {
   }
 
   resetProps(on: boolean, coins: boolean): void {
-    this.props.reset(this.obstacleList, on, 777 + this.zone.index * 131, this.zone.theme === 'brawl', coins);
+    this.props.reset(this.obstacleList, on, 777 + this.zone.index * 131, this.zone.theme === 'brawl', coins, propSkinKey(this.zone.biome?.key, this.zone.theme));
   }
 
   blastProps(x: number, z: number, r: number): number {
