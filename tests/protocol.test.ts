@@ -695,7 +695,7 @@ describe('stage 2: review cleanups', () => {
 });
 
 describe('PROTOCOL C scales with coins spent', () => {
-  it('is 1x at the reference spend, gentler below / above, clamped', async () => {
+  it('is 1x at the reference spend, floored below, uncapped above', async () => {
     const { spendScale, SPEND_REF, SPEND_HP_RANGE, SPEND_DMG_RANGE } = await import('../src/config/protocol');
     expect(spendScale(SPEND_REF)).toEqual({ hp: 1, dmg: 1 });
     const hi = spendScale(SPEND_REF * 4);
@@ -703,6 +703,9 @@ describe('PROTOCOL C scales with coins spent', () => {
     expect(hi.dmg).toBeGreaterThan(1);
     expect(hi.dmg).toBeLessThan(hi.hp);
     expect(spendScale(0)).toEqual({ hp: SPEND_HP_RANGE[0], dmg: SPEND_DMG_RANGE[0] });
-    expect(spendScale(1e9)).toEqual({ hp: SPEND_HP_RANGE[1], dmg: SPEND_DMG_RANGE[1] });
+    // No cap: it keeps growing.
+    expect(SPEND_HP_RANGE[1]).toBe(Infinity);
+    expect(spendScale(SPEND_REF * 100).hp).toBeCloseTo(10, 5);
+    expect(spendScale(SPEND_REF * 100).dmg).toBeCloseTo(100 ** 0.3, 5);
   });
 });

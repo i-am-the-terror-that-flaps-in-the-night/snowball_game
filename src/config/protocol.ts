@@ -135,13 +135,13 @@ export function waveBossCount(wave: number): { total: number; echoes: number } {
 /** Enemy scaling in PROTOCOL C follows the coins the pilot has put into getting stronger (upgrades + gear; cosmetics
  *  and plows don't count): at SPEND_REF coins (about what a pilot has spent by the unlock: every arena cleared on
  *  normal and Hard) bots are at the plain Hard-based numbers; HP grows with the square root of the spend ratio and
- *  damage more gently, both clamped (the floor keeps a thrifty pilot's run a real final test, the caps match Hard's
- *  pilot-power caps). */
+ *  damage more gently. Floored (a thrifty pilot's run stays a real final test), no cap: it keeps up however far a
+ *  pilot upgrades. */
 export const SPEND_REF = 30000;
 export const SPEND_HP_EXP = 0.5;
 export const SPEND_DMG_EXP = 0.3;
-export const SPEND_HP_RANGE: readonly [number, number] = [0.8, 2.5];
-export const SPEND_DMG_RANGE: readonly [number, number] = [0.85, 1.8];
+export const SPEND_HP_RANGE: readonly [number, number] = [0.8, Infinity];
+export const SPEND_DMG_RANGE: readonly [number, number] = [0.85, Infinity];
 
 /** HP / damage multipliers for a pilot who has spent `spent` coins on upgrades and gear. */
 export function spendScale(spent: number): { hp: number; dmg: number } {
