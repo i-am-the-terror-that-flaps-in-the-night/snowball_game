@@ -36,6 +36,9 @@ function sweepGeometry(inner: number, arc: number): THREE.BufferGeometry {
     col.set([1, 1, 1, Math.max(0, Math.min(1, u)) ** 1.4], i * 4);
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  // rotateX(-PI/2) left the sector centred on -Z (behind the plow); turn it to face +Z, the plow's forward. A pure
+  // rotation, so the sweep direction and the alpha ramp are unchanged.
+  g.rotateY(Math.PI);
   return g;
 }
 
