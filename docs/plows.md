@@ -254,7 +254,7 @@ ever faster (bosses less), with small damage ticks and a building rumble; then i
 a blinding flash (toned down with Reduce flashing), a huge shockwave, big damage to everything within 40 m (full
 within 12 m, half at the rim, thinner shares the more it catches) and everything flung outward.
 
-## REVENANT 💀
+## PHANTOM 💀 (internal id `revenant`; it shipped as REVENANT)
 
 **The hit-and-run reaper:** it dodges THROUGH a pack, chains it, and reaps it. Low HP (+12%, below the Classic's +15%),
 +8% speed, no real ranged attack.

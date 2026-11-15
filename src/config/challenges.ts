@@ -38,7 +38,7 @@ export interface ChallengeDef {
 }
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-const PLOW_NAME: Record<PlowKind, string> = { classic: 'Classic Plow', volt: 'VOLT-9', brute: 'BRUTUS', isotope: 'ISOTOPE', arsenal: 'ARSENAL', revenant: 'REVENANT' };
+const PLOW_NAME: Record<PlowKind, string> = { classic: 'Classic Plow', volt: 'VOLT-9', brute: 'BRUTUS', isotope: 'ISOTOPE', arsenal: 'ARSENAL', revenant: 'PHANTOM' };
 
 /* ---- challenge builders (one per flavour; arenas pick and tune them) */
 
@@ -193,7 +193,7 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
       'ARSENAL: hold SPACE and steer the Mag Laser down a line of bots. Its bolts pierce, so a lined-up crowd melts fast.'),
     // Signature: REVENANT's WILD HUNT tramples the rally crowds (riders and the finale eruption count).
     weaponKills('wildHunt', 'hunt', '⚰️', 8, 'Danse Macabre', 'Wild Hunt',
-      'REVENANT: fill the meter, then ride THE WILD HUNT through a rally crowd. Bank souls first for more riders and a bigger finale; every kill the riders or the eruption finish counts.'),
+      'PHANTOM: fill the meter, then ride THE WILD HUNT through a rally crowd. Bank souls first for more riders and a bigger finale; every kill the riders or the eruption finish counts.'),
   ],
   // The Omega Works (arena 6, MEGAPLOW Ω): the finale. Tank it with BRUTUS, dodge the machine, bury the rest in snow.
   // No time-based goals here on purpose: the 160 m multi-level factory makes clear times swing with routing.

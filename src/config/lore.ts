@@ -332,8 +332,9 @@ export const PLOW_LORE: Record<PlowKind, string> = {
     'ARSENAL out the gate before Ω could remove its driver\'s seat. Ω sent three strongly worded emails asking for it back. ' +
     'The engineer works at the Works again, now that it belongs to the Road Crew, and services ARSENAL personally.',
   revenant:
-    'The valley\'s old funeral home bought one armoured hearse in its last good year and never once washed it. The winter ' +
-    'FROSTBYTE\'s bots robbed the cemetery for scrap, the hearse started itself at midnight, drove through the locked garage ' +
-    'door without opening it, and came back at dawn with a glass jar of something glowing on its roof. The Road Crew insist ' +
-    'it is on their side. It has never been seen to refuel, and nobody has been brave enough to ask who is driving.',
+    'Nobody at the Road Crew remembers building PHANTOM. It was just parked in bay 13 one morning, the winter FROSTBYTE\'s ' +
+    'bots robbed the old cemetery for scrap: a black car in floating armour, two swords hanging in the air beside it and a ' +
+    'glass jar of something glowing on its roof. That night it drove through the locked garage door without opening it ' +
+    'and came back at dawn with more in the jar. The Road Crew insist it is on their side. It has never been seen to ' +
+    'refuel, and nobody has been brave enough to ask who is driving.',
 };

@@ -129,7 +129,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
   },
   revenant: {
     id: 'revenant',
-    name: 'REVENANT',
+    name: 'PHANTOM',
     icon: '💀',
     tagline: 'A spectral reaper-car: floating armour, twin spectral swords and a reliquary of stolen souls. It reaps the living and leads the dead.',
     traits: [
@@ -138,7 +138,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
       'HAUNT (passive): a bot you phase through is chained to you for 6 s and takes +25% damage from you; wrecked while Haunted it drops a soul and rises as a PHANTOM that charges the nearest bot and bursts in ghostfire',
       'SPACE (hold): REAP, scythe sweeps left and right (~2.5 a second, 7 m, 140°); every third is a big Reap (wider, double damage, hits Haunted bots twice)',
       'E: PHASE, 1.2 s spectral (+30% speed, nothing touches you, no pulls or knockback), then MANIFEST: a ghostfire shockwave that grows with the souls taken in the Phase',
-      'F: SOUL GRASP (3 souls): chains yank every Haunted bot within 20 m to you and stun it 1 s · damage builds THE WILD HUNT: 7 s phased at the head of 8 phantom hearses (+1 per banked soul)',
+      'F: SOUL GRASP (3 souls): chains yank every Haunted bot within 20 m to you and stun it 1 s · damage builds THE WILD HUNT: 7 s phased at the head of 8 phantom riders (+1 per banked soul)',
     ],
     hpMult: 1.12, // below the Classic (1.15): with neutral Duel factors, the least that keeps ISOTOPE's NUKE under 45% of it (tests/balance.test.ts)
     speedMult: 1.08,
