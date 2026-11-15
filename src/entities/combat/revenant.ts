@@ -160,7 +160,8 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
   /** REAP: next-sweep timer, sweeps so far (every BIG_EVERY-th is big), last sweep's side and its glow 0..1 (rig). */
   private reapT = 0;
   reapN = 0;
-  private reapSide = 1;
+  /** +1 / -1: which way the last Reap swung (the hearse's blade whips that way). */
+  reapSide = 1;
   reapGlow = 0;
   /** Duel: damage dealt toward the next soul. */
   private duelAcc = 0;
@@ -293,6 +294,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
       _q.set(ox + _f.x * reach * 0.5, floor + 0.2, oz + _f.z * reach * 0.5);
       ctx.fx.ring(_q, reach * 0.6, REV_CORE);
     }
+    this.smashProps(ox + _f.x * reach * 0.5, oz + _f.z * reach * 0.5, reach * 0.6);
     if (st.reapDamage <= 0) return;
     const dmg = st.reapDamage * (big ? BIG_MULT : 1) * (this.b.pvp ? DUEL_REAP : 1);
     const hits = this.collect(ox, oz, reach, Reach.Body);

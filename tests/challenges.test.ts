@@ -59,35 +59,35 @@ describe('challenge definitions', () => {
     const p = new Progression();
     expect(ids(evaluateRun(p, run(0, { killsBy: { slam: 3, ram: 0, whirl: 0, other: 0 } })))).toEqual(['slam']);
     expect(ids(evaluateRun(p, run(0, { biggestBall: 1.2 })))).toEqual(['ball']);
-    expect(ids(evaluateRun(p, run(0, { duration: 59 })))).toEqual(['speed']);
-    expect(ids(evaluateRun(p, run(0, { duration: 60 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(0, { duration: 89 })))).toEqual(['speed']);
+    expect(ids(evaluateRun(p, run(0, { duration: 90 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 0, lava: 3 } })))).toEqual(['lava']);
     // Any finishing blow on a bot standing in lava counts.
-    expect(ids(evaluateRun(p, run(1, { lavaKills: 3 })))).toEqual(['lava']);
-    expect(ids(evaluateRun(p, run(1, { lavaKills: 2 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(1, { lavaKills: 2 })))).toEqual(['lava']);
+    expect(ids(evaluateRun(p, run(1, { lavaKills: 1 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { bestCombo: 99 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { damageTaken: 10 })))).toEqual(['hp']);
-    expect(ids(evaluateRun(p, run(1, { bossTime: 14.9 })))).toEqual(['blitz']);
-    expect(ids(evaluateRun(p, run(1, { bossTime: 15 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(1, { bossTime: 24.9 })))).toEqual(['blitz']);
+    expect(ids(evaluateRun(p, run(1, { bossTime: 25 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { bossTime: 0 })))).toEqual([]); // boss round never started
-    expect(ids(evaluateRun(p, run(2, { airtime: 1.0 })))).toEqual(['air']);
-    expect(ids(evaluateRun(p, run(2, { airtime: 0.99 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(2, { airtime: 0.7 })))).toEqual(['air']);
+    expect(ids(evaluateRun(p, run(2, { airtime: 0.69 })))).toEqual([]);
     expect(ids(evaluateRun(p, run(2, { killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 0, airSlam: 1, lava: 0 } })))).toEqual(['airSlam']);
     expect(ids(evaluateRun(p, run(2, { killsBy: { slam: 0, ram: 0, whirl: 0, other: 0, stomp: 1, airSlam: 0, lava: 0 } })))).toEqual(['airSlam']);
     expect(ids(evaluateRun(p, run(2, { killsBy: { slam: 0, ram: 10, whirl: 0, other: 0 } })))).toEqual([]);
     expect(ids(evaluateRun(p, run(2, { plow: 'volt' })))).toEqual([]);
-    expect(ids(evaluateRun(p, run(2, { plow: 'volt', damageTaken: 99 })))).toEqual(['plow-volt']);
+    expect(ids(evaluateRun(p, run(2, { plow: 'volt', damageTaken: 159 })))).toEqual(['plow-volt']);
     expect(ids(evaluateRun(p, run(3, { killsBy: { slam: 0, ram: 0, whirl: 4, other: 0 } })))).toEqual(['whirl']);
-    expect(ids(evaluateRun(p, run(3, { duration: 89 })))).toEqual(['speed']);
-    expect(ids(evaluateRun(p, run(3, { duration: 90 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(3, { duration: 119 })))).toEqual(['speed']);
+    expect(ids(evaluateRun(p, run(3, { duration: 120 })))).toEqual([]);
     // Golden Tower Plaza (slot 5 after the level-overhaul swap).
     expect(ids(evaluateRun(p, run(4, { strikes: 3 })))).toEqual(['strike']);
-    expect(ids(evaluateRun(p, run(4, { bossDamage: 79 })))).toEqual(['bossHp']);
+    expect(ids(evaluateRun(p, run(4, { bossDamage: 98 })))).toEqual(['bossHp']);
     expect(ids(evaluateRun(p, run(4, { bestCombo: 40 })))).toEqual(['combo']);
     // The Omega Works (slot 6). BRUTUS twist: the plow alone is not enough.
     // (The default payload loses 9999 HP: BRUTUS tanking that much earns Crash Test Dummy on its own.)
-    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 399 })))).toEqual([]);
-    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 399, killsBy: { slam: 0, ram: 12, whirl: 0, other: 0 } })))).toEqual(['plow-brute']);
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 220 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 220, killsBy: { slam: 0, ram: 8, whirl: 0, other: 0 } })))).toEqual(['plow-brute']);
     expect(ids(evaluateRun(p, run(5, { bossDamage: 0 })))).toEqual(['bossHp']);
     expect(ids(evaluateRun(p, run(5, { killsBy: { slam: 10, ram: 0, whirl: 0, other: 0 } })))).toEqual(['slam']);
   });
@@ -96,34 +96,34 @@ describe('challenge definitions', () => {
     const p = new Progression();
     const w = (weaponKills: ChallengeRun['weaponKills']) => ({ weaponKills });
     // Coldboot Glacier: Classic PLOW RUSH hits, a cool boss fight.
-    expect(ids(evaluateRun(p, run(0, { rushHits: 8 })))).toEqual(['rush']);
-    expect(ids(evaluateRun(p, run(0, { rushHits: 7 })))).toEqual([]);
-    expect(ids(evaluateRun(p, run(0, { bossDamage: 39 })))).toEqual(['bossHp']);
-    expect(ids(evaluateRun(p, run(0, { bossDamage: 40 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(0, { rushHits: 5 })))).toEqual(['rush']);
+    expect(ids(evaluateRun(p, run(0, { rushHits: 4 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(0, { bossDamage: 69 })))).toEqual(['bossHp']);
+    expect(ids(evaluateRun(p, run(0, { bossDamage: 70 })))).toEqual([]);
     // Inferno Quarry: ISOTOPE burn kills (only the radBurn tally counts), ram kills.
-    expect(ids(evaluateRun(p, run(1, w({ radBurn: 5 }))))).toEqual(['burn']);
-    expect(ids(evaluateRun(p, run(1, w({ radBurn: 4, arcLance: 50 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(1, w({ radBurn: 3 }))))).toEqual(['burn']);
+    expect(ids(evaluateRun(p, run(1, w({ radBurn: 2, arcLance: 50 }))))).toEqual([]);
     expect(ids(evaluateRun(p, run(1, { killsBy: { slam: 0, ram: 8, whirl: 0, other: 0 } })))).toEqual(['ram']);
     // Rust Basin: SINGULARITY kills, a quick GRINDER fight.
-    expect(ids(evaluateRun(p, run(2, w({ singularity: 3 }))))).toEqual(['sing']);
-    expect(ids(evaluateRun(p, run(2, w({ singularity: 2, polarity: 9 }))))).toEqual([]);
-    expect(ids(evaluateRun(p, run(2, { bossTime: 29.9 })))).toEqual(['blitz']);
-    expect(ids(evaluateRun(p, run(2, { bossTime: 30 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(2, w({ singularity: 2 }))))).toEqual(['sing']);
+    expect(ids(evaluateRun(p, run(2, w({ singularity: 1, polarity: 9 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(2, { bossTime: 44.9 })))).toEqual(['blitz']);
+    expect(ids(evaluateRun(p, run(2, { bossTime: 45 })))).toEqual([]);
     // The Thermal Divide: Arc Lance and Polarity Burst kills.
-    expect(ids(evaluateRun(p, run(3, w({ arcLance: 10 }))))).toEqual(['arc']);
-    expect(ids(evaluateRun(p, run(3, w({ arcLance: 9 }))))).toEqual([]);
-    expect(ids(evaluateRun(p, run(3, w({ polarity: 4 }))))).toEqual(['polarity']);
-    expect(ids(evaluateRun(p, run(3, w({ polarity: 3, magLaser: 99 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(3, w({ arcLance: 6 }))))).toEqual(['arc']);
+    expect(ids(evaluateRun(p, run(3, w({ arcLance: 5 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(3, w({ polarity: 2 }))))).toEqual(['polarity']);
+    expect(ids(evaluateRun(p, run(3, w({ polarity: 1, magLaser: 99 }))))).toEqual([]);
     // Golden Tower Plaza: Mag Laser kills, a 1:15 clear.
-    expect(ids(evaluateRun(p, run(4, w({ magLaser: 15 }))))).toEqual(['laser']);
-    expect(ids(evaluateRun(p, run(4, w({ magLaser: 14 }))))).toEqual([]);
-    expect(ids(evaluateRun(p, run(4, { duration: 74 })))).toEqual(['speed']);
-    expect(ids(evaluateRun(p, run(4, { duration: 75 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(4, w({ magLaser: 9 }))))).toEqual(['laser']);
+    expect(ids(evaluateRun(p, run(4, w({ magLaser: 8 }))))).toEqual([]);
+    expect(ids(evaluateRun(p, run(4, { duration: 99 })))).toEqual(['speed']);
+    expect(ids(evaluateRun(p, run(4, { duration: 100 })))).toEqual([]);
     // The Omega Works: BRUTUS tanks 400 HP (only BRUTUS), or any plow keeps it under 150.
-    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 400 })))).toEqual(['soak']);
-    expect(ids(evaluateRun(p, run(5, { plow: 'isotope', damageTaken: 400 })))).toEqual([]);
-    expect(ids(evaluateRun(p, run(5, { damageTaken: 149 })))).toEqual(['hp']);
-    expect(ids(evaluateRun(p, run(5, { damageTaken: 150 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(5, { plow: 'brute', damageTaken: 250 })))).toEqual(['soak']);
+    expect(ids(evaluateRun(p, run(5, { plow: 'isotope', damageTaken: 250 })))).toEqual([]);
+    expect(ids(evaluateRun(p, run(5, { damageTaken: 199 })))).toEqual(['hp']);
+    expect(ids(evaluateRun(p, run(5, { damageTaken: 200 })))).toEqual([]);
     // Missing extras (an old payload) meet nothing.
     expect(ids(evaluateRun(p, run(3, { weaponKills: undefined, rushHits: undefined })))).toEqual([]);
   });
@@ -272,7 +272,7 @@ describe('ChallengeTracker: event tallies feed the stars', () => {
     for (const hits of [3, 0, 4, 1]) t.events.emit('plowRush', { hits });
     // A real win goes through the boss round; a scrappy one (50 HP lost there) misses Cold Shoulder.
     t.events.emit('roundStarted', { round: 4, total: 4, boss: true });
-    t.events.emit('plowDamaged', { amount: 50, blocked: 0 });
+    t.events.emit('plowDamaged', { amount: 80, blocked: 0 });
     t.finish(0);
     const rep = lastChallengeReport()!;
     expect(rep.results.filter((r) => r.met).map((r) => r.def.id)).toEqual(['rush']);
@@ -283,7 +283,7 @@ describe('ChallengeTracker: event tallies feed the stars', () => {
     const t = tracker();
     t.events.emit('roundStarted', { round: 1, total: 4, boss: false });
     for (let i = 0; i < 10; i++) t.kill('arcLance');
-    for (let i = 0; i < 3; i++) t.kill('polarity');
+    for (let i = 0; i < 1; i++) t.kill('polarity');
     for (let i = 0; i < 20; i++) t.kill();
     t.finish(3, { plow: 'volt' });
     expect(lastChallengeReport()!.results.filter((r) => r.met).map((r) => r.def.id)).toEqual(['arc']);

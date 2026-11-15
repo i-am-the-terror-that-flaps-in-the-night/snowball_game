@@ -572,7 +572,7 @@ export abstract class PlowMotion extends PlowVisuals {
       const ddz = p.z - o.z;
       const reach = o.r + 4.5;
       if (ddx * ddx + ddz * ddz > reach * reach) continue;
-      if (o.breakable && smashes && ddx * ddx + ddz * ddz < (o.r + this.radius + 1.5) ** 2 && world!.breakObstacle(o)) {
+      if (o.breakable && smashes && ddx * ddx + ddz * ddz < (o.r + this.radius + 2.5) ** 2 && world!.breakObstacle(o)) {
         this.kick = Math.max(this.kick, 0.3);
         i--;
         continue;

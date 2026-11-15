@@ -125,16 +125,18 @@ const withPlow = (kind: PlowKind, name: string, extra?: { goal: string; test: (r
 
 /** Zone id -> its five challenges (card / results order). Keyed by save id, so a challenge follows its arena's id
  *  (docs/level-overhaul.md "Swaps and saves"): ids never change, only titles get rethemed. */
+// Eased across the board (roughly a third easier) so stars come readily; the tuning notes above describe the older,
+// stricter targets.
 export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // Coldboot Glacier (arena 1, FROSTBYTE): learn the basics: slam, max out a ball, keep moving. 'speed' re-checked on
   // the terrain build (scripts/omega-probe.mjs, fresh garage): every plow clears in 0:24-0:48, so 1:00 holds.
   // Signature: the Classic's PLOW RUSH (a fresh rush into a 3-bot pack is 3 hits) and a cool boss fight.
   yard: [
-    slamKills(3),
-    ball(1.2, 'Big Ball Energy'),
-    speed(60, 'Quick Plow'),
-    rushHits(8, 'Rush Hour'),
-    bossClean(40, 'Cold Shoulder'),
+    slamKills(2),
+    ball(1.0, 'Big Ball Energy'),
+    speed(90, 'Quick Plow'),
+    rushHits(5, 'Rush Hour'),
+    bossClean(70, 'Cold Shoulder'),
   ],
   // Inferno Quarry (arena 2, BULLDOZA): thieves and lava. Knock bots into the lava, dodge, scrap the Yard Boss fast.
   // 'lava' replaced the x30 combo (Golden Tower Plaza keeps a combo star); any kill on a bot standing in lava counts
@@ -144,12 +146,12 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // 'burn' asks 5 of the ~17 bots: on the headless sim's 6-bot pack (scripts/balance/sim.ts rotation) burn ticks
   // finish ~30% of a fresh ISOTOPE's kills but ~1% at mid (the spray overkills), so it wants spray-and-let-it-cook.
   junkyard: [
-    lavaKills(3, 'Hot Tub'),
-    untouchable(90, 'Thief-Proof'),
-    bossBlitz(15, 'Eviction Notice'),
-    weaponKills('radBurn', 'burn', '☢️', 5, 'Tank-Buster', 'rad burn',
+    lavaKills(2, 'Hot Tub'),
+    untouchable(150, 'Thief-Proof'),
+    bossBlitz(25, 'Eviction Notice'),
+    weaponKills('radBurn', 'burn', '☢️', 3, 'Tank-Buster', 'rad burn',
       'ISOTOPE: soak a bot with the Rad Sprayer, then move on and let the RAD DOSE and TANK-BUSTER burn finish it. Only kills by the burn tick count.'),
-    ramKills(8, 'Demolition Derby'),
+    ramKills(5, 'Demolition Derby'),
   ],
   // Rust Basin (arena 3, THE GRINDER): low gravity. Catch big air off the ramp, dive on the pack, survive it on the
   // fragile electric plow. Its ramp gives ~1.4 s of flight (4.5 m up, >1.3 s high enough to air-slam) at a fresh plow's
@@ -157,12 +159,12 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // and 'air' replaced 10 ram kills and 2 STRIKE!s (The Omega Works / the Plaza keep ram and STRIKE! stars).
   foundry: [
     airKills(1, 'Meteor Strike'),
-    airtime(1.0, 'Moonshot'),
-    withPlow('volt', 'Live Wire', { goal: 'lose < 100 HP', test: (r) => r.damageTaken < 100 }),
+    airtime(0.7, 'Moonshot'),
+    withPlow('volt', 'Live Wire', { goal: 'lose < 160 HP', test: (r) => r.damageTaken < 160 }),
     // Signature: ARSENAL's SINGULARITY (one black hole on a pack does it) and a quick GRINDER fight.
-    weaponKills('singularity', 'sing', '🌀', 3, 'Event Horizon', 'Singularity',
+    weaponKills('singularity', 'sing', '🌀', 2, 'Event Horizon', 'Singularity',
       'ARSENAL: fill the SINGULARITY meter with weapon damage, then drop the black hole on a crowd. Kills while it pulls or as it collapses count.'),
-    bossBlitz(30, 'Drill Sergeant'),
+    bossBlitz(45, 'Drill Sergeant'),
   ],
   // The Thermal Divide (arena 4, SLUSH & SLEET): a hot twin and a cold twin. Big balls, spin, and do it fast. 'speed'
   // retuned 1:45 -> 1:30: fresh-garage clears run 0:53-1:42, mid 0:38-0:47. (Its two small ramps only lift you 0.5 m+
@@ -171,12 +173,12 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // Of ~28 bots: the sim's pack gives the lance ~21% (fresh) to ~46% (mid) of VOLT-9's kills, the burst ~17-21% of
   // ARSENAL's, so 10 and 4.
   bowl: [
-    ball(1.8, 'Cold Front'),
-    whirlKills(4),
-    speed(90, 'Divide & Conquer'),
-    weaponKills('arcLance', 'arc', '⚡', 10, 'Lightning Rod', 'Arc Lance',
+    ball(1.4, 'Cold Front'),
+    whirlKills(3),
+    speed(120, 'Divide & Conquer'),
+    weaponKills('arcLance', 'arc', '⚡', 6, 'Lightning Rod', 'Arc Lance',
       'VOLT-9: hold SPACE to fire the Arc Lance from range. Chains jump through up to 7 bots; every kill the lightning finishes counts.'),
-    weaponKills('polarity', 'polarity', '🧲', 4, 'Polar Opposites', 'Polarity Burst',
+    weaponKills('polarity', 'polarity', '🧲', 2, 'Polar Opposites', 'Polarity Burst',
       'ARSENAL: press F for a Polarity Burst. It drags a pack together, then blows it apart; kills from the blast count.'),
   ],
   // Golden Tower Plaza (arena 5, THE DONALD): break up the rally crowds, dodge the walls and the beam, keep the combo
@@ -184,24 +186,24 @@ export const CHALLENGES: Record<string, ChallengeDef[]> = {
   // Signature: ARSENAL's Mag Laser through the rally crowds (~44 bots; the laser finishes ~36-39% of ARSENAL's kills on
   // the sim's pack, so 15). 'speed': mid-garage clears run 0:50-1:04 (docs/balance.md).
   plaza: [
-    strikes(3, 'Crowd Control'),
-    bossClean(80, 'Fake Damage'),
-    combo(40, 'Tremendous Combo'),
-    weaponKills('magLaser', 'laser', '🔷', 15, 'Laser Light Show', 'Mag Laser',
+    strikes(2, 'Crowd Control'),
+    bossClean(99, 'Fake Damage'),
+    combo(25, 'Tremendous Combo'),
+    weaponKills('magLaser', 'laser', '🔷', 9, 'Laser Light Show', 'Mag Laser',
       'ARSENAL: hold SPACE and steer the Mag Laser down a line of bots. Its bolts pierce, so a lined-up crowd melts fast.'),
-    speed(75, 'Rally Sprint'),
+    speed(100, 'Rally Sprint'),
   ],
   // The Omega Works (arena 6, MEGAPLOW Ω): the finale. Tank it with BRUTUS, dodge the machine, bury the rest in snow.
   // No time-based goals here on purpose: the 160 m multi-level factory makes clear times swing with routing.
   summit: [
-    withPlow('brute', 'Rhino Rampage', { goal: '12 ram kills', test: (r) => r.killsBy.ram >= 12 }),
-    bossClean(60, 'Omega Dodger'),
-    slamKills(10, 'Avalanche Artist'),
+    withPlow('brute', 'Rhino Rampage', { goal: '8 ram kills', test: (r) => r.killsBy.ram >= 8 }),
+    bossClean(99, 'Omega Dodger'),
+    slamKills(6, 'Avalanche Artist'),
     // Signature: BRUTUS soaks the factory vs. a clean run (any plow). Mid-garage bot sweeps lose ~90-180 HP on a normal
     // run here and ~390-730 on Hard (docs/balance.md), so 400 asks BRUTUS to wade in (or take on Hard) and 150 sits
     // near the sloppy-defense autopilot's losses.
-    tank(400, 'Crash Test Dummy'),
-    untouchable(150, 'Quality Control'),
+    tank(250, 'Crash Test Dummy'),
+    untouchable(200, 'Quality Control'),
   ],
 };
 

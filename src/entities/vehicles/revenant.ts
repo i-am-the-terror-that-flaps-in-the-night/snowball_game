@@ -56,6 +56,10 @@ export const BEACON_POS = new THREE.Vector3(0, 2.28, 0.45);
 const SOULS_MAX = 10;
 const WHEELS = [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const;
 const WHEEL_R = 0.48;
+/** Scythe pivot (model z) and its Reap whip: the swing time (s) and how far it swings (rad). */
+const BLADE_PIVOT_Z = 2.05;
+const SWING_TIME = 0.26;
+const SWING_YAW = 0.6;
 
 /** Side profile (z, y) of the lower hull (extruded across the width): a long wedge, nose low, flat tail. */
 const LOWER: readonly (readonly [number, number])[] = [[-2.52, 0.6], [2.5, 0.6], [2.78, 0.8], [2.7, 0.98], [1.5, 1.38], [-2.44, 1.42], [-2.58, 1.02]];
@@ -261,6 +265,10 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   }
   addMesh(new THREE.BoxGeometry(1.5, 0.05, 0.05), edgeMat, 0, 1.02, 2.66, hull, false);
   addMesh(new THREE.BoxGeometry(1.2, 0.04, 0.04), bone, 0, 1.38, -2.6, hull, false);
+  // The whole scythe hangs off one pivot just behind the nose, so it can whip side to side on each Reap.
+  const blade = new THREE.Group();
+  blade.position.set(0, 0, BLADE_PIVOT_Z);
+  hull.add(blade);
   // SCYTHE BLADE: a crescent alloy plate low across the nose, swept back into hooked tips, a sigil band on its face.
   const cres = new THREE.Shape();
   const OUT = 1.62;
@@ -272,22 +280,22 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   const bladeGeo = new THREE.ExtrudeGeometry(cres, { depth: 0.3, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1, curveSegments: 10 });
   bladeGeo.rotateX(Math.PI / 2);
   bladeGeo.computeVertexNormals();
-  addMesh(bladeGeo, alloy, 0, 0.78, 2.55, hull);
+  addMesh(bladeGeo, alloy, 0, 0.78, 2.55 - BLADE_PIVOT_Z, blade);
   // Glowing cutting edge along the blade's outer arc and a honed bevel on its inner (rear-facing) arc, so the hooked
   // tips read as blades from the chase camera behind, not as dark wings.
   const edgeGlow = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, toneMapped: false });
   const bevel = new THREE.MeshStandardMaterial({ color: 0xeef0f6, roughness: 0.12, metalness: 0.5, emissive: 0x3a2a55, emissiveIntensity: 0.5 });
   const BY = 0.79;
-  const BZ = 2.55;
+  const BZ = 2.55 - BLADE_PIVOT_Z;
   for (const sx of [-1, 1]) {
     const outer = new THREE.QuadraticBezierCurve3(
       new THREE.Vector3(sx * (OUT + 0.42), BY, BZ - 0.95), new THREE.Vector3(sx * OUT, BY, BZ + 0.05), new THREE.Vector3(0, BY, BZ + 0.38));
-    addMesh(new THREE.TubeGeometry(outer, 16, 0.045, 5, false), edgeGlow, 0, 0, 0, hull, false);
+    addMesh(new THREE.TubeGeometry(outer, 16, 0.045, 5, false), edgeGlow, 0, 0, 0, blade, false);
     const inner = new THREE.QuadraticBezierCurve3(
       new THREE.Vector3(sx * (OUT + 0.42), BY, BZ - 0.95), new THREE.Vector3(sx * (OUT - 0.05), BY, BZ - 0.3), new THREE.Vector3(sx * 0.4, BY, BZ + 0.06));
-    addMesh(new THREE.TubeGeometry(inner, 16, 0.06, 4, false), bevel, 0, 0, 0, hull, false);
+    addMesh(new THREE.TubeGeometry(inner, 16, 0.06, 4, false), bevel, 0, 0, 0, blade, false);
     // A needle point hooking back off each tip.
-    const tip = addMesh(new THREE.ConeGeometry(0.09, 0.55, 6), edgeGlow, sx * (OUT + 0.55), BY - 0.12, BZ - 1.18, hull, false);
+    const tip = addMesh(new THREE.ConeGeometry(0.09, 0.55, 6), edgeGlow, sx * (OUT + 0.55), BY - 0.12, BZ - 1.18, blade, false);
     tip.rotation.set(-Math.PI / 2, 0, 0);
     tip.rotation.y = sx * 0.55;
   }
@@ -311,11 +319,11 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
     const seg = new THREE.PlaneGeometry(len, 0.13);
     const uv = seg.getAttribute('uv') as THREE.BufferAttribute;
     for (let k = 0; k < uv.count; k++) uv.setX(k, t0 + uv.getX(k) * (t1 - t0));
-    const m = addMesh(seg, sigilMat, (x0 + x1) / 2, 0.64, 2.55 + (y0 + y1) / 2 + 0.03, hull, false);
+    const m = addMesh(seg, sigilMat, (x0 + x1) / 2, 0.64, 2.55 - BLADE_PIVOT_Z + (y0 + y1) / 2 + 0.03, blade, false);
     m.rotation.y = -Math.atan2(y1 - y0, x1 - x0);
   }
   // Blade mounts.
-  for (const sx of [-1, 1]) addMesh(new THREE.BoxGeometry(0.14, 0.14, 0.5), mats.dark, sx * 0.55, 0.72, 2.6, hull);
+  for (const sx of [-1, 1]) addMesh(new THREE.BoxGeometry(0.14, 0.14, 0.5), mats.dark, sx * 0.55, 0.72, 2.6 - BLADE_PIVOT_Z, blade);
   // Roof toll beacon base (the lamp animates).
   addMesh(new THREE.CylinderGeometry(0.2, 0.26, 0.12, 10), mats.trim, BEACON_POS.x, BEACON_POS.y - 0.12, BEACON_POS.z, hull);
   // Reliquary cradle on the roof: four bone claws reaching up toward the floating capsule.
@@ -490,8 +498,25 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   let tolls = 0;
   let tollT = -1;
   let glitchT = 0;
+  let swingK = 1;
+  let swingSide = 1;
+  let prevReap = 0;
   const update = (dt: number, s: RevenantRigState): void => {
     t += dt;
+    // Scythe: a new Reap (the glow jumps back up) whips the blade across, wound back on one side and slung through to
+    // the other, then it settles; idle, it sways and rides the bumps.
+    const reapNow = Math.abs(s.reap);
+    if (reapNow > prevReap + 0.15) {
+      swingK = 0;
+      swingSide = s.reap < 0 ? -1 : 1;
+    }
+    prevReap = reapNow;
+    swingK = Math.min(1, swingK + dt / SWING_TIME);
+    const wind = swingK < 0.3 ? -0.5 + 1.5 * (swingK / 0.3) : (1 - (swingK - 0.3) / 0.7) ** 2;
+    const swing = swingK < 1 ? swingSide * SWING_YAW * wind : 0;
+    blade.rotation.y = swing + 0.05 * Math.sin(t * 2.3);
+    blade.rotation.z = -swing * 0.3 + 0.03 * Math.sin(t * 3.1 + 1);
+    blade.position.y = 0.04 * Math.sin(t * 4.2) * Math.min(1, Math.abs(s.speed) / 8);
     spin += (s.speed * dt) / WHEEL_R;
     // Strips flicker like flame (hotter in the Hunt); spokes turn with the wheels; rune rings drift.
     const fl = flick(t, 0);

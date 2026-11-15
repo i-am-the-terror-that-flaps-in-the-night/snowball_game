@@ -40,6 +40,9 @@ const REMOTE_IMPACT: ImpactOpts = { stop: false, falloff: 0.5 };
  * the shared hit hooks (onPlayerHit, hitMult), the shared ultimate meter and duel net sync; each plow's abilities
  * live in a kit under ./combat/ that reaches back through a narrow CombatHost.
  */
+/** Area attacks smash props out to this multiple of their radius (+1 m). */
+const PROP_BLAST_MULT = 1.5;
+
 export class Combat implements CombatAPI {
   private ctx: GameContext;
   /** Whose plow / stats / input / targets this Combat resolves (ctxPilot = the single-player singletons). */
@@ -377,7 +380,7 @@ export class Combat implements CombatAPI {
   get revenantRig(): { tolls: number; reap: number; hunt: boolean } {
     const r = this.revRig;
     r.tolls = this.revenant.tolls;
-    r.reap = this.revenant.reapGlow;
+    r.reap = this.revenant.reapGlow * this.revenant.reapSide;
     r.hunt = this.revenant.huntT >= 0;
     return r;
   }
@@ -614,7 +617,8 @@ export class Combat implements CombatAPI {
 
   /** Break destructible props in a circle (player attacks; a duel guest's predicted attacks never do). */
   private smashProps(x: number, z: number, r: number): void {
-    if (this.b.authoritative) this.ctx.world?.blastProps(x, z, r);
+    // Generous: every area attack shatters crates / barrels a good way past its own hit radius.
+    if (this.b.authoritative) this.ctx.world?.blastProps(x, z, r * PROP_BLAST_MULT + 1);
   }
 
   /** Snapshot of living enemies overlapping a circle (copied: damage() may mutate manager lists), filtered by the

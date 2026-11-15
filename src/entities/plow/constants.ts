@@ -6,7 +6,7 @@ import * as THREE from 'three';
 export const BLADE_Z = 2.35;
 export const TIP_Z = BLADE_Z + 0.15;
 /** Driving into a destructible prop faster than this (m/s), or dashing, smashes it. */
-export const PROP_SMASH_SPEED = 6;
+export const PROP_SMASH_SPEED = 2;
 export const REAR_Z = 2.15;
 export const WHEEL_R = 0.48;
 /** BRUTUS's taller, deeper blade (visual scale on Y / Z; width still follows bladeWidth). */
