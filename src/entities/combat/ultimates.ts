@@ -129,8 +129,8 @@ export function ultBlast(
     if (d + e.radius < inner) continue;
     const nd = d || 1;
     if (o.bolt) {
-      // From the storm deck (fx/stormCloud.ts, ~10 m up), not from far above the camera.
-      _p.set(e.position.x + (Math.random() - 0.5) * 3, e.position.y + 11, e.position.z + (Math.random() - 0.5) * 3);
+      // From the storm deck (fx/stormCloud.ts, ~6 m up), not from far above the camera.
+      _p.set(e.position.x + (Math.random() - 0.5) * 3, e.position.y + 6, e.position.z + (Math.random() - 0.5) * 3);
       _q.set(e.position.x, e.position.y + e.radius, e.position.z);
       h.lightning.bolt(_p, _q, ULT_BOLT);
     }

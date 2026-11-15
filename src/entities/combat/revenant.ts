@@ -3,7 +3,7 @@ import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Kit, Reach, _p, _q, castOrigin, waveFloor, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 import { Shockwaves, type ShockPalette } from './arsenalFx';
-import { Chains, HauntMarks, HuntDome, PhantomMeshes, RiderMeshes, ScytheArcs } from './revenantFx';
+import { Chains, GhostTrail, HauntMarks, HuntDome, PhantomMeshes, ScytheArcs } from './revenantFx';
 import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE } from '../vehicles/revenant';
 
 /* REVENANT: the possessed hearse. SOULS (0-10, the Reliquary) come from wrecks and from bots it PHASES through; they
@@ -117,8 +117,11 @@ const GRASP_SMOKE = { count: 10, color: REV_DEEP, size: 0.8, grow: 2, life: 0.8,
 const PH_RISE_SMOKE = { count: 6, color: 0xcfb0ff, size: 0.6, grow: 2, life: 0.6, speed: 1.5, up: 2.5, rise: 1, drag: 2, spread: 0.5, opacity: 0.6 };
 const FINALE_SMOKE = { count: 30, color: 0x8a50d0, size: 1.4, grow: 2.4, life: 1.1, speed: 14, up: 2, rise: 0.6, drag: 2.2, spread: 1, opacity: 0.7, additive: 0.45, radial: true };
 /** Finale: a column of violet ghostfire bursting up from the hearse. */
-const FINALE_PILLAR = { count: 16, color: 0xe0b8ff, size: 1.1, grow: 2, life: 0.9, speed: 2, up: 12, rise: 3, drag: 1.2, spread: 1.2, opacity: 0.9, additive: 0.85 };
-const FINALE_BURST = { color: REV_BRIGHT, count: 60, speed: 16, size: 0.3, gravity: 1, life: 0.8 };
+const FINALE_PILLAR = { count: 24, color: 0xe0b8ff, size: 1.3, grow: 2.2, life: 1.1, speed: 2.5, up: 15, rise: 3, drag: 1.2, spread: 1.4, opacity: 0.9, additive: 0.85 };
+const FINALE_BURST = { color: REV_BRIGHT, count: 90, speed: 20, size: 0.32, gravity: 1, life: 0.9 };
+/** ...a second, wider and slower ghostfire cloud, and the white-violet core flash. */
+const FINALE_SMOKE_2 = { count: 24, color: 0xc890ff, size: 2, grow: 2.6, life: 1.5, speed: 9, up: 3, rise: 1, drag: 1.6, spread: 2, opacity: 0.6, additive: 0.7, radial: true };
+const FINALE_CORE = { count: 3, color: 0xf0e0ff, size: 7, grow: 1.8, life: 0.45, speed: 0, up: 0, rise: 0, drag: 0, spread: 0.6, opacity: 0.95, additive: 1 };
 const FINALE_WHITE = { color: 0xffffff, count: 20, speed: 9, size: 0.25, gravity: -2, life: 0.6 };
 /** Share of MANIFEST and PHANTOM burst damage that fills THE WILD HUNT's meter (area bursts chain through a pack:
  *  at full share the meter filled in a few seconds of a crowded fight but took a minute on a boss). */
@@ -191,7 +194,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
   private clock = 0;
   private fogT = 0;
   // Visuals (lazily built on first use so non-REVENANT pilots never pay for them).
-  private fx: { arcs: ScytheArcs; chains: Chains; marks: HauntMarks; ph: PhantomMeshes; riders: RiderMeshes; dome: HuntDome; shock: Shockwaves } | null = null;
+  private fx: { arcs: ScytheArcs; chains: Chains; marks: HauntMarks; ph: PhantomMeshes; trail: GhostTrail; dome: HuntDome; shock: Shockwaves } | null = null;
 
   constructor(h: CombatHost) {
     super(h);
@@ -210,7 +213,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
         chains: new Chains(scene),
         marks: new HauntMarks(scene),
         ph: new PhantomMeshes(scene, MAX_PHANTOMS),
-        riders: Object.assign(new RiderMeshes(scene, MAX_RIDERS), { camera: this.ctx.camera ?? null }),
+        trail: Object.assign(new GhostTrail(scene, MAX_RIDERS), { camera: this.ctx.camera ?? null }),
         dome: new HuntDome(scene),
         shock: new Shockwaves(scene, 3, GHOST_PALETTE),
       };
@@ -776,8 +779,12 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const pz = plow.position.z;
     const floor = plow.surfaceY || 0;
     const trample = (st.graspDamage || 34) * HUNT_TRAMPLE;
-    const riders = this.vis.riders;
-    riders.tick(dt);
+    // The riders are the sample points of ONE ghost trail flowing back along the hearse's path (point 0: its tail).
+    const trail = this.vis.trail;
+    const hh = plow.heading;
+    trail.point(0, px - Math.sin(hh) * 2.2, floor, pz - Math.cos(hh) * 2.2, Math.min(1, t / 0.3));
+    let pts = 1;
+    let lift = 0;
     for (let i = 0; i < this.riders; i++) {
       const rp = this.riderPos[i];
       const delay = (i + 1) * RIDER_GAP;
@@ -820,18 +827,25 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
           ctx.fx.smoke(_p, RIDER_TRAIL);
           if (Math.random() < 0.5) ctx.fx.sparks(_p, null, RIDER_EMBERS);
         }
-        riders.set(i, rp.x, fy, rp.z, rp.h, appear, 0.08 * Math.sin(this.clock * 9 + i));
-      } else {
-        // Finale: converge on the hearse, then erupt.
+        if (pts === i + 1) trail.point(pts++, rp.x, fy, rp.z, appear);
+      } else if (rp.ok) {
+        // Finale: the trail coils round the hearse, tightening and rising, then erupts.
         const c = Math.min(1, (t - end) / FINALE_IN);
-        const x = rp.x + (px - rp.x) * c * c;
-        const z = rp.z + (pz - rp.z) * c * c;
-        riders.set(i, x, waveFloor(ctx.terrain, floor, x, z), z, Math.atan2(px - rp.x, pz - rp.z), 1 - c * 0.6, 0);
+        const dx = rp.x - px;
+        const dz = rp.z - pz;
+        const sw = c * c * (2.2 + i * 0.12);
+        const rr = Math.min(Math.hypot(dx, dz), 4 + i * 1.6) * (1 - c * c * 0.85);
+        const a = Math.atan2(dx, dz) + sw;
+        const x = px + Math.sin(a) * rr;
+        const z = pz + Math.cos(a) * rr;
+        if (pts === i + 1) trail.point(pts++, x, waveFloor(ctx.terrain, floor, x, z), z, 1);
+        lift = c * 2.5;
       }
     }
+    if (!this.finaleDone) trail.build(pts, k, lift);
     if (!this.finaleDone && t >= end + FINALE_IN) {
       this.finaleDone = true;
-      for (let i = 0; i < MAX_RIDERS; i++) riders.hide(i);
+      trail.burst(px, floor, pz);
       this.finale(plow);
     }
     if (t >= end + FINALE_IN + 0.6) {
@@ -867,16 +881,23 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const px = plow.position.x;
     const pz = plow.position.z;
     const floor = plow.surfaceY || 0;
-    this.vis.shock.spawn(px, floor, pz, R, { dur: 0.7, flashR: 3.5 + souls * 0.25, flashY: 1.6, wallH: 3 + souls * 0.2 });
+    // The spent trail's eruption (visuals larger than the blast's reach R, which is unchanged): a double shockwave,
+    // rings racing out, a ghostfire column and a white-violet core flash.
+    this.vis.shock.spawn(px, floor, pz, R * 1.3, { dur: 0.85, flashR: 5 + souls * 0.35, flashY: 2.2, wallH: 4.5 + souls * 0.3 });
+    this.vis.shock.spawn(px, floor, pz, R * 0.75, { dur: 0.55, flashR: 2.5 + souls * 0.2, flashY: 1.2, wallH: 2.5 + souls * 0.15 });
     _q.set(px, floor + 0.2, pz);
     ctx.fx.ring(_q, R, REV_CORE);
     ctx.fx.ring(_q, R * 1.12, REV_EDGE);
+    ctx.fx.ring(_q, R * 1.35, REV_BRIGHT);
+    ctx.fx.ring(_q, R * 0.5, 0xffffff);
     ctx.fx.smoke(_q, FINALE_SMOKE);
+    ctx.fx.smoke(_q, FINALE_SMOKE_2);
     ctx.fx.smoke(_q, FINALE_PILLAR);
+    ctx.fx.smoke(_q, FINALE_CORE);
     ctx.fx.burst(_q, FINALE_BURST);
     ctx.fx.burst(_q, FINALE_WHITE);
-    this.shake(1.2);
-    this.impactHit('hunt', _q.set(px, floor + 1.5, pz), 0.8);
+    this.shake(1.5);
+    this.impactHit('hunt', _q.set(px, floor + 1.5, pz), 1.1);
     this.b.audio.play('explosion', { volume: 0.8, pitch: 0.8 });
     this.b.audio.play('roar', { volume: 0.5, pitch: 0.5 });
     const dmg = (st.graspDamage || 34) * (FINALE_BASE + FINALE_SOUL * souls);
@@ -891,6 +912,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const v = this.vis;
     v.arcs.update(dt);
     v.shock.update(dt);
+    v.trail.update(dt);
     v.chains.begin();
     v.marks.begin();
     this.relicWorld(_from);
@@ -947,7 +969,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
       v.chains.clear();
       v.marks.clear();
       v.ph.clear();
-      v.riders.clear();
+      v.trail.clear();
       v.dome.release();
       v.shock.clear();
     }

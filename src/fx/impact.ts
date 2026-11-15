@@ -49,7 +49,9 @@ const KINDS: Record<ImpactKind, KindDef> = {
   punch: { color: 0xffa040, light: 55, range: 12, stop: 0.035, kick: 0.28, fov: -1.5, force: true },
   clap: { color: 0x8fd8ff, light: 150, range: 28, stop: 0.07, kick: 0.6, fov: -4 },
   meltdown: { color: 0x6dff3a, light: 120, range: 26, stop: 0.065, kick: 0.55, fov: -3.5 },
-  nuke: { color: 0x7dff4a, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true, flash: 0.9, flashSec: 0.6 },
+  nuke: { color: 0x7dff4a, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true, flash: 0.9, flashSec: 0.6, flashTint: '#8cff5a' },
+  /** The NUKE's green afterflashes: the pooled impact light re-fired green, a light green screen pulse, no hit-stop. */
+  nukePulse: { color: 0x20ff40, light: 320, range: 64, stop: 0, kick: 0.25, fov: -1.5, flash: 0.22, flashSec: 0.32, flashTint: '#5dff3a' },
   /** The Classic's FIRESTORM: the NUKE's punch with a warm fire flash (not the ISOTOPE green). */
   firestorm: { color: 0xff7a20, light: 600, range: 70, stop: 0.16, kick: 1.4, fov: -9, force: true, flash: 0.55, flashSec: 0.5, flashTint: '#ffb060' },
   /** ARSENAL's SINGULARITY detonation: cyan, and a far lighter screen flash (the collapse billboard is the flash). */
@@ -82,6 +84,9 @@ export class Impact implements ImpactAPI {
   private flashes: Flash[] = [];
   private overlay: HTMLDivElement;
   private flashEl: HTMLDivElement;
+  /** The running screen flash's peak, and until when (performance.now ms) a weaker one may not replace it. */
+  private flashPeak = 0;
+  private flashBusy = 0;
   private vigEl: HTMLDivElement;
 
   constructor(ctx: GameContext) {
@@ -238,6 +243,11 @@ export class Impact implements ImpactAPI {
   }
 
   private screenFlash(opacity: number, seconds: number, tint?: string): void {
+    // A weaker flash (the NUKE's afterflashes) never cuts short the bright head of a stronger one still playing.
+    const at = performance.now();
+    if (opacity < this.flashPeak && at < this.flashBusy) return;
+    this.flashPeak = opacity;
+    this.flashBusy = at + seconds * 600;
     const reduce = settings.reduceFlash;
     // A tinted flash is a flat colour wash; untinted keeps the stylesheet's white radial.
     this.flashEl.style.background = tint ? `radial-gradient(ellipse at 50% 55%, #ffffff 0%, ${tint} 60%, ${tint} 100%)` : '';

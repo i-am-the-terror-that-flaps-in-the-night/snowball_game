@@ -103,8 +103,8 @@ function dataTexture(size: number, fn: (u: number, v: number) => number): THREE.
   return t;
 }
 
-/** Soft cloudy puff: radial falloff broken up by a few soft lumps. */
-function puffTexture(): THREE.DataTexture {
+/** Soft cloudy puff: radial falloff broken up by a few soft lumps (`pow` < 1 / `gain` > 1: a denser, fuller one). */
+function puffTexture(pow = 1, gain = 1): THREE.DataTexture {
   const r = rng(7);
   const blobs: number[] = [];
   for (let i = 0; i < 9; i++) {
@@ -121,7 +121,8 @@ function puffTexture(): THREE.DataTexture {
       const dx = u - blobs[i], dy = v - blobs[i + 1], s = blobs[i + 2];
       lump += blobs[i + 3] * Math.exp(-(dx * dx + dy * dy) / (s * s));
     }
-    return fall * Math.min(1, lump * 0.75);
+    const a = fall * Math.min(1, lump * 0.75);
+    return pow === 1 && gain === 1 ? a : Math.min(1, a ** pow * gain);
   });
 }
 
@@ -129,6 +130,12 @@ let sharedPuff: THREE.DataTexture | null = null;
 /** The soft cloudy puff (luminance; use it as an alphaMap), built once and shared (fx/stormCloud.ts). */
 export function softPuffTexture(): THREE.DataTexture {
   return (sharedPuff ??= puffTexture());
+}
+
+let sharedDensePuff: THREE.DataTexture | null = null;
+/** The same puff, denser and fuller (a storm cloud's body that must read as a solid mass), built once and shared. */
+export function densePuffTexture(): THREE.DataTexture {
+  return (sharedDensePuff ??= puffTexture(0.55, 1.35));
 }
 
 /** Irregular soot blotch with radial streaks for scorch decals. */

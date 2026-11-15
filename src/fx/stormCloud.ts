@@ -1,25 +1,35 @@
 import * as THREE from 'three';
-import { softPuffTexture } from './particles';
+import { densePuffTexture, softPuffTexture } from './particles';
 
-/* VOLT-9 SUPERCELL storm: a ring of dark-blue cloud puffs low overhead with a clear eye over the caster (soft
- * billboards, normal blend so they read on sunlit snow and against the night sky), an additive glow billboard per
- * puff that flashes when a strike leaves it, and a storm dome that darkens the arena to a stormy blue
- * and blinks with sheet lightning on every strike. The chase camera looks down from ~8 m, so the deck sits just above
- * it: the far side of the ring frames the top of the screen; puffs near the camera fade out (never fill the screen).
- * Pooled: built once, posed and faded by update(); nothing allocated per frame. */
+/* VOLT-9 SUPERCELL storm: a huge layered cloud mass (soft billboards, normal blend so they read on sunlit snow and
+ * against the night sky): a low dark deck over the whole strike area with only a small eye over the caster, and a
+ * towering outer wall of bigger, darker banks stacked up to the horizon. Every puff has an additive glow billboard
+ * that flashes when a strike leaves it (or lightning flickers inside it), and a storm dome darkens the arena to a
+ * stormy blue and blinks with sheet lightning on every strike. The chase camera sits ~10 m up looking down ~30 deg,
+ * so the deck hangs low (~6.5 m) and the wall stands well out: together they fill the top of the frame; puffs near
+ * the camera fade out (never fill the screen). Pooled: built once, posed and faded by update(); nothing allocated
+ * per frame. */
 
-/** Puffs (LOW quality: every other one), height above the cast floor, ring inner / outer radius (x storm radius). */
-const PUFFS = 36;
-const CLOUD_Y = 8;
-const RING_IN = 0.5;
-const RING_OUT = 1.05;
+/** Deck puffs: count, height above the cast floor, ring inner / outer radius (x storm radius). */
+const DECK = 56;
+const CLOUD_Y = 6;
+const RING_IN = 0.28;
+const RING_OUT = 1.35;
+/** Outer wall banks: count, height range (m above the floor), ring inner / outer radius (x storm radius). */
+const WALL = 30;
+const WALL_Y0 = 6.5;
+const WALL_Y1 = 12;
+const WALL_IN = 1.05;
+const WALL_OUT = 2.1;
+/** All puffs (LOW quality: every other one). */
+const PUFFS = DECK + WALL;
 /** Fade in / out seconds. */
 const FADE_IN = 0.35;
 const FADE_OUT = 0.7;
 /** Peak opacities: cloud body, a puff's flash glow, the storm dome's darkening and its lightning blink. */
 const BODY = 1;
-const GLOW = 0.95;
-const DOME_DARK = 0.3;
+const GLOW = 1;
+const DOME_DARK = 0.38;
 const DOME_FLASH = 0.22;
 /** Flash decay (1/s): puffs, the dome blink. */
 const FLASH_DECAY = 8;
@@ -33,12 +43,14 @@ interface Puff {
   bodyMat: THREE.SpriteMaterial;
   glow: THREE.Sprite;
   glowMat: THREE.SpriteMaterial;
-  /** Offset from the centre (x storm radius), size (x storm radius), height jitter (m), flash 0..1. */
+  /** Offset from the centre (x storm radius), size (x storm radius), height above the floor (m), flash 0..1,
+   *  height / width of the billboard. */
   ox: number;
   oz: number;
   size: number;
   dy: number;
   flash: number;
+  squash: number;
 }
 
 export class StormCloud {
@@ -63,14 +75,22 @@ export class StormCloud {
 
   constructor(scene: THREE.Scene) {
     const map = softPuffTexture();
-    const dark = new THREE.Color(0x26355a);
+    const dense = densePuffTexture();
+    const dark = new THREE.Color(0x1e2a48);
     const lite = new THREE.Color(0x4a5e88);
+    const deep = new THREE.Color(0x141d34);
     for (let i = 0; i < PUFFS; i++) {
-      // Jittered angle and radius across the ring, so it reads as a churning cloud deck, not a wheel.
-      const a = (i / PUFFS) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
-      const r = RING_IN + 0.08 + Math.random() * (RING_OUT - RING_IN - 0.1);
-      const bodyMat = new THREE.SpriteMaterial({ alphaMap: map, color: dark.clone().lerp(lite, Math.random()), transparent: true, opacity: 0, depthWrite: false });
-      const glowMat = new THREE.SpriteMaterial({ alphaMap: map, color: 0xa8e0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+      // Jittered angle and radius across each ring, so it reads as a churning cloud mass, not a wheel. Deck puffs come
+      // first (indices interleave the two layers' halves, so LOW's every-other-one keeps both).
+      const wall = i >= DECK;
+      const n = wall ? WALL : DECK;
+      const j = wall ? i - DECK : i;
+      const a = (j / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+      const r = wall ? WALL_IN + Math.random() * (WALL_OUT - WALL_IN) : RING_IN + Math.sqrt(Math.random()) * (RING_OUT - RING_IN);
+      const col = wall ? deep.clone().lerp(dark, Math.random()) : dark.clone().lerp(lite, Math.random() * 0.8);
+      // No fog: the arena's haze would tint a far cloud bank to the ground colour (it must stay a dark storm blue).
+      const bodyMat = new THREE.SpriteMaterial({ alphaMap: dense, color: col, transparent: true, opacity: 0, depthWrite: false, fog: false });
+      const glowMat = new THREE.SpriteMaterial({ alphaMap: map, color: 0xb8e6ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
       bodyMat.rotation = glowMat.rotation = Math.random() * Math.PI * 2;
       const body = new THREE.Sprite(bodyMat);
       const glow = new THREE.Sprite(glowMat);
@@ -78,7 +98,18 @@ export class StormCloud {
       glow.renderOrder = 8;
       body.frustumCulled = glow.frustumCulled = false;
       this.group.add(body, glow);
-      this.puffs.push({ body, bodyMat, glow, glowMat, ox: Math.sin(a) * r, oz: Math.cos(a) * r, size: 0.45 + Math.random() * 0.25, dy: (Math.random() - 0.5) * 1.6, flash: 0 });
+      this.puffs.push({
+        body,
+        bodyMat,
+        glow,
+        glowMat,
+        ox: Math.sin(a) * r,
+        oz: Math.cos(a) * r,
+        size: wall ? 0.75 + Math.random() * 0.4 : 0.5 + Math.random() * 0.3,
+        dy: wall ? WALL_Y0 + Math.random() * (WALL_Y1 - WALL_Y0) : CLOUD_Y + (Math.random() - 0.5) * 1.8,
+        flash: 0,
+        squash: wall ? 0.75 : 0.5,
+      });
     }
     // Storm dome: drawn first among the transparents with no depth test, so it tints the whole opaque scene (like the
     // Wild Hunt's, combat/revenantFx.ts HuntDome); the blink is the same sphere, additive.
@@ -119,7 +150,7 @@ export class StormCloud {
   strikeAt(x: number, z: number, out: THREE.Vector3): THREE.Vector3 {
     let best: Puff | null = null;
     let bd = Infinity;
-    for (let i = 0; i < PUFFS; i += this.step) {
+    for (let i = 0; i < DECK; i += this.step) {
       const p = this.puffs[i];
       const d = (p.body.position.x - x) ** 2 + (p.body.position.z - z) ** 2;
       if (d < bd) {
@@ -128,8 +159,27 @@ export class StormCloud {
       }
     }
     if (best) best.flash = 1;
+    // Lightning flickers on inside the cloud elsewhere too.
+    const o = this.puffs[Math.floor(Math.random() * (PUFFS / this.step)) * this.step];
+    o.flash = Math.max(o.flash, 0.5 + 0.5 * Math.random());
     this.domeFlash = Math.max(this.domeFlash, 0.5 + 0.5 * Math.random());
     return out.set(x + (Math.random() - 0.5) * 5, this.y + CLOUD_Y - 0.5 + (Math.random() - 0.5) * 1.5, z + (Math.random() - 0.5) * 5);
+  }
+
+  /** In-cloud lightning: two lit puffs' centres (in the deck, near each other) into `a` / `b` for a cloud-to-cloud
+   *  arc; both flash. */
+  innerArc(a: THREE.Vector3, b: THREE.Vector3): void {
+    const n = Math.floor(DECK / this.step);
+    const i = Math.floor(Math.random() * n) * this.step;
+    const k = (i + this.step * (1 + Math.floor(Math.random() * 3))) % (n * this.step);
+    const p = this.puffs[i];
+    const q = this.puffs[k];
+    p.flash = q.flash = 1;
+    this.domeFlash = Math.max(this.domeFlash, 0.4);
+    a.copy(p.body.position);
+    a.y -= 0.6;
+    b.copy(q.body.position);
+    b.y -= 0.6;
   }
 
   /** Sheet lightning through the whole deck (a damage wave). */
@@ -170,8 +220,8 @@ export class StormCloud {
       const ox = (p.ox * cs - p.oz * sn) * R * grow;
       const oz = (p.ox * sn + p.oz * cs) * R * grow;
       const s = p.size * R * (1 + 0.05 * Math.sin(this.t * 1.7 + i));
-      p.body.position.set(this.x + ox, this.y + CLOUD_Y + p.dy + (grow - 1) * 8, this.z + oz);
-      p.body.scale.set(s, s * 0.62, 1);
+      p.body.position.set(this.x + ox, this.y + p.dy + (grow - 1) * 8, this.z + oz);
+      p.body.scale.set(s, s * p.squash, 1);
       let near = 1;
       if (cam) {
         const d = cam.position.distanceTo(p.body.position) - s * 0.5;
@@ -180,7 +230,7 @@ export class StormCloud {
       p.body.visible = near > 0.01;
       p.bodyMat.opacity = BODY * k * near;
       p.glow.position.copy(p.body.position);
-      p.glow.scale.set(s * 0.8, s * 0.5, 1);
+      p.glow.scale.set(s * 0.85, s * p.squash * 0.85, 1);
       p.glowMat.opacity = GLOW * p.flash * k * near;
       p.flash = Math.max(0, p.flash - dt * FLASH_DECAY * (0.6 + 0.4 * Math.random()));
     }

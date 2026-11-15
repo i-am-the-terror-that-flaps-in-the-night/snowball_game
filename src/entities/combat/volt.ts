@@ -108,6 +108,7 @@ const SC_STRIKE_GAP = 0.04;
 const SC_STRIKE_SPREAD = 0.05;
 const SC_BOLT = { life: 0.5, width: 0.5, jag: 1.8, color: 0xa8e8ff };
 const SC_BOLT_2 = { life: 0.45, width: 0.42, jag: 1.6, color: 0xd2f4ff };
+const SC_INNER = { life: 0.22, width: 0.32, jag: 1.4, color: 0xc8ecff };
 const SC_FORK = { life: 0.35, width: 0.2, jag: 0.9, color: 0x7fd0ff };
 /** Cosmetic strikes keep this far (m, ground distance) from the viewing camera, so no bolt fills the screen. */
 const SC_CAM_CLEAR = 9;
@@ -854,6 +855,11 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       _q.set(sx, waveFloor(this.ctx.terrain, this.scFrom.y, sx, sz) + 0.2, sz);
       this.skyStrike(cloud.strikeAt(sx, sz, _p), _q, Math.random() < 0.5 ? SC_BOLT : SC_BOLT_2);
       if (Math.random() < 0.3) this.b.audio.play('zap', { pitch: 0.55 + Math.random() * 0.3, volume: 0.35 });
+      // Lightning crawling through the cloud itself (cloud to cloud), lighting it from inside.
+      if (Math.random() < (low ? 0.25 : 0.4)) {
+        cloud.innerArc(_r, _f);
+        this.lightning.bolt(_r, _f, SC_INNER);
+      }
     }
   }
 
