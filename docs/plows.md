@@ -263,8 +263,9 @@ A spectral reaper-car: a low, sleek void-black core (a fixed colour, never repai
 through it, wearing **floating armour plates** that take the Paint Shop colours (so any paint reads as armour over
 the ghost), under a gloss-black bubble canopy with faint ghost faces drifting inside. Two wraith fins rise off the
 tail trailing tattered violet ribbons that ripple harder at speed. It rolls on **hubless spectral ring wheels** with
-floating rune rings, and carries two **reaper scythes** on arms off the front corners: long silver crescents with
-burning violet edges that hook in toward the nose and whip across on every Reap (the side swinging alternates).
+floating rune rings, with two **spectral swords** floating at its flanks, points forward: silver blades with burning
+violet edges, void crossguards and glowing pommels; on every Reap the sword on that side slashes across the nose (the
+side alternates).
 A halo hovers over the canopy (the toll beacon: a ring of light on every toll) and **the Reliquary**, a soul cell
 between two glowing emitter rings, floats behind it with the souls swirling inside (one wisp per soul). Slit
 headlights spill purple ghostfire over a fanged grille; purple mist underglow. PHASED, the body dissolves translucent
