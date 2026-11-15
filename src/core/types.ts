@@ -257,6 +257,9 @@ export interface WorldAPI {
   /** Survival Blizzard wave: whiteout gale (fog pulled in, dense wind-driven snow) over the current zone, or off
    *  (the zone's own fog and weather). Cheap, no re-dress; setZone turns it off. */
   setStorm?(on: boolean): void;
+  /** Re-dress the current zone if the time of day (core/timeOfDay.ts) changed since it was built (a rematch that keeps
+   *  its venue). Visual only. */
+  syncTimeOfDay?(): void;
   /** Falling snow particles, subtle ambient animation, gate lights. */
   update(dt: number): void;
   /** Flash/open the gate with this index (0..2) — call when a bot drives in through it. No-op in Brawl. */

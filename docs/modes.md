@@ -139,7 +139,7 @@ per prop type and a circle collider each, with no physics. There are none in the
 ## Settings and save
 
 **⚙ Settings** (main menu or pause menu) has master / music / SFX volume, screen-shake strength, graphics quality
-(below), bloom, reduced flashes, the **Ultimate kill-cam** toggle, key rebinding and save management:
+(below), time of day (below), bloom, reduced flashes, the **Ultimate kill-cam** toggle, key rebinding and save management:
 **EXPORT** (an `SPS1:` code, copied to the clipboard), **IMPORT** (validated; a bad code leaves your save untouched)
 and **RESET PROGRESS** (click twice). Settings live in localStorage separately from progress.
 
@@ -169,3 +169,18 @@ its state, so coming back starts from a fresh guess. A decision waits for the ne
 tier in use (`AUTO · MEDIUM`). The resolved tier is never written to the saved settings. Unknown saved
 values load as HIGH; an older build that only knows LOW / HIGH reads MEDIUM / AUTO as HIGH and writes HIGH back the
 next time any setting changes there.
+
+**Time of day.** DAY (default) / NIGHT / AUTO, applied from the next arena start (`src/core/timeOfDay.ts`; AUTO
+alternates per arena start: the 1st, 3rd, 5th... arena of a session is at night). Purely local and visual: nothing the
+simulation reads changes (colliders, spawns, hazards, props), every client lights its own arena (fine in the online
+Duel), and the night-only dressing draws from its own seeded rng so the venue layout's random stream is identical day
+or night. NIGHT relights every venue (`src/world/environment/night.ts`, one entry per biome / venue): a dark themed sky
+with stars (the glacier's aurora, the Divide's split hot / cold sky, a moon disc), darker fog in the arena's colours, a
+dim moon as the shadow-casting sun, a lowered but readable ambient, the two floodlight spots turned up, and the arena's
+own emissives (neon, lava, windows, gate lights, ramp lips) boosted. `NightScenery.ts` dresses the stadium: floodlight
+banks on the stand backs (and on The Omega Works' corner towers), additive light cones (not on LOW) with soft pools on
+the snow, a scrolling LED ribbon above the walls, a packed house (the seats the day layout leaves empty get a
+spectator; the crowd keeps at least 75% of its figures on LOW at night, never fewer than by day), a floodlight wash on
+the crowd, and one Points draw of phone torches / glow sticks (bobbing with their spectator), camera flashes and lamp
+halos. The Omega Works, which has no stands by day, gets a spectator gallery over its walls at night. About six extra
+draw calls, no extra real lights.

@@ -3,7 +3,7 @@ import { PLOWS, type PlowKind } from '../config/plows';
 import './settings.css';
 import type { GameContext } from '../core/types';
 import { ACTIONS, DEFAULT_KEYS, RESERVED_KEYS, keyLabel, type Action } from '../core/input';
-import { applyAudio, applyBindings, applyQuality, qualityLabel, saveSettings, settings, settingsUi, type Quality } from '../core/settings';
+import { applyAudio, applyBindings, applyQuality, qualityLabel, saveSettings, settings, settingsUi, type Quality, type TimeOfDay } from '../core/settings';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -38,6 +38,7 @@ export class SettingsMenu {
   private flashBtns = new Map<boolean, HTMLButtonElement>();
   private bloomBtns = new Map<boolean, HTMLButtonElement>();
   private ultCamBtns = new Map<boolean, HTMLButtonElement>();
+  private todBtns = new Map<TimeOfDay, HTMLButtonElement>();
   private limitBtns = new Map<number, HTMLButtonElement>();
   private assistBtns = new Map<boolean, HTMLButtonElement>();
   private speedFovBtns = new Map<boolean, HTMLButtonElement>();
@@ -169,6 +170,17 @@ export class SettingsMenu {
       }, seg));
     }
     el('div', 'ss-set-note', 'MEDIUM: smaller shadows, no bloom. LOW also trims particles, lights and the black-hole lens. Weather and crowd changes apply from the next arena. AUTO starts from your GPU and adjusts to your frame rate between arenas.', vid);
+    const tRow = el('div', 'ss-set-row', undefined, vid);
+    el('span', 'ss-set-label', 'Time of day', tRow);
+    const tSeg = el('div', 'ss-set-seg', undefined, tRow);
+    for (const [t, label] of [['day', 'DAY'], ['night', 'NIGHT · floodlights'], ['auto', 'AUTO']] as [TimeOfDay, string][]) {
+      this.todBtns.set(t, this.btn(label, 'ss-ice ss-small', () => {
+        settings.timeOfDay = t;
+        saveSettings();
+        this.refresh();
+      }, tSeg));
+    }
+    el('div', 'ss-set-note', 'Applies from the next arena. NIGHT: dark skies, floodlights and a packed, glowing crowd. AUTO alternates night and day between arenas. Just looks: gameplay is the same.', vid);
     const bRow = el('div', 'ss-set-row', undefined, vid);
     el('span', 'ss-set-label', 'Bloom', bRow);
     const bSeg = el('div', 'ss-set-seg', undefined, bRow);
@@ -299,6 +311,7 @@ export class SettingsMenu {
     this.qualityBtns.get('auto')!.textContent = settings.quality === 'auto' ? qualityLabel() : 'AUTO';
     for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
     for (const [on, b] of this.bloomBtns) b.classList.toggle('ss-set-on', settings.bloom === on);
+    for (const [t, b] of this.todBtns) b.classList.toggle('ss-set-on', settings.timeOfDay === t);
     for (const [on, b] of this.ultCamBtns) b.classList.toggle('ss-set-on', settings.ultCam === on);
     for (const [v, b] of this.limitBtns) b.classList.toggle('ss-set-on', settings.speedLimit === v);
     for (const [on, b] of this.assistBtns) b.classList.toggle('ss-set-on', settings.steerAssist === on);

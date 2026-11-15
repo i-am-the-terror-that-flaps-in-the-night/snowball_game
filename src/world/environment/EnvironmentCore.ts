@@ -12,9 +12,13 @@ import { OmegaSet } from '../omega/OmegaSet';
 import type { Item, GateState, Puff, Pulse } from './types';
 import type { Style } from './styles';
 import { STYLES } from './styles';
-import { TOWER_OFF, brawlMode, colored, crowdKeep, merge } from './layout';
+import { TOWER_OFF, brawlMode, colored, crowdKeep, merge, mulberry32 } from './layout';
+import { GLOW_FLASH, GLOW_PHONE, GlowPoints, type GlowUniforms, type NightLook } from './night';
 import { currentPreset } from '../../core/settings';
 import { getGlowTex } from './textures';
+
+/** At night the crowd keeps at least this share of its figures on every quality (LOW's day share is 0.5). */
+const NIGHT_CROWD_MIN = 0.75;
 
 /** Fields, lights / sky setup and the shared build helpers of the arena builder (see world/Environment.ts). */
 export class EnvironmentCore {
@@ -56,7 +60,26 @@ export class EnvironmentCore {
   /** Static parts baked while a zone is built (flushed by finishDecor). */
   protected batch: StaticBatch | null = null;
   protected wallTires: { items: Item[]; mat: THREE.Material } | null = null;
-  protected crowd: { items: Item[]; phases: Float32Array[]; bodyMat: THREE.Material; eyeMat: THREE.Material } | null = null;
+  protected crowd: { items: Item[]; phases: Float32Array[]; fill: Item[]; fillPhases: number[]; bodyMat: THREE.Material; eyeMat: THREE.Material } | null = null;
+  /* ---- NIGHT (Settings › Time of day; world/environment/night.ts, NightScenery.ts) */
+  /** The zone being built is lit for night. */
+  protected night = false;
+  /** Its night look (null by day). */
+  protected nightDef: NightLook | null = null;
+  /** Night-only decoration rng (extra spectators, phone lights, light banks): never this.rnd, so the arena layout
+   *  (cover, props, everything that must match between Duel peers) draws exactly the same numbers day or night. */
+  protected nightRnd: () => number = mulberry32(1);
+  /** Stadium lights collected while a night zone is built (phone lights, flashes, lamp halos): one Points draw. */
+  protected glowPts: GlowPoints | null = null;
+  protected glowU: GlowUniforms = {
+    uTime: { value: 0 }, uScale: { value: 600 }, uBob: { value: 0.2 }, uFogNear: { value: 60 }, uFogFar: { value: 170 },
+  };
+  /** Floodlight heads (lamp centre, the ground point it lights, size scale) for the night cones / pools. */
+  protected floodHeads: { x: number; y: number; z: number; tx: number; tz: number; k: number }[] = [];
+  /** Night floodlight wash on the crowd bodies (emissive = albedo x lift; 0 by day). */
+  protected crowdLift = { value: 0 };
+  /** Gate light gain (NIGHT_BOOST at night). */
+  protected lightGain = 1;
   /** Shadow-only copies of the baked casters (never in the scene; read once by finishDecor). */
   protected casters = new THREE.Group();
   protected tmpM = new THREE.Matrix4();
@@ -299,9 +322,15 @@ export class EnvironmentCore {
   protected bobify<T extends THREE.Material>(mat: T): T {
     const u = this.bobTime;
     const amp = this.bobAmp;
+    const lift = this.crowdLift;
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uBobTime = u;
       shader.uniforms.uBobAmp = amp;
+      shader.uniforms.uCrowdLift = lift;
+      // Night floodlight wash (lit materials only; adds 0 by day): the spectators keep their colours in the dark.
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uCrowdLift;')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * uCrowdLift;');
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nuniform float uBobTime;\nuniform float uBobAmp;\nattribute float aPhase;')
         .replace(
@@ -315,17 +344,35 @@ export class EnvironmentCore {
 
   /** Tiny blocky bot spectators that bob in their seats. Items face local +Z. Every call of a zone build adds to
    *  one crowd (body + eyes draw), emitted by flushCrowd; the bob phases are drawn here, in build order. */
-  protected addCrowd(items: Item[]): void {
-    if (items.length === 0) return;
+  protected addCrowd(items: Item[], fill: Item[] = []): void {
+    if (items.length === 0 && fill.length === 0) return;
     const phase = new Float32Array(items.length);
     for (let i = 0; i < phase.length; i++) phase[i] = this.rnd() * 40;
     if (!this.crowd) {
       const bodyMat = this.bobify(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, flatShading: true }));
       const eyeMat = this.bobify(new THREE.MeshBasicMaterial({ color: this.style.accents[1], toneMapped: false }));
-      this.crowd = { items: [], phases: [], bodyMat, eyeMat };
+      this.crowd = { items: [], phases: [], fill: [], fillPhases: [], bodyMat, eyeMat };
     }
     this.crowd.items.push(...items);
     this.crowd.phases.push(phase);
+    // Night fill-in spectators (the empty seats of the day layout): phases from the night rng.
+    for (const f of fill) {
+      this.crowd.fill.push(f);
+      this.crowd.fillPhases.push(this.nightRnd() * 40);
+    }
+  }
+
+  /** A night fill-in spectator's shirt colour (crowdColor's mix, drawn from the night rng). */
+  protected nightCrowdColor(): number {
+    const r = this.nightRnd;
+    const pal = this.style.accents;
+    if (this.isRally) {
+      const k = r();
+      return k < 0.38 ? 0xc8102e : k < 0.7 ? 0xf4f4f0 : k < 0.92 ? 0x1f3b8c : 0xf2c033;
+    }
+    if (r() < 0.6) return pal[(r() * pal.length) | 0];
+    const greys = [0x9aa4b0, 0x6a7380, 0xd8dde3, 0x3a4250];
+    return greys[(r() * greys.length) | 0];
   }
 
   protected flushCrowd(): void {
@@ -359,10 +406,20 @@ export class EnvironmentCore {
     }
     // Quality preset (LOW): keep a deterministic share of the crowd. The full list, its bob phases and the rally cap
     // colours are all drawn first, exactly as on HIGH, so this.rnd's stream (and everything built after) is unchanged.
-    const keep = crowdKeep(items.length, currentPreset().crowdFraction);
+    // NIGHT: a packed house. Never fewer than by day on the same quality (LOW keeps a larger share), plus the
+    // fill-in spectators in the seats the day layout leaves empty (crowd.fill, appended after the day list).
+    const frac = this.night ? Math.max(currentPreset().crowdFraction, NIGHT_CROWD_MIN) : currentPreset().crowdFraction;
+    const keep = crowdKeep(items.length, frac);
     const pick = <T,>(list: T[]): T[] => (keep ? keep.map((i) => list[i]) : list);
-    const shown = pick(items);
-    const attr = new THREE.InstancedBufferAttribute(keep ? Float32Array.from(keep, (i) => phase[i]) : phase, 1);
+    const fillKeep = crowdKeep(crowd.fill.length, frac);
+    const fill = fillKeep ? fillKeep.map((i) => crowd.fill[i]) : crowd.fill;
+    const fillPhase = fillKeep ? fillKeep.map((i) => crowd.fillPhases[i]) : crowd.fillPhases;
+    const shown = [...pick(items), ...fill];
+    const dayPhase = keep ? Float32Array.from(keep, (i) => phase[i]) : phase;
+    const allPhase = new Float32Array(shown.length);
+    allPhase.set(dayPhase);
+    allPhase.set(fillPhase, dayPhase.length);
+    const attr = new THREE.InstancedBufferAttribute(allPhase, 1);
     body.setAttribute('aPhase', attr);
     eyes.setAttribute('aPhase', attr);
     this.inst(body, bodyMat, shown);
@@ -376,10 +433,34 @@ export class EnvironmentCore {
       cap.setAttribute('aPhase', attr);
       const capMat = this.bobify(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.65, flatShading: true }));
       const rnd = this.rnd;
-      this.inst(cap, capMat, pick(items.map((i) => {
-        const r = rnd();
-        return { ...i, color: r < 0.86 ? 0xc8102e : r < 0.95 ? 0xffffff : 0x1f3b8c };
-      })));
+      const capColor = (r: number) => (r < 0.86 ? 0xc8102e : r < 0.95 ? 0xffffff : 0x1f3b8c);
+      const caps = pick(items.map((i) => ({ ...i, color: capColor(rnd()) })));
+      for (const f of fill) caps.push({ ...f, color: capColor(this.nightRnd()) });
+      this.inst(cap, capMat, caps);
+    }
+    if (this.glowPts) this.crowdLights(shown, allPhase);
+  }
+
+  /** NIGHT: phone torches / glow sticks held up in the crowd (most of the house) and camera flashes, each riding on
+   *  its spectator's bob (same phase). All drawn from the night rng. */
+  protected crowdLights(shown: Item[], phase: Float32Array): void {
+    const g = this.glowPts!;
+    const r = this.nightRnd;
+    const glow = this.nightDef?.glow ?? this.style.accents;
+    for (let i = 0; i < shown.length; i++) {
+      const it = shown[i];
+      const k = r();
+      if (k > 0.72) continue;
+      const s = it.sy;
+      const side = r() < 0.5 ? -1 : 1;
+      const fx = Math.sin(it.ry);
+      const fz = Math.cos(it.ry);
+      // held up beside the head, a little in front
+      const x = it.x + fx * 0.25 * s + fz * side * 0.3 * s;
+      const z = it.z + fz * 0.25 * s - fx * side * 0.3 * s;
+      if (k < 0.08) g.add(x, it.y + 1.05 * s, z, 0xffffff, 3.2 * s, GLOW_FLASH, phase[i], 2.2);
+      else if (k < 0.45) g.add(x, it.y + 1.12 * s, z, 0xfff6e8, 0.95 * s, GLOW_PHONE, phase[i], 2.0);
+      else g.add(x, it.y + 1.12 * s, z, glow[(r() * glow.length) | 0], 1.15 * s, GLOW_PHONE, phase[i], 2.2);
     }
   }
 

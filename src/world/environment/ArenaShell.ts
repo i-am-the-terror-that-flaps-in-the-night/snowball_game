@@ -254,6 +254,7 @@ export class ArenaShell extends EnvironmentCore {
     const poles: Item[] = [];
     const flags: Item[] = [];
     const crowd: Item[] = [];
+    const fill: Item[] = [];
     let section = 0;
     for (const side of SIDES) {
       if (side.key === 's') continue;
@@ -273,7 +274,11 @@ export class ArenaShell extends EnvironmentCore {
           const [sx, sz] = side.map(sc, STAND_N0 + k * ROW_D + 0.3);
           seats.push({ x: sx, y: top, z: sz, ry: side.yaw, sx: len, sy: 1, sz: 1, color: accent });
           for (let s = a + 0.5; s < b - 0.4; s += 0.85) {
-            if (rnd() > (rally ? 0.93 : 0.74)) continue;
+            if (rnd() > (rally ? 0.93 : 0.74)) {
+              // NIGHT: a full house (the seat the day layout leaves empty gets a spectator, from the night rng)
+              if (this.night) fill.push(this.nightSpectator(side, s, STAND_N0 + k * ROW_D + 0.72, top, 0.85, 0.25));
+              continue;
+            }
             const [cx, cz] = side.map(s + (rnd() - 0.5) * 0.2, STAND_N0 + k * ROW_D + 0.72);
             const sc2 = 0.85 + rnd() * 0.25;
             crowd.push({ x: cx, y: top, z: cz, ry: side.yaw + (rnd() - 0.5) * 0.5, sx: sc2, sy: sc2, sz: sc2, color: this.crowdColor() });
@@ -310,7 +315,15 @@ export class ArenaShell extends EnvironmentCore {
       flagShape.closePath();
       this.inst(new THREE.ShapeGeometry(flagShape).translate(0.05, 0.4, 0), this.std(0xffffff, { side: THREE.DoubleSide, roughness: 0.7 }), flags);
     }
-    this.addCrowd(crowd);
+    this.addCrowd(crowd, fill);
+  }
+
+  /** NIGHT: a fill-in spectator at seat `s` along `side`, `n` out from the arena edge (night rng only). */
+  protected nightSpectator(side: (typeof SIDES)[number], s: number, n: number, top: number, sc0: number, scR: number, jitter = 0.2, color?: number): Item {
+    const r = this.nightRnd;
+    const [cx, cz] = side.map(s + (r() - 0.5) * jitter, n);
+    const sc = sc0 + r() * scR;
+    return { x: cx, y: top, z: cz, ry: side.yaw + (r() - 0.5) * 0.5, sx: sc, sy: sc, sz: sc, color: color ?? this.nightCrowdColor() };
   }
 
   /* ---------- floodlight towers ---------- */
@@ -342,6 +355,14 @@ export class ArenaShell extends EnvironmentCore {
       lamps.push(new THREE.BoxGeometry(0.95, 0.85, 0.12).translate(-1.65 + i * 1.1, -0.5 + j * 1.0, 0.27).rotateX(tilt).translate(0, H + 0.6, 0.5));
     }
     this.inst(merge(lamps), new THREE.MeshBasicMaterial({ color: st.lamp, toneMapped: false }), items);
+    // lamp heads for the night cones / pools: the head faces the arena, tilted `tilt` below the horizon
+    for (const it of items) {
+      const hx = it.x + Math.sin(it.ry) * 0.5 * k;
+      const hz = it.z + Math.cos(it.ry) * 0.5 * k;
+      const hy = (H + 0.6) * k;
+      const reach = Math.min(hy / Math.tan(tilt), Math.hypot(hx, hz) * 0.8);
+      this.floodHeads.push({ x: hx, y: hy, z: hz, tx: hx + Math.sin(it.ry) * reach, tz: hz + Math.cos(it.ry) * reach, k });
+    }
     // big lens glows in front of the lamp heads
     for (const it of items) {
       const fx = Math.sin(it.ry) * 1.2 * k;
@@ -463,7 +484,14 @@ export class ArenaShell extends EnvironmentCore {
     const cCol = new THREE.Color(capHex).lerp(skyB, biome === 'quarry' ? 0 : haze * 0.6);
     const hotM = new THREE.Color(0x6a2418).lerp(fogC, haze);
     const hotC = new THREE.Color(0xff5a14);
+    if (this.night) {
+      // night: dark silhouettes against the sky (the lava caps keep glowing)
+      mCol.multiplyScalar(0.42);
+      cCol.multiplyScalar(0.55);
+      hotM.multiplyScalar(0.5);
+    }
     const coldM = new THREE.Color(0x8fb8dc).lerp(fogC, haze);
+    if (this.night) coldM.multiplyScalar(0.45);
     // one draw: white material, rock / snow-cap colour per instance
     const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, fog: false });
     const mesas = biome === 'mars';

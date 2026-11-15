@@ -4,6 +4,7 @@ import { EventBus } from './events';
 import { Input } from './input';
 import { Progression, computeStatsFor } from './Progression';
 import { AutoSampler, applyAllSettings, commitAutoQuality, renderHooks, reportAutoFrameTime, reportFrameCapMs, setBrawlPerf, settings, settingsUi } from './settings';
+import { commitTimeOfDay } from './timeOfDay';
 import { ARENA, BRAWL_ARENA_HALF, CAMPAIGN_ARENA_HALF, DUEL_ARENA_HALF, setArenaHalfSize } from './types';
 import type { BrawlDifficulty, EnemyHandle, GameContext, HudState, RadarState, RunSummary, UIHandlers } from './types';
 import { BIOME_ZONE, BRAWL_ZONE, ZONES, pickBrawlZone } from '../config/zones';
@@ -426,6 +427,7 @@ export class Game {
   /** Every arena start (before the arena is built): apply a pending AUTO quality decision, start a new sample. */
   private arenaStart(): void {
     commitAutoQuality(this.ctx);
+    commitTimeOfDay();
     this.autoSampler.reset();
   }
 
@@ -498,7 +500,7 @@ export class Game {
       // rematch (already in Brawl mode): re-dress the dome for the new venue
       ctx.zone = this.brawlZone;
       ctx.world.setZone(ctx.zone);
-    }
+    } else ctx.world.syncTimeOfDay?.();
     this.run = this.newRun();
     this.combo = 0;
     this.refreshStats();
@@ -564,6 +566,7 @@ export class Game {
     this.run = this.newRun();
     this.combo = 0;
     this.survival.reset(daily ? todaysDaily() : null);
+    ctx.world.syncTimeOfDay?.();
     this.refreshStats();
     this.clearArena();
     ctx.fx.clear();
@@ -1204,6 +1207,7 @@ export class Game {
     this.duelZone = duelZoneFor(code);
     this.arenaStart();
     this.setMode('duel');
+    ctx.world.syncTimeOfDay?.();
     this.run = this.newRun();
     this.combo = 0;
     this.state = 'duel';

@@ -10,6 +10,9 @@ import { canvas, toTex, hexCss, wavyFlag } from './textures';
 import { ThemeScenery } from './ThemeScenery';
 import { currentPreset } from '../../core/settings';
 
+/** NIGHT: at most this many fill-in spectators on top of the dome's day crowd (DOME_CROWD_CAP). */
+const NIGHT_DOME_FILL = 1600;
+
 /** The big venues: Golden Tower Plaza (rally stage, carpet), Omega Summit and THE SNOWDOME (Brawl). */
 export class VenueScenery extends ThemeScenery {
   /* ---------- theme: Golden Tower Plaza (THE DONALD's rally) ---------- */
@@ -365,6 +368,7 @@ export class VenueScenery extends ThemeScenery {
     const poles: Item[] = [];
     const flags: Item[] = [];
     const crowd: Item[] = [];
+    const fill: Item[] = [];
     const corners: Item[] = [];
     const sponsorItems: Item[][] = SPONSORS.map(() => []);
     const backN = DOME_N0 + DOME_ROWS * DOME_ROW_D + 0.3;
@@ -388,7 +392,15 @@ export class VenueScenery extends ThemeScenery {
         const [sx, sz] = side.map(0, DOME_N0 + k * DOME_ROW_D + 0.35);
         seats.push({ x: sx, y: top, z: sz, ry: side.yaw, sx: len, sy: 1, sz: 1, color: k % 3 === 0 ? accent : st.trim });
         for (let s = -len / 2 + 0.8; s < len / 2 - 0.6; s += crowdStep) {
-          if (rnd() > keep || crowd.length >= DOME_CROWD_CAP) continue;
+          if (rnd() > keep || crowd.length >= DOME_CROWD_CAP) {
+            // NIGHT: fill the empty seats too (night rng only), up to NIGHT_DOME_FILL more
+            if (this.night && fill.length < NIGHT_DOME_FILL) {
+              const nr = this.nightRnd;
+              const col = nr() < 0.45 ? CONFETTI[(nr() * CONFETTI.length) | 0] : this.nightCrowdColor();
+              fill.push(this.nightSpectator(side, s, DOME_N0 + k * DOME_ROW_D + 0.95, top, 1.45, 0.35, 0.3, col));
+            }
+            continue;
+          }
           const [cx, cz] = side.map(s + (rnd() - 0.5) * 0.3, DOME_N0 + k * DOME_ROW_D + 0.95);
           const sc2 = 1.45 + rnd() * 0.35;
           const col = rnd() < 0.45 ? CONFETTI[(rnd() * CONFETTI.length) | 0] : this.crowdColor();
@@ -425,7 +437,7 @@ export class VenueScenery extends ThemeScenery {
     flagShape.lineTo(0, -0.7);
     flagShape.closePath();
     this.inst(new THREE.ShapeGeometry(flagShape).translate(0.05, 0.4, 0), this.std(0xffffff, { side: THREE.DoubleSide, roughness: 0.7 }), flags);
-    this.addCrowd(crowd);
+    this.addCrowd(crowd, fill);
 
     // sponsor boards: one atlas texture, per-sponsor UV-remapped geometry, all baked into one mesh
     const atlas = this.sponsorAtlas();

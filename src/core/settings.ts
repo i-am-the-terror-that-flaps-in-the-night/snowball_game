@@ -96,10 +96,15 @@ export interface Settings {
   steerAssist: boolean;
   /** Widen the field of view a little at speed. */
   speedFov: boolean;
+  /** Arena lighting: bright DAY (default), NIGHT under floodlights, or AUTO (alternates per arena start; core/timeOfDay.ts).
+   *  Purely local and visual; applies from the next arena start. */
+  timeOfDay: TimeOfDay;
 }
 
+export type TimeOfDay = 'day' | 'night' | 'auto';
+
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true };
+  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true, timeOfDay: 'day' };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -132,6 +137,7 @@ function load(): Settings {
       speedLimit: p.speedLimit === 0.9 || p.speedLimit === 0.8 ? p.speedLimit : 1,
       steerAssist: p.steerAssist !== false,
       speedFov: p.speedFov !== false,
+      timeOfDay: p.timeOfDay === 'night' || p.timeOfDay === 'auto' ? p.timeOfDay : 'day',
     };
   } catch {
     return d;

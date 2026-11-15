@@ -12,21 +12,27 @@ import { OmegaSet } from './omega/OmegaSet';
 import { PUFF_CAM_CLEAR, STYLES, BIOME_SKY } from './environment/styles';
 import { TOWER_OFF, DOME_TOWER_OFF, DOME_TOWER_H, STAGE_HALF, brawlMode, domeK, setBrawlMode, mulberry32 } from './environment/layout';
 import { chevronTex } from './environment/textures';
-import { VenueScenery } from './environment/VenueScenery';
+import { NightScenery } from './environment/NightScenery';
+import { GlowPoints, NIGHT_BOOST, NIGHT_CROWD_LIFT, NIGHT_SPOT_BOOST, NIGHT_SPOT_BOOST_BIG, nightLook, nightZone } from './environment/night';
+import { isNight } from '../core/timeOfDay';
 import { propSkinKey } from './propSkins';
 
 /** Survival's Blizzard wave (setStorm): fog pulled in to this (or the zone's own, if nearer), tinted toward white. */
 const STORM_FOG_NEAR = 12;
 const STORM_FOG_FAR = 58;
 const STORM_WHITE = new THREE.Color(0xeef4f8);
+/** The night gale's tint: a floodlit grey-blue whiteout, not a white sky in the dark. */
+const STORM_NIGHT = new THREE.Color(0x5c6c80);
 /** Share of the way the fog / horizon colour goes toward STORM_WHITE. */
 const STORM_TINT = 0.6;
 /** The gale laid over the zone's own weather: dense, fast, wind-driven flakes (the Blizzard Bowl's look, thicker). */
 const STORM_GALE: WeatherLayerDef = { count: 7000, colors: [0xffffff], size: 0.17, fall: 5, wind: [17, 6], sway: 1.6, opacity: 0.95 };
 
-export class Environment extends VenueScenery implements WorldAPI {
+export class Environment extends NightScenery implements WorldAPI {
   /** Survival Blizzard gale on (setStorm); setZone clears it. */
   private storm = false;
+  /** The zone's light / sky / fog fields as built (the night look at night). */
+  private look: ZoneDef | null = null;
 
   get obstacles(): readonly Obstacle[] {
     return this.obstacleList;
@@ -60,16 +66,23 @@ export class Environment extends VenueScenery implements WorldAPI {
     const base = (this.biome && STYLES[this.biome]) || STYLES[zone.theme] || STYLES.meadow;
     // Brawl biome venues keep the dome's huge floodlights
     this.style = zone.theme === 'brawl' ? { ...base, spot: STYLES.brawl.spot, glow: STYLES.brawl.glow } : base;
-    const bs = (this.biome && BIOME_SKY[this.biome]) || {};
+    // Time of day (core/timeOfDay.ts): at night the same zone is relit (night.ts) and dressed with the stadium extras.
+    this.night = isNight();
+    this.nightDef = this.night ? nightLook(zone) : null;
+    const look = this.night ? nightZone(zone) : zone;
+    this.look = look;
+    this.crowdLift.value = this.night ? NIGHT_CROWD_LIFT : 0;
+    this.lightGain = this.night ? NIGHT_BOOST : 1;
+    const bs = this.nightDef?.sky ?? ((this.biome && BIOME_SKY[this.biome]) || {});
     const scene = this.ctx.scene;
-    this.fog.color.setHex(zone.fogColor);
+    this.fog.color.setHex(look.fogColor);
     this.fog.near = zone.fogNear;
     this.fog.far = zone.fogFar;
-    (scene.background as THREE.Color).setHex(zone.fogColor);
+    (scene.background as THREE.Color).setHex(look.fogColor);
 
-    this.skyMat.uniforms.top.value.setHex(zone.skyTop);
-    this.skyMat.uniforms.bottom.value.setHex(zone.skyBottom);
-    this.skyMat.uniforms.horizon.value.setHex(zone.fogColor);
+    this.skyMat.uniforms.top.value.setHex(look.skyTop);
+    this.skyMat.uniforms.bottom.value.setHex(look.skyBottom);
+    this.skyMat.uniforms.horizon.value.setHex(look.fogColor);
     const su = this.skyMat.uniforms;
     su.uSplit.value = bs.split ? 1 : 0;
     if (bs.split) {
@@ -86,20 +99,20 @@ export class Environment extends VenueScenery implements WorldAPI {
       su.uSunColor.value.setHex(bs.sun.color);
     }
 
-    this.hemi.color.setHex(zone.ambientColor);
-    this.hemi.groundColor.setHex(zone.snowTint).lerp(new THREE.Color(zone.ambientColor), 0.3);
+    this.hemi.color.setHex(look.ambientColor);
+    this.hemi.groundColor.setHex(look.snowTint).lerp(new THREE.Color(look.ambientColor), this.night ? 0.75 : 0.3);
     if (bs.bounce !== undefined) this.hemi.groundColor.setHex(bs.bounce);
-    this.auroraBase = bs.aurora ? new THREE.Color(zone.ambientColor) : null;
-    this.hemi.intensity = zone.ambientIntensity;
-    this.sun.color.setHex(zone.sunColor);
-    this.sun.intensity = zone.sunIntensity;
+    this.auroraBase = bs.aurora ? new THREE.Color(look.ambientColor) : null;
+    this.hemi.intensity = look.ambientIntensity;
+    this.sun.color.setHex(look.sunColor);
+    this.sun.intensity = look.sunIntensity;
     const brawl = zone.theme === 'brawl';
     this.syncShadowMapSize();
     for (let i = 0; i < this.spots.length; i++) {
       const s = this.spots[i];
       const sx = i === 0 ? -1 : 1;
-      s.color.setHex(bs.spots ? bs.spots[i] : this.style.lamp);
-      s.intensity = this.style.spot;
+      s.color.setHex(bs.spots ? bs.spots[i] : (this.nightDef?.flood ?? this.style.lamp));
+      s.intensity = this.style.spot * (this.night ? (this.style.spot > 2000 ? NIGHT_SPOT_BOOST_BIG : NIGHT_SPOT_BOOST) : 1);
       if (brawl) {
         const c = ARENA.maxX + DOME_TOWER_OFF;
         s.position.set(sx * c, DOME_TOWER_H, ARENA.minZ - DOME_TOWER_OFF);
@@ -120,6 +133,10 @@ export class Environment extends VenueScenery implements WorldAPI {
     this.ctx.audio?.setAmbience(zone.biome?.ambience ?? (brawl || zone.theme === 'blizzard' ? 'wind' : 'none'));
   }
 
+  syncTimeOfDay(): void {
+    if (this.look && isNight() !== this.night) this.setZone(this.zone);
+  }
+
   /** Survival's Blizzard wave modifier: a whiteout gale over the current zone (fog pulled in and whitened, a dense
    *  wind-driven snow layer on top of the zone's own weather), or back to the zone's own look. No re-dress: only the
    *  fog, the sky horizon and the weather particles change. */
@@ -129,8 +146,8 @@ export class Environment extends VenueScenery implements WorldAPI {
     const z = this.zone;
     this.fog.near = on ? Math.min(z.fogNear, STORM_FOG_NEAR) : z.fogNear;
     this.fog.far = on ? Math.min(z.fogFar, STORM_FOG_FAR) : z.fogFar;
-    this.fog.color.setHex(z.fogColor);
-    if (on) this.fog.color.lerp(STORM_WHITE, STORM_TINT);
+    this.fog.color.setHex((this.look ?? z).fogColor);
+    if (on) this.fog.color.lerp(this.night ? STORM_NIGHT : STORM_WHITE, STORM_TINT);
     (this.ctx.scene.background as THREE.Color).copy(this.fog.color);
     this.skyMat.uniforms.horizon.value.copy(this.fog.color);
     this.buildWeather(z);
@@ -206,6 +223,7 @@ export class Environment extends VenueScenery implements WorldAPI {
     this.signMat = null;
     this.decals?.dispose();
     this.decals = null;
+    this.ledTex = null;
   }
 
   /* ------------------------------------------------------------------ build */
@@ -217,9 +235,15 @@ export class Environment extends VenueScenery implements WorldAPI {
     this.decor = group;
     this.ctx.scene.add(group);
     this.rnd = mulberry32(1234 + zone.index * 101);
+    // night-only decoration draws from its own stream (this.rnd stays identical day or night)
+    this.nightRnd = mulberry32(9001 + zone.index * 37);
+    this.floodHeads.length = 0;
+    this.glowPts = this.night ? new GlowPoints() : null;
     this.batch = new StaticBatch();
     const G = zone.snowDepth;
     const snowMat = this.std(zone.snowTint, { roughness: 0.85 });
+    // distant mountains are tinted toward the (night) fog / sky
+    const mountainLook = this.look ?? zone;
     setBrawlMode(zone.theme === 'brawl');
     this.obstacleList = [];
     this.props.clear();
@@ -231,7 +255,8 @@ export class Environment extends VenueScenery implements WorldAPI {
       this.omega = { works, set };
       this.ctx.scene.add(works.group, set.group);
       this.bobAmp.value = 0;
-      this.buildMountains(zone);
+      this.buildMountains(mountainLook);
+      if (this.night) this.buildNightOmega();
       this.finishDecor();
       return;
     }
@@ -240,8 +265,9 @@ export class Environment extends VenueScenery implements WorldAPI {
       this.buildWalls(G, snowMat);
       this.buildSnowdome(zone, G);
       this.buildObstacles(G, snowMat);
-      this.buildMountains(zone);
+      this.buildMountains(mountainLook);
       this.buildGroundDecals();
+      if (this.night) this.buildNightDome(G);
       this.finishDecor();
       return;
     }
@@ -254,7 +280,7 @@ export class Environment extends VenueScenery implements WorldAPI {
     this.buildTowers();
     if (!rally) this.buildJumbotron(zone);
     this.buildSouthDressing(G);
-    this.buildMountains(zone);
+    this.buildMountains(mountainLook);
     this.buildDrifts(G, snowMat);
 
     const theme = zone.theme;
@@ -273,6 +299,7 @@ export class Environment extends VenueScenery implements WorldAPI {
     else if (theme === 'rally') this.buildRally(G);
     else this.buildSummit(G, snowMat);
     this.buildGroundDecals();
+    if (this.night) this.buildNightStadium(zone, G);
     this.finishDecor();
   }
 
@@ -293,6 +320,7 @@ export class Environment extends VenueScenery implements WorldAPI {
   private finishDecor(): void {
     const decor = this.decor!;
     this.flushCrowd();
+    this.emitGlow();
     this.batch!.flush(decor);
     this.batch = null;
     const keep: THREE.Object3D[] = this.spinners.map((s) => s.obj);
@@ -305,6 +333,7 @@ export class Environment extends VenueScenery implements WorldAPI {
       o.updateMatrix();
       o.matrixAutoUpdate = false;
     });
+    if (this.night) this.boostLights();
   }
 
   /* ------------------------------------------------------------------ weather */
@@ -393,12 +422,21 @@ export class Environment extends VenueScenery implements WorldAPI {
       }
       const flashing = g.flashT > 0;
       const k = flashing ? (Math.sin(t * 26) > 0 ? 4.5 : 0.5) : 0.8 + 0.25 * Math.sin(t * 2.2 + g.phase);
-      g.lightMat.emissiveIntensity = k;
-      g.glowMat.opacity = Math.min(1, 0.18 + k * 0.17);
+      g.lightMat.emissiveIntensity = k * this.lightGain;
+      g.glowMat.opacity = Math.min(1, (0.18 + k * 0.17) * this.lightGain);
       g.floorMat.opacity = 0.35 + 0.35 * e + (flashing ? 0.15 : 0);
     }
     if (chevronTex) chevronTex.offset.y = (chevronTex.offset.y + dt * 0.9) % 1;
     if (this.ticker) this.ticker.offset.x = (this.ticker.offset.x + dt * 0.05) % 1;
+    if (this.ledTex) this.ledTex.offset.x = (this.ledTex.offset.x + dt * 0.12) % 1;
+    if (this.night) {
+      // stadium Points: pixels per metre at 1 m, and the haze range
+      const c = this.ctx.camera as THREE.PerspectiveCamera;
+      const h = this.ctx.renderer.domElement.height;
+      this.glowU.uScale.value = h / (2 * Math.tan(THREE.MathUtils.degToRad(c.fov ?? 60) / 2));
+      this.glowU.uFogNear.value = this.fog.near;
+      this.glowU.uFogFar.value = this.fog.far;
+    }
 
     for (let i = 0; i < this.spinners.length; i++) this.spinners[i].obj.rotation.z += dt * this.spinners[i].speed;
 
