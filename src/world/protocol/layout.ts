@@ -28,12 +28,14 @@ interface Feature {
 /** Lava ring radius / half-width and its gaps (heading in the Terrain convention: (sin a, cos a) * R; 0 = +z). */
 export const RING_R = 21;
 const RING_W = 1.3;
-/** Gap centres and half-widths (rad): spawn side (south), the two side gates, the north gate + rally spot. */
+/** Gap centres and half-widths (rad): spawn side (south), the two side gates, the north gate + rally spot. The side
+ *  gaps are wide enough that a big boss in at a side gate gets past the ring's end and round the near deck's ramp
+ *  (wave 7 stacks the ring and the decks; tests/protocol.test.ts). */
 const GATE_SIDE = Math.atan2(34, -8);
 const RING_GAPS: [number, number][] = [
   [0, 0.45],
-  [GATE_SIDE, 0.36],
-  [-GATE_SIDE, 0.36],
+  [GATE_SIDE, 0.5],
+  [-GATE_SIDE, 0.5],
   [PI, 0.5],
 ];
 

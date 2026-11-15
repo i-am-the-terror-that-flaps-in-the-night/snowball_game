@@ -512,6 +512,34 @@ describe('stage 2: echo holograms', () => {
     }
   });
 
+  it('LOW draws front faces only (one pass); the warm-up set always compiles both passes', async () => {
+    const { settings } = await import('../src/core/settings');
+    const { mgr, boss } = await arena();
+    const q = settings.quality;
+    try {
+      settings.quality = 'high';
+      expect(boss('grinder', 0, 0, { echo: true }).holo!.side).toBe(THREE.DoubleSide);
+      settings.quality = 'low';
+      expect(boss('grinder', 5, 0, { echo: true }).holo!.side).toBe(THREE.FrontSide);
+      for (const o of mgr.warmSet()) {
+        const m = (o as THREE.Mesh).material as THREE.Material;
+        if (m.name === 'hologram') expect(m.side).toBe(THREE.DoubleSide);
+      }
+    } finally {
+      settings.quality = q;
+    }
+  });
+
+  it('an echo shatters into gold debris (no new shader program: the paint one)', async () => {
+    const { debrisMaterials } = await import('../src/entities/enemies/models');
+    const gold = debrisMaterials('frostbyte', true) as THREE.MeshStandardMaterial[];
+    const paint = debrisMaterials('frostbyte') as THREE.MeshStandardMaterial[];
+    expect(gold[0].color.getHex()).not.toBe(paint[0].color.getHex());
+    expect(gold[0].type).toBe(paint[0].type);
+    expect(gold[0].flatShading).toBe(paint[0].flatShading);
+    expect(gold[0].map).toBeNull();
+  });
+
   it('flashes on a hit and dims while held on the leash', async () => {
     const { mgr, boss, run } = await arena();
     const e = boss('bulldoza', 0, 10, { echo: true });
@@ -582,6 +610,31 @@ describe('stage 2: deck routing', () => {
       plow.position.set(13, 1.2, -2);
     });
     expect([...reached].sort()).toEqual(['bulldoza', 'grinder', 'omega']);
+  });
+
+  it('wave 7: a big boss in at a side gate gets round the near deck to the far one (the ring gap leaves room)', async () => {
+    // (one at a time: the 5 m deck holds the plow and about one big boss)
+    for (const [gx, px, slab] of [[-21, 13, DECK_IDS.east.slab], [21, -13, DECK_IDS.west.slab]] as const) {
+      for (const type of ['omega', 'bulldoza']) {
+        const { mgr, ctx, plow, boss, run } = await arena();
+        ctx.terrain = new Terrain(protocolTerrain(7));
+        mgr.nav = new NavGraph(PROTOCOL_NAV);
+        plow.position.set(px, 1.2, -2);
+        plow.deck = slab;
+        const b = boss(type, gx, -8, { echo: true });
+        let at = -1;
+        let t = 0;
+        run(25, () => {
+          t += 1 / 60;
+          // on the deck, or up its ramp and in reach of the plow (a big boss's centre can stay on the ramp's top end)
+          const reach = Math.hypot(b.position.x - px, b.position.z + 2) < b.radius + plow.radius + 0.5 && b.position.y > 0.7;
+          if (at < 0 && b.alive && (b.deck === slab || reach)) at = t;
+          plow.position.set(px, 1.2, -2);
+        });
+        expect(at, `${type} from gate x ${gx}`).toBeGreaterThan(0);
+        expect(at, `${type} from gate x ${gx}`).toBeLessThan(15);
+      }
+    }
   });
 });
 

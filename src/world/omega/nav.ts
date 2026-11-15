@@ -192,15 +192,28 @@ export class NavGraph {
     return true;
   }
 
-  private nodesIn(region: number): number[] {
-    const out: number[] = [];
-    for (let i = 0; i < this.n; i++) if (this.region[i] === region) out.push(i);
+  /** Node lists per region / ramp ends per ramp deck, built on first use (next() runs per bot per frame: no
+   *  allocations there). */
+  private readonly regionNodes = new Map<number, readonly number[]>();
+  private readonly rampEndNodes = new Map<number, readonly number[]>();
+
+  private nodesIn(region: number): readonly number[] {
+    let out = this.regionNodes.get(region);
+    if (!out) {
+      const list: number[] = [];
+      for (let i = 0; i < this.n; i++) if (this.region[i] === region) list.push(i);
+      this.regionNodes.set(region, (out = list));
+    }
     return out;
   }
 
-  private rampEnds(deck: number): number[] {
-    const r = this.rampOfDeck.get(deck);
-    return r ? [r.bottom, r.top] : [];
+  private rampEnds(deck: number): readonly number[] {
+    let out = this.rampEndNodes.get(deck);
+    if (!out) {
+      const r = this.rampOfDeck.get(deck);
+      this.rampEndNodes.set(deck, (out = r ? [r.bottom, r.top] : []));
+    }
+    return out;
   }
 }
 
@@ -214,6 +227,9 @@ const DETOUR_LOOK = 16;
 /** 1 m probes that track height like a driving plow (so a ramp ahead is not mistaken for a wall). */
 const DETOUR_STEP = 1;
 const _probe = makeSurface();
+/** Footprint corner signs (local x, z), in order round the deck. */
+const CORNER_X = [-1, 1, 1, -1] as const;
+const CORNER_Z = [-1, -1, 1, 1] as const;
 
 /**
  * Steer around a deck that walls off the straight line to (tx, tz): if one blocks the next DETOUR_LOOK metres, aim
@@ -249,9 +265,9 @@ export function detour(t: DetourTerrain, x: number, z: number, y: number, height
   let fallback = Infinity;
   let fx = 0;
   let fz = 0;
-  for (const [ax, az] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    const lx = ax * (wall.hw + m);
-    const lz = az * (wall.hd + m);
+  for (let k = 0; k < 4; k++) {
+    const lx = CORNER_X[k] * (wall.hw + m);
+    const lz = CORNER_Z[k] * (wall.hd + m);
     const cx = wall.x + lx * c + lz * sn;
     const cz = wall.z - lx * sn + lz * c;
     const toCorner = Math.hypot(cx - x, cz - z);

@@ -97,7 +97,7 @@ describe('quality presets', () => {
     const { preset, pixelRatioFor } = await import('../src/core/settings');
     expect(preset('high')).toEqual({
       pixelRatioCap: 2, brawlPixelRatioCap: 1.5, shadows: true, shadowMapSize: 2048, brawlShadowMapSize: 1024, bloom: true,
-      hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1,
+      hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1, holoBackfaces: true,
     });
     // Old formula: min(dpr, brawl ? 1.5 : 2).
     for (const dpr of [0.75, 1, 1.25, 1.5, 2, 3]) for (const b of [false, true]) expect(pixelRatioFor(preset('high'), dpr, b)).toBe(Math.min(dpr, b ? 1.5 : 2));
@@ -122,6 +122,7 @@ describe('quality presets', () => {
     expect(lo.weatherScale).toBeLessThan(hi.weatherScale);
     expect(lo.dropHaze).toBe(true);
     expect(lo.crowdFraction).toBeLessThan(hi.crowdFraction);
+    expect(lo.holoBackfaces).toBe(false);
   });
 
   it('scales particle counts exactly at 1 and never to zero', async () => {

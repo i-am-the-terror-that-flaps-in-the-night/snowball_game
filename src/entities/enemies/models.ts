@@ -112,8 +112,10 @@ const eyeMat = (t: EnemyType, c: number, i = 2.2) => mat('eye_' + t, c, { emissi
 const glowMat = (t: EnemyType, c: number, i = 0.25) => mat('glow_' + t, c, { emissive: c, emissiveIntensity: i, roughness: 0.4 }, 'glow');
 const ballMat = () => mat('ball', 0xf6faff, { roughness: 0.85, emissive: 0x40e0ff, emissiveIntensity: 0.05 }, 'ball');
 
-/** Shared material for debris chunks of a type (non-instanced). */
-export function debrisMaterials(t: EnemyType): THREE.Material[] {
+/** Shared material for debris chunks of a type (non-instanced). A PROTOCOL C echo (a gold hologram) shatters into
+ *  gold chunks (M.gold: the same program as paint, so nothing new to compile). */
+export function debrisMaterials(t: EnemyType, echo = false): THREE.Material[] {
+  if (echo) return [M.gold(), M.gold(), M.gold(), M.gold(), M.steel(), M.dark()];
   return [paint(t), paint(t), accent(t), M.dark(), M.steel(), M.rubber()];
 }
 

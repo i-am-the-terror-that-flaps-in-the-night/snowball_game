@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { currentPreset } from '../../core/settings';
 
 /* PROTOCOL C echoes are HOLOGRAMS (docs/modes.md "Protocol C"): every painted / dark / accent part of the rig is drawn
  * with one translucent gold ShaderMaterial (scanlines in world height, a sweeping glitch band, a fresnel rim, a
@@ -107,6 +108,9 @@ export function hologramMaterial(seed = 0): THREE.ShaderMaterial {
   const m = base().clone();
   m.uniforms.uTime = holoTime;
   m.uniforms.uSeed.value = seed;
+  // LOW: front faces only (one transparent pass, not two). Its program is the front pass of the double-sided one,
+  // which the warm-up already compiles.
+  if (!currentPreset().holoBackfaces) m.side = THREE.FrontSide;
   return m;
 }
 
@@ -141,6 +145,7 @@ export function holoWarmSet(): THREE.Object3D[] {
   if (!warm) {
     const g = new THREE.BoxGeometry(0.1, 0.1, 0.1);
     const m = hologramMaterial();
+    m.side = THREE.DoubleSide; // both passes, whatever the quality now (LOW's front-only is the front pass)
     const im = new THREE.InstancedMesh(g, m, 1);
     im.count = 0;
     warm = [new THREE.Mesh(g, m), im];

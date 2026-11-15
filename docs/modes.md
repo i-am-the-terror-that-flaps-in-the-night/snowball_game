@@ -87,8 +87,9 @@ later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (u
   pound. Twins pair by spawn partner and THE DONALD's props follow the Donald that raised them (passing to the other
   Donald if it falls; they collapse with the last one), so two of a kind can share a fight. An echo is a translucent
   gold **hologram** (scanlines, a sweeping glitch band, fresnel rim, flicker; eyes / glow strips / FROSTBYTE's ball
-  keep their own look); it flashes white on hits and dims on the leash. One shader for every echo, compiled by each
-  arena build's warm-up (`src/entities/enemies/hologram.ts`), so the first echo never stalls a frame.
+  keep their own look); it flashes white on hits, dims on the leash and shatters into gold chunks. One shader for every
+  echo, compiled by each arena build's warm-up (`src/entities/enemies/hologram.ts`), so the first echo never stalls a
+  frame; LOW draws only its front faces (one transparent pass instead of two).
   Echo kills count as bosses scrapped but not toward a boss's own trophy.
 - **Boss leash**: at most 4 bosses fight at once (`ZoneDef.maxActiveBosses`); headlines always do, the extra echoes
   circle 15 m out (dimmed bar, grey badge) and rotate in every ~9 s. The HUD stacks up to 8 boss bars: the headline
@@ -200,6 +201,7 @@ and **RESET PROGRESS** (click twice). Settings live in localStorage separately f
 | Black-hole lens screen grab | on | on | off (undistorted fallback) |
 | Weather particles | 100% | 100% | 50%, no dust / steam haze |
 | Stadium crowd | 100% | 100% | 50% |
+| PROTOCOL C echo hologram back faces | on | on | off (front faces only, from the next echo) |
 
 Brawl also uses a cheaper snow shader and bloom chain on every tier. Pixel ratio, shadows, bloom, lights,
 particles and the lens change at once; weather and crowd are built with the arena, so they change from the next

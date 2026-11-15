@@ -35,21 +35,24 @@ export interface QualityPreset {
   dropHaze: boolean;
   /** Next arena build: share of the stadium crowd kept (subsampled after the full list is built). */
   crowdFraction: number;
+  /** PROTOCOL C echo holograms draw their back faces too (two transparent passes per part); off = front faces only,
+   *  one pass (entities/enemies/hologram.ts; from the next echo spawned). */
+  holoBackfaces: boolean;
 }
 
 const PRESETS: Record<QualityTier, Readonly<QualityPreset>> = {
   // HIGH = the game's long-standing constants (pixel-identical to the pre-preset build).
   high: {
     pixelRatioCap: 2, brawlPixelRatioCap: 1.5, shadows: true, shadowMapSize: 2048, brawlShadowMapSize: 1024, bloom: true,
-    hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1,
+    hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1, holoBackfaces: true,
   },
   medium: {
     pixelRatioCap: 1.5, brawlPixelRatioCap: 1.5, shadows: true, shadowMapSize: 1024, brawlShadowMapSize: 1024, bloom: false,
-    hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1,
+    hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1, holoBackfaces: true,
   },
   low: {
     pixelRatioCap: 1, brawlPixelRatioCap: 1, shadows: false, shadowMapSize: 1024, brawlShadowMapSize: 1024, bloom: false,
-    hideFlashLights: true, fxScale: 0.5, lensGrab: false, weatherScale: 0.5, dropHaze: true, crowdFraction: 0.5,
+    hideFlashLights: true, fxScale: 0.5, lensGrab: false, weatherScale: 0.5, dropHaze: true, crowdFraction: 0.5, holoBackfaces: false,
   },
 };
 

@@ -1856,7 +1856,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   /* ------------------------------------------------------------------ debris */
 
   private spawnDebris(e: Bot): void {
-    const mats = debrisMaterials(e.type);
+    const mats = debrisMaterials(e.type, e.echo);
     const n = e.isBoss ? 24 : 6 + Math.round(e.radius * 3);
     const p = e.position;
     const h = e.rig.height;
