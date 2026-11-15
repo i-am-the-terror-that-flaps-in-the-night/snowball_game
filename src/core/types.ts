@@ -266,6 +266,9 @@ export interface WorldAPI {
    *  unseen lit silhouette (waves 1-6), 'lit' = revealed (THE DONALD, lit; `k` 0..1 ramps the lights), 'gone' = the
    *  box has detached (his descent). No-op on any other arena. */
   boardroom?(mode: 'shadow' | 'lit' | 'gone', k?: number): void;
+  /** PROTOCOL C finale: THE WHITEOUT's storm, `k` 0 (the zone's night) .. 1 (black sky, dark storm fog, the gale).
+   *  No-op on any other arena; setZone clears it. */
+  whiteoutSky?(k: number): void;
   /** Flash/open the gate with this index (0..2) — call when a bot drives in through it. No-op in Brawl. */
   openGate(index: number): void;
   /** Solid circle obstacles inside the ARENA (empty in the campaign; pillars/containers/rocks in Brawl).
@@ -430,6 +433,8 @@ export interface EnemyHandle {
   readonly echo?: boolean;
   readonly headline?: boolean;
   readonly held?: boolean;
+  /** PROTOCOL C finale: a snow copy (an echo in white). */
+  readonly snow?: boolean;
 }
 
 export interface DamageOpts {
@@ -472,7 +477,8 @@ export interface DamageOpts {
 }
 
 export interface EnemyManagerAPI {
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean }): EnemyHandle;
+  /** `snow`: a PROTOCOL C finale snow copy (with `echo`: a white hologram echo that bursts into powder). */
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean; snow?: boolean }): EnemyHandle;
   /** Living enemies whose collision circle overlaps the given circle. Reuses `out` if provided. */
   query(x: number, z: number, radius: number, out?: EnemyHandle[]): EnemyHandle[];
   /** Callers pass RAW damage. The manager applies armor (min 1; reduced for `direct` hits), directional armor, and vulnerability
@@ -485,7 +491,7 @@ export interface EnemyManagerAPI {
   readonly bosses: readonly EnemyHandle[];
   /** Optional (the campaign manager): remove a bot quietly (a gold flash, no kill events, no coins): PROTOCOL C's
    *  echoes powering down once THE CHAIRMAN falls. */
-  dismiss?(e: EnemyHandle): void;
+  dismiss?(e: EnemyHandle, color?: number): void;
   clear(): void;
   /** AI, movement, wall clamping, bot-bot separation, plow contact resolution (see Enemies.ts). */
   update(dt: number): void;

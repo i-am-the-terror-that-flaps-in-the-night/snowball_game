@@ -19,8 +19,9 @@ import {
  *    (camera(): blended over the follow camera after CameraRig.update, so the rig itself is untouched). The fight
  *    then opens with his descent (enemies/chairman.ts): a shot that follows the tower down from the box (dropCamera),
  *    eased back to the follow camera once he lands.
- *  - THE DEFEAT HOOK: onChairmanDefeated (his wreck after the PROTOCOL C button): everything left (echoes, rally bots)
- *    powers down, the rest of the wave queue is dropped, so wave 7 ends and the run's victory follows. TODO(stage 4): startWhiteout() here.
+ *  - THE DEFEAT HOOK: onChairmanDefeated (his wreck after the PROTOCOL C button): the rest of the wave queue is dropped,
+ *    the rally bots / minions power down, and THE WHITEOUT starts (`whiteout`: Game hands it core/whiteoutDirector.ts;
+ *    the echoes still standing go with it, to freeze into snow statues). Without the hook the echoes power down too.
  * Pure timing logic + ctx calls (ui toasts, world.boardroom, the camera); no per-frame allocation.
  */
 
@@ -79,6 +80,9 @@ export class ChairmanDirector {
   private readonly sweep: EnemyHandle[] = [];
   /** The whiteout hook ran (THE CHAIRMAN fell this run). */
   chairmanDown = false;
+  /** THE WHITEOUT's start (Game: WhiteoutDirector.start), handed the echoes still standing. */
+  whiteout: ((echoes: readonly EnemyHandle[]) => void) | null = null;
+  private readonly echoes: EnemyHandle[] = [];
 
   constructor(private readonly ctx: GameContext) {
     const ev = ctx.events;
@@ -263,26 +267,31 @@ export class ChairmanDirector {
   }
 
   /**
-   * THE CHAIRMAN's wreck (after he slammed PROTOCOL C): stage 4's hook. For now everything left on the floor powers down
-   * (echoes, rally bots) and the rest of the wave 7 queue is dropped, so the wave (and the run) ends in victory.
+   * THE CHAIRMAN's wreck (after he slammed PROTOCOL C): the rest of the wave 7 queue is dropped and every rally bot /
+   * minion powers down; with the whiteout hook (Game) THE WHITEOUT starts and takes the standing echoes (snow statues),
+   * without it the echoes power down too (so a leftover never holds the wave open).
    */
   onChairmanDefeated(): void {
     this.chairmanDown = true;
     const ctx = this.ctx;
     ctx.waves.cancel?.();
-    // everything still on the floor powers down with him (the echoes, and any rally bots / minions they brought):
-    // otherwise a leftover red cap would hold the wave, and the run's victory, open
+    const hook = this.whiteout;
+    const echoes = this.echoes;
+    echoes.length = 0;
     const bosses = ctx.enemies.bosses;
     for (let i = bosses.length - 1; i >= 0; i--) {
       const b = bosses[i];
-      if (b.alive && b.echo) ctx.enemies.dismiss?.(b); // (a downed twin husk too: query() skips husks)
+      if (!b.alive || !b.echo) continue;
+      if (hook) echoes.push(b);
+      else ctx.enemies.dismiss?.(b); // (a downed twin husk too: query() skips husks)
     }
     const all = ctx.enemies.query(0, 0, 1e4, this.sweep);
     for (let i = all.length - 1; i >= 0; i--) {
       const b = all[i];
-      if (b.alive && b.type !== 'chairman') ctx.enemies.dismiss?.(b);
+      if (b.alive && b.type !== 'chairman' && !(hook && b.echo)) ctx.enemies.dismiss?.(b);
     }
     this.sweep.length = 0;
-    // TODO(stage 4): startWhiteout() — the roof tears off and THE WHITEOUT rises instead of the victory.
+    hook?.(echoes);
+    echoes.length = 0;
   }
 }

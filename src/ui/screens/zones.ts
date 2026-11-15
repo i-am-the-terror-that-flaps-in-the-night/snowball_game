@@ -4,7 +4,7 @@ import { ENEMIES, type EnemyDef } from '../../config/enemies';
 import { HARD, earnedIds, hardCleared, hardPower, hardReward, hardScale, hardUnlocked, maxStars, starReward, zoneChallenges, zoneStars } from '../../meta/challenges';
 import { totalStars } from '../../meta/progress';
 import { bossColor, bossCount, el, fmt, hex, restart, starsHtml, type BtnFn } from '../uiKit';
-import { PROTOCOL_WAVES, PROTOCOL_ZONE } from '../../config/protocol';
+import { PROTOCOL_FINALE, PROTOCOL_WAVES, PROTOCOL_ZONE } from '../../config/protocol';
 import { formatRunTime, protocolReward, protocolSave, protocolTeased, protocolUnlocked } from '../../meta/protocol';
 
 /** What the arena select needs from the UI: its grid / star total and the shared button + sound helpers. */
@@ -155,7 +155,7 @@ function protocolCard(ui: ZonesDeps): void {
   const bottom = el('div', 'ss-zone-bottom', undefined, card);
   if (open) {
     if (rec.cleared) el('div', 'ss-zone-badge', '✓ CLEARED', el('div', 'ss-zone-badges', undefined, bottom));
-    el('div', 'ss-zone-stat', `☠ ${PROTOCOL_WAVES} boss waves  ·  ⏱ best ${formatRunTime(rec.bestTime)}  ·  🏁 ${rec.bestWave > 0 ? `wave ${rec.bestWave}/${PROTOCOL_WAVES}` : 'wave —'}`, bottom);
+    el('div', 'ss-zone-stat', `☠ ${PROTOCOL_WAVES} boss waves  ·  ⏱ best ${formatRunTime(rec.bestTime)}  ·  🏁 ${rec.bestWave >= PROTOCOL_FINALE ? 'the finale' : rec.bestWave > 0 ? `wave ${rec.bestWave}/${PROTOCOL_WAVES}` : 'wave —'}`, bottom);
     el('div', 'ss-zone-stat ss-zone-reward', `🪙 ${fmt(protocolReward(p))} clear reward`, bottom);
   } else {
     const hard = ZONES.filter((z) => p.data.hardCleared?.[z.id] === true).length;
@@ -174,7 +174,7 @@ function protocolCard(ui: ZonesDeps): void {
   });
   const ck = rec.checkpoint;
   if (open && ck && ck.wave > 1) {
-    const b = ui.btn(`▶ <b>RESUME</b> <small>wave ${ck.wave}/${PROTOCOL_WAVES} · checkpoint</small>`, 'ss-zone-hard ss-protocol-resume', () => ui.handlers.onStartProtocol?.(true), slot);
+    const b = ui.btn(`▶ <b>RESUME</b> <small>${ck.wave >= PROTOCOL_FINALE ? 'the finale' : `wave ${ck.wave}/${PROTOCOL_WAVES}`} · checkpoint</small>`, 'ss-zone-hard ss-protocol-resume', () => ui.handlers.onStartProtocol?.(true), slot);
     b.title = 'Restart the saved run at the start of its last wave (counts as a checkpoint retry).';
   }
 }

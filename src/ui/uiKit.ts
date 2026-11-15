@@ -35,7 +35,7 @@ export type BtnFn = (label: string, cls: string, onClick: () => void, parent?: H
 
 export const ENEMY_ICON: Record<EnemyType, string> = {
   scrapper: '🤖', brute: '🚧', spinner: '🪚', thief: '🦝', gunner: '🎯', bulwark: '🛡️', slushpile: '🫧', slushling: '💧', mirror: '🪞', magnet: '🧲', twinlink: '🔗',
-  bulldoza: '🚜', frostbyte: '👾', grinder: '🔩', slush: '🔴', sleet: '🔵', omega: '💀', rival: '🚜', rallybot: '🧢', donald: '🍊', chairman: '🏢',
+  bulldoza: '🚜', frostbyte: '👾', grinder: '🔩', slush: '🔴', sleet: '🔵', omega: '💀', rival: '🚜', rallybot: '🧢', donald: '🍊', chairman: '🏢', stormheart: '💠', whiteout: '👁️',
 };
 
 export function ordinal(n: number): string {

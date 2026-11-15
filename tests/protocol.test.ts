@@ -6,7 +6,7 @@ import { Progression, sanitizeProtocol } from '../src/core/Progression';
 import { ZONES } from '../src/config/zones';
 import { HARD } from '../src/config/challenges';
 import {
-  ECHO_HP, HEADLINE_CD, HEADLINE_HARD, HEADLINE_HP, MAX_ACTIVE, PROTOCOL_CLEAR_REWARD, PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, homeZone,
+  ECHO_HP, HEADLINE_CD, HEADLINE_HARD, HEADLINE_HP, MAX_ACTIVE, PROTOCOL_CLEAR_REWARD, PROTOCOL_FINALE, PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, homeZone,
   protocolRounds, protocolWaveZone, protocolZone, waveBossCount,
 } from '../src/config/protocol';
 import {
@@ -249,13 +249,13 @@ describe('save validation', () => {
     expect(sanitizeProtocol(undefined)).toBeUndefined();
     expect(sanitizeProtocol([1, 2])).toBeUndefined();
     expect(sanitizeProtocol({ cleared: 'yes', clears: -4, bestTime: NaN, bestWave: 99, cleanClear: 1, checkpoint: 'x' })).toEqual({
-      cleared: false, clears: 0, bestTime: 0, bestWave: PROTOCOL_WAVES, cleanClear: false, checkpoint: null,
+      cleared: false, clears: 0, bestTime: 0, bestWave: PROTOCOL_FINALE, cleanClear: false, checkpoint: null,
     });
     // a checkpoint without a usable wave / HP is dropped; numbers are clamped
     expect(sanitizeProtocol({ checkpoint: { wave: 0, hpFrac: 0.5 } })!.checkpoint).toBeNull();
     expect(sanitizeProtocol({ checkpoint: { wave: 3, hpFrac: 0 } })!.checkpoint).toBeNull();
     expect(sanitizeProtocol({ checkpoint: { wave: 12.7, hpFrac: 4, elapsed: -3, kills: 2.5, coins: 'a', uses: 1 } })!.checkpoint).toEqual({
-      wave: PROTOCOL_WAVES, hpFrac: 1, elapsed: 0, kills: 2, coins: 0, uses: 1,
+      wave: PROTOCOL_FINALE, hpFrac: 1, elapsed: 0, kills: 2, coins: 0, uses: 1,
     });
     expect(sanitizeProtocol({ cleared: true, clears: 3, bestTime: 301.5, bestWave: 7, cleanClear: true, checkpoint: null })).toEqual({
       cleared: true, clears: 3, bestTime: 301.5, bestWave: 7, cleanClear: true, checkpoint: null,

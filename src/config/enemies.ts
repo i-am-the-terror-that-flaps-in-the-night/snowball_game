@@ -17,6 +17,12 @@ export type EnemyType =
   | 'donald'
   /** PROTOCOL C's final boss (wave 7): THE DONALD in his walking golden tower (enemies/chairman.ts). */
   | 'chairman'
+  /** PROTOCOL C finale (THE WHITEOUT, core/whiteoutDirector.ts): an ice crystal beamed to the storm giant; it never
+   *  moves, every plow can break it (3, then 4, then 5 per cycle). */
+  | 'stormheart'
+  /** PROTOCOL C finale: THE WHITEOUT's EYE (the giant itself is a visual: world/protocol/WhiteoutGiant.ts). Its HP is the
+   *  Whiteout's; a fixed hit spot the director moves (sealed while closed, chipped while open, wide open in a STAGGER). */
+  | 'whiteout'
   /** Brawl mode rival plow (stats are the baseline; BrawlManager scales by difficulty). */
   | 'rival'
   /** Ranged minion: keeps a standoff and lobs slow, telegraphed snowball bolts (enemies/ai.ts gunner). */
@@ -143,6 +149,14 @@ export const ENEMIES: Record<EnemyType, EnemyDef> = {
   chairman: {
     type: 'chairman', name: 'THE CHAIRMAN', title: 'Chairman of the Board', hp: 3000, speed: 4.6, radius: 3.3, mass: 14, ramDamage: 32, armor: 9, coins: 900, isBoss: true, color: 0xf0b928, accent: 0x15161c,
     special: 'PROTOCOL C wave 7: THE DONALD revealed, driving a walking golden skyscraper (tank-tread pods, mirrored gold glass, the boardroom on top with him at the table, a BRIEFCASE CANNON crane arm and a golden POINTING FINGER). BRIEFCASE CANNON: lobbed briefcases onto telegraphed rings (paper burst + short stun). QUARTERLY REPORTS: a paper storm (scrambles the minimap, slows the plow inside). HOSTILE TAKEOVER: a gold beam ACQUIRES an echo (gold armour + speed until a damage threshold or a timeout). RESTRUCTURING: rows of gold partition walls (smashable). Upgraded DEPORTATION and RALLY (podium + rally bots). Phase 2 at 50%: GOLDEN PARACHUTE (reflects damage, faster, briefcase volleys of three). Ultimates have no effect on him. At 0 HP he slams the PROTOCOL C button.',
+  },
+  stormheart: {
+    type: 'stormheart', name: 'STORM HEART', title: '', hp: 260, speed: 0, radius: 1.35, mass: 999, ramDamage: 0, armor: 2, coins: 12, isBoss: false, color: 0x8fd8ff, accent: 0x2a5a9a,
+    special: 'PROTOCOL C finale: a jagged ice crystal on a cracked pedestal, beamed to THE WHITEOUT. Never moves or attacks. Every Heart broken makes the storm ANGRIER; the last one of a cycle STAGGERS the giant (its eye crashes onto the north stand front).',
+  },
+  whiteout: {
+    type: 'whiteout', name: 'THE WHITEOUT', title: 'The Valley\'s Hoarded Snow', hp: 3000, speed: 0, radius: 3.4, mass: 999, ramDamage: 0, armor: 6, coins: 0, isBoss: true, color: 0xdff4ff, accent: 0x3aa8ff,
+    special: 'PROTOCOL C finale: a storm giant outside the north stand with ONE cold ice-blue eye. Sealed while the eye is closed; chip it while it is open; break the Storm Hearts to STAGGER it, its eye on the stand front, and hit everything into it. Attacks: ICE SHARD RAIN, VORTEX ARM sweeps, GUSTS (push), GLARE (daze), snow copies of the bosses.',
   },
 };
 

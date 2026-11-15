@@ -41,8 +41,9 @@ export interface ProtocolSave {
   checkpoint: ProtocolCheckpoint | null;
 }
 
-/** Protocol C's wave count (config/protocol.ts PROTOCOL_WAVES; repeated here to keep the save module free of it). */
-const PROTOCOL_SAVE_WAVES = 7;
+/** Protocol C's highest checkpoint / best "wave": the finale (config/protocol.ts PROTOCOL_FINALE = 8, after its seven
+ *  waves; repeated here to keep the save module free of it). */
+const PROTOCOL_SAVE_WAVES = 8;
 
 /** Validate a stored / imported protocol record: well-formed fields survive, anything else falls back. */
 export function sanitizeProtocol(raw: unknown): ProtocolSave | undefined {

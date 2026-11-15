@@ -2,7 +2,7 @@ import type { Progression, ProtocolCheckpoint, ProtocolSave } from '../core/Prog
 import { ZONES } from '../config/zones';
 import { UPGRADES, upgradeCost } from '../config/upgrades';
 import { GEAR_BY_ID, gearSpent } from '../config/gear';
-import { PROTOCOL_CLEAR_REWARD, PROTOCOL_REPEAT_FRAC, PROTOCOL_WAVES } from '../config/protocol';
+import { PROTOCOL_CLEAR_REWARD, PROTOCOL_FINALE, PROTOCOL_REPEAT_FRAC } from '../config/protocol';
 
 /* PROTOCOL C meta (config/protocol.ts): the unlock rule, the clear / best-time record and the per-wave checkpoint.
  * Lives in save.protocol (validated by Progression's sanitizeProtocol on load and import). The campaign's own
@@ -53,7 +53,7 @@ export function recordProtocolClear(p: Progression, time: number, uses: number):
   s.cleared = true;
   s.clears = Math.min(1e6, s.clears + 1);
   if (newBest) s.bestTime = t;
-  s.bestWave = PROTOCOL_WAVES;
+  s.bestWave = PROTOCOL_FINALE;
   // a run with no checkpoint retry (a later challenge star reads it)
   if (uses <= 0) s.cleanClear = true;
   s.checkpoint = null;
@@ -61,10 +61,10 @@ export function recordProtocolClear(p: Progression, time: number, uses: number):
   return { firstClear, reward, newBest, bestTime: s.bestTime };
 }
 
-/** Wave reached on a failed run (best wave reached is kept). */
+/** Wave reached on a failed run (best wave reached is kept; PROTOCOL_FINALE = reached THE WHITEOUT). */
 export function recordProtocolWave(p: Progression, wave: number): void {
   const s = protocolSave(p);
-  s.bestWave = Math.max(s.bestWave, Math.min(PROTOCOL_WAVES, Math.max(0, Math.floor(wave))));
+  s.bestWave = Math.max(s.bestWave, Math.min(PROTOCOL_FINALE, Math.max(0, Math.floor(wave))));
   p.commit();
 }
 
@@ -87,10 +87,10 @@ export interface RunSnapshotSource {
   uses: number;
 }
 
-/** Snapshot of a run at a wave's start (Game.protocolCheckpoint). */
+/** Snapshot of a run at a wave's start (Game.protocolCheckpoint); wave PROTOCOL_FINALE = THE WHITEOUT starting. */
 export function takeCheckpoint(r: RunSnapshotSource): ProtocolCheckpoint {
   return {
-    wave: Math.max(1, Math.min(PROTOCOL_WAVES, Math.floor(r.wave))),
+    wave: Math.max(1, Math.min(PROTOCOL_FINALE, Math.floor(r.wave))),
     hpFrac: Math.max(0.01, Math.min(1, r.hp / Math.max(1, r.maxHp))),
     elapsed: Math.max(0, r.time - r.start),
     kills: Math.max(0, r.kills),

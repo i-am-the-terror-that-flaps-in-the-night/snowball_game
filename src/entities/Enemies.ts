@@ -18,7 +18,7 @@ import { ECHO_DMG, HEADLINE_CD, HEADLINE_DMG } from '../config/protocol';
 import { donaldProps } from './enemies/donaldProps';
 import { chairmanProps } from './enemies/chairmanProps';
 import { chairmanDown } from './enemies/chairman';
-import { applyHologram, holoTime, holoWarmSet, hologramMaterial } from './enemies/hologram';
+import { applyHologram, holoTime, holoWarmSet, hologramMaterial, snowHologram } from './enemies/hologram';
 import type { KillSource, KillWeapon } from '../core/events';
 import type { BotNav } from '../core/types';
 import { makeSurface } from '../world/Terrain';
@@ -53,6 +53,11 @@ const BOLT_SPLAT_TINT = { color: 0x7fe6ff, count: 8, speed: 4, size: 0.1, gravit
 const SPLIT_BURST = { color: 0xb6cad6, count: 26, speed: 8, size: 0.3, gravity: 14, life: 0.8 };
 const SPLIT_BURST_TINT = { color: 0x3fd1a8, count: 12, speed: 6, size: 0.14, gravity: 12, life: 0.6 };
 const HOT_STEAM_BURST = { color: 0xdfe6ee, count: 3, speed: 1.5, size: 0.3, gravity: -3, life: 0.8 };
+/** A Storm Heart / snow copy shattering (Enemies.shatter); a snow copy pays SNOW_COPY_COINS (x zone coin mult). */
+const SHATTER_SNOW = { color: 0xffffff, count: 40, speed: 9, size: 0.3, gravity: 14, life: 1.1 };
+const SHATTER_ICE = { color: 0x9fe0ff, count: 26, speed: 11, size: 0.14, gravity: 16, life: 0.8 };
+const SHATTER_GLINT = { color: 0x4ab8ff, count: 18, speed: 7, size: 0.1, gravity: 4, life: 0.6 };
+const SNOW_COPY_COINS = 10;
 
 /** Knockback speed (m/s) above which a flying bot smashes a destructible prop (cf. Plow's PROP_SMASH_SPEED). */
 const BOT_PROP_SMASH_SPEED = 6;
@@ -268,7 +273,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
    * Spawn a bot at (x, z). `opts.y` = the height to spawn at (a deck top, e.g. an Omega Works hatch on the Assembly
    * Floor): the bot stands on the highest surface within a step of it. Default 0 = the ground (under any deck).
    */
-  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean }): EnemyHandle {
+  spawn(type: EnemyType, x: number, z: number, opts?: { hpMult?: number; heading?: number; y?: number; noGate?: boolean; echo?: boolean; headline?: boolean; snow?: boolean }): EnemyHandle {
     const ctx = this.ctx;
     const def = ENEMIES[type];
     const rig = createRig(type);
@@ -279,6 +284,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       e.dmgOutMult = ECHO_DMG;
       // a translucent gold hologram (the program is compiled by every arena build's warm-up: hologram.ts)
       e.holo = hologramMaterial(e.id * 0.37);
+      // THE WHITEOUT's snow copies: the same hologram in white (a uniform: same program)
+      if (opts.snow) {
+        e.snow = true;
+        snowHologram(e.holo);
+      }
       rig.owned.push(e.holo);
       applyHologram(rig.root, e.holo, [rig.crust, rig.stars]);
     } else if (def.isBoss && opts?.headline) {
@@ -386,8 +396,15 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const e = enemy as Bot;
     if (!e.alive || !(e instanceof Bot) || e.husk) return false;
     const ctx = this.ctx;
-    // THE CHAIRMAN: untouchable while scripted (his descent, the defeat). (ultImmune: unused, kept for scripted bosses.)
-    if (e.scripted) return false;
+    // THE CHAIRMAN: untouchable while scripted (his descent, the defeat); THE WHITEOUT's eye while sealed (says so).
+    if (e.scripted) {
+      if (e.immuneLabel && e.blockFxT <= 0 && ctx.fx) {
+        e.blockFxT = 0.5;
+        _v.set(e.position.x, e.groundY + e.rig.height + 0.8, e.position.z);
+        ctx.fx.floatText(_v, e.immuneLabel, '#9fdcff', 0.95);
+      }
+      return false;
+    }
     if (opts?.ult && e.ultImmune) {
       if (e.blockFxT <= 0 && ctx.fx) {
         e.blockFxT = 0.4;
@@ -466,6 +483,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       e.kvz += kz;
     }
     e.hp -= dmg;
+    // THE WHITEOUT's eye holds at its AVALANCHE share (stage 4b finishes it)
+    if (e.hpFloor > 0 && e.hp < e.hpFloor) e.hp = e.hpFloor;
     e.flash = FLASH_T;
     if (e.reflect > 0) e.reflectPool += dmg * e.reflect;
 
@@ -783,11 +802,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     let active = 0;
     for (const b of list) {
       b.leashT += dt;
-      if (!b.held) active++;
+      if (!b.held && !b.fixed) active++;
     }
     for (let i = list.length - 1; i >= 0 && active > max; i--) {
       const b = list[i];
-      if (b.held || !leashNeutral(b)) continue;
+      if (b.held || b.fixed || !leashNeutral(b)) continue;
       this.hold(b, true);
       active--;
     }
@@ -800,7 +819,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const inn = longestHeld(list);
     if (!inn || inn.leashT < 3) return;
     let out: Bot | null = null;
-    for (const b of list) if (!b.held && leashNeutral(b) && b.leashT >= LEASH_SWAP && (!out || b.leashT > out.leashT)) out = b;
+    for (const b of list) if (!b.held && !b.fixed && leashNeutral(b) && b.leashT >= LEASH_SWAP && (!out || b.leashT > out.leashT)) out = b;
     if (!out) return;
     this.hold(out, true);
     this.hold(inn, false);
@@ -876,8 +895,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     this.kill(e, 'other');
   }
 
-  /** Remove a bot without a kill (no events, no coins, no kill credit): a gold flash where it stood. */
-  dismiss(enemy: EnemyHandle): void {
+  /** Remove a bot without a kill (no events, no coins, no kill credit): a flash where it stood (gold, or `color`). */
+  dismiss(enemy: EnemyHandle, color = 0xffd257): void {
     const e = enemy as Bot;
     if (!(e instanceof Bot) || !e.alive) return;
     e.alive = false;
@@ -888,7 +907,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const fx = this.ctx.fx;
     if (fx) {
       _v.set(e.position.x, e.groundY + e.rig.height * 0.5, e.position.z);
-      fx.burst(_v, { color: 0xffd257, count: 30, speed: 7, size: 0.16, gravity: 4, life: 1.0 });
+      fx.burst(_v, { color, count: 30, speed: 7, size: 0.16, gravity: 4, life: 1.0 });
       fx.burst(_v, { color: 0xffffff, count: 16, speed: 5, size: 0.3, gravity: 8, life: 0.8 });
     }
   }
@@ -1043,6 +1062,13 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.turnRate = e.baseTurn;
     e.accel = e.baseAccel;
     e.routed = false;
+    if (e.fixed) {
+      // THE WHITEOUT's Hearts / eye: no AI, no motion, no lava (their director places them)
+      e.speed = e.desSpeed = e.vx = e.vz = e.kvx = e.kvz = e.ivx = e.ivz = 0;
+      e.stun = e.stagger = 0;
+      e.entering = false;
+      return;
+    }
 
     // Lava burns bots too (LAVA_DPS, no armour); a lava death is credited as a 'lava' kill.
     if (e.mat === 'lava' && !e.vert.airborne && !e.entering) {
@@ -1376,7 +1402,9 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         const nx = dx / d;
         const nz = dz / d;
         const pen = rr - Math.min(d, rr);
-        const wa = b.mass / (a.mass + b.mass);
+        // a fixed target (THE WHITEOUT's Hearts / eye) never gives way
+        if (a.fixed && b.fixed) continue;
+        const wa = a.fixed ? 0 : b.fixed ? 1 : b.mass / (a.mass + b.mass);
         const wb = 1 - wa;
         a.position.x -= nx * pen * wa;
         a.position.z -= nz * pen * wa;
@@ -1395,7 +1423,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         }
       }
     }
-    for (let i = 0; i < n; i++) if (L[i].alive) this.clampPos(L[i], false);
+    for (let i = 0; i < n; i++) if (L[i].alive && !L[i].fixed) this.clampPos(L[i], false);
   }
 
   private plowContact(): void {
@@ -1447,7 +1475,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       const nx = dx / d;
       const nz = dz / d;
       const pen = rr - Math.min(d, rr);
-      const we = PLOW_MASS / (PLOW_MASS + e.mass);
+      const we = e.fixed ? 0 : PLOW_MASS / (PLOW_MASS + e.mass);
       const wp = 1 - we;
       e.position.x += nx * pen * we;
       e.position.z += nz * pen * we;
@@ -1468,7 +1496,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
           }
         }
       }
-      if (e.alive) this.clampPos(e, false);
+      if (e.alive && !e.fixed) this.clampPos(e, false);
     }
   }
 
@@ -1521,6 +1549,14 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (e.isBoss) {
       this.refreshBosses();
       if (!this.bossList.length && this.list.some((b) => b.alive && b.summoned)) this.powerDownT = POWER_DOWN_DELAY;
+    }
+    if (e.type === 'stormheart' || e.snow) {
+      // THE WHITEOUT's Storm Hearts and snow copies shatter into ice and powder (no fire, no wreck, no boss toast)
+      this.shatter(e);
+      const coins = Math.round((e.snow ? SNOW_COPY_COINS : def.coins) * ctx.zone.coinMult);
+      ctx.events.emit('enemyKilled', { enemy: e, coins, source, weapon });
+      if (coins > 0) ctx.pickups?.spawnCoins(e.position.clone(), coins);
+      return;
     }
 
     const fx = ctx.fx;
@@ -1579,6 +1615,21 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         this.sfx('streak', 0.8, 1.1, 0.1);
       }
     }
+  }
+
+  /** Ice and powder where a Storm Heart / snow copy stood. */
+  private shatter(e: Bot): void {
+    const fx = this.ctx.fx;
+    const p = e.position;
+    _v.set(p.x, e.groundY + e.rig.height * 0.55, p.z);
+    fx.burst(_v, SHATTER_SNOW);
+    fx.burst(_v, SHATTER_ICE);
+    if (e.type === 'stormheart') fx.burst(_v, SHATTER_GLINT);
+    _v.y = e.groundY + 0.2;
+    fx.powder(_v, { size: 1.2 + e.radius * 0.45, color: 0xeaf6ff });
+    fx.ring(_v, e.radius * 2.8, 0x9fe0ff);
+    fx.shake(e.type === 'stormheart' ? 0.5 : 0.3);
+    this.sfx('clash', 0.9, e.type === 'stormheart' ? 0.7 : 1.1, 0.05);
   }
 
   /** A Tether Twin wrecked while its partner stands: it drops as a smoking HUSK (alive for the wave count, untargetable,
@@ -1749,6 +1800,11 @@ export class EnemyManager implements EnemyManagerAPI, Host {
 
     rig.root.position.set(p.x + e.hoverX, e.groundY + e.hoverY, p.z + e.hoverZ);
     rig.root.rotation.y = e.heading + e.spinVis;
+    // THE WHITEOUT's eye: no mesh (the giant draws it), no crust / stars / puffs
+    if (e.type === 'whiteout') {
+      rig.crust.visible = rig.stars.visible = false;
+      return;
+    }
 
     const body = rig.body;
     let by = Math.sin(t * 9 + e.bob) * 0.025 * (1 + Math.min(1, Math.abs(e.speed) * 0.1));
@@ -2004,6 +2060,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     // textures and materials; a spare instance that is never added to the scene)
     const chair: THREE.Object3D[] = [];
     createRig('chairman').root.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) chair.push(o);
+    });
+    // + THE WHITEOUT's Storm Heart (its crystal / plinth materials)
+    createRig('stormheart').root.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) chair.push(o);
     });
     return [...debris, ...holoWarmSet(), ...chair];

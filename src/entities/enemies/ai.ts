@@ -83,6 +83,8 @@ const TUNE: Record<EnemyType, [turn: number, accel: number]> = {
   rallybot: [4.5, 16],
   donald: [1.3, 9],
   chairman: [1.1, 8],
+  stormheart: [0, 0],
+  whiteout: [0, 0],
   rival: [3, 14], // Brawl-only; never spawned by the campaign manager
   gunner: [4, 14],
   // Slower to turn than the Brute Dozer: a plow running rings round it stays off its shield.
@@ -108,6 +110,8 @@ const DEFAULT_STATE: Record<EnemyType, string> = {
   rallybot: 'circle',
   donald: 'approach',
   chairman: 'approach',
+  stormheart: 'idle',
+  whiteout: 'idle',
   rival: 'approach',
   gunner: 'kite',
   bulwark: 'guard',

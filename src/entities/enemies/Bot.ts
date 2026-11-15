@@ -135,6 +135,15 @@ export class Bot implements EnemyHandle {
   /** In a scripted sequence (THE CHAIRMAN's descent / defeat): its AI runs every frame (plow dead or not), takes no
    *  damage, no contact hits. */
   scripted = false;
+  /** Refused damage while scripted shows this label (THE WHITEOUT's sealed eye: 'SEALED'); null = silent. */
+  immuneLabel: string | null = null;
+  /** HP never drops below this (0 = no floor): THE WHITEOUT's eye waits at its AVALANCHE share for stage 4b. */
+  hpFloor = 0;
+  /** A fixed target (THE WHITEOUT's Storm Hearts and eye): no AI, never moves, pushed by nothing, off the boss leash;
+   *  the plow bumps off it. Whoever owns it (core/whiteoutDirector.ts) moves it by hand. */
+  fixed = false;
+  /** PROTOCOL C finale: a SNOW COPY of a boss (an echo in a white hologram; bursts into powder, no boss toast). */
+  snow = false;
   /** Visual offset of the rig from its (collision) position, world metres (the Chairman's descent from the box). */
   hoverX = 0;
   hoverY = 0;
@@ -204,7 +213,7 @@ export class Bot implements EnemyHandle {
 
   /** HUD / toast name: ECHO <NAME> for echoes. */
   get displayName(): string {
-    return this.echo ? `ECHO ${this.def.name}` : this.def.name;
+    return this.snow ? `SNOW ${this.def.name}` : this.echo ? `ECHO ${this.def.name}` : this.def.name;
   }
   get x(): number {
     return this.position.x;
