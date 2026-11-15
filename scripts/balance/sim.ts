@@ -19,7 +19,7 @@ export const KINDS: PlowKind[] = ['classic', 'volt', 'brute', 'isotope', 'arsena
 export type Tier = 'fresh' | 'mid' | 'high';
 export const TIERS: Tier[] = ['fresh', 'mid', 'high'];
 
-const LINE: Record<PlowKind, UpgradeId[]> = {
+export const LINE: Record<PlowKind, UpgradeId[]> = {
   classic: ['inferno', 'classicShatter', 'classicReserve', 'classicCombo'],
   volt: ['voltClap', 'voltChain', 'voltField', 'voltCell', 'voltArc'],
   brute: ['brutePound', 'bruteSaws', 'bruteHide', 'bruteMomentum', 'bruteFist', 'bruteSpikes'],
@@ -29,7 +29,7 @@ const LINE: Record<PlowKind, UpgradeId[]> = {
 };
 
 /** Garage levels (core four + the plow's own line) and equipped gear per tier. */
-const TIER_DEF: Record<Tier, { core: number; line: number; gear: Record<string, number> }> = {
+export const TIER_DEF: Record<Tier, { core: number; line: number; gear: Record<string, number> }> = {
   fresh: { core: 0, line: 0, gear: {} },
   // Mid-game: a few levels everywhere, commons + a couple of rares at item level 3 (one per slot; multi-equip would allow more, see docs/balance.md).
   mid: { core: 4, line: 3, gear: { steelWedge: 3, scrapRecycler: 3, turbineFan: 3, packCompactor: 3, repairDrone: 3 } },

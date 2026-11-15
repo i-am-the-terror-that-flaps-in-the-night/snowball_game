@@ -1,5 +1,6 @@
 /* Balance report (not part of `npm test`): `npm run balance`. Prints the markdown tables used in docs/balance.md. */
 import { it } from 'vitest';
+import { protocolEstimate, spentFor } from './balance/protocol';
 import { KINDS, TIERS, clusterDps, duelLaserDamage, duelTtk, singleDps, spreadDps, statsFor, ultDamage, ultFill, ultFillBoss } from './balance/sim';
 
 const f0 = (n: number) => (Number.isFinite(n) ? Math.round(n).toString() : '∞');
@@ -38,3 +39,19 @@ it('balance report', () => {
   }
   process.stdout.write(out.join('\n') + '\n');
 }, 600_000);
+
+it('PROTOCOL C wave estimate', () => {
+  // Boss HP per wave (spend-scaled) vs each plow's single-target DPS at the mid / high garages: a planning number.
+  const out: string[] = ['\n### PROTOCOL C: seconds of single-target DPS to clear each wave\n'];
+  for (const tier of ['mid', 'high'] as const) {
+    out.push(`\n#### ${tier}\n`, '| plow | spent | k.hp | w1 | w2 | w3 | w4 | w5 | w6 | w7 | total |', '|---|---|---|---|---|---|---|---|---|---|---|');
+    for (const k of KINDS) {
+      const spent = spentFor(k, tier);
+      const rows = protocolEstimate(k, tier, spent);
+      const tot = rows.reduce((a, r) => a + r.seconds, 0);
+      out.push(`| ${k} | ${spent} | ${Math.max(0.8, Math.sqrt(spent / 30000)).toFixed(2)} | ${rows.map((r) => r.seconds).join(' | ')} | ${tot} |`);
+    }
+  }
+  console.log(out.join('\n'));
+  require('fs').writeFileSync('scripts/balance/protocol-report.md', out.join('\n') + '\n');
+}, 300000);
