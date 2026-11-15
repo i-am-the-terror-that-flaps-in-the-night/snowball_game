@@ -169,15 +169,16 @@ export class Environment extends NightScenery implements WorldAPI {
   }
 
   /** PROTOCOL C finale: THE WHITEOUT's storm over the arena, `k` 0 (the zone's own night) .. 1 (black sky, dark storm
-   *  fog, the Blizzard gale on). Colours / fog only (plus the gale's weather layer when it turns on or off); setZone
-   *  turns it off. No-op off PROTOCOL C. */
-  whiteoutSky(k: number): void {
+   *  fog, the Blizzard gale on). Colours / fog only (plus the gale's weather layer when it turns on or off); `gale`
+   *  (default: k > 0) = the gale's snow layer (off: the ending's calm, the zone's own gentle snowfall); setZone turns it
+   *  all off. No-op off PROTOCOL C. */
+  whiteoutSky(k: number, gale = k > 0): void {
     if (!this.zone || this.zone.theme !== 'protocol') return;
     const z = this.zone;
     const look = this.look ?? z;
     const u = Math.max(0, Math.min(1, k));
-    if ((u > 0) !== this.storm) {
-      this.storm = u > 0;
+    if (gale !== this.storm) {
+      this.storm = gale;
       this.buildWeather(z);
     }
     this.fog.color.setHex(look.fogColor).lerp(WO_FOG, u);
@@ -196,6 +197,11 @@ export class Environment extends NightScenery implements WorldAPI {
     // the mountains vanish into the storm; the fascia under the boardroom is torn away with its roof
     if (this.mountains) this.mountains.visible = u < 0.5;
     this.tearFascia(u > 0);
+  }
+
+  /** PROTOCOL C finale (THE AVALANCHE): the floor's ice sheets go under the dumped snow (k 0..1); setZone restores. */
+  whiteoutBury(k: number): void {
+    this.decals?.bury(k);
   }
 
   /** Shadow map size from the quality preset. Brawl trades shadow sharpness for frame rate (HIGH: 1024 there,

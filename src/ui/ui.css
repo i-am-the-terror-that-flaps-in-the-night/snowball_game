@@ -1764,3 +1764,15 @@
   .ss-tile-sub { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.15; }
   .ss-root:has(> .ss-menu.show) .ss-toasts { top: 74px; right: 16px; }
 }
+
+/* PROTOCOL C finale: THE AVALANCHE's giant snowball size meter (GameHud.updateAvalanche), bottom right over the snow meter */
+.ss-avalanche { position: absolute; right: 18px; bottom: 66px; width: min(300px, calc(100vw - 36px)); box-sizing: border-box; padding: 7px 14px 8px; background: rgba(8, 16, 34, 0.78); border-left: 4px solid #7fd6ff; text-align: center; pointer-events: none; }
+.ss-avalanche.hidden { display: none; }
+.ss-av-title { font-family: var(--display); font-weight: 900; font-size: 16px; letter-spacing: 0.1em; color: #bfe9ff; text-shadow: 0 0 10px rgba(110, 200, 255, 0.6); }
+.ss-av-bar { position: relative; height: 14px; margin: 6px 0 5px; background: rgba(255, 255, 255, 0.12); transform: skewX(-18deg); overflow: hidden; }
+.ss-av-fill { position: absolute; inset: 0; transform-origin: left center; transform: scaleX(0); background: linear-gradient(90deg, #4aa8ff, #dff4ff); transition: transform 0.15s linear; }
+.ss-av-goal { position: absolute; right: 4px; top: 50%; transform: translateY(-50%) skewX(18deg); font-family: var(--display); font-weight: 900; font-size: 10px; color: #0b1a33; letter-spacing: 0.08em; }
+.ss-av-text { font-size: 13px; font-weight: 800; color: #e6f5ff; letter-spacing: 0.03em; }
+.ss-avalanche.full { border-left-color: #ffd23a; box-shadow: 0 0 18px rgba(255, 210, 58, 0.45); }
+.ss-avalanche.full .ss-av-fill { background: linear-gradient(90deg, #ffe58a, #ffffff); }
+.ss-avalanche.full .ss-av-text { color: #ffd23a; animation: ss-blink 0.8s ease-in-out infinite; }

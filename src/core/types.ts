@@ -243,6 +243,9 @@ export interface SnowFieldAPI {
   melt(x: number, z: number, radius: number, amount: number): void;
   /** Remaining snow volume as a fraction of the zone's initial volume (0..1+). */
   totalSnowFraction(): number;
+  /** Bury the arena under `depth` m more snow (THE WHITEOUT's AVALANCHE; the initial depth rises with it). Returns the
+   *  volume added (m^3). Optional: the campaign field only. */
+  dump?(depth: number): number;
   /** Refill to the zone's initial depth (with gentle natural variation) and apply zone tint. */
   reset(zone: ZoneDef): void;
   /** Regenerates snow and pushes changed heights to the GPU. */
@@ -267,8 +270,11 @@ export interface WorldAPI {
    *  box has detached (his descent). No-op on any other arena. */
   boardroom?(mode: 'shadow' | 'lit' | 'gone', k?: number): void;
   /** PROTOCOL C finale: THE WHITEOUT's storm, `k` 0 (the zone's night) .. 1 (black sky, dark storm fog, the gale).
+   *  `gale` (default k > 0): the gale's snow layer (THE IMPLOSION calms it while the sky is still dark).
    *  No-op on any other arena; setZone clears it. */
-  whiteoutSky?(k: number): void;
+  whiteoutSky?(k: number, gale?: boolean): void;
+  /** PROTOCOL C finale, THE AVALANCHE: the floor's ice sheets go under the dumped snow (k 0 shown .. 1 buried). */
+  whiteoutBury?(k: number): void;
   /** Flash/open the gate with this index (0..2) — call when a bot drives in through it. No-op in Brawl. */
   openGate(index: number): void;
   /** Solid circle obstacles inside the ARENA (empty in the campaign; pillars/containers/rocks in Brawl).
@@ -315,6 +321,8 @@ export interface PlowAPI {
   readonly invulnerable: boolean;
   /** REVENANT PHASE: spectral (invulnerable, no pushes / pulls, drives through bots and props). Absent = never. */
   phased?: boolean;
+  /** A cinematic is playing (THE WHITEOUT's ending): invulnerable while true. Absent = never. */
+  cinematic?: boolean;
   /** 0..1 growth of the BRUTUS Buzzsaw halos (0 = idle or no saws). Grows with saw spin, which rises with plow
    *  speed and saw fury; Combat widens the saw reach with it. */
   readonly sawHalo: number;
@@ -698,7 +706,9 @@ export type SoundName =
   // Paint Shop horns (slam sound cosmetics)
   | 'hornAir' | 'hornClown' | 'hornBoom' | 'hornBell' | 'hornPixel'
   // Terrain / biomes (level overhaul)
-  | 'jump' | 'land' | 'airSlam' | 'lavaBurn';
+  | 'jump' | 'land' | 'airSlam' | 'lavaBurn'
+  // PROTOCOL C finale: the crowd digging out of the snow, roaring
+  | 'cheer';
 
 /** Per-biome ambience loop (AudioAPI.setAmbience; ZoneDef.biome.ambience). */
 export type AmbienceKind = 'none' | 'wind' | 'lava' | 'dust' | 'factory' | 'crowd';
@@ -771,6 +781,9 @@ export interface HudState {
   overload?: number;
   overloadCost?: number;
   snowFraction: number;
+  /** PROTOCOL C finale, THE AVALANCHE: the giant snowball's size meter (frac 0..1 of the way to full size; forming =
+   *  no ball right now / still forming; bursts so far), or null / absent. */
+  avalanche?: { frac: number; full: boolean; forming: boolean; bursts: number } | null;
   bosses: HudBoss[];
   /** Consecutive hits without a 2.5s gap (0/1 = no combo). */
   combo: number;

@@ -137,7 +137,7 @@ export class Bot implements EnemyHandle {
   scripted = false;
   /** Refused damage while scripted shows this label (THE WHITEOUT's sealed eye: 'SEALED'); null = silent. */
   immuneLabel: string | null = null;
-  /** HP never drops below this (0 = no floor): THE WHITEOUT's eye waits at its AVALANCHE share for stage 4b. */
+  /** HP never drops below this (0 = no floor): THE WHITEOUT's eye waits at its AVALANCHE share (the giant snowball finishes it). */
   hpFloor = 0;
   /** A fixed target (THE WHITEOUT's Storm Hearts and eye): no AI, never moves, pushed by nothing, off the boss leash;
    *  the plow bumps off it. Whoever owns it (core/whiteoutDirector.ts) moves it by hand. */

@@ -6,6 +6,7 @@ import { DecalPool, type Decal } from './decals';
 import { M } from './models';
 import { waveHitPlow } from '../combat/shared';
 import { softPuffTexture } from '../../fx/particles';
+import { standIns } from '../../render/standIns';
 import { whiteoutGiant } from '../../world/protocol/WhiteoutGiant';
 import { WO } from '../../config/whiteout';
 
@@ -119,6 +120,8 @@ class WhiteoutProps {
   private frost: THREE.Mesh | null = null;
   private frostT = 0;
   private time = 0;
+  /** A shard landed at (x, z) (THE AVALANCHE: the director chips the giant snowball with it). */
+  onShardLand: ((x: number, z: number) => void) | null = null;
 
   private depth = (x: number, z: number): number => (this.ctx?.snow ? this.ctx.snow.getDepth(x, z) : 0);
 
@@ -389,6 +392,7 @@ class WhiteoutProps {
     fx.ring(_v, WO.SHARD_R, 0x7fc8ff);
     fx.shake(0.22);
     ctx.audio?.play('clash', { volume: 0.55, pitch: 1.35 });
+    this.onShardLand?.(s.x, s.z);
     if (s.owner && !plow.dead && Math.hypot(plow.position.x - s.x, plow.position.z - s.z) < WO.SHARD_R + plow.radius * 0.4 && plow.position.y < 2.5) {
       waveHitPlow(ctx, s.owner, s.dmg, { knockback: 6, unblockable: true, fromX: s.x, fromZ: s.z });
     }
@@ -615,8 +619,9 @@ class WhiteoutProps {
   }
 
   /** Meshes for the warm-up set (built hidden in the scene by prewarm). */
+  /** Visible stand-ins of the pooled props (hidden in the scene until used; build them after prewarm()). */
   warmMeshes(): THREE.Object3D[] {
-    return [this.shardMesh, this.streaks, this.beam, this.spot, this.frost].filter((o): o is NonNullable<typeof o> => !!o);
+    return standIns([this.shardMesh, this.streaks, this.beam, this.spot, this.frost]);
   }
 }
 

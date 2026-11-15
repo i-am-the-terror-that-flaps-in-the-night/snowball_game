@@ -37,6 +37,7 @@ import { chairmanProps } from '../entities/enemies/chairmanProps';
 import { ChairmanDirector } from './chairmanDirector';
 import { WhiteoutDirector } from './whiteoutDirector';
 import { whiteoutGiant } from '../world/protocol/WhiteoutGiant';
+import { whiteoutEnding } from '../world/protocol/WhiteoutEnding';
 import { whiteoutProps } from '../entities/enemies/whiteoutProps';
 import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
@@ -249,7 +250,10 @@ export class Game {
       // THE WHITEOUT: the giant and its attack props, built hidden in the scene
       whiteoutGiant.prewarm(scene);
       whiteoutProps.prewarm(scene);
-      this.warmExtras = [...this.campaignEnemies.warmSet(), ...brawl.warmSet()];
+      this.whiteout.ball.prewarm(scene);
+      whiteoutEnding.prewarm(scene);
+      // (+ visible stand-ins of THE WHITEOUT's hidden visuals: a warm-up compiles only what is visible)
+      this.warmExtras = [...this.campaignEnemies.warmSet(), ...brawl.warmSet(), ...whiteoutGiant.warmMeshes(), ...whiteoutProps.warmMeshes(), ...this.whiteout.ball.warmMeshes(), ...whiteoutEnding.warmMeshes()];
     }
 
     const handlers: UIHandlers = {
@@ -1539,6 +1543,7 @@ export class Game {
     hud.overload = ctx.combat.overloadHeat;
     hud.overloadCost = ctx.combat.overloadCost;
     hud.snowFraction = ctx.snow.totalSnowFraction();
+    hud.avalanche = this.protocol ? this.whiteout.ballHud : null;
     hud.bosses = ctx.enemies.bosses.map((b) => ({
       name: b.snow ? `SNOW ${ENEMIES[b.type].name}` : b.echo ? `ECHO ${ENEMIES[b.type].name}` : ENEMIES[b.type].name,
       title: b.snow ? 'Snow copy' : b.echo ? 'Echo' : b.headline && b.type !== 'chairman' ? `PROTOCOL · ${ENEMIES[b.type].title}` : ENEMIES[b.type].title,

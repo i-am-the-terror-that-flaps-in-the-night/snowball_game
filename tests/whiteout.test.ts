@@ -170,7 +170,7 @@ describe('the FINALE checkpoint (meta/protocol.ts)', () => {
   });
 });
 
-describe('the hook (no victory until THE AVALANCHE)', () => {
+describe('the hook (no victory before THE IMPLOSION)', () => {
   it("THE CHAIRMAN's wreck hands the standing echoes to THE WHITEOUT (snow statues) and powers the minions down", async () => {
     const { ChairmanDirector } = await import('../src/core/chairmanDirector');
     const handlers = new Map<string, ((p: unknown) => void)[]>();
@@ -211,7 +211,7 @@ describe('the hook (no victory until THE AVALANCHE)', () => {
     expect(dismissed).toEqual([minions[0]]);
   });
 
-  it('the director holds the round open from the takeover until startAvalanche(); end() lets go', async () => {
+  it('the director holds the round open from the takeover through THE AVALANCHE; end() lets go', async () => {
     const { wo, run, mgr, intros, sky } = await arena();
     expect(wo.holding).toBe(false);
     wo.start([], true);
@@ -229,9 +229,11 @@ describe('the hook (no victory until THE AVALANCHE)', () => {
     expect(wo.holding).toBe(true);
     wo.startAvalanche();
     expect(wo.phase).toBe('avalanche');
-    expect(wo.holding).toBe(false);
-    // everything powers down: nothing left alive to hold the wave (Game: waves.done -> the victory)
-    expect(mgr.aliveCount()).toBe(0);
+    // THE AVALANCHE still holds the round (only THE IMPLOSION's end lets go: tests/avalanche.test.ts)
+    expect(wo.holding).toBe(true);
+    // the Hearts power down; only the eye (the ball's target) stays
+    expect(mgr.aliveCount()).toBe(1);
+    expect(wo.eye?.alive).toBe(true);
     wo.end();
     expect(wo.active).toBe(false);
   });
@@ -334,7 +336,7 @@ describe('Storm Hearts, escalation, STAGGER', () => {
     expect(eye.alive).toBe(true);
     run(1 / 60);
     expect(wo.phase).toBe('avalanche');
-    expect(wo.holding).toBe(false);
+    expect(wo.holding).toBe(true);
   });
 });
 

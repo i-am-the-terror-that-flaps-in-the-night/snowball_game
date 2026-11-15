@@ -67,8 +67,8 @@ Boss clears drop gear: the first clear always does, repeat clears sometimes, and
 
 ## Protocol C
 
-The secret seventh arena (build stages 1-4a of 5: foundation, echo holograms + tuning, THE CHAIRMAN, THE WHITEOUT up
-to its Avalanche; the Avalanche + ending, rewards and its own stars come later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
+The secret seventh arena (build stages 1-4 of 5: foundation, echo holograms + tuning, THE CHAIRMAN, THE WHITEOUT with
+its Avalanche and ending; rewards, story and its own stars come later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
 `src/world/protocol/layout.ts` (floor), `src/world/environment/ProtocolScenery.ts` (venue).
 
 - **Not a campaign arena**: `PROTOCOL_ZONE` is not in `ZONES`, so the arena unlock prefix, the finale (results /
@@ -134,8 +134,8 @@ to its Avalanche; the Avalanche + ending, rewards and its own stars come later).
     left on the floor (rally bots, minions) powers down, the rest of the wave is dropped, and THE WHITEOUT starts.
 - **THE WHITEOUT** (the finale, a phase inside wave 7: `src/core/whiteoutDirector.ts`, tuning + rules in
   `src/config/whiteout.ts`, the giant `src/world/protocol/WhiteoutGiant.ts`, its attacks
-  `src/entities/enemies/whiteoutProps.ts`). The round is held open (`WhiteoutDirector.holding`) until the fight hands
-  over to THE AVALANCHE.
+  `src/entities/enemies/whiteoutProps.ts`). The round is held open (`WhiteoutDirector.holding`) until THE IMPLOSION
+  has played out; then the run's PROTOCOL C victory follows.
   - Takeover (~9 s, scripted): the boardroom rig tears away, the sky goes black (storm fog, the Blizzard gale, dimmed
     floods; `world.whiteoutSky`), the standing echoes freeze into snow statues and shatter, the storm giant rises behind
     the north stand (a camera shot looks up at it), its one ice-blue eye opens: boss card, the EYE's boss bar and the
@@ -145,12 +145,27 @@ to its Avalanche; the Avalanche + ending, rewards and its own stars come later).
     gusts, more snow copies) and knocks 3% off the eye. The last Heart of a cycle STAGGERS it: it leans over the stand
     and its eye crashes onto the stand front at arena level for 8 s (×1.6 damage from everything), then it rises again.
   - The EYE (a fixed boss bot, HP = THE CHAIRMAN's): SEALED while closed (no damage), ×0.3 chip while open between
-    staggers (it opens every ~10 s and during a glare). At 25% HP THE AVALANCHE starts (`startAvalanche`,
-    TODO(stage 4b): for now the run's victory follows).
+    staggers (it opens every ~10 s and during a glare). At 25% HP THE AVALANCHE starts.
   - Attacks, all telegraphed, none during a STAGGER: ICE SHARD RAIN (blue rings fill, a spike drops onto each and
     stands 3 s as an obstacle), VORTEX ARM (a violet chevron lane, then a funnel runs it: one hit + a big knock), GUSTS
     (snow streaks build, then a push; no damage), GLARE (the eye charges, then a spot chases the plow along a beam:
     caught = a 1 s daze, encased in frost) and SNOW COPIES (weak echoes in a white hologram that burst into powder).
+  - THE AVALANCHE (`startAvalanche`; numbers in `AV`): the Hearts and copies power down, the storm dumps 0.6 m of snow
+    on the arena over ~2 s (`SnowField.dump`: never on lava; ice sheets and the scorched half go under), the eye comes
+    down onto the north stand front for good (sealed: ONLY THE AVALANCHE) and a GIANT SNOWBALL forms
+    (`src/entities/GiantSnowball.ts`) ahead of the plow. Any plow pushes it (contact: the plow's closing speed along the
+    contact line, leaning toward its heading; a big ball is heavy); it rolls with drag (down slopes, off deck sides and
+    walls), grows as it rolls through snow (scooping a trench; ~70 m of fresh snow from 1.5 m to the full 3.3 m), picks up
+    the fight's wreckage (bot scrap, briefcases, gold, crate planks it smashes, THE CHAIRMAN's red cap). Gusts push it,
+    every other shard volley drops a ring on its path (a hit chips 0.2 m off), lava melts it; under 1 m it bursts into
+    powder and a new one forms 1.6 s later. A size meter (bottom right) shows how far it is from full size. Rolled into
+    the eye at full size: THE IMPLOSION; smaller, it bursts against the eye (NOT BIG ENOUGH) and a new one forms.
+  - THE IMPLOSION (`END`, ~13.5 s, the plow untouchable, the HUD hidden, its own camera): the ball is swallowed, the eye
+    cracks (white light through the cracks), the whole storm (body, arms, plates, flakes, thousands of storm flakes from
+    the sky) is sucked spiralling into the eye, a held breath at a pinprick of light, it implodes: a flash, a towering
+    ring of snow blasts out across the arena and buries the four stands to the brim (`src/world/protocol/WhiteoutEnding.ts`),
+    the storm sky clears to the night (it stays night). A beat of silence (the crowd ambience stops), THE STORM IS
+    BROKEN, then the crowd's phone lights pop back on one by one on top of the snow, with cheering; then the victory.
 - **Checkpoints**: each wave's start is saved (HP fraction, kills, coins, run time, retries). Wrecked on wave 2 or
   later, the results screen offers RETRY WAVE n (restores it, +1 retry) or a full restart; a saved run can also be resumed from the card.
   Coins and upgrades are permanent as everywhere else. A clear records the best total time (fights only) and whether
@@ -250,7 +265,7 @@ and **RESET PROGRESS** (click twice). Settings live in localStorage separately f
 | Weather particles | 100% | 100% | 50%, no dust / steam haze |
 | Stadium crowd | 100% | 100% | 50% |
 | PROTOCOL C echo hologram back faces | on | on | off (front faces only, from the next echo) |
-| THE WHITEOUT's billows, flakes, gust streaks | full | full | half |
+| THE WHITEOUT's billows, flakes, gust streaks; THE IMPLOSION's storm flakes, shockwave, phone lights | full | full | half |
 
 Brawl also uses a cheaper snow shader and bloom chain on every tier. Pixel ratio, shadows, bloom, lights,
 particles and the lens change at once; weather and crowd are built with the arena, so they change from the next

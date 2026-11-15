@@ -436,6 +436,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     this.position.set(sp.x, 0, sp.z);
     this.heading = sp.heading;
     this.phased = false;
+    this.cinematic = false;
     // Terrain: start on the topmost surface at the spawn point (flat arenas: 0, as always).
     const t = this.ctx.terrain;
     const v = this.vert;

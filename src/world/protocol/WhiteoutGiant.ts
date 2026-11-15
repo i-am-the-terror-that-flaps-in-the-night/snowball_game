@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { currentPreset, scaleCount, settings } from '../../core/settings';
 import { densePuffTexture, softPuffTexture } from '../../fx/particles';
+import { standIns } from '../../render/standIns';
 
 /**
  * THE WHITEOUT (PROTOCOL C finale): the storm giant outside the north stand. A visual only (its EYE is a bot the
@@ -252,7 +253,29 @@ const EYE_FRAG = /* glsl */ `
   uniform float uPupil;
   uniform float uFlash;
   uniform float uAnger;
+  uniform float uCrack;
   varying vec3 vP;
+  vec2 hash2(vec2 q) {
+    q = vec2(dot(q, vec2(127.1, 311.7)), dot(q, vec2(269.5, 183.3)));
+    return fract(sin(q) * 43758.5453);
+  }
+  // cell edges (F2 - F1): the cracks across the eye
+  float cracks(vec2 x) {
+    vec2 n = floor(x);
+    vec2 f = fract(x);
+    float f1 = 8.0;
+    float f2 = 8.0;
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        vec2 g = vec2(float(i), float(j));
+        vec2 o = hash2(n + g);
+        vec2 r = g + o - f;
+        float d = dot(r, r);
+        if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) { f2 = d; }
+      }
+    }
+    return sqrt(f2) - sqrt(f1);
+  }
   void main() {
     vec3 p = normalize(vP);
     float d = acos(clamp(p.z, -1.0, 1.0));
@@ -273,6 +296,16 @@ const EYE_FRAG = /* glsl */ `
     col = mix(col, vec3(0.0, 0.01, 0.04), pupil * (1.0 - uGlare * 0.85));
     col += vec3(0.75, 0.92, 1.0) * uGlare * 3.0 * iris;
     col += vec3(uFlash);
+    if (uCrack > 0.0) {
+      // THE IMPLOSION: cracks spread out from the pupil, white-hot light pouring through them
+      vec2 q = p.xy / max(0.2, p.z + 1.2);
+      float e = cracks(q * 3.2 + vec2(1.7, 3.1));
+      float e2 = cracks(q * 7.0 - vec2(4.2, 0.6));
+      float reach = smoothstep(uCrack * 1.25 + 0.05, uCrack * 1.25 - 0.15, d);
+      float line = (1.0 - smoothstep(0.03, 0.1 + uCrack * 0.06, e)) + 0.7 * (1.0 - smoothstep(0.02, 0.06, e2)) * smoothstep(0.35, 0.6, uCrack);
+      col = mix(col, col * (1.0 - 0.6 * uCrack), reach);
+      col += vec3(0.75, 0.93, 1.0) * line * reach * (1.6 + uCrack * 2.6);
+    }
     gl_FragColor = vec4(col, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -438,6 +471,10 @@ class WhiteoutGiant {
   open = 0;
   glare = 0;
   pupil = 0;
+  /** THE IMPLOSION (the ending): crack 0..1 = cracks spreading over the eye; collapse 0..1 = the whole storm sucked into
+   *  the eye (everything shrinks and spirals in on it; 1 = a point). */
+  crack = 0;
+  collapse = 0;
   /** Per arm: reach 0 (resting) .. 1 (the hand planted on `armTarget`). */
   readonly armReach = [0, 0];
   readonly armTarget = [new THREE.Vector3(), new THREE.Vector3()];
@@ -492,7 +529,7 @@ class WhiteoutGiant {
   show(on: boolean): void {
     this.group.visible = on;
     if (!on) {
-      this.rise = this.lean = this.anger = this.open = this.glare = this.pupil = 0;
+      this.rise = this.lean = this.anger = this.open = this.glare = this.pupil = this.crack = this.collapse = 0;
       this.armReach[0] = this.armReach[1] = 0;
       this.lid = 0;
       for (const b of this.beams) b.on = 0;
@@ -631,7 +668,7 @@ class WhiteoutGiant {
     // the eye: iris sphere, two cloud lids, a halo
     this.eyeMat = new THREE.ShaderMaterial({
       name: 'whiteoutEye',
-      uniforms: { uTime: { value: 0 }, uGlare: { value: 0 }, uPupil: { value: 0 }, uFlash: { value: 0 }, uAnger: { value: 0 } },
+      uniforms: { uTime: { value: 0 }, uGlare: { value: 0 }, uPupil: { value: 0 }, uFlash: { value: 0 }, uAnger: { value: 0 }, uCrack: { value: 0 } },
       vertexShader: EYE_VERT,
       fragmentShader: EYE_FRAG,
       fog: false,
@@ -762,10 +799,13 @@ class WhiteoutGiant {
     }
   }
 
-  /** Off-scene stand-ins are not needed: everything lives (hidden) in the scene from prewarm(). */
+  /** Visible stand-ins sharing every program (the scene's copies stay hidden until the finale, and a warm-up compiles
+   *  only what is visible): one per material and object kind. Built once. */
   warmMeshes(): THREE.Object3D[] {
-    return [this.group];
+    if (!this.billows) this.build();
+    return (this.warm ??= standIns([this.group]));
   }
+  private warm: THREE.Object3D[] | null = null;
 
   /* ------------------------------------------------------------------ per frame */
 
@@ -774,6 +814,14 @@ class WhiteoutGiant {
     if (!this.group.visible) return;
     this.time += dt;
     const t = this.time;
+    // poses are worked out in world space (an identity group); THE IMPLOSION's collapse is applied at the end
+    const g = this.group;
+    if (g.scale.x !== 1 || g.position.lengthSq() > 0 || g.quaternion.w !== 1) {
+      g.position.set(0, 0, 0);
+      g.quaternion.identity();
+      g.scale.setScalar(1);
+      g.updateMatrixWorld();
+    }
     const rise = Math.max(0, Math.min(1, this.rise));
     const ease = 1 - (1 - rise) * (1 - rise);
     const sink = (1 - ease) * SINK;
@@ -903,6 +951,34 @@ class WhiteoutGiant {
     }
     this.beamCoreMat.opacity = 0.6 + 0.2 * Math.sin(t * 23);
     this.beamGlowMat.opacity = 0.22 + 0.08 * Math.sin(t * 11);
+
+    // THE IMPLOSION: cracks over the eye; the whole storm spirals into the eye and shrinks to a point
+    eu.uCrack.value = this.crack;
+    const c = Math.max(0, Math.min(1, this.collapse));
+    if (c > 0) {
+      // slow at first, then everything goes at once
+      const ce = c * c * (1.6 - 0.6 * c);
+      const sc = Math.max(0.001, (1 - ce) * (1 - ce * 0.4));
+      _q.setFromAxisAngle(UP, ce * ce * 5.5);
+      // scale + spin about the eye (it stays where it is: everything else pours into it)
+      _a.copy(this.head.position);
+      _b.copy(_a).multiplyScalar(sc).applyQuaternion(_q);
+      g.position.copy(_a).sub(_b);
+      g.quaternion.copy(_q);
+      g.scale.setScalar(sc);
+      // the churn goes wild, the body brightens as it is drawn in
+      for (let i = 0; i < 2; i++) {
+        const m = i === 0 ? this.billowMat : this.headMat;
+        m.uniforms.uChurn.value = churn + ce * 6;
+        m.uniforms.uFlash.value = Math.max(bolt, ce * 0.35);
+        // world-sized points: they shrink with the body (sqrt: the cloud thickens round the eye as it goes)
+        m.uniforms.uScale.value = scale * Math.sqrt(sc);
+      }
+      fu.uScale.value = scale * Math.sqrt(sc);
+      for (const m of this.shellMats) m.uniforms.uChurn.value = churn + ce * 6;
+      fu.uChurn.value = churn + ce * 8;
+      this.haloMat.opacity += ce * 0.6;
+    }
   }
 
   /** Place a vortex tube from `a` (radius ra) to `b` (radius rb); `alpha`. The geometry's taper is fixed (an arm: 1 ->

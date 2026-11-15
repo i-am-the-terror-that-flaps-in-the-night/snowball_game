@@ -9,7 +9,7 @@
  *    VORTEX ARM sweeps (a lane telegraph, then the column runs it), GUSTS (push, no damage), GLARE (a slow spot chases
  *    the plow: caught = a short daze with frost), and snow copies of the bosses (weak echoes, white hologram).
  *  - The eye opens now and then between staggers: ranged chip at EYE_CHIP x (a bonus, never required). Closed it is
- *    sealed. At AVALANCHE_AT of its HP the fight hands over to THE AVALANCHE (stage 4b).
+ *    sealed. At AVALANCHE_AT of its HP the fight hands over to THE AVALANCHE (the giant snowball; then THE IMPLOSION).
  */
 
 export const WO = {
@@ -46,7 +46,7 @@ export const WO = {
   EYE_OPEN_T: 3.6,
   /** The EYE's HP x THE CHAIRMAN's (same scaling: config/protocol.ts protocolBossHp). */
   EYE_HP_K: 1.0,
-  /** At this share of its max HP: THE AVALANCHE (stage 4b). The eye never goes lower before it. */
+  /** At this share of its max HP: THE AVALANCHE. The eye never goes lower: only the giant snowball finishes it. */
   AVALANCHE_AT: 0.25,
 
   /* ---- escalation: anger 0..1 = broken Hearts / ANGER_FULL (cumulative, never resets) */
@@ -207,3 +207,99 @@ export function pickHeartSpots(n: number, px: number, pz: number, r: number, cle
  *  rammer reach; the giant draws the eye there: world/protocol/WhiteoutGiant.ts EYE_DOWN_POS). */
 export const EYE_HIGH = { x: 0, z: -35 } as const;
 export const EYE_DOWN = { x: 0, z: -29.6 } as const;
+
+/* ------------------------------------------------------------------ THE AVALANCHE + the ending */
+
+/**
+ * THE AVALANCHE (at WO.AVALANCHE_AT of the eye's HP): the storm dumps deep snow on the arena, the eye comes down onto
+ * the north stand front and stays there, and a GIANT SNOWBALL forms (entities/GiantSnowball.ts). Any plow pushes it
+ * (contact: the plow's velocity), it rolls with drag, grows as it rolls through snow, picks up whatever lies on the
+ * floor; gusts shove it, shards chip it, lava melts it. Rolled into the eye at FULL_R or more = the IMPLOSION ending;
+ * smaller = it bursts into powder against the eye and a new ball forms from the snow left.
+ */
+export const AV = {
+  /** The dump: extra snow depth (m, over the zone's 0.5) laid over DUMP_T s from the start. */
+  DUMP: 0.6,
+  DUMP_T: 2.2,
+  /** The eye's descent onto the stand front (s) and when the first ball forms (s from the start). */
+  DESCEND_T: 2.6,
+  BALL_AT: 2.4,
+  /** The ball: radius when it forms, the size that wins, below this it bursts; forming time (s). */
+  START_R: 1.5,
+  FULL_R: 3.3,
+  /** It stops growing here (a bigger ball would hide the arena). */
+  MAX_R: 4.2,
+  MIN_R: 1.0,
+  FORM_T: 0.8,
+  /** Growth: m of radius per m rolled on snow as deep as REF_DEPTH (less on thinner snow, nothing on bare ground or a
+   *  deck). Shrinks as it grows (a bigger ball needs more snow per cm): x 1 / (1 + GROW_FALLOFF x (r - START_R)). */
+  GROW: 0.034,
+  GROW_FALLOFF: 0.18,
+  REF_DEPTH: 0.8,
+  /** Its rolling drag (1/s) and the extra drag of a big ball (x r / FULL_R); slope pull (m/s^2 per unit gradient). */
+  DRAG: 0.55,
+  DRAG_BIG: 0.25,
+  SLOPE: 9,
+  /** Plow contact: the ball takes the plow's closing speed x PUSH (a touch more: it rolls clear), leaning toward the
+   *  plow's heading by STEER; a plow pushing a full ball is held to HEAVY x its top speed. */
+  PUSH: 1.08,
+  STEER: 0.35,
+  HEAVY: 0.82,
+  /** A gust shoves it at GUST x the gust's pull (m/s^2 per unit frac x top speed). */
+  GUST: 0.55,
+  /** Shards: one landing on the ball (inside SHARD_R + r) knocks CHIP m off its radius. Lava melts LAVA m/s. */
+  CHIP: 0.2,
+  LAVA: 0.7,
+  /** Shard volleys / gusts in THE AVALANCHE: the gap (s) and shards per volley (fewer than the fight: it's a push);
+   *  every other volley drops one ring on the ball's path. */
+  SHARD_GAP: 5.5,
+  SHARDS: 3,
+  GUST_GAP: 9,
+  /** A burst ball forms again after RESPAWN_T s. */
+  RESPAWN_T: 1.6,
+  /** How close the ball's edge must come to the eye's (m: the eye bot's 3.4 m radius + this). */
+  HIT_PAD: 0.4,
+} as const;
+
+/** THE IMPLOSION (the ending), seconds from the full-size ball reaching the eye. Stays night throughout. */
+export const END = {
+  /** The eye cracks (white light through the cracks, the giant convulses). */
+  CRACK_T: 1.7,
+  /** The whole storm is sucked into the eye (the giant collapses inward, wind reversing, the gale pulled in). */
+  SUCK_T: 2.6,
+  /** A held breath at the point, then it IMPLODES (a flash) and the shockwave of snow blasts out over WAVE_T s. */
+  HOLD_T: 0.35,
+  WAVE_T: 1.6,
+  /** The beat of silence, then the phone lights pop on one by one over LIGHTS_T s with cheering, then the victory. */
+  SILENCE_T: 1.9,
+  LIGHTS_T: 4.2,
+  OUTRO_T: 1.2,
+  /** Snow the shockwave lays on the arena on top (m). */
+  WAVE_SNOW: 0.35,
+} as const;
+
+/** Ending beats (s from its start). */
+export const END_AT = {
+  suck: END.CRACK_T,
+  implode: END.CRACK_T + END.SUCK_T + END.HOLD_T,
+  silence: END.CRACK_T + END.SUCK_T + END.HOLD_T + END.WAVE_T,
+  lights: END.CRACK_T + END.SUCK_T + END.HOLD_T + END.WAVE_T + END.SILENCE_T,
+  done: END.CRACK_T + END.SUCK_T + END.HOLD_T + END.WAVE_T + END.SILENCE_T + END.LIGHTS_T + END.OUTRO_T,
+} as const;
+
+/** The ball's new radius after rolling `ds` m over snow `depth` m deep (0 on bare ground / decks). Pure (tests). */
+export function ballGrow(r: number, ds: number, depth: number): number {
+  if (ds <= 0 || depth <= 0.02 || r >= AV.MAX_R) return r;
+  const k = Math.min(1, depth / AV.REF_DEPTH);
+  return Math.min(AV.MAX_R, r + (AV.GROW * ds * k) / (1 + AV.GROW_FALLOFF * Math.max(0, r - AV.START_R)));
+}
+
+/** 0..1 of the way from START_R to FULL_R (the HUD meter). */
+export function ballFrac(r: number): number {
+  return Math.max(0, Math.min(1, (r - AV.START_R) / (AV.FULL_R - AV.START_R)));
+}
+
+/** Big enough to finish the eye. */
+export function ballFull(r: number): boolean {
+  return r >= AV.FULL_R - 1e-6;
+}

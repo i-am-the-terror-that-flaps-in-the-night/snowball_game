@@ -483,7 +483,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       e.kvz += kz;
     }
     e.hp -= dmg;
-    // THE WHITEOUT's eye holds at its AVALANCHE share (stage 4b finishes it)
+    // THE WHITEOUT's eye holds at its AVALANCHE share (only the giant snowball finishes it)
     if (e.hpFloor > 0 && e.hp < e.hpFloor) e.hp = e.hpFloor;
     e.flash = FLASH_T;
     if (e.reflect > 0) e.reflectPool += dmg * e.reflect;

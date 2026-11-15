@@ -227,6 +227,8 @@ export abstract class PlowBase {
   /** REVENANT PHASE (set by combat/revenant.ts every frame): spectral, so +30% top speed, untouchable (invulnerable), no
    *  pushes / pulls, and it drives through bots, props and the Duel opponent. */
   phased = false;
+  /** A cinematic is playing (THE WHITEOUT's ending): nothing hurts the plow (lava included). Set by the director. */
+  cinematic = false;
   /** Eased 0..1 of `phased` for the ghost-shell visuals. */
   protected phaseEase = 0;
   /** Set by Combat each frame (ARSENAL): 0..1 gyro rings folded flat into a disc (Polarity Burst), and 0..1 extra
@@ -581,7 +583,7 @@ export abstract class PlowBase {
     return ballRadius(this.heldVolume);
   }
   get invulnerable(): boolean {
-    return !this._dead && (this.spawnProt > 0 || this.phased || this.dashT > DASH_SECONDS - DASH_IFRAMES);
+    return !this._dead && (this.spawnProt > 0 || this.phased || this.cinematic || this.dashT > DASH_SECONDS - DASH_IFRAMES);
   }
 
   /** Camera shake from this plow: full strength for the local pilot, a fraction for a duel opponent. */
