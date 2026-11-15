@@ -404,7 +404,7 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   // THE RELIQUARY: a floating glass capsule with bone end caps over a ghostfire cushion; souls swirl inside it.
   const reliquary = new THREE.Group();
   reliquary.position.copy(RELIC_POS);
-  const capsuleMat = new THREE.MeshStandardMaterial({ color: 0xe6d8ff, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.32, depthWrite: false, emissive: REV_DEEP, emissiveIntensity: 0.4 });
+  const capsuleMat = new THREE.MeshStandardMaterial({ color: 0x6a3cb0, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.4, depthWrite: false, emissive: REV_DEEP, emissiveIntensity: 0.6 });
   const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(RELIC_R, RELIC_L, 6, 14), capsuleMat);
   capsule.renderOrder = 2;
   const capGeo = new THREE.CylinderGeometry(RELIC_R * 0.9, RELIC_R * 1.05, 0.12, 14);
@@ -418,7 +418,7 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   // Souls: violet wisps (bright core + deep shell) on orbits inside the glass.
   const soulGeo = new THREE.SphereGeometry(0.075, 8, 6);
   soulGeo.scale(1, 1.9, 1);
-  const soulCore = new THREE.MeshBasicMaterial({ color: 0xf4e6ff, toneMapped: false });
+  const soulCore = new THREE.MeshBasicMaterial({ color: 0xc89cff, toneMapped: false });
   const soulShell = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false });
   const souls: THREE.Mesh[] = [];
   for (let i = 0; i < SOULS_MAX; i++) {
@@ -434,7 +434,7 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   const fireGeo = new THREE.ConeGeometry(0.28, 0.6, 10, 1, true);
   fireGeo.rotateX(Math.PI);
   const fireDeep = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.7, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
-  const fireHot = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, transparent: true, opacity: 0.8, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const fireHot = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.6, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
   const fire = new THREE.Group();
   const f1 = new THREE.Mesh(fireGeo, fireDeep);
   const f2 = new THREE.Mesh(fireGeo, fireHot);
