@@ -35,8 +35,8 @@ const DOME_FLASH = 0.22;
 const FLASH_DECAY = 8;
 const DOME_DECAY = 11;
 /** A puff fades out within NEAR_IN m of the camera (beyond its own size), fully drawn from NEAR_OUT m. */
-const NEAR_IN = 1;
-const NEAR_OUT = 6;
+const NEAR_IN = 4;
+const NEAR_OUT = 14;
 
 interface Puff {
   body: THREE.Sprite;

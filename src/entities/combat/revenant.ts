@@ -117,11 +117,11 @@ const GRASP_SMOKE = { count: 10, color: REV_DEEP, size: 0.8, grow: 2, life: 0.8,
 const PH_RISE_SMOKE = { count: 6, color: 0xcfb0ff, size: 0.6, grow: 2, life: 0.6, speed: 1.5, up: 2.5, rise: 1, drag: 2, spread: 0.5, opacity: 0.6 };
 const FINALE_SMOKE = { count: 30, color: 0x8a50d0, size: 1.4, grow: 2.4, life: 1.1, speed: 14, up: 2, rise: 0.6, drag: 2.2, spread: 1, opacity: 0.7, additive: 0.45, radial: true };
 /** Finale: a column of violet ghostfire bursting up from the hearse. */
-const FINALE_PILLAR = { count: 24, color: 0xe0b8ff, size: 1.3, grow: 2.2, life: 1.1, speed: 2.5, up: 15, rise: 3, drag: 1.2, spread: 1.4, opacity: 0.9, additive: 0.85 };
+const FINALE_PILLAR = { count: 24, color: 0xc89cff, size: 1.3, grow: 2.2, life: 1.1, speed: 2.5, up: 15, rise: 3, drag: 1.2, spread: 1.4, opacity: 0.85, additive: 0.5 };
 const FINALE_BURST = { color: REV_BRIGHT, count: 90, speed: 20, size: 0.32, gravity: 1, life: 0.9 };
 /** ...a second, wider and slower ghostfire cloud, and the white-violet core flash. */
 const FINALE_SMOKE_2 = { count: 24, color: 0xc890ff, size: 2, grow: 2.6, life: 1.5, speed: 9, up: 3, rise: 1, drag: 1.6, spread: 2, opacity: 0.6, additive: 0.7, radial: true };
-const FINALE_CORE = { count: 3, color: 0xf0e0ff, size: 7, grow: 1.8, life: 0.45, speed: 0, up: 0, rise: 0, drag: 0, spread: 0.6, opacity: 0.95, additive: 1 };
+const FINALE_CORE = { count: 2, color: 0xe8d0ff, size: 4, grow: 1.6, life: 0.4, speed: 0, up: 0, rise: 0, drag: 0, spread: 0.6, opacity: 0.75, additive: 0.8 };
 const FINALE_WHITE = { color: 0xffffff, count: 20, speed: 9, size: 0.25, gravity: -2, life: 0.6 };
 /** Share of MANIFEST and PHANTOM burst damage that fills THE WILD HUNT's meter (area bursts chain through a pack:
  *  at full share the meter filled in a few seconds of a crowded fight but took a minute on a boss). */
@@ -883,7 +883,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const floor = plow.surfaceY || 0;
     // The spent trail's eruption (visuals larger than the blast's reach R, which is unchanged): a double shockwave,
     // rings racing out, a ghostfire column and a white-violet core flash.
-    this.vis.shock.spawn(px, floor, pz, R * 1.3, { dur: 0.85, flashR: 5 + souls * 0.35, flashY: 2.2, wallH: 4.5 + souls * 0.3 });
+    this.vis.shock.spawn(px, floor, pz, R * 1.3, { dur: 0.85, flashR: 3.2 + souls * 0.2, flashY: 2.2, wallH: 4.5 + souls * 0.3 });
     this.vis.shock.spawn(px, floor, pz, R * 0.75, { dur: 0.55, flashR: 2.5 + souls * 0.2, flashY: 1.2, wallH: 2.5 + souls * 0.15 });
     _q.set(px, floor + 0.2, pz);
     ctx.fx.ring(_q, R, REV_CORE);
@@ -897,7 +897,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     ctx.fx.burst(_q, FINALE_BURST);
     ctx.fx.burst(_q, FINALE_WHITE);
     this.shake(1.5);
-    this.impactHit('hunt', _q.set(px, floor + 1.5, pz), 1.1);
+    this.impactHit('hunt', _q.set(px, floor + 1.5, pz), 0.75);
     this.b.audio.play('explosion', { volume: 0.8, pitch: 0.8 });
     this.b.audio.play('roar', { volume: 0.5, pitch: 0.5 });
     const dmg = (st.graspDamage || 34) * (FINALE_BASE + FINALE_SOUL * souls);
