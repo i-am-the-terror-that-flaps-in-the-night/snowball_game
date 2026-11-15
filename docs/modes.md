@@ -67,8 +67,8 @@ Boss clears drop gear: the first clear always does, repeat clears sometimes, and
 
 ## Protocol C
 
-The secret seventh arena (build stages 1-3 of 5: foundation, echo holograms + tuning, THE CHAIRMAN; THE WHITEOUT,
-rewards and its own stars come later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
+The secret seventh arena (build stages 1-4a of 5: foundation, echo holograms + tuning, THE CHAIRMAN, THE WHITEOUT up
+to its Avalanche; the Avalanche + ending, rewards and its own stars come later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
 `src/world/protocol/layout.ts` (floor), `src/world/environment/ProtocolScenery.ts` (venue).
 
 - **Not a campaign arena**: `PROTOCOL_ZONE` is not in `ZONES`, so the arena unlock prefix, the finale (results /
@@ -131,13 +131,32 @@ rewards and its own stars come later). Code: `src/config/protocol.ts` (zone + wa
     3,000 base (the run's toughest boss), ×1.25 damage like every headline; he always counts as fighting on the leash.
   - At 0 HP: the defeat (3.8 s, untouchable): the tower sags and lists, the treads seize, the echoes freeze, and
     through the glass he slams the PROTOCOL C button. His wreck runs `ChairmanDirector.onChairmanDefeated`: everything
-    left on the floor (echoes, rally bots) powers down, the rest of the wave is dropped, and the run ends in victory (stage 4 hooks THE WHITEOUT in there).
+    left on the floor (rally bots, minions) powers down, the rest of the wave is dropped, and THE WHITEOUT starts.
+- **THE WHITEOUT** (the finale, a phase inside wave 7: `src/core/whiteoutDirector.ts`, tuning + rules in
+  `src/config/whiteout.ts`, the giant `src/world/protocol/WhiteoutGiant.ts`, its attacks
+  `src/entities/enemies/whiteoutProps.ts`). The round is held open (`WhiteoutDirector.holding`) until the fight hands
+  over to THE AVALANCHE.
+  - Takeover (~9 s, scripted): the boardroom rig tears away, the sky goes black (storm fog, the Blizzard gale, dimmed
+    floods; `world.whiteoutSky`), the standing echoes freeze into snow statues and shatter, the storm giant rises behind
+    the north stand (a camera shot looks up at it), its one ice-blue eye opens: boss card, the EYE's boss bar and the
+    FINALE checkpoint (internal wave 8: a death in the finale offers RETRY FINALE; `startProtocol(8)` starts there).
+  - STORM HEARTS (3, then 4, then 5 a cycle; ice crystals beamed to the giant, fixed bots every plow can break). Every
+    Heart broken makes it ANGRIER for the rest of the fight (shorter gaps, more shards, faster telegraphs, stronger
+    gusts, more snow copies) and knocks 3% off the eye. The last Heart of a cycle STAGGERS it: it leans over the stand
+    and its eye crashes onto the stand front at arena level for 8 s (×1.6 damage from everything), then it rises again.
+  - The EYE (a fixed boss bot, HP = THE CHAIRMAN's): SEALED while closed (no damage), ×0.3 chip while open between
+    staggers (it opens every ~10 s and during a glare). At 25% HP THE AVALANCHE starts (`startAvalanche`,
+    TODO(stage 4b): for now the run's victory follows).
+  - Attacks, all telegraphed, none during a STAGGER: ICE SHARD RAIN (blue rings fill, a spike drops onto each and
+    stands 3 s as an obstacle), VORTEX ARM (a violet chevron lane, then a funnel runs it: one hit + a big knock), GUSTS
+    (snow streaks build, then a push; no damage), GLARE (the eye charges, then a spot chases the plow along a beam:
+    caught = a 1 s daze, encased in frost) and SNOW COPIES (weak echoes in a white hologram that burst into powder).
 - **Checkpoints**: each wave's start is saved (HP fraction, kills, coins, run time, retries). Wrecked on wave 2 or
   later, the results screen offers RETRY WAVE n (restores it, +1 retry) or a full restart; a saved run can also be resumed from the card.
   Coins and upgrades are permanent as everywhere else. A clear records the best total time (fights only) and whether
   it used no retries, and pays 6,000 coins the first time (40% after) plus Hard-grade loot ("PROTOCOL C clear"). A run
   that used a retry never counts as a clean clear ("Not a Scratch"); the shop preview reads "Wave n of 7".
-- **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock. Such a dev run records
+- **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock (8: THE WHITEOUT). Such a dev run records
   nothing (no clear, best time / wave, checkpoint or clear reward) unless the arena is unlocked and it starts on wave 1.
 
 ## Snowdome Brawl
@@ -231,6 +250,7 @@ and **RESET PROGRESS** (click twice). Settings live in localStorage separately f
 | Weather particles | 100% | 100% | 50%, no dust / steam haze |
 | Stadium crowd | 100% | 100% | 50% |
 | PROTOCOL C echo hologram back faces | on | on | off (front faces only, from the next echo) |
+| THE WHITEOUT's billows, flakes, gust streaks | full | full | half |
 
 Brawl also uses a cheaper snow shader and bloom chain on every tier. Pixel ratio, shadows, bloom, lights,
 particles and the lens change at once; weather and crowd are built with the arena, so they change from the next

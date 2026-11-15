@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { currentPreset, scaleCount } from '../../core/settings';
+import { currentPreset, scaleCount, settings } from '../../core/settings';
 import { densePuffTexture, softPuffTexture } from '../../fx/particles';
 
 /**
@@ -219,15 +219,21 @@ const VORTEX_FRAG = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vN;
   varying vec3 vV;
+  float streak(float x, float w) {
+    float f = fract(x);
+    return smoothstep(0.0, w * 0.3, f) * (1.0 - smoothstep(w * 0.3, w, f));
+  }
   void main() {
     float fres = 1.0 - abs(dot(normalize(vN), normalize(vV)));
     // fade out round the camera (a funnel sweeping past the lens never fills the screen)
     float near = smoothstep(4.0, 13.0, length(vV));
-    float band = sin((vUv.x * 5.0 + vUv.y * 9.0 - uTime * uSpin) * 6.2831);
-    float band2 = sin((vUv.x * 11.0 - vUv.y * 4.0 - uTime * uSpin * 1.7) * 6.2831);
-    float k = 0.5 + 0.3 * band + 0.2 * band2;
-    vec3 col = mix(uDark, uLit, clamp(k * 0.8 + fres * 0.5, 0.0, 1.0)) + vec3(0.5, 0.75, 1.0) * uFlash;
-    float a = uAlpha * near * clamp(0.28 + fres * 0.65 + band * 0.12, 0.0, 1.0) * smoothstep(0.0, 0.06, vUv.y) * (1.0 - smoothstep(0.94, 1.0, vUv.y));
+    // thin bright snow streaks spiralling up the tube over a faint body, denser at the rim
+    float s1 = streak(vUv.x * 4.0 + vUv.y * 6.0 - uTime * uSpin, 0.32);
+    float s2 = streak(vUv.x * 7.0 + vUv.y * 11.0 - uTime * uSpin * 1.6 + 0.37, 0.2);
+    float body = 0.16 + fres * 0.55;
+    vec3 col = mix(uDark, uLit, clamp(0.3 + fres * 0.5, 0.0, 1.0)) + vec3(0.75, 0.88, 1.0) * (s1 * 0.85 + s2 * 0.5) + vec3(0.5, 0.75, 1.0) * uFlash;
+    float ends = smoothstep(0.0, 0.06, vUv.y) * (1.0 - smoothstep(0.94, 1.0, vUv.y));
+    float a = uAlpha * near * clamp(body + s1 * 0.55 + s2 * 0.35, 0.0, 1.0) * ends;
     gl_FragColor = vec4(col, a);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -456,6 +462,8 @@ class WhiteoutGiant {
   private eyeMat!: THREE.ShaderMaterial;
   private lids: THREE.Mesh[] = [];
   private halo!: THREE.Sprite;
+  private seam!: THREE.Mesh;
+  private seamMat!: THREE.MeshBasicMaterial;
   private haloMat!: THREE.SpriteMaterial;
   private tubes: Tube[] = [];
   private beams: { core: THREE.Mesh; glow: THREE.Mesh; on: number; x: number; y: number; z: number }[] = [];
@@ -649,6 +657,12 @@ class WhiteoutGiant {
     brow.position.z = 0.4;
     brow.renderOrder = 10;
     this.eyeGroup.add(brow);
+    // the seam between the shut lids: a thin cold glow (the eye is in there, watching)
+    this.seamMat = new THREE.MeshBasicMaterial({ color: 0x8fdcff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
+    this.seam = new THREE.Mesh(new THREE.PlaneGeometry(EYE_R * 1.9, EYE_R * 0.1), this.seamMat);
+    this.seam.position.z = EYE_R * 1.1;
+    this.seam.renderOrder = 11;
+    this.eyeGroup.add(this.seam);
     this.haloMat = new THREE.SpriteMaterial({ map: soft, color: 0x7fd0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
     this.halo = new THREE.Sprite(this.haloMat);
     this.halo.scale.set(EYE_R * 6, EYE_R * 6, 1);
@@ -773,7 +787,8 @@ class WhiteoutGiant {
       this.boltT = (2.6 - anger * 1.9) * (0.4 + Math.random());
       this.bolt = Math.max(this.bolt, 0.35 + Math.random() * (0.4 + anger * 0.5));
     }
-    const bolt = this.bolt * (0.6 + 0.4 * Math.random());
+    // (Reduced flashes: the lightning in the body at half strength, no flicker)
+    const bolt = settings.reduceFlash ? this.bolt * 0.5 : this.bolt * (0.6 + 0.4 * Math.random());
     this.bolt = Math.max(0, this.bolt - dt * 4.5);
     this.flashK = Math.max(0, this.flashK - dt * 7);
 
@@ -845,6 +860,8 @@ class WhiteoutGiant {
     // a faint cold glow even shut (it is in there), full open, blazing in a glare
     this.haloMat.opacity = (0.12 + this.lid * (0.4 + 0.6 * this.glare + 0.12 * Math.sin(t * 3))) * Math.min(1, rise * 2) + this.flashK * 0.4;
     this.halo.scale.setScalar(EYE_R * (5.5 + this.glare * 4));
+    this.seamMat.opacity = Math.max(0, 1 - this.lid * 2.5) * (0.75 + 0.25 * Math.sin(t * 2.3)) * Math.min(1, rise * 2);
+    this.seam.visible = this.seamMat.opacity > 0.01;
 
     // neck: from the torso's neck anchor to the back of the head
     _a.copy(NECK).applyMatrix4(this.torso.matrixWorld);

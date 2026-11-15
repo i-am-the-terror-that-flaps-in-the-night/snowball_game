@@ -36,8 +36,8 @@ export type WhiteoutPhase = 'off' | 'takeover' | 'hearts' | 'lean' | 'stagger' |
 
 /** Look-up tilt of the follow camera while the giant is up (rad): a little always, more while it faces the giant (the
  *  follow camera pitches ~28 deg down: untilted, the giant would sit under the HUD's top edge). */
-const CAM_TILT = 0.05;
-const CAM_TILT_NORTH = 0.12;
+const CAM_TILT = 0.04;
+const CAM_TILT_NORTH = 0.15;
 /** The rise shot: a slow dolly from SHOT_A to SHOT_B, looking up at the giant. */
 const SHOT_A = new THREE.Vector3(9, 1.8, -4);
 const SHOT_B = new THREE.Vector3(4, 2.6, -14);
