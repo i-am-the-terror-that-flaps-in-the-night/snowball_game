@@ -174,7 +174,7 @@ describe('wave 7', () => {
 });
 
 describe('moves', () => {
-  it('scheduling: rally > takeover > restructuring > reports > deportation > briefcases > shove', async () => {
+  it('scheduling (ties): rally > takeover > restructuring > reports > deportation > briefcases > shove', async () => {
     const { pickMove, chairmanState, CH } = await import('../src/entities/enemies/chairman');
     const s = chairmanState({} as Bot);
     const o = { hpFrac: 1, dist: 20, reach: 6, echo: true, wallsUp: false, storm: false, beam: false };
@@ -193,6 +193,27 @@ describe('moves', () => {
     s.caseCd = 1;
     expect(pickMove(s, { ...o, echo: false, wallsUp: true, storm: true, beam: true })).toBe(null);
     expect(pickMove(s, { ...o, echo: false, wallsUp: true, storm: true, beam: true, dist: 3 })).toBe('shove');
+  });
+
+  it('scheduling: a ready BRIEFCASE CANNON goes right after a big move (the big cooldowns never starve it)', async () => {
+    const { pickMove, chairmanState } = await import('../src/entities/enemies/chairman');
+    const s = chairmanState({} as Bot);
+    const o = { hpFrac: 1, dist: 20, reach: 6, echo: true, wallsUp: false, storm: false, beam: false };
+    s.caseCd = s.reportCd = s.takeCd = s.wallCd = s.beamCd = 0;
+    s.rallyCd = 99;
+    s.last = 'takeover';
+    expect(pickMove(s, o)).toBe('cases');
+    s.last = 'cases';
+    expect(pickMove(s, o)).toBe('takeover');
+    s.last = 'restructure';
+    s.caseCd = 2;
+    expect(pickMove(s, o)).toBe('takeover');
+    // the big move ready the longest goes first (no fixed order starving DEPORTATION)
+    s.beamCd = -6;
+    s.reportCd = -2;
+    expect(pickMove(s, o)).toBe('beam');
+    s.beamCd = 4;
+    expect(pickMove(s, o)).toBe('reports');
   });
 
   it('BRIEFCASE CANNON: rings show at once, the cases land after wind-up + flight and daze a plow inside', async () => {
@@ -360,6 +381,7 @@ describe('commentary', () => {
     const dismissed: unknown[] = [];
     let cancelled = 0;
     const bosses: { type: string; echo: boolean; alive: boolean }[] = [];
+    const minions: { type: string; echo: boolean; alive: boolean }[] = [];
     const ctx = {
       events,
       ui: { toast: (t: string, k: string) => k === 'chairman' && toasts.push(t) },
@@ -367,9 +389,20 @@ describe('commentary', () => {
       cameraRig: { cinematic: () => {} },
       plow: { hp: 100, maxHp: 100, dead: false },
       waves: { cancel: () => cancelled++ },
-      enemies: { bosses, dismiss: (b: unknown) => dismissed.push(b) },
+      enemies: {
+        bosses,
+        dismiss: (b: { alive: boolean }) => {
+          dismissed.push(b);
+          b.alive = false;
+        },
+        query: (_x: number, _z: number, _r: number, out: unknown[]) => {
+          out.length = 0;
+          for (const b of [...bosses, ...minions]) if (b.alive) out.push(b);
+          return out;
+        },
+      },
     };
-    return { ctx, events, toasts, dismissed, bosses, cancelled: () => cancelled };
+    return { ctx, events, toasts, dismissed, bosses, minions, cancelled: () => cancelled };
   }
 
   it('every line fits the toast (BEAT_MAX_CHARS); every wave has an intro, every boss an acquire + a kill line', () => {
@@ -434,7 +467,7 @@ describe('commentary', () => {
 
   it('the reveal plays on wave 7; THE CHAIRMAN\'s wreck powers the echoes down and ends the wave (the stage-4 hook)', async () => {
     const { ChairmanDirector, REVEAL_LINE, CHAIRMAN_PREFIX } = await import('../src/core/chairmanDirector');
-    const { ctx, events, toasts, dismissed, bosses, cancelled } = director();
+    const { ctx, events, toasts, dismissed, bosses, minions, cancelled } = director();
     const d = new ChairmanDirector(ctx as unknown as GameContext);
     d.begin(7);
     expect(d.revealing).toBe(true);
@@ -447,9 +480,12 @@ describe('commentary', () => {
     for (let t = 0; t < 10; t += 0.1) d.update(0.1);
     expect(toasts).toHaveLength(2);
     bosses.push({ type: 'omega', echo: true, alive: true }, { type: 'grinder', echo: true, alive: true });
+    // a leftover rally bot must not hold the wave (and the victory) open
+    minions.push({ type: 'rallybot', echo: false, alive: true });
     events.emit('bossDefeated', { enemy: { type: 'chairman', echo: false } });
     expect(d.chairmanDown).toBe(true);
-    expect(dismissed).toHaveLength(2);
+    expect(dismissed).toHaveLength(3);
+    expect(minions[0].alive).toBe(false);
     expect(cancelled()).toBe(1);
   });
 });

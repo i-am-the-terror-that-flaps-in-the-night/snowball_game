@@ -437,11 +437,10 @@ class ChairmanProps {
       trim.setMatrixAt(n, _m);
       n++;
     }
-    for (const im of [body, trim]) {
-      im.count = n;
-      im.visible = n > 0;
-      if (n > 0) im.instanceMatrix.needsUpdate = true;
-    }
+    // (no array literal here: this runs every frame)
+    body.count = trim.count = n;
+    body.visible = trim.visible = n > 0;
+    if (n > 0) body.instanceMatrix.needsUpdate = trim.instanceMatrix.needsUpdate = true;
   }
 
   private updateStorm(h: Host, dt: number): void {

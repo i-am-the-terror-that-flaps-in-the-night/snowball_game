@@ -1210,6 +1210,9 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.desHeading = Math.atan2(o.x - e.position.x, o.z - e.position.z);
     e.desSpeed = Math.max(e.desSpeed, Math.max(4.5, e.def.speed) * 0.85 * e.spdMult);
     e.turnRate = Math.max(e.turnRate, 1.6);
+    // THE CHAIRMAN's moves are ranged (lobs, beams, the paper storm, walls): routing never holds them, so a plow
+    // parked on a deck he cannot climb (he is too wide for the ramps) still gets the full fight
+    if (e.type === 'chairman') return;
     e.cd = Math.max(e.cd, 0.4);
     e.cd2 = Math.max(e.cd2, 0.4);
   }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EnemyHandle, GameContext } from './types';
 import { BOARDROOM } from '../world/environment/ProtocolScenery';
 import { PROTOCOL_WAVES } from '../config/protocol';
+import { CH } from '../entities/enemies/chairman';
 import {
   BEAT_MAX_CHARS, CHAIRMAN_ACQUIRE, CHAIRMAN_INTRO, CHAIRMAN_KILL, CHAIRMAN_KILL_ANY, CHAIRMAN_KNOCKOFF, CHAIRMAN_LOW_HP, CHAIRMAN_REVEAL,
 } from '../config/lore';
@@ -16,9 +17,10 @@ import {
  *  - THE REVEAL (wave 7's countdown, REVEAL_COUNTDOWN s): the box lights up (silhouette -> THE DONALD, lit, ankle
  *    monitor on), two lines, and the camera eases onto a shot looking up at the box from the north end of the arena
  *    (camera(): blended over the follow camera after CameraRig.update, so the rig itself is untouched). The fight
- *    then opens with his descent (enemies/chairman.ts, the rig's kill-cam orbit on the landing spot).
- *  - THE DEFEAT HOOK: onChairmanDefeated (his wreck after the PROTOCOL C button): the echoes power down, the rest of
- *    the wave queue is dropped, so wave 7 ends and the run's victory follows. TODO(stage 4): startWhiteout() here.
+ *    then opens with his descent (enemies/chairman.ts): a shot that follows the tower down from the box (dropCamera),
+ *    eased back to the follow camera once he lands.
+ *  - THE DEFEAT HOOK: onChairmanDefeated (his wreck after the PROTOCOL C button): everything left (echoes, rally bots)
+ *    powers down, the rest of the wave queue is dropped, so wave 7 ends and the run's victory follows. TODO(stage 4): startWhiteout() here.
  * Pure timing logic + ctx calls (ui toasts, world.boardroom, the camera); no per-frame allocation.
  */
 
@@ -39,7 +41,13 @@ export const REVEAL_LINE = 2.4;
 const SHOT_A = new THREE.Vector3(7, 15.5, -17);
 const SHOT_B = new THREE.Vector3(3.5, 15.8, -23.5);
 const SHOT_LOOK = new THREE.Vector3(BOARDROOM.x + 4, BOARDROOM.y - 2.2, BOARDROOM.z);
+/** The descent shot (wave 7, his drop from the box): from SHOT_B down to DROP_CAM, framing the tower as it falls
+ *  (looking at its rig + DROP_LOOK_Y), then eased back to play over DROP_OUT s once he lands. */
+const DROP_CAM = new THREE.Vector3(10, 7.5, -2);
+const DROP_LOOK_Y = 4.5;
+export const DROP_OUT = 0.9;
 const _pose = new THREE.PerspectiveCamera();
+const _look = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
@@ -61,8 +69,14 @@ export class ChairmanDirector {
   /** The reveal shot's blend weight (0..1) and, after the fight starts, its ease-out timer. */
   private camW = 0;
   private camOut = 0;
+  /** The descent shot: on while he drops (dropOn), then its ease-out timer; its last pose (held while it eases). */
+  private dropOn = false;
+  private dropOut = 0;
+  private readonly dropPos = new THREE.Vector3();
+  private readonly dropQ = new THREE.Quaternion();
   /** Lines said (tests / probes read the log; capped). */
   readonly log: string[] = [];
+  private readonly sweep: EnemyHandle[] = [];
   /** The whiteout hook ran (THE CHAIRMAN fell this run). */
   chairmanDown = false;
 
@@ -85,6 +99,8 @@ export class ChairmanDirector {
     this.revealLine = false;
     this.camW = 0;
     this.camOut = 0;
+    this.dropOn = false;
+    this.dropOut = 0;
     this.ctx.world.boardroom?.('shadow');
     const intro = CHAIRMAN_INTRO[wave];
     if (intro) this.say(intro, true);
@@ -97,6 +113,8 @@ export class ChairmanDirector {
     this.queued = null;
     this.camW = 0;
     this.camOut = 0;
+    this.dropOn = false;
+    this.dropOut = 0;
   }
 
   get revealing(): boolean {
@@ -126,6 +144,7 @@ export class ChairmanDirector {
 
   /** After CameraRig.update (Game.tick): blend the reveal shot over the follow camera. */
   camera(dt: number): void {
+    if (this.dropCamera(dt)) return;
     let w = 0;
     let u = 1;
     if (this.revealT >= REVEAL_CAM) {
@@ -147,6 +166,50 @@ export class ChairmanDirector {
     cam.position.lerp(_p, w);
     cam.quaternion.copy(_q);
     cam.updateMatrixWorld();
+  }
+
+  /** The descent shot (the fight has begun, THE CHAIRMAN is dropping from the box): true while it owns the camera.
+   *  It picks up from the reveal shot's end pose, so the hand-over is seamless. */
+  private dropCamera(dt: number): boolean {
+    if (!this.active || this.revealT >= 0 || this.wave < PROTOCOL_WAVES) return false;
+    let rig: THREE.Object3D | null = null;
+    let u = 0;
+    for (const b of this.ctx.enemies.bosses) {
+      const c = b as EnemyHandle & { state?: string; stateT?: number; rig?: { root: THREE.Object3D } };
+      if (c.type !== 'chairman' || !c.alive || c.state !== 'reveal' || !c.rig) continue;
+      rig = c.rig.root;
+      u = 1 - Math.max(0, Math.min(1, (c.stateT ?? 0) / CH.REVEAL_T));
+    }
+    const cam = this.ctx.camera;
+    if (rig) {
+      this.dropOn = true;
+      this.camOut = 0;
+      const k = u * u * (3 - 2 * u);
+      this.dropPos.copy(SHOT_B).lerp(DROP_CAM, k);
+      _pose.position.copy(this.dropPos);
+      _look.copy(rig.position);
+      _look.y += DROP_LOOK_Y;
+      // from the box's face down onto the tower (the first frames still look at the box)
+      _look.lerp(SHOT_LOOK, Math.max(0, 1 - u * 4));
+      _pose.lookAt(_look);
+      this.dropQ.copy(_pose.quaternion);
+      cam.position.copy(this.dropPos);
+      cam.quaternion.copy(this.dropQ);
+      cam.updateMatrixWorld();
+      return true;
+    }
+    if (this.dropOn) {
+      this.dropOn = false;
+      this.dropOut = DROP_OUT;
+    }
+    if (this.dropOut <= 0) return false;
+    this.dropOut = Math.max(0, this.dropOut - dt);
+    const k = this.dropOut / DROP_OUT;
+    const w = k * k * (3 - 2 * k);
+    cam.position.lerp(this.dropPos, w);
+    cam.quaternion.slerp(this.dropQ, w);
+    cam.updateMatrixWorld();
+    return true;
   }
 
   private updateReveal(dt: number): void {
@@ -200,18 +263,26 @@ export class ChairmanDirector {
   }
 
   /**
-   * THE CHAIRMAN's wreck (after he slammed PROTOCOL C): stage 4's hook. For now the echoes power down and the rest of
-   * the wave 7 queue is dropped, so the wave (and the run) ends in victory.
+   * THE CHAIRMAN's wreck (after he slammed PROTOCOL C): stage 4's hook. For now everything left on the floor powers down
+   * (echoes, rally bots) and the rest of the wave 7 queue is dropped, so the wave (and the run) ends in victory.
    */
   onChairmanDefeated(): void {
     this.chairmanDown = true;
     const ctx = this.ctx;
     ctx.waves.cancel?.();
+    // everything still on the floor powers down with him (the echoes, and any rally bots / minions they brought):
+    // otherwise a leftover red cap would hold the wave, and the run's victory, open
     const bosses = ctx.enemies.bosses;
     for (let i = bosses.length - 1; i >= 0; i--) {
       const b = bosses[i];
-      if (b.alive && b.echo) ctx.enemies.dismiss?.(b);
+      if (b.alive && b.echo) ctx.enemies.dismiss?.(b); // (a downed twin husk too: query() skips husks)
     }
+    const all = ctx.enemies.query(0, 0, 1e4, this.sweep);
+    for (let i = all.length - 1; i >= 0; i--) {
+      const b = all[i];
+      if (b.alive && b.type !== 'chairman') ctx.enemies.dismiss?.(b);
+    }
+    this.sweep.length = 0;
     // TODO(stage 4): startWhiteout() — the roof tears off and THE WHITEOUT rises instead of the victory.
   }
 }

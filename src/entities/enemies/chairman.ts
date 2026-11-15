@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ARENA } from '../../core/types';
+import { ARENA, type EnemyHandle } from '../../core/types';
 import { Bot, type Host } from './Bot';
 import { clamp, face, goTo } from './ai';
 import { donaldProps, type WallLine } from './donaldProps';
@@ -67,6 +67,8 @@ export const CH = {
   RALLY_N: 6,
   RALLY_CD: 32,
   RALLY_AT: 0.75,
+  /** Most rally bots on the floor at once (a rally tops them up to this; it still summons at least two). */
+  RALLY_MAX: 10,
   /** Phase 2. */
   PHASE2: 0.5,
   CHUTE_REFLECT: 0.15,
@@ -110,6 +112,8 @@ export interface ChairmanState {
   seqT: number;
   pressed: boolean;
   landed: boolean;
+  /** The last move started (pickMove interleaves the cannon between the big moves). */
+  last: ChairmanMove;
 }
 
 const STATE = new WeakMap<Bot, ChairmanState>();
@@ -118,21 +122,36 @@ export function chairmanState(e: Bot): ChairmanState {
   if (!s) {
     s = {
       caseCd: 2.5, reportCd: 9, takeCd: 7, wallCd: 14, beamCd: 11, rallyCd: 26, rallied: false, chute: false, chuteK: 0, shots: 0,
-      tauntT: 6, tauntI: 0, rally: [], podPending: false, podX: 0, podZ: 0, target: null, acquired: null, acqHp: 0, seqT: 0, pressed: false, landed: false,
+      tauntT: 6, tauntI: 0, rally: [], podPending: false, podX: 0, podZ: 0, target: null, acquired: null, acqHp: 0, seqT: 0, pressed: false, landed: false, last: null,
     };
     STATE.set(e, s);
   }
   return s;
 }
 
-/** The next move (between moves, cooldown up): RALLY > HOSTILE TAKEOVER > RESTRUCTURING > QUARTERLY REPORTS >
- *  DEPORTATION > BRIEFCASE CANNON > a shove up close. Pure (tests). */
+/** The next move (between moves, cooldown up): RALLY first; right after one of the big moves a ready BRIEFCASE CANNON;
+ *  else the big move that has been ready longest (HOSTILE TAKEOVER, RESTRUCTURING, QUARTERLY REPORTS, DEPORTATION; a tie
+ *  goes in that order), so none of them starves the others; else the BRIEFCASE CANNON; else a shove up close. Pure
+ *  (tests). */
 export function pickMove(s: ChairmanState, o: { hpFrac: number; dist: number; reach: number; echo: boolean; wallsUp: boolean; storm: boolean; beam: boolean }): ChairmanMove {
   if (s.rallyCd <= 0 && (s.rallied || o.hpFrac < CH.RALLY_AT)) return 'rally';
-  if (s.takeCd <= 0 && o.echo && !s.acquired) return 'takeover';
-  if (s.wallCd <= 0 && !o.wallsUp) return 'restructure';
-  if (s.reportCd <= 0 && !o.storm) return 'reports';
-  if (s.beamCd <= 0 && !o.beam) return 'beam';
+  if (s.caseCd <= 0 && s.last !== null && s.last !== 'cases' && s.last !== 'shove') return 'cases';
+  let best: ChairmanMove = null;
+  let bc = 0;
+  if (s.takeCd <= 0 && o.echo && !s.acquired) {
+    best = 'takeover';
+    bc = s.takeCd;
+  }
+  if (s.wallCd <= 0 && !o.wallsUp && (!best || s.wallCd < bc)) {
+    best = 'restructure';
+    bc = s.wallCd;
+  }
+  if (s.reportCd <= 0 && !o.storm && (!best || s.reportCd < bc)) {
+    best = 'reports';
+    bc = s.reportCd;
+  }
+  if (s.beamCd <= 0 && !o.beam && (!best || s.beamCd < bc)) best = 'beam';
+  if (best) return best;
   if (s.caseCd <= 0) return 'cases';
   if (o.dist < o.reach) return 'shove';
   return null;
@@ -182,6 +201,7 @@ function parts(e: Bot): Parts {
 
 const _w = new THREE.Vector3();
 const _v = new THREE.Vector3();
+const _q: EnemyHandle[] = [];
 
 /** A body-frame anchor (local x, y, z; +Z forward) of bot `e` in world space (ignores the arm poses). */
 function anchor(e: Bot, l: readonly [number, number, number], out: THREE.Vector3): THREE.Vector3 {
@@ -348,7 +368,10 @@ function rallyStart(h: Host, e: Bot, s: ChairmanState): void {
   const ctx = h.ctx;
   s.rallied = true;
   s.rallyCd = CH.RALLY_CD * (s.chute ? CH.CHUTE_CD : 1);
-  const n = CH.RALLY_N + (s.chute ? 2 : 0);
+  // never more than RALLY_MAX red caps on the floor (the ones left over from the last rally count)
+  let left = 0;
+  for (const b of ctx.enemies.query(0, 0, ARENA.maxX * 1.5, _q)) if (b.type === 'rallybot' && b.alive) left++;
+  const n = Math.max(2, Math.min(CH.RALLY_N + (s.chute ? 2 : 0), CH.RALLY_MAX - left));
   e.set('rally', CH.RALLY_T);
   e.dmgTakenMult = 0.4;
   e.speed = 0;
@@ -731,6 +754,7 @@ export function chairman(h: Host, e: Bot, dt: number): void {
       if (e.cd > 0) break;
       const t = takeoverTarget(h, e);
       const mv = pickMove(s, { hpFrac: e.hpFrac, dist: d, reach: e.radius + h.pr + 1.8, echo: !!t, wallsUp: donaldProps.wallsUp, storm: chairmanProps.stormActive, beam: donaldProps.beamActive });
+      if (mv) s.last = mv;
       if (mv === 'rally') rallyStart(h, e, s);
       else if (mv === 'takeover') takeoverStart(h, e, s, t!);
       else if (mv === 'restructure') restructureStart(h, e, s);
