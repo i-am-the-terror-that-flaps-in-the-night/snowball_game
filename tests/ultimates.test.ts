@@ -71,11 +71,11 @@ describe.each([
 });
 
 describe('ultimate meters', () => {
-  it('only the plow-specific damage source matters for Classic / ISOTOPE (fire / radiation), not raw hits', () => {
+  it('off-line every hit fills the Classic / ISOTOPE meters too (not only fire / radiation)', () => {
     for (const k of ['classic', 'isotope'] as const) {
       const { c } = rig(k, []);
       fill(c, 5000);
-      expect(c.critMass).toBe(0);
+      expect(c.critMass).toBeGreaterThan(0);
     }
   });
 });

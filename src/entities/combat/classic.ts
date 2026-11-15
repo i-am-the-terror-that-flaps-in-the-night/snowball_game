@@ -92,7 +92,7 @@ const FIREBALL_KNOCK = 12;
  *  to 50% at the rim), big knockback — and leaves the ground burning for FIRE_FIELD_SECONDS, igniting anything that
  *  walks in. Storm dps grows with the pilot's ultimate power (stormDps), like the other ultimates, rather than
  *  with Inferno's steeper burn curve. */
-const FIRESTORM_CHARGE = 870;
+export const FIRESTORM_CHARGE = 870;
 const FIRESTORM_RADIUS = 13;
 const FIRESTORM_MULT = 3;
 const FIRESTORM_KNOCK = 18;
@@ -429,6 +429,7 @@ export class ClassicKit extends Kit {
 
   /** Fire damage fills the Classic Plow's FIRESTORM meter (shares ISOTOPE's Critical Mass slot + net field). */
   feedFire(dealt: number): void {
+    this.h.ultFed = true;
     if (dealt <= 0 || this.b.stats.plowKind !== 'classic') return;
     const was = this.h.crit;
     this.h.crit = Math.min(1, this.h.crit + dealt / ultMeter(this.b, FIRESTORM_CHARGE));
@@ -474,6 +475,7 @@ export class ClassicKit extends Kit {
       });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       if (feed) this.feedFire(dealt);
+      else this.h.ultFed = this.h.ultBlock = true; // the FIRESTORM's own damage never refills it
       this.onPlayerHit(dealt, killed, e, false);
       if (dealt > 0) {
         _tip.set(e.position.x, e.position.y + e.radius + 1.3, e.position.z);
@@ -592,6 +594,7 @@ export class ClassicKit extends Kit {
       const hp0 = e.hp;
       const killed = this.b.enemies.damage(e, stormDps(st) * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: true });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+      this.h.ultFed = this.h.ultBlock = true; // the FIRESTORM's burning ground never refills it
       this.onPlayerHit(dealt, killed, e, false);
     }
     this.clearTargets();
@@ -660,6 +663,7 @@ export class ClassicKit extends Kit {
         const killed = this.b.enemies.damage(e, (b.storm ? storm : dps) * st.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: b.storm });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         if (!b.storm) this.feedFire(dealt);
+        else this.h.ultFed = this.h.ultBlock = true;
         this.onPlayerHit(dealt, killed, e, false);
         if (dealt > 0) {
           _q.set(e.position.x, e.position.y + e.radius + 1, e.position.z);

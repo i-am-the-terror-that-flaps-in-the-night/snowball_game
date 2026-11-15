@@ -6,11 +6,11 @@ import { knockScale } from '../config/plows';
 import { ctxPilot, type PilotBinding } from './pilot';
 import { NP } from '../net/protocol';
 import { NET_LATCH, Reach, Threat, _fwd, _p, _q, _tip, bodyBand, heightOk, waveHits, BLAST_BAND, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './combat/shared';
-import { Ultimates } from './combat/ultimates';
-import { BURN_VULN, ClassicKit } from './combat/classic';
+import { ULT_KILL, ULT_KILL_BOSS, Ultimates, ultMeter } from './combat/ultimates';
+import { BURN_VULN, ClassicKit, FIRESTORM_CHARGE } from './combat/classic';
 import { VoltKit } from './combat/volt';
 import { BruteKit, ironHide } from './combat/brute';
-import { IsotopeKit, LEAD_LINING, RAD_VULN } from './combat/isotope';
+import { IsotopeKit, LEAD_LINING, NUKE_CHARGE_DMG, RAD_VULN } from './combat/isotope';
 import { ArsenalKit } from './combat/arsenal';
 import { RevenantKit } from './combat/revenant';
 import { MeleeKit } from './combat/melee';
@@ -85,7 +85,7 @@ export class Combat implements CombatAPI {
   constructor(ctx: GameContext, binding?: PilotBinding) {
     this.ctx = ctx;
     this.b = binding ?? ctxPilot(ctx);
-    const host = this.makeHost();
+    const host = (this.host = this.makeHost());
     // Scene order kept: flame cone, lightning, fallout pools, ARSENAL fx, fire field.
     this.classic = new ClassicKit(host);
     this.lightning = new Lightning(ctx.scene);
@@ -112,6 +112,8 @@ export class Combat implements CombatAPI {
     return this.classic.flameCone.flipLightForWarmup();
   }
 
+  private host!: CombatHost;
+
   private makeHost(): CombatHost {
     const c = this;
     return {
@@ -133,6 +135,8 @@ export class Combat implements CombatAPI {
         return c.ult.idle;
       },
       ultFeedShare: 1,
+      ultFed: false,
+      ultBlock: false,
       get puppet() {
         return c.puppet;
       },
@@ -664,7 +668,26 @@ export class Combat implements CombatAPI {
     const st = this.b.stats;
     if (plow.dead) return;
     if (dealt > 0) plow.feedSawFury(dealt, 0);
+    // Ultimate meter: every hit and every wreck counts. VOLT-9 / BRUTUS / ARSENAL / REVENANT feed here; the Classic
+    // and ISOTOPE meters fill from their own fire / radiation paths (which set ultFed) and, off-line, from every
+    // other hit here too. Wrecks add a share of a full meter (off-line).
+    const fed = this.host.ultFed;
+    const block = this.host.ultBlock;
+    this.host.ultFed = this.host.ultBlock = false;
     if (dealt > 0) this.ult.feed(dealt);
+    if (!this.b.pvp) {
+      if (dealt > 0 && !fed) {
+        if (st.plowKind === 'classic') this.classic.feedFire(dealt);
+        else if (st.plowKind === 'isotope') this.critCharge = Math.min(1, this.critCharge + dealt / ultMeter(this.b, NUKE_CHARGE_DMG));
+      }
+      if (killed && !block) {
+        const frac = target?.isBoss ? ULT_KILL_BOSS : ULT_KILL;
+        if (st.plowKind === 'classic') this.classic.feedFire(frac * ultMeter(this.b, FIRESTORM_CHARGE));
+        else if (st.plowKind === 'isotope') this.critCharge = Math.min(1, this.critCharge + frac);
+        else this.ult.feedFrac(frac);
+      }
+      this.host.ultFed = this.host.ultBlock = false;
+    }
     if (canChain && target && dealt > 0 && st.chainCount > 0) this.volt.chainLightning(target, dealt, heal);
     if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal * healMult);
     if (killed && target && st.chainBlast > 0 && this.isotope.rads.has(target)) this.isotope.chainQueue.push({ x: target.position.x, y: target.position.y, z: target.position.z });

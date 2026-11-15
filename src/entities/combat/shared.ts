@@ -136,6 +136,11 @@ export interface CombatHost {
   readonly ultIdle: boolean;
   /** Share of the next hits' damage that fills the ultimate meter (1; REVENANT's area bursts set less around theirs). */
   ultFeedShare: number;
+  /** The current hit already filled (or must not fill) the meter through its kit's own path (Classic fire, ISOTOPE
+   *  radiation, ultimate damage): Combat.onPlayerHit skips its catch-all feed for it and clears the flag. */
+  ultFed: boolean;
+  /** The current hit is an ultimate's own damage: it fills nothing, its wreck adds no meter either. */
+  ultBlock: boolean;
   startUlt(kind: UltKind, plow: PlowAPI): void;
   shake(intensity: number): void;
   impactHit(kind: ImpactKind, pos: THREE.Vector3, strength?: number, opts?: ImpactOpts): void;

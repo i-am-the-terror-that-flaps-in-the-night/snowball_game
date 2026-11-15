@@ -52,7 +52,7 @@ const CHAIN_RADIUS = 4;
 /** NUKE (ISOTOPE): Critical Mass fills from radiation damage dealt (this much on a fresh plow, see ultCharge); the
  *  next F arms a NUKE that goes off instantly — NUKE_DMG_MULT x Meltdown damage across NUKE_RADIUS, falling off to
  *  NUKE_RIM_FRAC at the edge, plus a giant fallout pool. */
-const NUKE_CHARGE_DMG = 1800;
+export const NUKE_CHARGE_DMG = 1800;
 const NUKE_RADIUS = 18;
 const NUKE_DMG_MULT = 2.6;
 const NUKE_RIM_FRAC = 0.35;
@@ -347,6 +347,8 @@ export class IsotopeKit extends Kit implements VehicleKit {
     const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, freezeSeconds: freezeSeconds || undefined, ult: ult || undefined });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.h.crit = Math.min(1, this.h.crit + (dealt * critFrac) / ultMeter(this.b, NUKE_CHARGE_DMG));
+    this.h.ultFed = true;
+    if (ult) this.h.ultBlock = true;
     this.onPlayerHit(dealt, killed, e, false, heal);
   }
 
@@ -627,8 +629,9 @@ export class IsotopeKit extends Kit implements VehicleKit {
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         // Lifesteal: only the RAD DOSE soak's share of the hit (never the base burn or the tank-buster slice).
         const healMult = soak > 0 ? (DOSE_HEAL * soak * mult) / ((amt + soak) * mult + tb) : 0;
-        this.onPlayerHit(dealt, killed, e, false, soak > 0, healMult);
         if (dealt > 0) this.h.crit = Math.min(1, this.h.crit + (dealt * SPRAY_CRIT) / ultMeter(this.b, NUKE_CHARGE_DMG));
+        this.h.ultFed = true;
+        this.onPlayerHit(dealt, killed, e, false, soak > 0, healMult);
         if (soak > 0 && dealt > 0 && glow) {
           _q.set(e.position.x, e.position.y + e.radius + 0.9, e.position.z);
           ctx.fx.floatText(_q, `☣${Math.round(dealt)}`, '#7dff4a', 0.6);

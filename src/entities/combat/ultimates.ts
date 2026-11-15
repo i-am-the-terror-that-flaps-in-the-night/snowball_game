@@ -17,6 +17,13 @@ const ULT_BOLT = { life: 0.5, width: 0.6, jag: 1.8, color: 0xbff0ff };
  *  is not counted, so it's below PVE_MULT): tuned so the SINGULARITY fills in about 20 s fresh (the faster charge asked for). */
 const PVE_ULT = 1.75;
 const ULT_CHARGE = { volt: 2700, brute: 2100, arsenal: 1200, revenant: 2000 } as const;
+/** Off-line (not the Duel) all damage and every wreck count: every hit fills the meter (the Classic / ISOTOPE meters
+ *  too, not only fire / radiation), each wreck adds ULT_KILL of a full meter (a boss ULT_KILL_BOSS), and meters are
+ *  divided by PVE_ULT_RATE (1: the extra sources alone roughly halve the fill time, ~11-15 s fresh in the sim's
+ *  pack). The Duel keeps its own tuning (config/duel.ts). */
+export const PVE_ULT_RATE = 1;
+export const ULT_KILL = 0.015;
+export const ULT_KILL_BOSS = 0.15;
 const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🌀 SINGULARITY', revenant: '⚰️ THE WILD HUNT' } as const;
 /** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every
  *  upgrade, so the meter grows with the pilot's power and with Overclock (faster abilities, more damage): it takes
@@ -28,7 +35,7 @@ export const ultCharge = (st: PlayerStats, base: number) => (base * Math.max(1, 
  *  / sqrt(cooldownMult) for Overclock; config/duel.ts). */
 export function ultMeter(b: { readonly stats: PlayerStats; readonly pvp?: boolean; readonly enemies: EnemyManagerAPI }, base: number): number {
   const foe = b.pvp ? (b.enemies as { duelFoeMaxHp?: number }).duelFoeMaxHp : undefined;
-  if (!foe || !(foe > 0)) return ultCharge(b.stats, base);
+  if (!foe || !(foe > 0)) return ultCharge(b.stats, base) / (b.pvp ? 1 : PVE_ULT_RATE);
   const st = b.stats;
   return (DUEL_ULT_CHARGE * (DUEL_ULT_KIND_CHARGE[st.plowKind] ?? 1) * foe) / Math.sqrt(Math.min(1, st.cooldownMult || 1));
 }
@@ -70,7 +77,23 @@ export class Ultimates {
     const was = h.crit;
     // ARSENAL's PvE damage bonus doesn't speed its meter up: it charges as in the Duel.
     const pve = kind === 'arsenal' && !h.b.pvp ? PVE_ULT : 1;
-    h.crit = Math.min(1, h.crit + (dealt * h.ultFeedShare) / pve / ultMeter(h.b, ULT_CHARGE[kind]));
+    // REVENANT's multi-hit area bursts count at a share (it hits many bots per swing; it would fill twice as fast).
+    const share = h.ultFeedShare;
+    h.crit = Math.min(1, h.crit + (dealt * share) / pve / ultMeter(h.b, ULT_CHARGE[kind]));
+    if (was < 1 && h.crit >= 1 && h.b.local) {
+      h.ctx.ui.toast(`${ULT_NAME[kind]} READY · F`, 'info');
+      h.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });
+    }
+  }
+
+  /** A wreck adds `frac` of a full meter (VOLT-9 / BRUTUS / ARSENAL / REVENANT; not while an ultimate plays out). */
+  feedFrac(frac: number): void {
+    const h = this.h;
+    const kind = h.b.stats.plowKind;
+    if (kind !== 'volt' && kind !== 'brute' && kind !== 'arsenal' && kind !== 'revenant') return;
+    if (this.lock > 0 || this.t >= 0 || frac <= 0) return;
+    const was = h.crit;
+    h.crit = Math.min(1, h.crit + frac);
     if (was < 1 && h.crit >= 1 && h.b.local) {
       h.ctx.ui.toast(`${ULT_NAME[kind]} READY · F`, 'info');
       h.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });
