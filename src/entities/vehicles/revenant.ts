@@ -214,7 +214,7 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   const edgeMat = new THREE.MeshStandardMaterial({ color: REV_EDGE, roughness: 0.6, metalness: 0.3 });
   const bone = new THREE.MeshStandardMaterial({ color: REV_BONE, roughness: 0.55, metalness: 0.15 });
   const glass = new THREE.MeshStandardMaterial({ color: 0x2a1c3c, roughness: 0.35, metalness: 0.4, emissive: 0x2a0c4a, emissiveIntensity: 0.55 });
-  const alloy = new THREE.MeshStandardMaterial({ color: 0x9aa0ae, roughness: 0.28, metalness: 0.85 });
+  const alloy = new THREE.MeshStandardMaterial({ color: 0xc4c9d6, roughness: 0.22, metalness: 0.6 });
   const slitMat = new THREE.MeshStandardMaterial({ color: REV_BRIGHT, emissive: REV_CORE, emissiveIntensity: 2.4 });
   const tex = sigils();
   const sigilMat = new THREE.MeshStandardMaterial({ color: tex ? 0xffffff : REV_BRIGHT, map: tex, emissive: tex ? 0xffffff : REV_CORE, emissiveMap: tex, emissiveIntensity: 1.2, roughness: 0.4 });
@@ -273,6 +273,24 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   bladeGeo.rotateX(Math.PI / 2);
   bladeGeo.computeVertexNormals();
   addMesh(bladeGeo, alloy, 0, 0.78, 2.55, hull);
+  // Glowing cutting edge along the blade's outer arc and a honed bevel on its inner (rear-facing) arc, so the hooked
+  // tips read as blades from the chase camera behind, not as dark wings.
+  const edgeGlow = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, toneMapped: false });
+  const bevel = new THREE.MeshStandardMaterial({ color: 0xeef0f6, roughness: 0.12, metalness: 0.5, emissive: 0x3a2a55, emissiveIntensity: 0.5 });
+  const BY = 0.79;
+  const BZ = 2.55;
+  for (const sx of [-1, 1]) {
+    const outer = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(sx * (OUT + 0.42), BY, BZ - 0.95), new THREE.Vector3(sx * OUT, BY, BZ + 0.05), new THREE.Vector3(0, BY, BZ + 0.38));
+    addMesh(new THREE.TubeGeometry(outer, 16, 0.045, 5, false), edgeGlow, 0, 0, 0, hull, false);
+    const inner = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(sx * (OUT + 0.42), BY, BZ - 0.95), new THREE.Vector3(sx * (OUT - 0.05), BY, BZ - 0.3), new THREE.Vector3(sx * 0.4, BY, BZ + 0.06));
+    addMesh(new THREE.TubeGeometry(inner, 16, 0.06, 4, false), bevel, 0, 0, 0, hull, false);
+    // A needle point hooking back off each tip.
+    const tip = addMesh(new THREE.ConeGeometry(0.09, 0.55, 6), edgeGlow, sx * (OUT + 0.55), BY - 0.12, BZ - 1.18, hull, false);
+    tip.rotation.set(-Math.PI / 2, 0, 0);
+    tip.rotation.y = sx * 0.55;
+  }
   // Sigil band: a thin strip following the front arc (segments).
   const SEG = 9;
   for (let i = 0; i < SEG; i++) {
