@@ -486,7 +486,7 @@ export interface RivalRig {
 /** A rival vehicle. `plow` 'volt' / 'brute' wear the matching starter-plow silhouette instead of the `kind`
  *  vehicle body; every body keeps the rival's own paint color. */
 export function createRivalRig(kind: RivalKind, color: string, plow: PlowKind = 'classic'): RivalRig {
-  // Rivals never roll ISOTOPE (player-only plow).
+  // Rivals never roll ISOTOPE or REVENANT (player-only plows).
   const pt = plow === 'volt' || plow === 'brute' ? plowTemplate(plow) : null;
   const t = pt ?? template(kind);
   const col = new THREE.Color(color);

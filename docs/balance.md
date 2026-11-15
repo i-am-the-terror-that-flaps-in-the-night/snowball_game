@@ -709,6 +709,39 @@ Duel. `npm run balance`, same seed, before -> after:
   +129%, so it was trimmed to half the max ball (with the 0.9 m minimum for a fresh plow).
 - Not modelled: the +8% a stack top speed and the meter refund buy time and position, not damage, in this sim.
 
+## Follow-up: REVENANT (the sixth plow)
+
+REVENANT (docs/plows.md) joined the sim (`KINDS`, its line `revReap` / `revPhase` / `revGrasp` / `revHaunt`). The sim
+parks every plow, so its engagement model adds one rule: while a PHASE runs, every bot within 7.5 m and ~60° of the
+nose counts as passed through (Haunted, a soul each, 3 a Phase), as driving through the pack would. Its targets: single
+target mid-pack, clusters high (Phase -> Grasp -> Reap and the phantom chains), the ultimate top-tier area, low HP.
+`npm run balance`, same seed (other plows unchanged):
+
+| tier | HP | 1-target DPS (vs mean) | cluster DPS | ult fill: fight / boss (s) | ult dmg, bots hit (vs mean) | duel TTK avg / min (s) |
+|---|---|---|---|---|---|---|
+| fresh | 134 | 74 (-11%) | 441 (top; ISOTOPE 365) | 20.9 / 29.9 | 3835, 8 (+17%) | 9.2 / 8.8 |
+| mid | 291 | 359 (-11%) | 2349 (top; BRUTUS 1747) | 28.1 / 26.0 | 14438, 8 (+14%) | 9.9 / 8.0 |
+| high | 448 | 1760 (-4%) | 11168 (top; ISOTOPE 9014) | 38.9 / 23.7 | 34517, 8 (+6%) | 7.3 / 5.8 |
+
+- **HP:** `hpMult` 1.12, below the Classic's 1.15. With neutral Duel factors it is the least that keeps ISOTOPE's NUKE
+  under the 45% ultimate cap on a parked REVENANT (tests/balance.test.ts).
+- **REAP growth** 3.1 -> 4.4 a level (8.6 fresh): at 3.1 the mid / high single target sat at -24% of the mean, on the
+  edge of the 25% band. The Duel didn't want the extra: at full strength REAP won 97-99% of the high-tier stand-and-
+  trade fights in `npm run duel2` (the scythe is a blade hit, so no area diminishing returns, and the Haunted foe takes
+  +25%), so in the Duel it hits a pilot at 80% (`DUEL_REAP` in combat/revenant.ts). The Duel factor tables stay at 1.
+- **Ultimate meter:** MANIFEST, phantom and Grasp bursts feed it at 34% (`BURST_ULT_SHARE`) and REAP hits past the
+  nearest target at 30% (`REAP_ULT_SPLASH`): at full share the bursts that chain through a pack filled it in a few
+  seconds of a crowded fight. 0.34 is the most that keeps the fresh fight fill over the 20 s floor (20.9 s); the high
+  tier fills slower than the others (39 s; its bots die to the bursts, which count at a third). The boss fill is in
+  line (24-30 s).
+- **THE WILD HUNT** trample 1.4 -> 1.6x Soul Chains damage a rider: top-tier area (fresh / mid the best ultimate
+  after ARSENAL's PvE-boosted one, high within 6% of the Classic's FIRESTORM). On a parked same-tier Duel plow it takes
+  20-32% (the Duel ultimate cap applies).
+- `npm run duel2` (40 fights a pair), REVENANT's score vs the other five, movement / stand 3 m / stand 6 m: fresh
+  37 / 47 / 52%, mid 23 / 50 / 48%, high 48 / 90 / 72% (mean 52%). Its first Duel ultimate comes 30-39 s into
+  continuous fighting. (The sim's matrices swing hard per matchup at every tier: ARSENAL scores 96% in the mid
+  movement model.)
+
 ## Limits of the model
 
 - The dummies have no armour. In the game, armour comes off each hit (minimum 1), so many-small-hit weapons lose more

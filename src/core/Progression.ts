@@ -1,4 +1,4 @@
-import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, soft, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
+import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, PHASE_MIN_COOLDOWN, soft, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_PRICE_REV, REMOVED_GEAR, REPRICED_GEAR, cleanEquipped, gearCost, gearLevels, gearSpent, type GearDef, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
@@ -507,7 +507,7 @@ export class Progression {
 }
 
 /** Each plow's F-ability upgrade (its ultimate meter grows with it, see ultPower). */
-const F_UPGRADE: Record<PlowKind, UpgradeId> = { classic: 'inferno', volt: 'voltClap', brute: 'brutePound', isotope: 'isoMeltdown', arsenal: 'armMissiles' };
+const F_UPGRADE: Record<PlowKind, UpgradeId> = { classic: 'inferno', volt: 'voltClap', brute: 'brutePound', isotope: 'isoMeltdown', arsenal: 'armMissiles', revenant: 'revGrasp' };
 
 /** Stats for a garage given as upgrade levels + the driven plow. Pure: the save's computeStats and the Duel host
  *  (which computes BOTH players' stats from the levels they bring) share it. */
@@ -523,6 +523,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
   const cd = FX.cooldownMult(L('overclock'));
   const fire = plow.fAbility === 'fire';
   const arsenal = plow.id === 'arsenal';
+  const rev = plow.id === 'revenant';
   // Classic buff (late-game slam damage): Packed Ice levels past the knee add plow.iceGrowth each (soft: linear to +6,
   // then easing toward +12: x1.33 at Packed Ice 10, never past x1.66). Fresh / mid builds sit at or below the knee, so only high-tier builds change.
   const ICE_GROWTH_KNEE = 4;
@@ -576,6 +577,18 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     scrapDps: arsenal ? FX.scrapDps(L('armMagnet')) : 0,
     scrapMax: arsenal ? FX.scrapMax(L('armMagnet')) : 0,
     scrapHit: arsenal ? FX.scrapHit(L('armMagnet')) : 0,
+    // REVENANT: Wide Blade lengthens the scythe, Nitro Dash shortens the Phase recharge (as it does the dash's).
+    reapDamage: rev ? FX.reapDamage(L('revReap')) : 0,
+    reapReach: FX.reapReach(L('revReap')) + 0.5 * Math.max(0, FX.bladeWidth(L('blade')) - FX.bladeWidth(0)),
+    manifestDamage: FX.manifestDamage(L('revPhase')),
+    manifestRadius: FX.manifestRadius(L('revPhase')),
+    phaseCooldown: Math.max(PHASE_MIN_COOLDOWN, cooldown(FX.phaseCooldown(L('revPhase')) * (0.6 + 0.4 * (FX.dashCooldown(L('nitro')) / FX.dashCooldown(0))), cd)),
+    graspDamage: FX.graspDamage(L('revGrasp')),
+    graspStun: FX.graspStun(L('revGrasp')),
+    graspRange: FX.graspRange(L('revGrasp')),
+    hauntVuln: FX.hauntVuln(L('revHaunt')),
+    hauntSeconds: FX.hauntSeconds(L('revHaunt')),
+    phantomDamage: FX.phantomDamage(L('revHaunt')),
     maxSpeed: FX.maxSpeed(L('engine')) * plow.speedMult,
     accel: FX.accel(L('engine')) * plow.accelMult,
     turnRate: FX.turnRate(L('engine')),

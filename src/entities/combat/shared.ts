@@ -13,7 +13,7 @@ export const _tip = new THREE.Vector3();
 /** Wrap an angle into (-PI, PI]. */
 export const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
-export type UltKind = 'volt' | 'brute' | 'arsenal';
+export type UltKind = 'volt' | 'brute' | 'arsenal' | 'revenant';
 
 /* ------------------------------------------------------------------ height rules (level overhaul, 3D combat)
  * Every ground attack only hits targets near the attacker's height. Two flavours:
@@ -132,8 +132,10 @@ export interface CombatHost {
   crit: number;
   /** Duel guest, this Combat drives the opponent's puppet (visual replay: hits nothing, inputs from snapshots). */
   readonly puppet: boolean;
-  /** No VOLT-9 / BRUTUS / ARSENAL ultimate is playing out. */
+  /** No VOLT-9 / BRUTUS / ARSENAL / REVENANT ultimate is playing out. */
   readonly ultIdle: boolean;
+  /** Share of the next hits' damage that fills the ultimate meter (1; REVENANT's area bursts set less around theirs). */
+  ultFeedShare: number;
   startUlt(kind: UltKind, plow: PlowAPI): void;
   shake(intensity: number): void;
   impactHit(kind: ImpactKind, pos: THREE.Vector3, strength?: number, opts?: ImpactOpts): void;

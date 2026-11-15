@@ -12,6 +12,7 @@ import { VoltKit } from './combat/volt';
 import { BruteKit, ironHide } from './combat/brute';
 import { IsotopeKit, LEAD_LINING, RAD_VULN } from './combat/isotope';
 import { ArsenalKit } from './combat/arsenal';
+import { RevenantKit } from './combat/revenant';
 import { MeleeKit } from './combat/melee';
 import { AirKit } from './combat/air';
 import { CLASSIC_SLAM_POWER, cashIn } from './combat/classicRush';
@@ -64,6 +65,7 @@ export class Combat implements CombatAPI {
   private readonly brute: BruteKit;
   private readonly isotope: IsotopeKit;
   private readonly arsenal: ArsenalKit;
+  private readonly revenant: RevenantKit;
   private readonly melee: MeleeKit;
   /** Stomps, the air slam and BRUTUS's air pound (landing attacks). */
   private readonly air: AirKit;
@@ -86,17 +88,19 @@ export class Combat implements CombatAPI {
     this.lightning = new Lightning(ctx.scene);
     this.isotope = new IsotopeKit(host);
     this.arsenal = new ArsenalKit(host);
+    this.revenant = new RevenantKit(host);
     this.classic.buildField();
     this.volt = new VoltKit(host);
     this.brute = new BruteKit(host);
     this.melee = new MeleeKit(host);
     this.air = new AirKit(host, this.brute);
-    this.ult = new Ultimates(host, { volt: this.volt, brute: this.brute, arsenal: this.arsenal });
+    this.ult = new Ultimates(host, { volt: this.volt, brute: this.brute, arsenal: this.arsenal, revenant: this.revenant });
   }
 
   /** Build the lazily created effects now (hidden), so the game-load warm-up compiles them (render/warmup.ts). */
   prewarm(): void {
     this.arsenal.prewarm();
+    this.revenant.prewarm();
   }
 
   /** Shader warm-up: the Inferno light as if burning (see FlameCone.flipLightForWarmup); returns the undo. */
@@ -124,6 +128,7 @@ export class Combat implements CombatAPI {
       get ultIdle() {
         return c.ult.idle;
       },
+      ultFeedShare: 1,
       get puppet() {
         return c.puppet;
       },
@@ -146,6 +151,7 @@ export class Combat implements CombatAPI {
   bind(binding: PilotBinding | null): void {
     this.b = binding ?? ctxPilot(this.ctx);
     this.arsenal.resetNet();
+    this.revenant.clear();
     this.threat.clear();
     this.puppet = false;
     this.netBits = this.netSeen = 0;
@@ -166,6 +172,8 @@ export class Combat implements CombatAPI {
         return this.isotope;
       case 'arsenal':
         return this.arsenal;
+      case 'revenant':
+        return this.revenant;
       default:
         return null;
     }
@@ -262,6 +270,7 @@ export class Combat implements CombatAPI {
     out[o + NP.turret] = this.b.plow ? this.b.plow.turretAim : 0;
     out[o + NP.laser] = ar.laserOff; // the Mag Repulsor fires straight ahead: always 0 (layout kept)
     out[o + NP.chunks] = this.classic.chunks;
+    out[o + NP.souls] = this.revenant.souls;
   }
 
   /** Duel guest, the opponent's puppet: follow the host's Mag Laser / Mag Repulsor (visuals only). */
@@ -275,6 +284,8 @@ export class Combat implements CombatAPI {
     ar.netTurret = s[o + NP.turret];
     // The opponent's SNOW CHUNKS size its rush telegraph's landing ring.
     this.classic.chunks = Math.max(0, Math.round(s[o + NP.chunks]));
+    // REVENANT: the Reliquary shows the host's souls.
+    this.revenant.souls = Math.max(0, Math.round(s[o + NP.souls]));
   }
 
   /** Duel guest, own plow: adopt the host's meters. `keepF`: the pilot just pressed F locally (keep the prediction). */
@@ -297,6 +308,8 @@ export class Combat implements CombatAPI {
     this.classic.chunks = Math.max(0, Math.round(s[o + NP.chunks]));
     // The guest hits nothing locally, so its turret follows the host's aim.
     this.arsenal.netTurret = s[o + NP.turret];
+    // REVENANT souls come from the host's hits (the guest's own SOUL GRASP is gated on them).
+    this.revenant.souls = Math.max(0, Math.round(s[o + NP.souls]));
   }
 
   /** Duel guest, the opponent's puppet: re-arm the F ability so the replayed press fires it (visuals only — this
@@ -308,6 +321,8 @@ export class Combat implements CombatAPI {
     this.brute.poundT = -1;
     this.critCharge = nuke ? 1 : 0;
     this.volt.clapHeat = 0;
+    // REVENANT: a replayed SOUL GRASP needs its souls (the snapshot sets the real count again).
+    if (!nuke) this.revenant.souls = Math.max(this.revenant.souls, 3);
   }
 
   /* ------------------------------------------------------------------ HUD meters */
@@ -320,6 +335,7 @@ export class Combat implements CombatAPI {
     if (st.plowKind === 'volt') return st.clapDamage > 0 ? this.critCharge : -1;
     if (st.plowKind === 'brute') return st.poundDamage > 0 ? this.critCharge : -1;
     if (st.plowKind === 'arsenal') return st.missileDamage > 0 ? this.critCharge : -1;
+    if (st.plowKind === 'revenant') return st.reapDamage > 0 ? this.critCharge : -1;
     return -1;
   }
 
@@ -342,13 +358,30 @@ export class Combat implements CombatAPI {
     if (st.plowKind === 'brute') return st.poundDamage > 0 ? (this.brute.poundT >= 0 ? 0 : this.brute.poundCharge) : -1;
     if (st.plowKind === 'isotope') return st.meltDamage > 0 ? this.isotope.meltCharge : -1;
     if (st.plowKind === 'arsenal') return st.missileDamage > 0 ? this.arsenal.missileCharge : -1;
+    if (st.plowKind === 'revenant') return this.revenant.graspReady;
     return st.flameDps > 0 ? this.classic.flameCharge : -1;
   }
 
-  /** Multiplier on the player's hits against `e`: burning bots take BURN_VULN x, and Last Stand adds its bonus. */
+  /** Multiplier on the player's hits against `e`: burning bots take BURN_VULN x, irradiated RAD_VULN x, Haunted
+   *  (REVENANT) 1 + hauntVuln x, and Last Stand adds its bonus. */
   private hitMult(e: EnemyHandle): number {
-    return (this.classic.burns.has(e) ? BURN_VULN : 1) * (this.isotope.rads.has(e) ? RAD_VULN : 1) * this.lastStandMult();
+    return (this.classic.burns.has(e) ? BURN_VULN : 1) * (this.isotope.rads.has(e) ? RAD_VULN : 1) * this.revenant.vuln(e) * this.lastStandMult();
   }
+
+  /** REVENANT souls in the Reliquary (0..10), -1 on other plows (HUD soul lantern). */
+  get souls(): number {
+    return this.b.stats.plowKind === 'revenant' && this.b.stats.reapDamage > 0 ? this.revenant.souls : -1;
+  }
+
+  /** REVENANT rig state for the hearse model (vehicles/revenant.ts): beacon tolls, Reap glow (signed by side), Hunt. */
+  get revenantRig(): { tolls: number; reap: number; hunt: boolean } {
+    const r = this.revRig;
+    r.tolls = this.revenant.tolls;
+    r.reap = this.revenant.reapGlow;
+    r.hunt = this.revenant.huntT >= 0;
+    return r;
+  }
+  private revRig = { tolls: 0, reap: 0, hunt: false };
 
   /** Last Stand (pilot perk): 1 + bonus while the plow is under LAST_STAND_HP, else 1. */
   private lastStandMult(): number {
@@ -367,7 +400,8 @@ export class Combat implements CombatAPI {
     const plow = this.b.plow;
     const stats = this.b.stats;
     // Mid Ground Pound leap: out of reach until the slam lands.
-    if (!plow || plow.dead || amount <= 0 || plow.invulnerable || this.guardT > 0 || this.brute.poundT >= 0) return 0;
+    // (A PHASED REVENANT is untouchable: Plow.invulnerable covers it; scripted plows report `phased` alone.)
+    if (!plow || plow.dead || amount <= 0 || plow.invulnerable || plow.phased || this.guardT > 0 || this.brute.poundT >= 0) return 0;
     // Height rule: a bot's body / blade only reaches a plow near its own height (a plow flying over it, or on a deck
     // above, is out of reach). Non-contact hits (boss ground shockwaves, which check the wave rule themselves in
     // enemies/bosses.ts, and THE DONALD's reflected / thrown hits) come through combat/shared.ts waveHitPlow with
@@ -630,6 +664,7 @@ export class Combat implements CombatAPI {
     if (heal && st.lifesteal > 0 && dealt > 0) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * st.lifesteal * healMult);
     if (killed && target && st.chainBlast > 0 && this.isotope.rads.has(target)) this.isotope.chainQueue.push({ x: target.position.x, y: target.position.y, z: target.position.z });
     if (killed && target && st.scrapMax > 0) this.arsenal.scrapFrom(target);
+    if (st.plowKind === 'revenant') this.revenant.onHit(dealt, killed, target);
     if (killed && st.killRecharge > 0) {
       // Plow keeps its cooldown charges private; refund them through a narrow duck-typed view.
       const p = plow as unknown as { dashCharge: number; whirlCharge: number };
@@ -646,6 +681,9 @@ export class Combat implements CombatAPI {
     this.ult.clear();
     this.isotope.clear();
     this.arsenal.clear();
+    // Between Duel rounds the Reliquary keeps its souls, as the ultimate meter carries over.
+    if (betweenRounds) this.revenant.clearKeepSouls();
+    else this.revenant.clear();
     this.melee.clear();
     this.air.clear();
     this.threat.clear();
@@ -685,6 +723,8 @@ export class Combat implements CombatAPI {
     this.isotope.updatePools(dt);
     this.isotope.updateAura(dt);
     this.isotope.updateRads(dt);
+    this.revenant.updateGrasp(dt);
+    this.revenant.update(dt);
     this.volt.updateShield(dt);
     this.lightning.update(dt);
     if (this.iframe > 0) {

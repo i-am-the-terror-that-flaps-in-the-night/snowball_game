@@ -403,10 +403,10 @@ describe('SnapBuffer (opponent interpolation)', () => {
 
 describe('height sync (terrain: feet height, vertical speed, airborne)', () => {
   it('is part of protocol v4: three floats after the combat block (v7 adds the Classic SPACE kit after them)', () => {
-    expect(PROTOCOL_VERSION).toBe(8); // v5 layout; v6 = the shrunk-Snowdome Duel; v7 = the Classic rush fields; v8 = no swipe counter
-    expect(NET_PLOW_LEN).toBe(39);
+    expect(PROTOCOL_VERSION).toBe(9); // v5 layout; v6 = the shrunk-Snowdome Duel; v7 = the Classic rush fields; v8 = no swipe counter; v9 = REVENANT souls
+    expect(NET_PLOW_LEN).toBe(40);
     expect([NP.y, NP.vy, NP.air]).toEqual([32, 33, 34]);
-    expect([NP.rushState, NP.rushCharge, NP.rushDist, NP.chunks]).toEqual([35, 36, 37, 38]);
+    expect([NP.rushState, NP.rushCharge, NP.rushDist, NP.chunks, NP.souls]).toEqual([35, 36, 37, 38, 39]);
     // The rush state and chunk count switch, never blend (the puppet keys its fx off their changes).
     for (const f of [NP.rushState, NP.chunks]) expect(NP_DISCRETE).toContain(f);
     expect(NP_DISCRETE).not.toContain(NP.rushDist);

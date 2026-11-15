@@ -1,6 +1,6 @@
 import { PVE_MULT } from '../src/entities/combat/arsenal';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { KINDS, clusterDps, duelLaserDamage, duelTtk, fakePlow, newCtx, pilot, singleDps, statsFor, ultFill, ultFillBoss } from '../scripts/balance/sim';
+import { KINDS, clusterDps, duelLaserDamage, duelTtk, fakePlow, newCtx, pilot, singleDps, statsFor, ultDamage, ultFill, ultFillBoss } from '../scripts/balance/sim';
 import { PLOWS, type PlowKind } from '../src/config/plows';
 import { computeStatsFor } from '../src/core/Progression';
 import { ultCharge, ultMeter } from '../src/entities/combat/ultimates';
@@ -68,6 +68,21 @@ describe('sustained damage', () => {
     expect(arsenal).toBeGreaterThan(0);
     for (const k of KINDS) if (k !== 'classic' && k !== 'arsenal' && !PENDING.has(k)) expect(clusterDps(k, tier, 30)).toBeGreaterThan(arsenal);
   });
+});
+
+describe('REVENANT damage profile', () => {
+  // Single target mid-pack (inside the 25% band above), clusters high (Phase -> Grasp -> Reap, phantom chains), the
+  // ultimate top-tier area. ARSENAL is compared before its PvE bonus, as above.
+  it.each(['fresh', 'high'] as const)('%s: the top cluster DPS, and a top-tier ultimate (above the mean, within 10%% of the best)', (tier) => {
+    const others = KINDS.filter((k) => k !== 'revenant');
+    const rev = clusterDps('revenant', tier, 30);
+    for (const k of others) expect(rev).toBeGreaterThan(clusterDps(k, tier, 30) / (k === 'arsenal' ? PVE_MULT : 1));
+    const ult = (k: (typeof KINDS)[number]) => ultDamage(k, tier).total / (k === 'arsenal' ? PVE_MULT : 1);
+    const all = KINDS.map(ult);
+    const mine = ult('revenant');
+    expect(mine).toBeGreaterThan(all.reduce((a, b) => a + b, 0) / all.length);
+    expect(mine).toBeGreaterThan(Math.max(...all) * 0.9);
+  }, 60_000);
 });
 
 describe('duel', () => {

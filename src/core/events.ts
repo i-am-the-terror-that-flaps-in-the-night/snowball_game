@@ -19,7 +19,7 @@ export interface GameEvents {
   enemyHit: { enemy: EnemyHandle; damage: number };
   /** The player slammed their snowball. */
   slam: { hits: number; radius: number; position: THREE.Vector3; zoneMult?: number };
-  /** The player fired their F ability (Inferno, Thunderclap, Ground Pound, Meltdown; `nuke` = ISOTOPE's NUKE). */
+  /** The player fired their F ability (Inferno, Thunderclap, Ground Pound, Meltdown, Soul Grasp; `nuke` = ISOTOPE's NUKE). */
   ability: { nuke: boolean };
   /** The Classic Plow's PLOW RUSH ended in its slam, hitting `hits` bots / opponents (challenge stars count them). */
   plowRush: { hits: number };

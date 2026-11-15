@@ -11,6 +11,7 @@ import { getPaintEnvMap } from '../../render/reflections';
 import { cosmeticsState, resolveLook } from '../../meta/cosmetics';
 import { GearVisuals } from '../gearVisuals';
 import { CLASSIC_EXHAUST } from '../vehicles/classic';
+import type { RevenantRigState } from '../vehicles/revenant';
 import {
   BLADE_Z, TIP_Z, WHEEL_R, BRUTE_BLADE_Y, BRUTE_BLADE_Z, SAW_SPIN_BASE, SAW_SPIN_FULL, SAW_FURY_SPIN, SAW_FURY_DRAIN,
   _haloCool, _haloHot, SLAM_LUNGE, WHIRL_SECONDS, MAX_STREAKS, STREAK_LIFE, TRAIL_EVERY, TRAIL_EVERY_DASH,
@@ -28,8 +29,17 @@ const STREAK_GLOW_R = 3.4;
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const DASH_EXHAUST_BURST = { color: 0xff9a2a, count: 3, speed: 2, size: 0.22, gravity: -3, life: 0.35 };
 const LOW_HP_SMOKE_BURST = { color: 0x2e2e34, count: 1, speed: 0.8, size: 0.4, gravity: -2.5, life: 1.1 };
+/** REVENANT: ghostfire spilling from the slit headlights, and the PHASED hull's trailing wisps (violet + deep edge). */
+const REV_SPILL = { count: 1, color: 0xb04dff, size: 0.22, grow: 2.4, life: 0.45, speed: 0.5, up: 0.4, rise: 0.6, drag: 1.5, spread: 0.08, opacity: 0.6 };
+const REV_WISP = { count: 1, color: 0xb04dff, size: 0.45, grow: 2.2, life: 0.7, speed: 0.6, up: 1, rise: 0.8, drag: 1.6, spread: 0.4, opacity: 0.55 };
+const REV_WISP_DARK = { count: 1, color: 0x4a1a7a, size: 0.5, grow: 2, life: 0.8, speed: 0.4, up: 0.5, rise: 0.4, drag: 1.5, spread: 0.5, opacity: 0.45 };
 
 export abstract class PlowVisuals extends PlowBase {
+  /** REVENANT rig input (filled per frame, never reallocated) and the headlight ghostfire timer. */
+  private revState: RevenantRigState = { speed: 0, phase: 0, souls: 0, tolls: 0, reap: 0, hunt: false };
+  private revSpillT = 0;
+  private revSpill = 0;
+
   /** Swap the paint job + parts for the selected starter plow. */
   private setKind(kind: PlowKind, snowKit = false): void {
     this.kind = kind;
@@ -39,19 +49,22 @@ export abstract class PlowVisuals extends PlowBase {
     const brute = kind === 'brute';
     const iso = kind === 'isotope';
     const ars = kind === 'arsenal';
+    const rev = kind === 'revenant';
     // Body paint + decals follow the Paint Shop look (factory colours unless a paint is equipped).
     this.syncLook(true);
     // The Classic's blade face is polished steel (it catches the sky: env map in syncLook).
-    this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : iso ? 0x9ad63a : kind === 'classic' ? 0xd4dce4 : 0xffd23a);
+    this.steelMat.color.setHex(volt ? 0x9fe8ff : brute ? 0x7a828e : iso ? 0x9ad63a : rev ? 0x9aa0ae : kind === 'classic' ? 0xd4dce4 : 0xffd23a);
     this.steelMat.metalness = kind === 'classic' ? 0.85 : 0.55;
     this.steelMat.roughness = kind === 'classic' ? 0.18 : 0.35;
     this.steelMat.emissive.setHex(volt ? 0x1a8cff : iso ? 0x2f8a10 : 0x000000);
     this.steelMat.emissiveIntensity = volt ? 0.6 : iso ? 0.35 : 0;
-    this.beaconMat.color.setHex(volt ? 0x7fdcff : iso ? 0x7dff4a : 0xffb000);
-    this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : iso ? 0x3dff1a : 0xff9a00);
+    this.beaconMat.color.setHex(volt ? 0x7fdcff : iso ? 0x7dff4a : rev ? 0xe0a8ff : 0xffb000);
+    this.beaconMat.emissive.setHex(volt ? 0x2fb8ff : iso ? 0x3dff1a : rev ? 0xb04dff : 0xff9a00);
     this.classicParts.visible = kind === 'classic';
     this.isoParts.visible = iso;
     this.arsenalParts.visible = ars;
+    this.revParts.visible = rev;
+    if (!rev) this.phased = false;
     // Only the Classic has a blade (BRUTUS's buzzsaws are on its own mech body).
     this.bladeGroup.visible = kind === 'classic' || !this.vehicle;
     this.applyBladeVis();
@@ -73,13 +86,16 @@ export abstract class PlowVisuals extends PlowBase {
     } else if (iso) {
       this.exhaustTip.set(0.55, 2.38, 0.12);
       this.flame.rotation.set(0, 0, 0);
+    } else if (rev) {
+      this.exhaustTip.set(0, 0.95, -2.62); // ghostfire out of the tail
+      this.flame.rotation.set(-Math.PI / 2, 0, 0);
     } else {
       this.exhaustTip.copy(CLASSIC_EXHAUST);
       this.flame.rotation.set(0, 0, 0);
     }
     this.flame.position.copy(this.exhaustTip);
     this.engineTip.set(0, brute ? 2.0 : 1.6, brute ? -1.0 : 1.7);
-    this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : iso ? 2.1 : 2.8, volt ? 0 : brute ? 1.4 : iso ? -1.0 : kind === 'classic' ? -0.1 : 0.8);
+    this.beaconLight.position.set(0, volt ? 0.4 : brute ? 2.6 : iso ? 2.1 : rev ? 2.7 : 2.8, volt ? 0 : brute ? 1.4 : iso ? -1.0 : rev ? -1.45 : kind === 'classic' ? -0.1 : 0.8);
     this.applyBladeScale();
   }
 
@@ -106,13 +122,21 @@ export abstract class PlowVisuals extends PlowBase {
     this.paintMat.roughness = p.roughness ?? (gunmetal ? 0.36 : this.kind === 'volt' ? 0.28 : 0.45); // VOLT: glossy ceramic
     this.bedMat.metalness = p.metalness ?? (gunmetal ? 0.4 : 0.1);
     this.bedMat.roughness = p.roughness ?? 0.5;
+    // REVENANT's factory finish: matte graphite panels over gloss black carbon (the carbon catches the sky).
+    const hearse = this.kind === 'revenant' && p.body == null && p.metalness == null;
+    if (hearse) {
+      this.paintMat.metalness = 0.3;
+      this.paintMat.roughness = 0.72;
+      this.bedMat.metalness = 0.55;
+      this.bedMat.roughness = 0.16;
+    }
     // The Classic's factory yellow is a glossy clear coat (low roughness + a faint sky reflection).
     const gloss = this.kind === 'classic' && p.metalness == null && p.roughness == null;
     if (gloss) {
       this.paintMat.metalness = 0;
       this.paintMat.roughness = 0.3;
     }
-    const env = p.mirror || gunmetal || gloss ? getPaintEnvMap(this.ctx.renderer) : null;
+    const env = p.mirror || gunmetal || gloss || hearse ? getPaintEnvMap(this.ctx.renderer) : null;
     if (this.paintMat.envMap !== env) {
       this.paintMat.envMap = this.bedMat.envMap = env;
       this.paintMat.needsUpdate = this.bedMat.needsUpdate = true;
@@ -133,7 +157,8 @@ export abstract class PlowVisuals extends PlowBase {
         m.needsUpdate = true;
       }
     }
-    const fh = this.kind === 'volt' ? 0x2f9be0 : this.kind === 'brute' ? 0xd8611f : this.kind === 'isotope' ? 0x7dff4a : 0xffd23a;
+    // REVENANT rides on black rims (its spectral spokes are its own).
+    const fh = this.kind === 'volt' ? 0x2f9be0 : this.kind === 'brute' ? 0xd8611f : this.kind === 'isotope' ? 0x7dff4a : this.kind === 'revenant' ? 0x16131c : 0xffd23a;
     this.hubBase.setHex(p.accent ?? (this.kind === 'classic' ? 0xc9d2dc : fh)); // Classic: polished alloy hubs
     if (!this._dead) {
       this.hubMat.color.copy(this.hubBase);
@@ -183,7 +208,7 @@ export abstract class PlowVisuals extends PlowBase {
   private syncGear(): void {
     const ids = this.b.gear ?? GearVisuals.idsFrom(this.ctx.progression.gear.equipped);
     this.gearVis.sync(this.kind, ids, this.bladeWidth);
-    this.flameMat.color.setHex(this.gearVis.flame ?? (this.kind === 'isotope' ? 0x7dff4a : 0xff8a1a));
+    this.flameMat.color.setHex(this.gearVis.flame ?? (this.kind === 'isotope' ? 0x7dff4a : this.kind === 'revenant' ? 0xb04dff : 0xff8a1a));
   }
 
   /** Paint Shop: try an item on (null = back to the equipped one for that slot). */
@@ -446,6 +471,7 @@ export abstract class PlowVisuals extends PlowBase {
     if (this.kind === 'volt') g.mat.color.setHSL(0.54 + Math.random() * 0.03, 1, 0.6);
     else if (this.kind === 'brute') g.mat.color.setHSL(0.13 + Math.random() * 0.02, 1, 0.5);
     else if (this.kind === 'isotope') g.mat.color.setHSL(0.3 + Math.random() * 0.03, 1, 0.55);
+    else if (this.kind === 'revenant') g.mat.color.setHSL(0.77 + Math.random() * 0.03, 1, 0.6);
     else g.mat.color.setHSL(0.07 + Math.random() * 0.03, 1, 0.55);
   }
 
@@ -597,7 +623,7 @@ export abstract class PlowVisuals extends PlowBase {
     const pf = lowHp ? 0.5 + 0.5 * Math.sin(this.time * 22) : pulse;
     this.beaconMat.emissiveIntensity = 0.6 + pf * 2.2;
     this.beaconLight.intensity = 2 + pf * 8;
-    this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : this.kind === 'isotope' ? 0x5dff3a : this.kind === 'arsenal' ? 0x38e8ff : 0xffa020);
+    this.beaconLight.color.setHex(lowHp ? 0xff3020 : this.kind === 'volt' ? 0x4fc8ff : this.kind === 'isotope' ? 0x5dff3a : this.kind === 'arsenal' ? 0x38e8ff : this.kind === 'revenant' ? 0xb04dff : 0xffa020);
     // ISOTOPE: the reactor core breathes; it flickers hot while Meltdown recharges.
     if (this.kind === 'arsenal') {
       // Turret swings toward Combat's target (relative yaw, wrapped), sensor glow breathes.
@@ -622,6 +648,33 @@ export abstract class PlowVisuals extends PlowBase {
       const flick = ready < 1 ? 0.5 + 0.5 * Math.sin(this.time * 25) : 0.5 + 0.5 * Math.sin(this.time * 3);
       this.coreMat.emissiveIntensity = 1.1 + flick * (ready < 1 ? 0.3 : 0.9);
       this.beaconLight.intensity = 2.5 + flick * 3;
+    }
+    if (this.kind === 'revenant') {
+      // The hearse: PHASED eases the ghost shell in / out; the Reliquary shows the souls; ghostfire spills from the
+      // slit headlights.
+      this.phaseEase += ((this.phased ? 1 : 0) - this.phaseEase) * Math.min(1, dt * (this.phased ? 14 : 6));
+      const cb = this.b.combat;
+      const rig = cb?.revenantRig;
+      const st = this.revState;
+      st.speed = this.speed;
+      st.phase = this.phaseEase;
+      st.souls = Math.max(0, cb?.souls ?? 0);
+      st.tolls = rig ? rig.tolls : 0;
+      st.reap = rig ? rig.reap : 0;
+      st.hunt = rig ? rig.hunt : false;
+      this.revRig.update(dt, st);
+      this.beaconLight.intensity = 2 + pf * 2 + (st.hunt ? 6 : 0);
+      this.revSpillT -= dt;
+      if (this.revSpillT <= 0 && !this._dead) {
+        this.revSpillT = 0.09;
+        const head = this.revRig.heads[(this.revSpill++) & 1];
+        head.getWorldPosition(_c);
+        ctx.fx.smoke(_c, REV_SPILL);
+      }
+      if (this.phaseEase > 0.3 && Math.random() < dt * 24) {
+        _c.set(this.position.x + (Math.random() - 0.5) * 2, this.position.y + 0.5 + Math.random() * 1.5, this.position.z + (Math.random() - 0.5) * 2);
+        ctx.fx.smoke(_c, Math.random() < 0.5 ? REV_WISP : REV_WISP_DARK);
+      }
     }
     if (this.kind === 'volt') {
       this.beaconLight.intensity = 3 + pf * 3;

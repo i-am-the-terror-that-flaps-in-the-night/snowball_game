@@ -276,8 +276,8 @@ export abstract class BrawlPhysics extends BrawlCombat {
         this.tryRivalRam(b, a.f, nx, nz);
       }
     }
-    // Rivals vs player.
-    if (plow.dead) return;
+    // Rivals vs player (a PHASED REVENANT drives straight through them).
+    if (plow.dead || plow.phased) return;
     plow.getForward(_fwd);
     for (const r of this.rivals) {
       if (!r.alive) continue;

@@ -23,10 +23,13 @@ same 60% max-HP hit cap as Brawl, so nothing one-shots. On top of that each vehi
 damage it deals and on the damage it takes (`DUEL_KIND_DAMAGE` / `DUEL_KIND_TAKEN` in `src/config/duel.ts`: VOLT-9
 deals x1.95 and takes x0.77, ARSENAL deals x0.85 and takes x0.6, ISOTOPE takes x0.9, BRUTUS deals x0.56 and takes
 x1.18, the Classic deals x0.97; these are the late-garage values, eased in from fresh ones as the garage grows:
-BRUTUS x0.78 / x1, VOLT-9 x1.8, the Classic x0.9, ARSENAL takes x0.58), measured on real autopiloted duels so that every vehicle wins roughly a third to two
-thirds of its matchups; campaign, Survival and Brawl never see them. See [balance.md](balance.md) ("Duel balance at high").
+BRUTUS x0.78 / x1, VOLT-9 x1.8, the Classic x0.9, ARSENAL takes x0.58; REVENANT is neutral, x1 / x1), measured on real autopiloted duels so that every vehicle wins roughly a third to two
+thirds of its matchups; campaign, Survival and Brawl never see them. REVENANT's own Duel rules live in its kit
+(`src/entities/combat/revenant.ts`): REAP hits a pilot at 80% (`DUEL_REAP`), souls come from damage dealt (one per 10%
+of the foe's max HP) instead of wrecks, PHASE is a real dodge window (no damage, no pulls or tows, no knockback), and
+SOUL GRASP holds the other pilot 0.6 s (`DamageOpts.hold`). See [balance.md](balance.md) ("Duel balance at high").
 
-**Ultimates** (FIRESTORM, SUPERCELL, EARTHQUAKE, NUKE, SINGULARITY) fire in the Duel too. There the meter is sized in
+**Ultimates** (FIRESTORM, SUPERCELL, EARTHQUAKE, NUKE, SINGULARITY, THE WILD HUNT) fire in the Duel too. There the meter is sized in
 the opponent's HP instead of in damage: it fills once the damage that counts toward it adds up to `DUEL_ULT_CHARGE`
 (2.5) x the opponent's max HP (ISOTOPE x0.65, BRUTUS x1.25, Overclock / sqrt(cooldownMult)), which is the same at every
 garage tier. In an even same-tier fight the first ultimate comes about 30-45 s into continuous fighting, and the meter

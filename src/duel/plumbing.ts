@@ -132,6 +132,8 @@ export function autoHoldRange(st: PlayerStats): number {
       return tankGunRange(st);
     case 'brute':
       return AUTO_HULL + FIST_REACH * fistSize(st) + (st.fistReach || 0);
+    case 'revenant':
+      return AUTO_HULL + (st.reapReach || 7) * 0.85;
     default:
       return 9;
   }

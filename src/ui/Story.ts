@@ -23,7 +23,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'plows', label: 'Plows', icon: '🚜' },
 ];
 
-const PLOW_ICON: Record<PlowKind, string> = { classic: '🚜', volt: '⚡', brute: '🦏', isotope: '☢️', arsenal: '🧲' };
+const PLOW_ICON: Record<PlowKind, string> = { classic: '🚜', volt: '⚡', brute: '🦏', isotope: '☢️', arsenal: '🧲', revenant: '💀' };
 
 /**
  * Story overlay (main menu, and "Read the story" on the results screen): the campaign told chapter by chapter, boss

@@ -1045,6 +1045,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const pfx = Math.sin(plow.heading);
     const pfz = Math.cos(plow.heading);
     const pr = plow.radius;
+    // PHASED (REVENANT): the hearse is a ghost; bots neither shove it nor land contact attacks, and it rams nothing.
+    if (plow.phased) return;
     for (let i = 0; i < this.list.length; i++) {
       const e = this.list[i];
       if (!e.alive) continue;

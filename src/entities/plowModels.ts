@@ -572,6 +572,7 @@ export const FACTORY_PAINT: Readonly<Record<PlowKind, { body: number; trim: numb
   brute: { body: 0x7d8794, trim: 0x4a525d }, // junkyard steel grey
   isotope: { body: 0xe8cf1f, trim: 0x3a4038 },
   arsenal: { body: 0x55606c, trim: 0x2c333b },
+  revenant: { body: 0x2e3036, trim: 0x0d0d11 }, // matte graphite over gloss black carbon
 };
 
 const INK = '#16181c';
@@ -830,6 +831,12 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
     { face: 'side', at: [1.0, 1.45, -0.45], size: [2.7, 0.14], tags: ['band', 'stripe', 'flame'] }, // hull flank
     { face: 'side', at: [0.81, 1.62, 0.82], size: [1.0, 0.3], tags: ['flame', 'band', 'stripe'] }, // cab flank
   ],
+  revenant: [
+    { face: 'top', at: [0, 2.13, -0.55], size: [2.2, 0.9], tags: ['stripe', 'band'] }, // long roof (behind the beacon)
+    { face: 'top', at: [0, 1.33, 1.85], size: [1.0, 1.1], tags: ['stripe', 'flame', 'emblem'], emblem: 0.75, tilt: 0.31 }, // hood
+    { face: 'side', at: [1.01, 1.08, -1.0], size: [2.2, 0.36], tags: ['flame', 'band', 'stripe', 'emblem'], emblem: 0.34 }, // lower flank
+    { face: 'rear', at: [0, 1.0, -2.6], size: [1.4, 0.3], tags: ['band', 'emblem'], emblem: 0.28 }, // tail
+  ],
 };
 
 /** Gap between a decal and the panel under it (plus polygon offset) so it never z-fights. */
@@ -894,6 +901,7 @@ export const TRAIL_REAR: Readonly<Record<PlowKind, { x: number; y: number; z: nu
   brute: { x: 1.1, y: 0.8, z: -2.3 },
   isotope: { x: 0.8, y: 0.85, z: -2.05 },
   arsenal: { x: 0.85, y: 1.1, z: -2.05 },
+  revenant: { x: 0.8, y: 0.8, z: -2.55 },
 };
 
 const _trailCol = new THREE.Color();

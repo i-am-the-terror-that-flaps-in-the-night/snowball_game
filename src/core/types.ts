@@ -131,7 +131,7 @@ export interface PlayerStats {
   flameDps: number;
   flameCooldown: number;
   /** Which starter plow is being driven (config/plows.ts). */
-  plowKind: 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal';
+  plowKind: 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal' | 'revenant';
   /** A vehicle set to the snowball kit (⚙ Settings): it plows, rolls a ball, slams and whirls like the Classic
    *  instead of its own SPACE / E (its F and ultimate stay). Never set in the Duel. */
   snowKit?: boolean;
@@ -173,6 +173,20 @@ export interface PlayerStats {
   scrapDps: number;
   scrapMax: number;
   scrapHit: number;
+  /** REVENANT line (reapDamage 0 on other plows; combat/revenant.ts): REAP damage per scythe sweep and reach (m),
+   *  MANIFEST damage and base radius (m), PHASE recharge (s, Nitro Dash and Overclock in), SOUL GRASP damage / stun (s) /
+   *  reach (m; THE WILD HUNT scales off graspDamage), HAUNT extra damage taken (0.25 = +25%) / seconds, PHANTOM burst. */
+  reapDamage: number;
+  reapReach: number;
+  manifestDamage: number;
+  manifestRadius: number;
+  phaseCooldown: number;
+  graspDamage: number;
+  graspStun: number;
+  graspRange: number;
+  hauntVuln: number;
+  hauntSeconds: number;
+  phantomDamage: number;
   /** VOLT-9 line (all 0 unless driving VOLT-9 with the upgrade): chain lightning arcs + share of the hit. */
   chainCount: number;
   chainFrac: number;
@@ -286,6 +300,8 @@ export interface PlowAPI {
   readonly whirling: boolean;
   /** Spawn protection / dash start i-frames: Combat.hitPlow ignores damage while true. */
   readonly invulnerable: boolean;
+  /** REVENANT PHASE: spectral (invulnerable, no pushes / pulls, drives through bots and props). Absent = never. */
+  phased?: boolean;
   /** 0..1 growth of the BRUTUS Buzzsaw halos (0 = idle or no saws). Grows with saw spin, which rises with plow
    *  speed and saw fury; Combat widens the saw reach with it. */
   readonly sawHalo: number;
@@ -369,6 +385,8 @@ export interface CombatAPI {
   /** Classic Plow SNOW CHUNKS on the blade (0..10, tap slam hits pack them, a PLOW RUSH slam spends them), -1 on
    *  other plows. */
   readonly chunks?: number;
+  /** REVENANT souls in the Reliquary (0..10; SOUL GRASP costs 3), -1 on other plows. */
+  readonly souls?: number;
   /** Classic Plow STREAK stacks (0..4, 4 = ON STREAK: the next slam is the SHOCKWAVE FINISHER), -1 on other plows and
    *  in the online Duel (combat/classicStreak.ts). */
   readonly streak?: number;
@@ -435,6 +453,8 @@ export interface DamageOpts {
    *  damage / kind / power scaling; the area-ability diminishing returns still apply), then the victim's own
    *  defences. Bots ignore it. */
   hpShare?: boolean;
+  /** Hold a Duel plow in place this long (s; REVENANT's SOUL GRASP). Bots ignore it (they take stunSeconds). */
+  hold?: number;
 }
 
 export interface EnemyManagerAPI {
@@ -691,13 +711,15 @@ export interface HudState {
   /** Non-Classic vehicles: SPACE / E slots from the kit (null / absent on the Classic: slam gauge + WHIRL). */
   abilities?: AbilityHud | null;
   /** What F does right now (icon). */
-  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
+  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles' | 'grasp';
   /** Battery Shield 0..1, or -1 when not owned. */
   shield: number;
   /** ISOTOPE Critical Mass 0..1 (1 = NUKE ready), or -1 on other plows. */
   critMass?: number;
   /** Classic Plow SNOW CHUNKS 0..10 (pips under the snowball gauge), -1 / absent elsewhere. */
   chunks?: number;
+  /** REVENANT souls 0..10 (the 10-pip soul lantern over the ability row), -1 / absent elsewhere. */
+  souls?: number;
   /** Classic Plow STREAK stacks 0..4 (the 4-pip meter by the ability icons) and the share of its window left; -1 /
    *  absent elsewhere and in the Duel. */
   streak?: number;

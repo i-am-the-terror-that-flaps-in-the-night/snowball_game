@@ -12,12 +12,13 @@
  *            Depth is quantised to a byte over 0..SNOW_Q_MAX metres. flags & 1 = full-field keyframe.
  * ---------------------------------------------------------------------------------------------- */
 
-/** v8: the Classic's tap is the ball slam again (no BLADE SWIPE): the swipe counter left, chunks moved to 38 (39 floats).
+/** v9: REVENANT (the sixth plow) added one plow field, its Reliquary souls (NP.souls, 39): 40 floats.
+ *  v8: the Classic's tap is the ball slam again (no BLADE SWIPE): the swipe counter left, chunks moved to 38 (39 floats).
  *  v7: the Classic Plow's SPACE kit (BLADE SWIPE / PLOW RUSH / SNOW CHUNKS) added five plow fields (rushState ..
  *  chunks), so the snapshot grew to 40 floats.
  *  v6: the Duel moved to the shrunk Snowdome (venue list, arena size and spawns changed: peers on v5 would build a
  *  different arena from the same room code) and its ultimate meters carry over between rounds. Wire layout as v5. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 export const MSG_INPUT = 1;
 export const MSG_SNAP = 2;
@@ -72,13 +73,15 @@ export const NP = {
   rushDist: 37,
   /** SNOW CHUNKS on the blade (Combat.writeNet; the guest's HUD and its predicted cash-in read it). */
   chunks: 38,
+  /** REVENANT souls in the Reliquary (Combat.writeNet; the guest's HUD, its SOUL GRASP gate and the puppet's Reliquary). */
+  souls: 39,
 } as const;
-export const NET_PLOW_LEN = 39;
+export const NET_PLOW_LEN = 40;
 
 /** Fields that are angles (interpolated the short way round) / discrete (never blended: they switch to the newer
  *  snapshot's value when the guest's clock reaches it). */
 export const NP_ANGLE = NP.heading;
-export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase, NP.fire, NP.air, NP.rushState, NP.chunks];
+export const NP_DISCRETE: readonly number[] = [NP.dead, NP.slamPhase, NP.fire, NP.air, NP.rushState, NP.chunks, NP.souls];
 
 /* ------------------------------------------------------------------ input */
 

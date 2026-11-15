@@ -464,6 +464,95 @@ await session('arsenal', async (host, guest) => {
   await syncCheck(host, guest, 'arsenal');
 }, undefined, false);
 
+// ================================================================== REVENANT (opt-in: --only=revenant)
+// Host REVENANT vs guest ARSENAL: REAP lands and fills the Reliquary from damage dealt (1 soul per 10% of the foe's HP;
+// the guest sees the count); PHASE is a real dodge (the guest's laser does nothing to it, no tug); SOUL GRASP holds the
+// guest; THE WILD HUNT tramples it. Screenshots from the guest.
+await session('revenant', async (host, guest) => {
+  await host.evaluate(() => { window.__game.ctx.progression.data.plow = 'revenant'; });
+  await guest.evaluate(() => { window.__game.ctx.progression.data.plow = 'arsenal'; });
+  await connect(host, guest);
+  await toFight(host, guest);
+  const [h] = await until(host, guest, (h, g) => h.phase === 'fight' && g.phase === 'fight', 8, 0.25);
+  check(h.stats[0].plowKind === 'revenant' && h.stats[1].plowKind === 'arsenal', 'host REVENANT vs guest ARSENAL', h.stats.map((s) => s.plowKind));
+  // Host at (0, 4) facing -z, guest at (0, -1) facing +z: 5 m nose to nose.
+  const park = () => host.evaluate(() => {
+    const me = window.__game.ctx.plow, op = window.__game.duel.opponent;
+    me.position.set(0, 0, 4 + PZ); me.heading = Math.PI; me.hp = me.maxHp;
+    op.position.set(0, 0, -1 + PZ); op.heading = 0; op.hp = op.maxHp;
+  });
+  const state = () => host.evaluate(() => ({ hp: window.__game.ctx.plow.hp, opHp: window.__game.duel.opponent.hp, souls: window.__game.ctx.combat.souls, op: [window.__game.duel.opponent.position.x, window.__game.duel.opponent.position.z], me: [window.__game.ctx.plow.position.x, window.__game.ctx.plow.position.z] }));
+  await park();
+  await run(host, guest, 0.4);
+  let a = await state();
+  await host.keyboard.down('Space');
+  for (let i = 0; i < 4; i++) {
+    await run(host, guest, 1);
+    await host.evaluate(() => { const op = window.__game.duel.opponent; op.position.set(0, 0, -1 + PZ); });
+  }
+  await host.keyboard.up('Space');
+  await run(host, guest, 0.4);
+  let b = await state();
+  const seen = await guest.evaluate(() => window.__game.duel.opponentCombat.revenant.souls);
+  log('host REAP 4 s', { opHp: [Math.round(a.opHp), Math.round(b.opHp)], souls: [a.souls, b.souls], guestSees: seen });
+  check(b.opHp < a.opHp, 'host REAP hits the guest', { a, b });
+  check(b.souls > a.souls, 'damage dealt fills the Reliquary', { a, b });
+  check(seen === b.souls, 'the guest sees the host\'s souls', { seen, b });
+  // PHASE dodge: the guest lasers the phased host point blank; nothing lands.
+  await park();
+  await run(host, guest, 0.3);
+  await host.keyboard.press('KeyE');
+  await run(host, guest, 0.1);
+  a = await state();
+  await guest.keyboard.down('Space');
+  await run(host, guest, 0.8);
+  const ph = await host.evaluate(() => window.__game.ctx.plow.phased);
+  const gPh = await guest.evaluate(() => window.__game.duel.opponent.phased);
+  await shot(guest, '30-guest-sees-revenant-phase');
+  await guest.keyboard.up('Space');
+  b = await state();
+  log('PHASE vs laser', { hp: [Math.round(a.hp), Math.round(b.hp)], phased: ph, guestSeesPhased: gPh });
+  check(ph && b.hp >= a.hp - 0.01, 'a PHASED hearse takes nothing from the laser', { a, b });
+  check(gPh === true, 'the guest sees the host PHASED', gPh);
+  await run(host, guest, 6.5);
+  // SOUL GRASP: 3 souls, the guest is held.
+  await park();
+  await host.evaluate(() => { window.__game.ctx.combat.revenant.souls = 5; });
+  await run(host, guest, 0.3);
+  a = await state();
+  await host.keyboard.press('KeyF');
+  await run(host, guest, 0.3);
+  b = await state();
+  log('SOUL GRASP', { souls: [a.souls, b.souls], opHp: [Math.round(a.opHp), Math.round(b.opHp)] });
+  // (its own hit can earn a soul back: 1 per 10% of the foe's HP dealt)
+  check(b.souls <= a.souls - 2 && b.opHp < a.opHp, 'SOUL GRASP spends 3 souls and hits the guest', { a, b });
+  await run(host, guest, 2);
+  // THE WILD HUNT: drive through the guest (in a live round).
+  const ph0 = await st(host);
+  log('before the Hunt', { phase: ph0.phase, score: ph0.score, timer: await host.evaluate(() => window.__game.duel.timer) });
+  await until(host, guest, (h, g) => h.phase === 'fight' && g.phase === 'fight', 12, 0.25);
+  await host.evaluate(() => { const me = window.__game.ctx.plow, op = window.__game.duel.opponent; me.position.set(0, 0, 12 + PZ); me.heading = Math.PI; me.hp = me.maxHp; op.position.set(0, 0, 2 + PZ); op.hp = op.maxHp; window.__game.ctx.combat.critCharge = 1; });
+  await run(host, guest, 0.2);
+  a = await state();
+  await host.keyboard.press('KeyF');
+  await host.keyboard.down('KeyW');
+  await run(host, guest, 2.0);
+  await shot(guest, '31-guest-sees-wild-hunt');
+  const mid = await state();
+  log('Hunt, 2 s in', { opHp: Math.round(mid.opHp), phase: (await st(host)).phase, op: mid.op, me: mid.me });
+  await run(host, guest, 1.5);
+  await host.keyboard.up('KeyW');
+  for (let i = 0; i < 10; i++) {
+    await run(host, guest, 0.5);
+    b = await state();
+    const p = (await st(host)).phase;
+    if (p !== 'fight') break;
+  }
+  log('WILD HUNT', { opHp: [Math.round(a.opHp), Math.round(b.opHp)], share: +((a.opHp - b.opHp) / a.opHp).toFixed(2) });
+  check(b.opHp < a.opHp, 'THE WILD HUNT hits the guest', { a, b });
+  await syncCheck(host, guest, 'revenant');
+}, undefined, true);
+
 // ================================================================== the reworked kits on the guest's puppet
 for (const [hostPlow, guestPlow] of [['classic', 'arsenal'], ['arsenal', 'classic']]) {
   await session('rework', async (host, guest) => {

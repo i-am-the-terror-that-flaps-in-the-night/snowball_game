@@ -7,14 +7,15 @@ import { Combat } from '../../src/entities/Combat';
 import { computeStatsFor } from '../../src/core/Progression';
 import { gearLevels, type GearState } from '../../src/config/gear';
 import { UPGRADE_BY_ID, type UpgradeId } from '../../src/config/upgrades';
-import { ballVolume, type EnemyHandle, type GameContext, type PlayerStats } from '../../src/core/types';
+import { ballVolume, type EnemyHandle, type EnemyManagerAPI, type GameContext, type PlayerStats } from '../../src/core/types';
+import type { RevenantKit } from '../../src/entities/combat/revenant';
 import { OpponentTarget, PlowHandle } from '../../src/duel/opponent';
 import type { PilotBinding } from '../../src/entities/pilot';
 import type { Plow } from '../../src/entities/Plow';
 import type { PlowKind } from '../../src/config/plows';
 import { RUSH_COST_MIN, RUSH_MIN_SLAM_R } from '../../src/entities/combat/classicRush';
 
-export const KINDS: PlowKind[] = ['classic', 'volt', 'brute', 'isotope', 'arsenal'];
+export const KINDS: PlowKind[] = ['classic', 'volt', 'brute', 'isotope', 'arsenal', 'revenant'];
 export type Tier = 'fresh' | 'mid' | 'high';
 export const TIERS: Tier[] = ['fresh', 'mid', 'high'];
 
@@ -24,6 +25,7 @@ const LINE: Record<PlowKind, UpgradeId[]> = {
   brute: ['brutePound', 'bruteSaws', 'bruteHide', 'bruteMomentum', 'bruteFist', 'bruteSpikes'],
   isotope: ['isoMeltdown', 'isoHalfLife', 'isoAura', 'isoChain', 'isoSpray'],
   arsenal: ['armCannon', 'armLaser', 'armMissiles', 'armBarrier', 'armMagnet'],
+  revenant: ['revReap', 'revPhase', 'revGrasp', 'revHaunt'],
 };
 
 /** Garage levels (core four + the plow's own line) and equipped gear per tier. */
@@ -62,7 +64,10 @@ export function statsFor(kind: PlowKind, tier: Tier): PlayerStats {
  *    with the dash; a dash strike needs a full meter), landing on the target (the rush slams at first contact);
  *  - whirls go off every recharge (+ the 0.9s spin) holding a ball of WHIRL_BALL x max radius;
  *  - dashes go off every recharge (+0.5s dash) and DASH_CONNECT of them land a dash strike. */
-export const MELEE = { SNOW_INTAKE: 5, SLAM_BALL: 0.8, SLAM_CYCLE: 0.82, WHIRL_BALL: 0.5, DASH_CONNECT: 0.5, RUSH_CHUNKS: 5 } as const;
+export const MELEE = { SNOW_INTAKE: 5, SLAM_BALL: 0.8, SLAM_CYCLE: 0.82, WHIRL_BALL: 0.5, DASH_CONNECT: 0.5, RUSH_CHUNKS: 5, PHASE_PASS: 7.5 } as const;
+/** REVENANT's PHASE drives THROUGH the bots ahead (the sim parks the plow): while a Phase runs, every bot within
+ *  MELEE.PHASE_PASS m and PHASE_CONE of the nose counts as passed through (Haunted, a soul each, 3 a Phase). */
+const PHASE_CONE = Math.cos(1.05);
 const WHIRL_TICKS = [0.1, 0.35, 0.6, 0.85];
 
 const noop: unknown = new Proxy(() => noop, { get: () => noop, apply: () => noop });
@@ -81,7 +86,16 @@ export function fakePlow(stats: PlayerStats, x = 0, z = 0, heading = 0) {
   const p = {
     position: new THREE.Vector3(x, 0, z), heading, hp: stats.maxHp, maxHp: stats.maxHp, dead: false, radius: 1.6,
     turretAim: 0, turretHeading: heading, hop: 0, gunFiring: false, heldBallRadius: 0, sawHalo: 0, speed: 0,
-    dashing: false, whirling: false, invulnerable: false, hornSound: undefined,
+    dashing: false, whirling: false, hornSound: undefined,
+    /** Dash i-frames (set by scripts) or a REVENANT PHASE (set by its kit): Plow.invulnerable. */
+    inv: false,
+    phased: false,
+    get invulnerable() {
+      return p.inv || p.phased;
+    },
+    set invulnerable(v: boolean) {
+      p.inv = v;
+    },
     /** E charge (Plow.eCharge / spendE); the Rotation refills it like Plow.update does. */
     whirlCharge: 1,
     get eCharge() {
@@ -134,6 +148,9 @@ export interface Pilot {
   plow: FakePlow;
   press: Set<string>;
   held: Set<string>;
+  /** What this pilot's Combat hits (the bot list, or the Duel's OpponentTarget), and whether that is the Duel. */
+  enemies: EnemyManagerAPI;
+  pvp: boolean;
 }
 
 export function pilot(ctx: GameContext, stats: PlayerStats, plow: FakePlow, enemies: unknown, pvp = false): Pilot {
@@ -145,7 +162,7 @@ export function pilot(ctx: GameContext, stats: PlayerStats, plow: FakePlow, enem
   const binding = { stats, plow, enemies, input, audio: noop, snow, events, local: false, authoritative: true, look: null, pvp } as unknown as PilotBinding;
   const c = new Combat(ctx, binding);
   c.clear();
-  return { c, stats, plow, press, held, ults };
+  return { c, stats, plow, press, held, ults, enemies: enemies as EnemyManagerAPI, pvp };
 }
 
 export const newCtx = () => ({ scene: new THREE.Scene(), time: 0, fx: noop, ui: noop, impact: noop, cameraRig: noop }) as unknown as GameContext;
@@ -214,6 +231,7 @@ export class Rotation {
       const cd = p.c.secondaryCooldown;
       if (plow.whirlCharge < 1) plow.whirlCharge = Math.min(1, plow.whirlCharge + (cd > 0 ? dt / cd : 1));
       else p.press.add('KeyE');
+      if (st.plowKind === 'revenant' && !p.pvp) this.phasePass();
     } else {
       this.ball_ = Math.min(ballVolume(st.maxBallRadius), this.ball_ + MELEE.SNOW_INTAKE * st.collectRate * dt);
       const want = ballVolume(st.maxBallRadius * MELEE.SLAM_BALL);
@@ -266,6 +284,24 @@ export class Rotation {
       }
     }
   }
+  /** REVENANT engagement model: a running PHASE passes through the bots ahead (see MELEE.PHASE_PASS). */
+  private phasePass(): void {
+    const kit = (this.p.c as unknown as { revenant: RevenantKit }).revenant;
+    if (kit.phaseT <= 0) return;
+    const plow = this.p.plow;
+    const fx = Math.sin(plow.heading);
+    const fz = Math.cos(plow.heading);
+    const q = this.p.enemies.query(plow.position.x, plow.position.z, MELEE.PHASE_PASS, this.near);
+    for (let i = 0; i < q.length; i++) {
+      const e = q[i];
+      const dx = e.position.x - plow.position.x;
+      const dz = e.position.z - plow.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      if ((dx * fx + dz * fz) / d >= PHASE_CONE) kit.phaseTouch(e);
+    }
+  }
+  private near: EnemyHandle[] = [];
+
   /** 'hold': a full meter (or an ultimate that slipped out) counts as one fill, and the meter starts over. */
   drain(): void {
     if (this.ult !== 'hold') return;

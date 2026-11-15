@@ -11,6 +11,7 @@ const ULT_HUD: Record<HudState['fAbility'], { bar: string; tag: string; icon: st
   pound: { bar: '🌍', tag: 'EARTHQUAKE', icon: '🌍', name: 'QUAKE', baseIcon: '💥', baseName: 'POUND' },
   meltdown: { bar: '☢', tag: 'NUKE', icon: '☢️', name: 'NUKE', baseIcon: '☢️', baseName: 'MELT' },
   missiles: { bar: '🌀', tag: 'SINGULARITY', icon: '🕳️', name: 'VOID', baseIcon: '🌀', baseName: 'BURST' },
+  grasp: { bar: '⚰️', tag: 'WILD HUNT', icon: '⚰️', name: 'HUNT', baseIcon: '⛓️', baseName: 'GRASP' },
 };
 
 function tierName(r: number): string {
@@ -59,6 +60,7 @@ export interface HudRefs {
   batt: HTMLElement; battFill: HTMLElement; crit: HTMLElement; critFill: HTMLElement;
   gauge: HTMLElement; ring: SVGCircleElement; radius: HTMLElement; tier: HTMLElement;
   chunks: HTMLElement; chunkPips: HTMLElement[];
+  souls: HTMLElement; soulPips: HTMLElement[]; soulNum: HTMLElement;
   streak: HTMLElement; streakLbl: HTMLElement; streakPipBox: HTMLElement; streakPips: HTMLElement[]; streakFill: HTMLElement;
   slam: HTMLElement; shield: HTMLElement; blocked: HTMLElement;
   dash: HTMLElement; whirl: HTMLElement; flame: HTMLElement; primary: HTMLElement;
@@ -73,7 +75,7 @@ export function hudLast() {
     zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
     ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
-    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, streak: -2, streakLeft: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '', waveTag: '',
+    dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, souls: -2, streak: -2, streakLeft: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, brawl: -1, hideRound: false, arena: '', waveTag: '',
   };
 }
 export type HudLast = ReturnType<typeof hudLast>;
@@ -142,6 +144,14 @@ export function buildHudDom(hud: HTMLElement, H: HudRefs, bossSlots: BossSlot[])
   H.streakPips = [];
   for (let i = 0; i < 4; i++) H.streakPips.push(el('i', '', undefined, H.streakPipBox));
   H.streakFill = el('span', 'ss-streak-fill', undefined, el('span', 'ss-streak-bar', undefined, H.streak));
+  // REVENANT soul lantern: 🏮 and 10 violet pips over the ability row (the first 3 marked: SOUL GRASP's price).
+  H.souls = el('div', 'ss-souls hidden', undefined, bc);
+  H.souls.title = 'SOULS: +1 a wreck (bosses / rivals +2, Haunted +1 more), +1 a bot you PHASE through (3 a Phase). SOUL GRASP (F) costs 3; banked souls add riders to THE WILD HUNT and power its finale.';
+  el('span', 'ss-souls-ico', '🏮', H.souls);
+  const sp = el('span', 'ss-soul-pips', undefined, H.souls);
+  H.soulPips = [];
+  for (let i = 0; i < 10; i++) H.soulPips.push(el('i', i < 3 ? 'cost' : '', undefined, sp));
+  H.soulNum = el('span', 'ss-souls-n', '0', H.souls);
   const row = el('div', 'ss-bc-row', undefined, bc);
   H.dash = buildAbility(row, '💨', 'DASH', 'SHIFT', 'dash');
   H.gauge = el('div', 'ss-gauge', undefined, row);
@@ -325,7 +335,8 @@ export function updateHudPanels(ui: { h: HudRefs; last: HudLast; hud: HTMLElemen
       H.hpFill.style.transform = tf;
       H.hpChip.style.transform = tf;
     }
-    H.hpNum.innerHTML = `${php}<small> / ${Math.round(s.plowMaxHp)}</small>`;
+    // Both ceil: a full bar never reads over its max (134.4 max HP showed 135 / 134).
+    H.hpNum.innerHTML = `${php}<small> / ${Math.ceil(s.plowMaxHp)}</small>`;
     const low = f < 0.3;
     const mid = !low && f < 0.6;
     if (low !== L.low) {
@@ -385,6 +396,18 @@ export function updateHudPanels(ui: { h: HudRefs; last: HudLast; hud: HTMLElemen
     H.chunks.classList.toggle('big', ck >= 5);
     if (ck > L.chunks && L.chunks >= 0) restart(H.chunks, 'bump');
     L.chunks = ck;
+  }
+
+  // REVENANT soul lantern (hidden on the other plows).
+  const so = s.souls === undefined || s.souls < 0 ? -1 : Math.round(s.souls);
+  if (so !== L.souls) {
+    H.souls.classList.toggle('hidden', so < 0);
+    for (let i = 0; i < H.soulPips.length; i++) H.soulPips[i].classList.toggle('on', i < so);
+    H.souls.classList.toggle('ready', so >= 3);
+    H.souls.classList.toggle('full', so >= 10);
+    H.soulNum.textContent = String(Math.max(0, so));
+    if (so > L.souls && L.souls >= 0) restart(H.souls, 'bump');
+    L.souls = so;
   }
 
   // Classic Plow STREAK meter (hidden on the other plows, the snowball kit and in the Duel).
@@ -453,8 +476,10 @@ export function updateHudPanels(ui: { h: HudRefs; last: HudLast; hud: HTMLElemen
     const pound = s.fAbility === 'pound';
     const melt = s.fAbility === 'meltdown';
     const rockets = s.fAbility === 'missiles';
-    H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : rockets ? '🌀' : '🔥';
-    H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : rockets ? 'BURST' : 'FIRE';
+    const grasp = s.fAbility === 'grasp';
+    H.flame.querySelector('.ss-ab-icon')!.textContent = zap ? '⚡' : pound ? '💥' : melt ? '☢️' : rockets ? '🌀' : grasp ? '⛓️' : '🔥';
+    H.flame.querySelector('.ss-ab-name')!.textContent = zap ? 'CLAP' : pound ? 'POUND' : melt ? 'MELT' : rockets ? 'BURST' : grasp ? 'GRASP' : 'FIRE';
+    H.flame.classList.toggle('ss-ab-grasp', grasp);
     // The ultimate meter under the HP bar, one per plow.
     const ult = ULT_HUD[s.fAbility];
     H.crit.dataset.ult = s.fAbility;

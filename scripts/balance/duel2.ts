@@ -91,6 +91,9 @@ export function preferredRange(st: PlayerStats): number {
       return (sprayRange(ball) + (st.sprayReach || 0)) * REACH_MARGIN;
     case 'arsenal':
       return Math.max(CONTACT, tankGunRange(st) * REACH_MARGIN);
+    case 'revenant':
+      // The scythe sweeps out from the blade (REAP_FWD ahead of the centre): fight inside its reach.
+      return HULL + (st.reapReach || 7) * 0.6;
   }
 }
 
@@ -431,7 +434,7 @@ export function matrix(tier: Tier, v: Variant, N: number, seed: number, kinds: P
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
-const NAMES: Record<PlowKind, string> = { classic: 'Classic', volt: 'VOLT-9', brute: 'BRUTUS', isotope: 'ISOTOPE', arsenal: 'ARSENAL' };
+const NAMES: Record<PlowKind, string> = { classic: 'Classic', volt: 'VOLT-9', brute: 'BRUTUS', isotope: 'ISOTOPE', arsenal: 'ARSENAL', revenant: 'REVENANT' };
 
 export function renderVariant(tier: Tier, v: Variant, cells: Cell[][], kinds: PlowKind[] = KINDS): string {
   const out: string[] = [];

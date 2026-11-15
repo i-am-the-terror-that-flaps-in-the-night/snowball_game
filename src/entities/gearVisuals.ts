@@ -87,6 +87,7 @@ const ANCHORS: Record<PlowKind, Anchors> = {
   brute: { side: [1.12, 1.25, -0.4, 2.2], rear: [1.6, -2.0], deck: [-0.58, 2.66, -0.6], charm: [0.6, 2.66, -0.55], nose: null },
   isotope: { side: [1.11, 1.16, -0.45, 2.4], rear: [1.1, -1.9], deck: [0, 2.45, -0.9], charm: [-0.7, 2.38, 1.0], nose: null },
   arsenal: { side: [1.0, 1.6, -0.6, 1.5], rear: [1.95, -1.15], deck: [-0.45, 2.14, -0.95], charm: [0.6, 2.12, -1.1], nose: [1.43, 2.14, 1.5] },
+  revenant: { side: [1.02, 1.05, -1.1, 2.0], rear: [1.15, -2.62], deck: [0.55, 2.18, -0.4], charm: [-0.6, 2.18, 0.2], nose: null },
 };
 
 /** Blade sheet top edge / front face, in blade-group space (see Plow's curved sheet). */

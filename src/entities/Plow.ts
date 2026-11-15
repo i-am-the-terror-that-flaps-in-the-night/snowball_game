@@ -22,6 +22,7 @@ import { _fwd, _right, _a, _b, _dir } from './plow/scratch';
 import { knockScale } from '../config/plows';
 import { MOMENTUM_BOOST, RUSH_CHARGE_SLOW, RUSH_CHARGE_SLOW_PVP, RUSH_MAX, RUSH_SPEED } from './combat/classicRush';
 import { streakSpeed } from './combat/classicStreak';
+import { PHASE_SPEED } from './combat/revenant';
 
 /* The player / pilot plow. The class is layered over ./plow/ (PlowBase -> PlowVisuals -> PlowMotion -> Plow; see
  * plow/PlowBase.ts); this top layer holds the public API, the duel netcode, reset and the per-frame update. */
@@ -387,7 +388,8 @@ export class Plow extends PlowMotion implements PlowAPI {
    *  false (the Singularity pulls everything alike), so driving straight out only gains (1 - pull) of top speed.
    *  Call every frame while pulling. */
   tow(dirX: number, dirZ: number, frac: number, dt: number, heavy = true): void {
-    if (this._dead || !(dt > 0) || !(frac > 0) || !Number.isFinite(dirX) || !Number.isFinite(dirZ)) return;
+    // PHASED (REVENANT): nothing can grab a ghost.
+    if (this._dead || this.phased || !(dt > 0) || !(frac > 0) || !Number.isFinite(dirX) || !Number.isFinite(dirZ)) return;
     const resist = heavy ? 1 - TOW_HEAVY + TOW_HEAVY * knockScale(this.b.stats.plowKind) : 1;
     const v = frac * this.b.stats.maxSpeed * resist;
     const k = 1 - Math.exp(-10 * dt);
@@ -396,7 +398,8 @@ export class Plow extends PlowMotion implements PlowAPI {
   }
 
   push(vx: number, vz: number): void {
-    if (this._dead) return;
+    // PHASED (REVENANT) ignores knockback and pulls.
+    if (this._dead || this.phased) return;
     this.pushVel.x += vx;
     this.pushVel.z += vz;
   }
@@ -405,6 +408,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     const sp = at ?? PLOW_SPAWN;
     this.position.set(sp.x, 0, sp.z);
     this.heading = sp.heading;
+    this.phased = false;
     // Terrain: start on the topmost surface at the spawn point (flat arenas: 0, as always).
     const t = this.ctx.terrain;
     const v = this.vert;
@@ -642,7 +646,9 @@ export class Plow extends PlowMotion implements PlowAPI {
     const maxF = stats.maxSpeed * (1 - 0.2 * Math.min(1, heldR / maxBallR)) * (this.whirlT >= 0 ? WHIRL_SPEED : 1) *
       (this.rushChargeK >= 0 ? (this.b.pvp ? RUSH_CHARGE_SLOW_PVP : RUSH_CHARGE_SLOW) : 1) * (this.momentumT > 0 ? 1 + MOMENTUM_BOOST : 1) *
       // STREAK: +8% top speed per stack (Combat reports -1 off the Classic and in the Duel: no change there).
-      (classicKit ? streakSpeed(b.combat?.streak ?? 0) : 1);
+      (classicKit ? streakSpeed(b.combat?.streak ?? 0) : 1) *
+      // REVENANT PHASE: spectral, +30% top speed.
+      (this.phased ? PHASE_SPEED : 1);
     const accel = stats.accel;
     // KITING: VOLT-9 backs off at VOLT_KITE_REV x top speed while its Arc Lance fires (voltArc is set by the kit on
     // every pilot that simulates this plow: single player, the Duel host, and the guest's own prediction).
@@ -730,7 +736,8 @@ export class Plow extends PlowMotion implements PlowAPI {
       this.position.z += this.conv.z * dt;
     }
     this.clampToArena(vf, dt);
-    this.collideObstacles(vf, dt);
+    // PHASED (REVENANT) drives straight through props and pillars (deck walls and the arena edge still hold it).
+    if (!this.phased) this.collideObstacles(vf, dt);
     if (terr.decks.length) this.collideDecks(vf, dt);
     if (this.dashT > 0 || rushing) this.dashHits();
     this.terrainStep(dt);

@@ -70,6 +70,7 @@ const F_INFO: Partial<Record<PlowDef['fAbility'], { title: string; text: string 
   meltdown: { title: 'Meltdown', text: 'Vent the reactor: a toxic blast around ISOTOPE that leaves a glowing fallout pool. Irradiated bots glow green and take extra damage from you. Fill the ☢ bar with radiation damage to unlock a NUKE.' },
   missiles: { title: 'Polarity Burst', text: 'Fold the gyro into a disc: an event horizon drags every bot within 16 m into one point in front of you, then it detonates.' },
   pound: { title: 'Ground Pound', text: 'Slam BRUTUS into the ground: a shockwave that hammers and shoves every bot around you.' },
+  grasp: { title: 'Soul Grasp', text: 'PHASE (E) through bots to Haunt them and steal their souls, then spend 3 souls: chains from the Reliquary yank every Haunted bot to you and stun it. REAP (hold SPACE) the pile. Damage fills the ⚰️ bar: when it is full, F calls THE WILD HUNT.' },
 };
 
 interface Step {
@@ -706,7 +707,8 @@ export class Tutorial {
         this.lastF = r;
         return this.fUsed ? 1 : 0;
       },
-      hint: () => (ctx.combat.flameReady < 1 && !this.fUsed ? 'Recharging…' : ''),
+      // SOUL GRASP waits on souls, not a recharge.
+      hint: () => (ctx.combat.flameReady < 1 && !this.fUsed ? (def.fAbility === 'grasp' ? `Souls ${Math.max(0, ctx.combat.souls ?? 0)}/3: PHASE (E) through the bots` : 'Recharging…') : ''),
     };
   }
 

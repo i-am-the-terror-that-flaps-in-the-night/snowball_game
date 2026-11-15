@@ -10,12 +10,12 @@ rush), and keeps its own F and ultimate.
 It takes effect on the next run; the Duel always uses SPECIAL.
 
 **Roles** (in Brawl Stars terms): BRUTUS is the close tank (El Primo), the Classic the close-range assassin (Nori),
-VOLT-9 the true ranged pilot (Colt), ARSENAL the mid-range magnetic disruptor and ISOTOPE the specialist (zone, damage
-over time, tank-buster).
+VOLT-9 the true ranged pilot (Colt), ARSENAL the mid-range magnetic disruptor, ISOTOPE the specialist (zone, damage
+over time, tank-buster) and REVENANT the hit-and-run reaper (dodge through a pack, chain it, reap it).
 
 **Heaviness.** Every knockback, shove or pull a plow takes (bots' rams and attacks, boss shockwaves and the GRINDER's
 auger suck-in, Brawl rivals, the Duel opponent's hits) is scaled by its weight: BRUTUS takes half, the Classic 80%,
-ISOTOPE 85%, VOLT-9 and ARSENAL the full push (`PlowDef.knockResist`, `knockScale(kind)` in `src/config/plows.ts`).
+ISOTOPE 85%, REVENANT 90% (none at all while PHASED), VOLT-9 and ARSENAL the full push (`PlowDef.knockResist`, `knockScale(kind)` in `src/config/plows.ts`).
 A plow's own moves (dash, Saw Charge) are never scaled.
 
 ## Classic Plow
@@ -253,6 +253,57 @@ arena behind it, and a tilted, swirling accretion disc. For 3 s it drags every b
 ever faster (bosses less), with small damage ticks and a building rumble; then it shrinks to a point and explodes:
 a blinding flash (toned down with Reduce flashing), a huge shockwave, big damage to everything within 40 m (full
 within 12 m, half at the rim, thinner shares the more it catches) and everything flung outward.
+
+## REVENANT 💀
+
+**The hit-and-run reaper:** it dodges THROUGH a pack, chains it, and reaps it. Low HP (+12%, below the Classic's +15%),
++8% speed, no real ranged attack.
+
+A possessed, semi-modern armoured hearse: long, low and angular with a wedge nose, matte graphite paint and gloss black
+carbon panels, tinted frosted windows with faint ghost silhouettes drifting behind the glass, and violet spectral strip
+lights tracing the body lines that flicker like flame. Narrow slit headlights spill purple ghostfire; the blade is a
+modern alloy swept into a scythe curve, etched with glowing sigils (half circuit, half rune). Over the tail floats
+**the Reliquary**, a glass capsule held up by ghostfire with the souls visibly swirling inside it as wisps (one per
+soul); a roof beacon pulses a ring of light on every toll. Black rims with violet spectral spokes and floating rune
+rings, and a purple mist underglow. PHASED, the body dissolves translucent with a glitchy scanline shimmer, a skeletal
+chassis frame shows inside it and ghostfire wisps trail behind. Every effect is a solid violet with a dark edge, so it
+reads on sunlit snow as well as at night. No blade to plow with, no snowball.
+
+**SOULS (0-10, the Reliquary; the 10-pip soul lantern over the ability row, the first 3 marked).** +1 a wreck (bosses
+and Brawl rivals +2), +1 more if it was Haunted, +1 a bot PHASED through (3 a Phase at most). In the Duel, +1 per 10%
+of the other pilot's max HP you deal. SOUL GRASP spends them; banked souls power THE WILD HUNT.
+
+- **Passive: HAUNT.** A bot you phase through is Haunted for 6 s: a wavy purple ghost chain tethers it to you, a pale
+  overlay and a skull wisp float over it, and it takes +25% damage from you. Wrecked while Haunted it drops a soul and
+  rises as a **PHANTOM**: a short-lived translucent ghost copy that charges the nearest bot (14 m) once and bursts in
+  ghostfire (3.5 m, 40 damage x your damage mult), so kills chain through a group (4 phantoms at a time at most).
+- **SPACE (hold): REAP.** Scythe sweeps alternating left and right, 2.5 a second (Overclock speeds them up), across a
+  140° arc out to 7 m ahead. Every third sweep is a big Reap: 20% wider, double damage, and it hits Haunted bots twice.
+  8.6 damage a sweep fresh (x your damage mult). Violet scythe ribbons with a dark edge. In the Duel it hits the other
+  pilot at 80% (one hit even on the big Reap).
+- **E: PHASE.** 1.2 s spectral: +30% top speed, through bots, props and attacks (no damage taken, no pulls, tows or
+  knockback). Every bot passed through is Haunted. On exit, **MANIFEST**: a ghostfire shockwave (5 m, 30 damage),
+  +25% damage and +0.8 m for every soul taken in that Phase. Recharges in 6 s (Ectoplasm and Nitro Dash shorten it,
+  never under 4 s).
+- **F: SOUL GRASP (3 souls; greyed out under 3).** Spectral chains from the Reliquary yank every Haunted bot within
+  20 m to you, hurt it (34) and stun it 1 s; with none Haunted they seize the nearest three and Haunt them. A short
+  1.5 s recharge stops wreck-fed souls chain-casting it in a crowd. In the Duel the chains hold the other pilot 0.6 s.
+- DASH (L-SHIFT) as everyone.
+
+Line: Reaper's Scythe (REAP damage and reach), Ectoplasm (MANIFEST damage and radius, PHASE recharge), Soul Chains
+(SOUL GRASP damage, stun and reach; THE WILD HUNT scales with it, and it grows the ultimate meter like every plow's F
+upgrade), Haunting (Haunt damage bonus and length, PHANTOM burst). Every ability is free at level 0.
+
+Upgrade mapping: Packed Ice = all damage; Wide Blade = a longer scythe (+0.5 m per extra metre of blade); Nitro Dash =
+a faster PHASE recharge; Whirlwind Turbine = a harder MANIFEST; Overclock = faster sweeps and recharges.
+
+**Ultimate: THE WILD HUNT.** Any damage fills the ⚰️ meter (MANIFEST, phantom and Grasp bursts count at 34%, Reap hits
+past the nearest target at 30%). F with the meter full: the beacon tolls three times and the arena darkens under a
+purple fog; for 7 s you lead a stampede of 8 phantom hearses (+1 per banked soul, 18 at most): outlined, translucent
+ghost copies of the hull that follow your exact path like a snake. You are PHASED the whole time, and anything on the
+path is trampled by every rider that passes (1.6x Soul Chains damage a rider, each rider hits a bot at most every
+0.5 s). At the end they all converge on you and ERUPT (10 m +0.3 m per soul spent; 4x Soul Chains damage +0.5x per
+soul spent; the souls are consumed). In the Duel the riders hit the other pilot as they pass, under the usual Duel ultimate cap.
 
 ## Ultimates and the kill-cam
 

@@ -55,7 +55,7 @@ describe('vehicle kits (SPACE / E)', () => {
     expect(rig('classic').c.abilityHud).toBeNull();
   });
 
-  it.each(['volt', 'brute', 'isotope', 'arsenal'] as const)('%s: a kit with HUD descriptors, hooks called every frame', (kind) => {
+  it.each(['volt', 'brute', 'isotope', 'arsenal', 'revenant'] as const)('%s: a kit with HUD descriptors, hooks called every frame', (kind) => {
     const r = rig(kind);
     const v = r.c.vehicle!;
     expect(v).not.toBeNull();

@@ -671,6 +671,8 @@ export class DuelManager {
     const a = this.ctx.plow as Plow;
     const b = this.oppPlow!;
     if (a.dead && b.dead) return;
+    // A PHASED REVENANT drives straight through the other plow (no shove, no ram either way).
+    if (a.phased || b.phased) return;
     const dx = b.position.x - a.position.x;
     const dz = b.position.z - a.position.z;
     const d = Math.hypot(dx, dz);
@@ -1290,7 +1292,7 @@ export class DuelManager {
       this.oppCombat!.readPuppet(st, 0);
     }
     // Keep our predicted plow out of the opponent's body (the host resolves the real contact).
-    if (!plow.dead && !opp.dead) {
+    if (!plow.dead && !opp.dead && !plow.phased && !opp.phased) {
       const dx = plow.position.x - opp.position.x;
       const dz = plow.position.z - opp.position.z;
       const d = Math.hypot(dx, dz);

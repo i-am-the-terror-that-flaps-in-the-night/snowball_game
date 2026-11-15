@@ -51,9 +51,14 @@ export type UpgradeId =
   | 'armLaser'
   | 'armMissiles'
   | 'armBarrier'
-  | 'armMagnet';
+  | 'armMagnet'
+  // REVENANT line (only active while driving REVENANT; player-only).
+  | 'revReap'
+  | 'revPhase'
+  | 'revGrasp'
+  | 'revHaunt';
 
-export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal' | 'special';
+export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal' | 'revenant' | 'special';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -97,6 +102,9 @@ export const LAST_STAND_HP = 0.35;
 export const COMBO_WINDOW = 4;
 export const COMBO_MAX = 3;
 
+/** REVENANT's PHASE never recharges faster than this (s, after Nitro Dash and Overclock): it is a 1.2 s window of
+ *  being untouchable, so a near-spammable one (late gear took it under 2 s) is near-permanent invulnerability. */
+export const PHASE_MIN_COOLDOWN = 4;
 /** Applies an Overclock multiplier to a base cooldown, never going below MIN_COOLDOWN. */
 export const cooldown = (base: number, mult: number) => Math.max(MIN_COOLDOWN, base * mult);
 
@@ -238,6 +246,26 @@ export const FX = {
   missileCooldown: (L: number) => 5.5 + 2 * Math.exp(-L / 4),
   /** Energy Barrier: a recharging shield (0 = not owned). */
   barrier: (L: number) => (L <= 0 ? 0 : 40 + 28 * grow(L - 1, 4)),
+  // ---- REVENANT line (every ability is free at level 0; upgrades strengthen it)
+  /** Reaper's Scythe (SPACE, hold): damage per scythe sweep (x your damage mult; every third sweep, the big Reap, x2)
+   *  and the sweep's reach (m; Wide Blade adds more, combat/revenant.ts reapReach). */
+  reapDamage: (L: number) => 8.6 + 4.4 * grow(L, 5),
+  reapReach: (L: number) => 7 + 0.3 * soft(L, 5),
+  /** Ectoplasm (E PHASE): MANIFEST shockwave damage (x your damage mult; +SOUL_MANIFEST per soul taken in the Phase)
+   *  and base radius (m), and the Phase recharge before Nitro Dash and Overclock (s). */
+  manifestDamage: (L: number) => 30 + 8 * grow(L, 5),
+  manifestRadius: (L: number) => 5 + 0.4 * soft(L, 5),
+  phaseCooldown: (L: number) => 4.6 + 1.4 * Math.exp(-L / 4),
+  /** Soul Chains (F SOUL GRASP; its level also grows THE WILD HUNT): chain damage on each Haunted bot yanked (x your
+   *  damage mult), stun (s) and reach (m). The Wild Hunt's riders and finale scale off graspDamage. */
+  graspDamage: (L: number) => 34 + 10 * grow(L, 5),
+  graspStun: (L: number) => 1 + 0.1 * soft(L, 5),
+  graspRange: (L: number) => 20 + 0.8 * soft(L, 5),
+  /** Haunting (passive HAUNT): extra damage a Haunted bot takes from you, seconds it stays Haunted, and the PHANTOM's
+   *  burst damage (x your damage mult). */
+  hauntVuln: (L: number) => 0.25 + 0.025 * soft(L, 5),
+  hauntSeconds: (L: number) => 6 + 0.4 * soft(L, 5),
+  phantomDamage: (L: number) => 40 + 13 * grow(L, 5),
   /** Scrap Magnet (0 = not owned): field reach (m) and its slow damage per second, most scrap shards in the orbit
    *  ring, and damage per shard hit (all x your damage mult; ARSENAL's PvE bonus applies against bots). */
   scrapRadius: (L: number) => (L <= 0 ? 0 : 7 + 0.4 * soft(L, 5)),
@@ -299,6 +327,10 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'armMissiles', name: 'Polarity Burst', icon: '🌀', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'F: the gyro folds into a disc and an event horizon drags every bot within 16 m into one point ahead, then it detonates.', details: 'Free on ARSENAL. The horizon opens 16 m round a singularity point 4 m in front of you and pulls every bot inside toward it for about a second (bosses less), then collapses: a cyan shockwave hits everything in the clump and flings it outward. A lone bot takes the full listed damage; the more it catches, the thinner each share (but the more it does in all). Any damage you deal fills the 🌀 SINGULARITY meter (under your HP): when full, F opens a black hole over the densest crowd within 40 m that drags every bot within 40 m of it into its core for 3 s, then collapses and explodes.', pips: 5, maxLevel: ENDLESS, baseCost: 150, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.missileCount(l) * FX.missileDamage(l))} dmg, ${f1(FX.missileCooldown(l))}s` },
   { id: 'armBarrier', name: 'Energy Barrier', icon: '🟦', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'No snowball to hide behind: a shield soaks damage first, recharging after 3s without hits.', pips: 5, maxLevel: ENDLESS, baseCost: 100, costGrowth: 1.75, valueLabel: (l) => (l ? `${Math.round(FX.barrier(l))} shield` : 'Locked') },
   { id: 'armMagnet', name: 'Scrap Magnet', icon: '🧲', category: 'arsenal', playerOnly: true, plowOnly: 'arsenal', description: 'Passive: a magnetic field that slowly hurts nearby bots and strips scrap off the bots you fight into a spinning ring of blades round the vehicle.', details: 'Every 20% of a bot\'s max HP your weapons tear off (bosses: every 6%) rips a scrap shard off it, and every wreck sheds one too; the ring\'s own hits and the field count at a quarter rate. Shards torn off within 12 m fly in and orbit the hull (3.5 m out) for 15 s. Every shard that passes through a bot hits it (each bot at most every 0.4 s per shard) and keeps orbiting. The field itself only does a trickle of damage. All of it x your damage mult, with ARSENAL\'s PvE bonus against bots.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => (l ? `${FX.scrapMax(l)} shards × ${Math.round(FX.scrapHit(l))} dmg, ${f1(FX.scrapRadius(l))} m field` : 'Locked') },
+  { id: 'revReap', name: "Reaper's Scythe", icon: '🌙', category: 'revenant', playerOnly: true, plowOnly: 'revenant', description: 'SPACE (hold): REAP harder and further. Scythe sweeps left and right, about 2.5 a second; every third is a big Reap.', details: 'Free on REVENANT. Each sweep hits every bot in a 140° arc ahead out to its reach (~7 m). Every third sweep is a big Reap: 20% wider, double damage, and it hits Haunted bots twice. Overclock sweeps faster. On REVENANT, Wide Blade lengthens the scythe (+0.5 m per extra metre of blade) and Whirlwind Turbine makes the MANIFEST (E) hit harder.', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => `${f1(FX.reapDamage(l))} dmg a sweep, ${f1(FX.reapReach(l))} m` },
+  { id: 'revPhase', name: 'Ectoplasm', icon: '👻', category: 'revenant', playerOnly: true, plowOnly: 'revenant', description: 'E: PHASE recharges faster and its MANIFEST shockwave hits harder and wider.', details: 'Free on REVENANT. PHASE: 1.2 s spectral, +30% speed, through bots, props and attacks (no damage taken, no pulls or knockback). Every bot you pass through is Haunted and gives a soul (3 a Phase at most). On exit, MANIFEST: a ghostfire shockwave, +25% damage and +0.8 m radius per soul taken in that Phase. Nitro Dash shortens the Phase recharge too.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.manifestDamage(l))} dmg, ${f1(FX.manifestRadius(l))} m, ${f1(FX.phaseCooldown(l))}s` },
+  { id: 'revGrasp', name: 'Soul Chains', icon: '⛓️', category: 'revenant', playerOnly: true, plowOnly: 'revenant', description: 'F: SOUL GRASP (3 souls) yanks every Haunted bot in reach to you, hurts and stuns it. Also feeds THE WILD HUNT.', details: 'Free on REVENANT. Greyed out under 3 souls. In the Duel the chains hold the other pilot for 0.6 s. Damage you deal fills the ⚰️ WILD HUNT meter (under your HP): when it is full, F tolls the beacon three times and you lead a stampede of 8 phantom hearses (+1 per banked soul) for 7 s, phased, trampling everything on your path; at the end they converge and ERUPT, bigger for every soul spent. Riders and finale scale with this upgrade.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.graspDamage(l))} dmg, ${f1(FX.graspStun(l))}s stun, ${Math.round(FX.graspRange(l))} m` },
+  { id: 'revHaunt', name: 'Haunting', icon: '🕯️', category: 'revenant', playerOnly: true, plowOnly: 'revenant', description: 'Passive HAUNT: Haunted bots take more damage from you for longer, and their PHANTOMS burst harder.', details: 'Free on REVENANT. A Haunted bot is tethered to you by a ghost chain. Wrecked while Haunted it drops a soul and rises as a PHANTOM: a short-lived ghost that charges the nearest bot and bursts in ghostfire (area damage), so kills chain through a pack (4 phantoms at a time at most).', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => `+${Math.round(FX.hauntVuln(l) * 100)}% dmg, ${f1(FX.hauntSeconds(l))}s, ${Math.round(FX.phantomDamage(l))} burst` },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },

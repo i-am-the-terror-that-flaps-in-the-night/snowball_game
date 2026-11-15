@@ -186,7 +186,8 @@ export class OpponentTarget implements EnemyManagerAPI {
     let stop = 0;
     if (final > 0 && !victim.dead) {
       // Ground Pound stuns and Thunderclap / Frost Core shocks freeze a plow briefly (bots get the full stun).
-      if (opts?.stunSeconds) stop = Math.min(0.5, opts.stunSeconds * 0.35);
+      if (opts?.hold) stop = Math.min(0.6, opts.hold);
+      else if (opts?.stunSeconds) stop = Math.min(0.5, opts.stunSeconds * 0.35);
       else if (opts?.freezeSeconds && opts.freezeSeconds >= 1) stop = 0.15;
       if (stop > 0) victim.hitStop(stop);
     }

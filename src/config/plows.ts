@@ -1,7 +1,8 @@
 /** Starter plows. Picked in the Garage; all are free. Each multiplies the shared garage stats and has its own
  *  exclusive upgrade line (Classic: the 'classic' category, Inferno fire on F; VOLT-9: the 'volt' category, Thunderclap on F;
- *  BRUTUS: the 'brute' category, Ground Pound on F; ISOTOPE: the 'isotope' category, Meltdown on F). */
-export type PlowKind = 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal';
+ *  BRUTUS: the 'brute' category, Ground Pound on F; ISOTOPE: the 'isotope' category, Meltdown on F; REVENANT: the
+ *  'revenant' category, Soul Grasp on F). */
+export type PlowKind = 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal' | 'revenant';
 
 export interface PlowDef {
   id: PlowKind;
@@ -19,7 +20,7 @@ export interface PlowDef {
    *  whirl) and its ult power, eased by soft(): see Progression.computeStatsFor. */
   iceGrowth?: number;
   /** What F does with this plow. */
-  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles';
+  fAbility: 'fire' | 'zap' | 'pound' | 'meltdown' | 'missiles' | 'grasp';
   /** Not a snowplow (every kind but the Classic): no blade, never plows snow or holds a ball, and SPACE / E are the
    *  vehicle's own abilities (combat/shared.ts VehicleKit.primary / secondary) instead of slam / whirlwind. */
   noBall?: boolean;
@@ -125,5 +126,27 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     fAbility: 'missiles',
     noBall: true,
     knockResist: 1,
+  },
+  revenant: {
+    id: 'revenant',
+    name: 'REVENANT',
+    icon: '💀',
+    tagline: 'A possessed armoured hearse with a reliquary of stolen souls riding over its tail. It reaps the living and leads the dead.',
+    traits: [
+      'Specialist: a hit-and-run reaper. Haunt bots by phasing THROUGH them, then reap the pack; base HP (the Classic has +15%), +8% speed, no real ranged attack',
+      'SOULS (0-10, the Reliquary): +1 a wreck (bosses / rivals +2), +1 a bot phased through (max 3 a Phase) · Duel: +1 per 10% of the foe\'s HP you deal',
+      'HAUNT (passive): a bot you phase through is chained to you for 6 s and takes +25% damage from you; wrecked while Haunted it drops a soul and rises as a PHANTOM that charges the nearest bot and bursts in ghostfire',
+      'SPACE (hold): REAP, scythe sweeps left and right (~2.5 a second, 7 m, 140°); every third is a big Reap (wider, double damage, hits Haunted bots twice)',
+      'E: PHASE, 1.2 s spectral (+30% speed, nothing touches you, no pulls or knockback), then MANIFEST: a ghostfire shockwave that grows with the souls taken in the Phase',
+      'F: SOUL GRASP (3 souls): chains yank every Haunted bot within 20 m to you and stun it 1 s · damage builds THE WILD HUNT: 7 s phased at the head of 8 phantom hearses (+1 per banked soul)',
+    ],
+    hpMult: 1.12, // below the Classic (1.15): with neutral Duel factors, the least that keeps ISOTOPE's NUKE under 45% of it (tests/balance.test.ts)
+    speedMult: 1.08,
+    accelMult: 1.05,
+    dashPowerMult: 1.1,
+    slamMult: 1,
+    fAbility: 'grasp',
+    noBall: true,
+    knockResist: 0.9, // an armoured hull, a little ballast; Phase ignores knockback altogether
   },
 };

@@ -90,13 +90,14 @@ export const DUEL_POWER_DAMP = 0.4;
  *  topped every tier of the matrix. ARSENAL stays below 1 because its Mag Laser ('round' hits) already skip i-frames and
  *  ability diminishing returns: 0.85 is the most that keeps the laser alone under a fifth of a same-tier Classic in
  *  2 s of held fire (tests/balance.test.ts), so the rest of its help comes from DUEL_KIND_TAKEN. */
-export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 2.35, brute: 0.54, arsenal: 0.85, classic: 0.92 };
+// REVENANT: neutral (1) at launch, listed so the table names every plow.
+export const DUEL_KIND_DAMAGE: Partial<Record<PlowKind, number>> = { volt: 2.35, brute: 0.54, arsenal: 0.85, classic: 0.92, revenant: 1 };
 /** DUEL_KIND_TAKEN scales every hit the vehicle TAKES from a human plow (an effective-HP lever: the HP bar, the hit caps
  *  and the ultimate meter sizes stay on the real max HP). VOLT-9 and ARSENAL carry ~75% of the others' HP at every
  *  tier (light, fast vehicles) and lost most even trades; ISOTOPE fell furthest once the others were evened out (its
  *  spray range and radiation want kiting the fight never gives it); BRUTUS (the most HP) still won most of its trades
  *  after its damage trim, so it takes a little more. */
-export const DUEL_KIND_TAKEN: Partial<Record<PlowKind, number>> = { volt: 0.74, arsenal: 0.65, isotope: 0.95, brute: 1.18 };
+export const DUEL_KIND_TAKEN: Partial<Record<PlowKind, number>> = { volt: 0.74, arsenal: 0.65, isotope: 0.95, brute: 1.18, revenant: 1 };
 /** Fresh-garage overrides (vehicles not listed use the late value at every tier). BRUTUS grows strongest with upgrades
  *  (the matrix had it ~30% fresh / mid but ~65% at high under one flat trim), and VOLT-9 needs its full boost only late. */
 export const DUEL_KIND_DAMAGE_FRESH: Partial<Record<PlowKind, number>> = { volt: 2.15, brute: 0.76, classic: 0.86 };

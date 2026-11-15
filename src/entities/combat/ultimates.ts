@@ -7,14 +7,14 @@ import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type
  *  Duel victim path), so it stays valid across the nested victim hit. */
 const _kb = new THREE.Vector3();
 
-/** Ultimates for VOLT-9 / BRUTUS / ARSENAL (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
+/** Ultimates for VOLT-9 / BRUTUS / ARSENAL / REVENANT (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
  *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
  *  nothing refills it. */
 /** ARSENAL's meter needs this much more damage against bots (its hits there are PVE_MULT x; overkill on dying bots
  *  is not counted, so it's below PVE_MULT): tuned so the SINGULARITY fills in about 20 s fresh (the faster charge asked for). */
 const PVE_ULT = 1.75;
-const ULT_CHARGE = { volt: 2700, brute: 2100, arsenal: 1200 } as const;
-const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🌀 SINGULARITY' } as const;
+const ULT_CHARGE = { volt: 2700, brute: 2100, arsenal: 1200, revenant: 2000 } as const;
+const ULT_NAME = { volt: '⚡ SUPERCELL', brute: '🌍 EARTHQUAKE', arsenal: '🌀 SINGULARITY', revenant: '⚰️ THE WILD HUNT' } as const;
 /** Damage that fills an ultimate meter of base size `base` (its size on a fresh plow). Damage dealt grows with every
  *  upgrade, so the meter grows with the pilot's power and with Overclock (faster abilities, more damage): it takes
  *  about as long to fill at every stage of the game. */
@@ -62,12 +62,12 @@ export class Ultimates {
   feed(dealt: number): void {
     const h = this.h;
     const kind = h.b.stats.plowKind;
-    if (kind !== 'volt' && kind !== 'brute' && kind !== 'arsenal') return;
+    if (kind !== 'volt' && kind !== 'brute' && kind !== 'arsenal' && kind !== 'revenant') return;
     if (this.lock > 0 || this.t >= 0) return;
     const was = h.crit;
     // ARSENAL's PvE damage bonus doesn't speed its meter up: it charges as in the Duel.
     const pve = kind === 'arsenal' && !h.b.pvp ? PVE_ULT : 1;
-    h.crit = Math.min(1, h.crit + dealt / pve / ultMeter(h.b, ULT_CHARGE[kind]));
+    h.crit = Math.min(1, h.crit + (dealt * h.ultFeedShare) / pve / ultMeter(h.b, ULT_CHARGE[kind]));
     if (was < 1 && h.crit >= 1 && h.b.local) {
       h.ctx.ui.toast(`${ULT_NAME[kind]} READY · F`, 'info');
       h.b.audio.play('charge', { pitch: 0.7, volume: 0.6 });

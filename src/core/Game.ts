@@ -1287,6 +1287,7 @@ export class Game {
     hud.shield = ctx.combat.shieldFrac;
     hud.critMass = ctx.combat.critMass;
     hud.chunks = ctx.combat.chunks ?? -1;
+    hud.souls = ctx.combat.souls ?? -1;
     hud.streak = ctx.combat.streak ?? -1;
     hud.streakLeft = ctx.combat.streakLeft ?? 0;
     hud.overload = ctx.combat.overloadHeat;

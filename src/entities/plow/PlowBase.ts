@@ -22,6 +22,7 @@ import { buildVoltVehicle, type VoltVehicleParts } from '../vehicles/volt';
 import { buildBruteVehicle } from '../vehicles/brute';
 import { buildIsotopeVehicle } from '../vehicles/isotope';
 import { buildArsenalVehicle, type ArsenalVehicleParts } from '../vehicles/arsenal';
+import { buildRevenantVehicle, type RevenantVehicleParts } from '../vehicles/revenant';
 import { buildClassicVehicle, type ClassicVehicleParts } from '../vehicles/classic';
 import { makeVert } from '../../world/terrainMotion';
 import {
@@ -220,6 +221,14 @@ export abstract class PlowBase {
   protected gyroMount!: THREE.Object3D;
   protected armGlowMat!: THREE.MeshStandardMaterial;
   protected arsRig!: ArsenalVehicleParts;
+  /** REVENANT: the hearse body and its rig (strip lights, Reliquary souls, toll beacon, PHASED ghost shell). */
+  protected revParts!: THREE.Group;
+  protected revRig!: RevenantVehicleParts;
+  /** REVENANT PHASE (set by combat/revenant.ts every frame): spectral, so +30% top speed, untouchable (invulnerable), no
+   *  pushes / pulls, and it drives through bots, props and the Duel opponent. */
+  phased = false;
+  /** Eased 0..1 of `phased` for the ghost-shell visuals. */
+  protected phaseEase = 0;
   /** Set by Combat each frame (ARSENAL): 0..1 gyro rings folded flat into a disc (Polarity Burst), and 0..1 extra
    *  core charge glow (Mag Repulsor / Singularity). */
   gyroFlat = 0;
@@ -370,7 +379,11 @@ export abstract class PlowBase {
     this.armGlowMat = ars.parts.glowMat;
     this.arsRig = ars.parts;
 
-    for (const g of [this.voltParts, this.bruteParts, this.isoParts, this.arsenalParts]) {
+    const rev = buildRevenantVehicle(vin);
+    this.revParts = rev.group;
+    this.revRig = rev.parts;
+
+    for (const g of [this.voltParts, this.bruteParts, this.isoParts, this.arsenalParts, this.revParts]) {
       g.visible = false;
       this.body.add(g);
     }
@@ -568,7 +581,7 @@ export abstract class PlowBase {
     return ballRadius(this.heldVolume);
   }
   get invulnerable(): boolean {
-    return !this._dead && (this.spawnProt > 0 || this.dashT > DASH_SECONDS - DASH_IFRAMES);
+    return !this._dead && (this.spawnProt > 0 || this.phased || this.dashT > DASH_SECONDS - DASH_IFRAMES);
   }
 
   /** Camera shake from this plow: full strength for the local pilot, a fraction for a duel opponent. */
