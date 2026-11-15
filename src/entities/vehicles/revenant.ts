@@ -4,12 +4,12 @@ import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
 
-/* REVENANT: a possessed, semi-modern armoured hearse. Long, low and wedge-nosed in matte graphite with gloss black
- * carbon panels, frosted violet glass with ghost faces drifting behind it, spectral strip lights along every body line
- * (flickering like flame), slit headlights, a scythe-curved alloy blade etched with sigils, THE RELIQUARY (a glass
- * capsule of souls floating over the tail in ghostfire), a roof toll beacon, black rims with spectral spokes and rune
- * rings, purple underglow. PHASED: the opaque hull fades out for a scanline ghost shell with the bone-white skeletal
- * frame showing through. */
+/* REVENANT: a spectral reaper-car. A low, sleek void-black core (fixed colour, glowing seams) wears FLOATING armour
+ * plates (the Paint Shop colour, so any paint reads as armour over the ghost), under a dark bubble canopy with ghost
+ * faces drifting inside. Two wraith fins rise off the tail trailing tattered spectral ribbons; a halo hovers over the
+ * roof (the toll beacon) and THE RELIQUARY, a soul cell between glowing emitter rings, floats behind it. It rolls on
+ * HUBLESS spectral ring wheels, and carries two REAPER SCYTHES on arms off the front corners that whip in on every
+ * Reap. PHASED: the opaque body fades out for a scanline ghost shell with the bone-white skeletal frame inside. */
 
 /** Spectral palette (solid colours with a dark edge read on bright snow AND at night; additive is only a top layer). */
 export const REV_CORE = 0xb04dff;
@@ -46,25 +46,31 @@ export interface RevenantVehicleParts {
 }
 
 /** The Reliquary capsule: centre (model space), radius, length. Souls swirl inside it. */
-const RELIC_Y = 2.95;
+const RELIC_Y = 2.55;
 const RELIC_Z = -1.45;
-const RELIC_R = 0.34;
-const RELIC_L = 0.7;
+const RELIC_R = 0.25;
+const RELIC_L = 0.45;
 export const RELIC_POS = new THREE.Vector3(0, RELIC_Y, RELIC_Z);
 /** Roof toll beacon (front of the roof). */
-export const BEACON_POS = new THREE.Vector3(0, 2.28, 0.45);
+export const BEACON_POS = new THREE.Vector3(0, 2.32, 0.15);
 const SOULS_MAX = 10;
 const WHEELS = [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const;
 const WHEEL_R = 0.48;
 /** Scythe pivot (model z) and its Reap whip: the swing time (s) and how far it swings (rad). */
-const BLADE_PIVOT_Z = 2.05;
-const SWING_TIME = 0.26;
-const SWING_YAW = 0.6;
+/** Scythe arm pivots (model, per side x sign), their rest yaw (out from the nose), the Reap whip (s, rad). */
+const SCY_X = 0.92;
+const SCY_Y = 1.02;
+const SCY_Z = 1.95;
+const SCY_REST = 0.62;
+const SWING_TIME = 0.3;
+const SWING_YAW = 0.95;
+/** Hubless wheels sit a touch outboard of the plates. */
+const WHEEL_X = 1.06;
 
-/** Side profile (z, y) of the lower hull (extruded across the width): a long wedge, nose low, flat tail. */
-const LOWER: readonly (readonly [number, number])[] = [[-2.52, 0.6], [2.5, 0.6], [2.78, 0.8], [2.7, 0.98], [1.5, 1.38], [-2.44, 1.42], [-2.58, 1.02]];
-/** Greenhouse profile (z, y): raked windscreen, long flat roof over the rear compartment, chamfered tail. */
-const UPPER: readonly (readonly [number, number])[] = [[-2.36, 1.4], [1.32, 1.4], [0.72, 2.04], [-1.96, 2.12], [-2.34, 1.86]];
+/** Side profile (z, y) of the void core (extruded across the width): a long low wedge, nose down. */
+const LOWER: readonly (readonly [number, number])[] = [[-2.5, 0.6], [2.45, 0.6], [2.78, 0.76], [2.6, 0.98], [1.2, 1.3], [-2.3, 1.36], [-2.62, 1.04]];
+/** Bubble canopy profile (z, y): fast rake, a low crown, tapering off the tail. */
+const UPPER: readonly (readonly [number, number])[] = [[-2.15, 1.3], [1.15, 1.3], [0.5, 1.86], [-0.95, 1.98], [-2.05, 1.6]];
 
 function profileGeo(pts: readonly (readonly [number, number])[], width: number, bevel = 0.04): THREE.BufferGeometry {
   const sh = new THREE.Shape();
@@ -79,13 +85,16 @@ function profileGeo(pts: readonly (readonly [number, number])[], width: number, 
   return g;
 }
 
+const CORE_W = 1.6;
+const CANOPY_W = 1.22;
+
 let hullGeo: THREE.BufferGeometry | null = null;
 /** The hearse's hull silhouette (lower wedge + greenhouse) as one geometry, cached: THE WILD HUNT's phantom riders
  *  (combat/revenantFx.ts) ride in it. */
 export function revenantHullGeometry(): THREE.BufferGeometry {
   if (hullGeo) return hullGeo;
-  const a = profileGeo(LOWER, 2.0).toNonIndexed();
-  const b = profileGeo(UPPER, 1.74, 0.05).toNonIndexed();
+  const a = profileGeo(LOWER, CORE_W).toNonIndexed();
+  const b = profileGeo(UPPER, CANOPY_W, 0.05).toNonIndexed();
   for (const g of [a, b]) g.deleteAttribute('uv');
   hullGeo = mergeGeometries([a, b]) ?? a;
   return hullGeo;
@@ -210,164 +219,119 @@ function scanlines(): THREE.CanvasTexture | null {
 /** Cheap deterministic flicker (sum of sines): 0..1, flame-like. */
 const flick = (t: number, k: number) => 0.5 + 0.22 * Math.sin(t * 13.1 + k) + 0.17 * Math.sin(t * 29.3 + k * 2.3) + 0.11 * Math.sin(t * 47.9 + k * 5.1);
 
-export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuild<RevenantVehicleParts> {
+export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<RevenantVehicleParts> {
   const group = new THREE.Group();
   const hull = new THREE.Group();
   group.add(hull);
   const stripMat = new THREE.MeshStandardMaterial({ color: REV_CORE, emissive: REV_CORE, emissiveIntensity: 1.6, roughness: 0.4 });
   const edgeMat = new THREE.MeshStandardMaterial({ color: REV_EDGE, roughness: 0.6, metalness: 0.3 });
   const bone = new THREE.MeshStandardMaterial({ color: REV_BONE, roughness: 0.55, metalness: 0.15 });
-  const glass = new THREE.MeshStandardMaterial({ color: 0x2a1c3c, roughness: 0.35, metalness: 0.4, emissive: 0x2a0c4a, emissiveIntensity: 0.55 });
-  const alloy = new THREE.MeshStandardMaterial({ color: 0xc4c9d6, roughness: 0.22, metalness: 0.6 });
+  // The void core: a fixed near-black violet (never repainted) with a faint inner glow, so every Paint Shop colour on
+  // the floating plates reads as armour over the ghost.
+  const voidMat = new THREE.MeshStandardMaterial({ color: 0x140a22, roughness: 0.35, metalness: 0.55, emissive: 0x2a0c4a, emissiveIntensity: 0.35 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x15141d, roughness: 0.08, metalness: 0.75, emissive: 0x24103e, emissiveIntensity: 0.3 });
+  const alloy = new THREE.MeshStandardMaterial({ color: 0xe8ebf2, roughness: 0.2, metalness: 0.45, emissive: 0x6a5a88, emissiveIntensity: 0.4 });
   const slitMat = new THREE.MeshStandardMaterial({ color: REV_BRIGHT, emissive: REV_CORE, emissiveIntensity: 2.4 });
+  const edgeGlow = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, toneMapped: false });
   const tex = sigils();
   const sigilMat = new THREE.MeshStandardMaterial({ color: tex ? 0xffffff : REV_BRIGHT, map: tex, emissive: tex ? 0xffffff : REV_CORE, emissiveMap: tex, emissiveIntensity: 1.2, roughness: 0.4 });
 
-  addMesh(chassis, mats.dark, 0, 0.62, 0.05, hull);
-  // Hull: matte graphite lower wedge + a narrower gloss-black greenhouse (tumblehome), on carbon skirts.
-  const lowerGeo = profileGeo(LOWER, 2.0);
-  const upperGeo = profileGeo(UPPER, 1.74, 0.05);
-  addMesh(lowerGeo, mats.paint, 0, 0, 0, hull);
-  addMesh(upperGeo, mats.trim, 0, 0, 0, hull);
+  // ---- Void core + bubble canopy.
+  const lowerGeo = profileGeo(LOWER, CORE_W);
+  const upperGeo = profileGeo(UPPER, CANOPY_W, 0.05);
+  addMesh(lowerGeo, voidMat, 0, 0, 0, hull);
+  addMesh(upperGeo, glass, 0, 0, 0, hull);
+  // ---- Floating armour plates (Paint Shop body colour), each standing a hand off the core with a glowing seam
+  // showing in the gap.
   for (const sx of [-1, 1]) {
-    // Carbon side skirt + flared arches over the shared wheels.
-    addMesh(new THREE.BoxGeometry(0.1, 0.24, 2.0), mats.trim, sx * 1.02, 0.72, 0.1, hull);
-    for (const [, z] of WHEELS.filter(([x]) => x > 0)) addMesh(new THREE.BoxGeometry(0.3, 0.12, 1.25), mats.trim, sx * 1.04, 1.22, z, hull);
-    // Frosted violet side glass along the rear compartment, framed by thin bone pillars.
-    const win = addMesh(new THREE.BoxGeometry(0.04, 0.5, 3.1), glass, sx * 0.88, 1.74, -0.55, hull, false);
-    win.rotation.z = sx * 0.04;
-    for (const z of [-2.0, -1.05, -0.1, 0.85]) addMesh(new THREE.BoxGeometry(0.06, 0.56, 0.07), bone, sx * 0.9, 1.74, z, hull, false);
-    // Bone-white door handles and a carbon vent behind the front wheel.
-    addMesh(new THREE.BoxGeometry(0.04, 0.05, 0.22), bone, sx * 1.02, 1.28, 0.55, hull, false);
-    for (let k = 0; k < 3; k++) addMesh(new THREE.BoxGeometry(0.04, 0.04, 0.34), mats.dark, sx * 1.02, 0.98 + k * 0.08, 0.72, hull, false);
+    // Front fender plate and the long rear quarter plate, canted out a little, with a gap between them.
+    const fr = addMesh(new THREE.BoxGeometry(0.07, 0.4, 1.35), mats.paint, sx * 0.9, 1.0, 1.55, hull);
+    fr.rotation.z = sx * 0.14;
+    const rq = addMesh(new THREE.BoxGeometry(0.07, 0.46, 2.2), mats.paint, sx * 0.9, 1.04, -1.2, hull);
+    rq.rotation.z = sx * 0.14;
+    // Shoulder plates over the quarters (trim colour), angled up toward the canopy.
+    const sh = addMesh(new THREE.BoxGeometry(0.34, 0.06, 2.0), mats.trim, sx * 0.72, 1.4, -1.15, hull);
+    sh.rotation.z = sx * -0.32;
+    // Glowing seams: along the plates' top edges and down the gap between them.
+    addMesh(new THREE.BoxGeometry(0.035, 0.035, 1.3), stripMat, sx * 0.94, 1.22, 1.55, hull, false);
+    addMesh(new THREE.BoxGeometry(0.035, 0.035, 2.15), stripMat, sx * 0.94, 1.29, -1.2, hull, false);
+    addMesh(new THREE.BoxGeometry(0.035, 0.5, 0.035), stripMat, sx * 0.84, 1.02, 0.6, hull, false);
+    // Underbody seam (the core's beltline).
+    addMesh(new THREE.BoxGeometry(0.03, 0.03, 4.6), stripMat, sx * 0.81, 0.7, 0.05, hull, false);
+    // Canopy base seam.
+    addMesh(new THREE.BoxGeometry(0.03, 0.03, 3.1), stripMat, sx * (CANOPY_W / 2 + 0.01), 1.33, -0.5, hull, false);
   }
-  // Raked windscreen + rear glass (the Plow's tinted glass), a carbon hood blister and roof spoiler.
-  const ws = addMesh(new THREE.BoxGeometry(1.5, 0.05, 0.86), glass, 0, 1.74, 1.03, hull, false);
-  ws.rotation.x = -0.86;
-  const rw = addMesh(new THREE.BoxGeometry(1.4, 0.05, 0.42), glass, 0, 2.0, -2.18, hull, false);
-  rw.rotation.x = 0.98;
-  const blister = addMesh(new THREE.BoxGeometry(0.7, 0.08, 1.1), mats.trim, 0, 1.36, 2.0, hull);
-  blister.rotation.x = 0.31;
-  addMesh(new THREE.BoxGeometry(1.7, 0.06, 0.34), mats.trim, 0, 2.17, -2.12, hull);
-  // Spectral strip lights: beltline, roof rails, hood chevrons, tail bar.
+  // Nose plate (paint) sloping down to the visor, split down the middle by a glowing spine.
   for (const sx of [-1, 1]) {
-    addMesh(new THREE.BoxGeometry(0.035, 0.035, 3.95), stripMat, sx * 1.0, 1.42, -0.5, hull, false);
-    addMesh(new THREE.BoxGeometry(0.03, 0.03, 2.66), stripMat, sx * 0.86, 2.12, -0.62, hull, false);
-    const chev = addMesh(new THREE.BoxGeometry(0.035, 0.035, 1.3), stripMat, sx * 0.62, 1.2, 2.08, hull, false);
-    chev.rotation.set(0.31, sx * -0.36, 0);
-    addMesh(new THREE.BoxGeometry(0.035, 0.035, 2.5), stripMat, sx * 1.01, 0.66, 0.1, hull, false);
+    const np = addMesh(new THREE.BoxGeometry(0.66, 0.06, 1.15), mats.paint, sx * 0.38, 1.17, 1.98, hull);
+    np.rotation.set(0.24, 0, sx * -0.08);
   }
-  addMesh(new THREE.BoxGeometry(1.8, 0.05, 0.035), stripMat, 0, 1.18, -2.6, hull, false);
-  // Slit headlights in a carbon visor, and the tail's coffin-lid hatch outline.
+  const spine = addMesh(new THREE.BoxGeometry(0.04, 0.04, 1.15), stripMat, 0, 1.2, 1.98, hull, false);
+  spine.rotation.x = 0.24;
+  // Visor: a black slot across the nose with the two slit headlights and a fanged lower grille.
+  addMesh(new THREE.BoxGeometry(1.5, 0.14, 0.06), voidMat, 0, 0.92, 2.68, hull, false);
   for (const sx of [-1, 1]) {
-    const head = addMesh(new THREE.BoxGeometry(0.48, 0.05, 0.05), slitMat, sx * 0.55, 0.98, 2.67, hull, false);
-    head.rotation.y = sx * -0.28;
+    const head = addMesh(new THREE.BoxGeometry(0.46, 0.045, 0.05), slitMat, sx * 0.48, 0.94, 2.72, hull, false);
+    head.rotation.z = sx * 0.12;
   }
-  addMesh(new THREE.BoxGeometry(1.5, 0.05, 0.05), edgeMat, 0, 1.02, 2.66, hull, false);
-  addMesh(new THREE.BoxGeometry(1.2, 0.04, 0.04), bone, 0, 1.38, -2.6, hull, false);
-  // The whole scythe hangs off one pivot just behind the nose, so it can whip side to side on each Reap.
-  const blade = new THREE.Group();
-  blade.position.set(0, 0, BLADE_PIVOT_Z);
-  hull.add(blade);
-  // SCYTHE BLADE: a crescent alloy plate low across the nose, swept back into hooked tips, a sigil band on its face.
-  const cres = new THREE.Shape();
-  const OUT = 1.62;
-  cres.moveTo(-OUT - 0.42, -0.95);
-  cres.quadraticCurveTo(-OUT, 0.05, 0, 0.38);
-  cres.quadraticCurveTo(OUT, 0.05, OUT + 0.42, -0.95);
-  cres.quadraticCurveTo(OUT - 0.05, -0.3, 0, 0.1);
-  cres.quadraticCurveTo(-OUT + 0.05, -0.3, -OUT - 0.42, -0.95);
-  const bladeGeo = new THREE.ExtrudeGeometry(cres, { depth: 0.3, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1, curveSegments: 10 });
-  bladeGeo.rotateX(Math.PI / 2);
-  bladeGeo.computeVertexNormals();
-  addMesh(bladeGeo, alloy, 0, 0.78, 2.55 - BLADE_PIVOT_Z, blade);
-  // Glowing cutting edge along the blade's outer arc and a honed bevel on its inner (rear-facing) arc, so the hooked
-  // tips read as blades from the chase camera behind, not as dark wings.
-  const edgeGlow = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, toneMapped: false });
-  const bevel = new THREE.MeshStandardMaterial({ color: 0xeef0f6, roughness: 0.12, metalness: 0.5, emissive: 0x3a2a55, emissiveIntensity: 0.5 });
-  const BY = 0.79;
-  const BZ = 2.55 - BLADE_PIVOT_Z;
+  for (let k = -2; k <= 2; k++) {
+    const fang = addMesh(new THREE.ConeGeometry(0.035, 0.16, 4), edgeGlow, k * 0.16, 0.74, 2.74, hull, false);
+    fang.rotation.x = Math.PI;
+  }
+  // Dorsal ridge along the canopy crown (trim) with a seam.
+  addMesh(new THREE.BoxGeometry(0.06, 0.12, 2.2), mats.trim, 0, 2.0, -0.55, hull);
+  addMesh(new THREE.BoxGeometry(0.025, 0.025, 2.2), stripMat, 0, 2.07, -0.55, hull, false);
+  // Wraith fins rising off the tail (trim), canted out, edged in glow.
+  const finShape = new THREE.Shape();
+  finShape.moveTo(-1.55, 1.3);
+  finShape.lineTo(-2.45, 1.3);
+  finShape.quadraticCurveTo(-2.8, 1.8, -3.05, 2.5);
+  finShape.quadraticCurveTo(-2.45, 2.05, -1.55, 1.3);
+  const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.05, bevelEnabled: false, curveSegments: 8 });
+  finGeo.rotateY(-Math.PI / 2);
+  finGeo.translate(0.025, 0, 0);
+  finGeo.computeVertexNormals();
+  const finEdge = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 1.3, -1.55), new THREE.Vector3(0, 2.05, -2.45), new THREE.Vector3(0, 2.5, -3.05));
+  const finEdgeGeo = new THREE.TubeGeometry(finEdge, 12, 0.03, 4, false);
+  const finTips: THREE.Vector3[] = [];
   for (const sx of [-1, 1]) {
-    const outer = new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(sx * (OUT + 0.42), BY, BZ - 0.95), new THREE.Vector3(sx * OUT, BY, BZ + 0.05), new THREE.Vector3(0, BY, BZ + 0.38));
-    addMesh(new THREE.TubeGeometry(outer, 16, 0.045, 5, false), edgeGlow, 0, 0, 0, blade, false);
-    const inner = new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(sx * (OUT + 0.42), BY, BZ - 0.95), new THREE.Vector3(sx * (OUT - 0.05), BY, BZ - 0.3), new THREE.Vector3(sx * 0.4, BY, BZ + 0.06));
-    addMesh(new THREE.TubeGeometry(inner, 16, 0.06, 4, false), bevel, 0, 0, 0, blade, false);
-    // A needle point hooking back off each tip.
-    const tip = addMesh(new THREE.ConeGeometry(0.09, 0.55, 6), edgeGlow, sx * (OUT + 0.55), BY - 0.12, BZ - 1.18, blade, false);
-    tip.rotation.set(-Math.PI / 2, 0, 0);
-    tip.rotation.y = sx * 0.55;
+    const fin = new THREE.Group();
+    fin.position.x = sx * 0.62;
+    fin.rotation.z = sx * -0.28;
+    hull.add(fin);
+    addMesh(finGeo, mats.trim, 0, 0, 0, fin);
+    addMesh(finEdgeGeo, edgeGlow, 0, 0, 0, fin, false);
+    fin.updateMatrix();
+    finTips.push(new THREE.Vector3(0, 2.45, -3.0).applyMatrix4(fin.matrix));
   }
-  // Sigil band: a thin strip following the front arc (segments).
-  const SEG = 9;
-  for (let i = 0; i < SEG; i++) {
-    const t0 = i / SEG;
-    const t1 = (i + 1) / SEG;
-    const at = (t: number) => {
-      // Quadratic Bezier of the front edge, a hair inside it.
-      const u = t * 2;
-      const [p0, p1, p2] = u < 1 ? [[-OUT - 0.4, -0.92], [-OUT, 0.05], [0, 0.36]] : [[0, 0.36], [OUT, 0.05], [OUT + 0.4, -0.92]];
-      const v = u < 1 ? u : u - 1;
-      const x = (1 - v) ** 2 * p0[0] + 2 * (1 - v) * v * p1[0] + v * v * p2[0];
-      const y = (1 - v) ** 2 * p0[1] + 2 * (1 - v) * v * p1[1] + v * v * p2[1];
-      return [x, y] as const;
-    };
-    const [x0, y0] = at(t0);
-    const [x1, y1] = at(t1);
-    const len = Math.hypot(x1 - x0, y1 - y0);
-    const seg = new THREE.PlaneGeometry(len, 0.13);
-    const uv = seg.getAttribute('uv') as THREE.BufferAttribute;
-    for (let k = 0; k < uv.count; k++) uv.setX(k, t0 + uv.getX(k) * (t1 - t0));
-    const m = addMesh(seg, sigilMat, (x0 + x1) / 2, 0.64, 2.55 - BLADE_PIVOT_Z + (y0 + y1) / 2 + 0.03, blade, false);
-    m.rotation.y = -Math.atan2(y1 - y0, x1 - x0);
+  // Tail light bar.
+  addMesh(new THREE.BoxGeometry(1.3, 0.05, 0.035), stripMat, 0, 1.12, -2.64, hull, false);
+  // Reliquary cradle: two slim void arms reaching up from the canopy.
+  for (const sx of [-1, 1]) {
+    const arm = addMesh(new THREE.BoxGeometry(0.06, 0.62, 0.1), voidMat, sx * 0.3, 2.05, RELIC_Z, hull);
+    arm.rotation.z = sx * -0.45;
   }
-  // Blade mounts.
-  for (const sx of [-1, 1]) addMesh(new THREE.BoxGeometry(0.14, 0.14, 0.5), mats.dark, sx * 0.55, 0.72, 2.6 - BLADE_PIVOT_Z, blade);
-  // Roof toll beacon base (the lamp animates).
-  addMesh(new THREE.CylinderGeometry(0.2, 0.26, 0.12, 10), mats.trim, BEACON_POS.x, BEACON_POS.y - 0.12, BEACON_POS.z, hull);
-  // Reliquary cradle on the roof: four bone claws reaching up toward the floating capsule.
-  addMesh(new THREE.CylinderGeometry(0.42, 0.5, 0.1, 12), mats.trim, 0, 2.17, RELIC_Z, hull);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const claw = addMesh(new THREE.ConeGeometry(0.06, 0.42, 5), bone, Math.sin(a) * 0.4, 2.36, RELIC_Z + Math.cos(a) * 0.4, hull);
-    claw.rotation.set(Math.cos(a) * 0.5, 0, -Math.sin(a) * 0.5);
-  }
-  // Spectral spokes on every wheel (outboard of the shared black rims).
-  const spokeGeo = new THREE.BoxGeometry(0.03, 0.7, 0.07);
-  const spokes: THREE.Group[] = [];
-  const runes: THREE.Mesh[] = [];
-  const runeGeo = new THREE.TorusGeometry(0.64, 0.025, 4, 28);
-  const runeMat = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
 
-  // ---- Skeletal chassis (inside the hull; shows through the PHASED ghost shell): ladder rails, ribs, a spine and
-  // a roll-cage arch, all bone white.
+  // ---- Skeletal chassis (inside the core; shows through the PHASED ghost shell), bone white.
   const skel = new THREE.Group();
   for (const sx of [-1, 1]) {
-    addMesh(new THREE.BoxGeometry(0.08, 0.08, 4.6), bone, sx * 0.62, 0.86, 0.05, skel, false);
-    addMesh(new THREE.BoxGeometry(0.07, 0.07, 3.2), bone, sx * 0.66, 1.98, -0.6, skel, false);
+    addMesh(new THREE.BoxGeometry(0.08, 0.08, 4.6), bone, sx * 0.55, 0.86, 0.05, skel, false);
+    addMesh(new THREE.BoxGeometry(0.07, 0.07, 3.0), bone, sx * 0.5, 1.85, -0.55, skel, false);
   }
-  addMesh(new THREE.BoxGeometry(0.1, 0.1, 4.0), bone, 0, 1.36, -0.2, skel, false);
-  for (const z of [-2.0, -1.3, -0.6, 0.1, 0.8]) {
-    const rib = addMesh(new THREE.TorusGeometry(0.64, 0.04, 4, 12, Math.PI), bone, 0, 1.36, z, skel, false);
+  addMesh(new THREE.BoxGeometry(0.1, 0.1, 4.0), bone, 0, 1.3, -0.2, skel, false);
+  for (const z of [-1.9, -1.2, -0.5, 0.2, 0.9]) {
+    const rib = addMesh(new THREE.TorusGeometry(0.55, 0.04, 4, 12, Math.PI), bone, 0, 1.3, z, skel, false);
     rib.scale.set(1, 0.95, 1);
   }
-  for (const z of [1.0, -2.2]) {
-    for (const sx of [-1, 1]) {
-      const post = addMesh(new THREE.BoxGeometry(0.06, 1.2, 0.06), bone, sx * 0.66, 1.4, z, skel, false);
-      post.rotation.z = sx * 0.04;
-    }
-  }
-  // Skull up front where the engine would be.
-  addMesh(new THREE.SphereGeometry(0.26, 10, 8), bone, 0, 1.15, 1.8, skel, false);
-  for (const sx of [-1, 1]) addMesh(new THREE.SphereGeometry(0.07, 6, 4), edgeMat, sx * 0.1, 1.18, 2.03, skel, false);
+  addMesh(new THREE.SphereGeometry(0.26, 10, 8), bone, 0, 1.12, 1.8, skel, false);
+  for (const sx of [-1, 1]) addMesh(new THREE.SphereGeometry(0.07, 6, 4), edgeMat, sx * 0.1, 1.15, 2.03, skel, false);
   group.add(skel);
 
   mergeStatic(hull);
   mergeStatic(skel);
   group.add(...makeShadowProxy(hull, group));
 
-  // ---- PHASED ghost shell: the hull silhouette as translucent scanlined spectral glass, with a dark back-face rim.
+  // ---- PHASED ghost shell: the core + canopy silhouette as translucent scanlined spectral glass.
   const scan = scanlines();
   const shellMat = new THREE.MeshBasicMaterial({ color: REV_CORE, map: scan, alphaMap: scan, transparent: true, opacity: 0.0, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
   const rimMat = new THREE.MeshBasicMaterial({ color: REV_EDGE, transparent: true, opacity: 0, depthWrite: false, side: THREE.BackSide });
@@ -375,47 +339,100 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   for (const geo of [lowerGeo, upperGeo]) {
     shell.add(new THREE.Mesh(geo, shellMat));
     const rim = new THREE.Mesh(geo, rimMat);
-    rim.scale.setScalar(1.035);
+    rim.scale.setScalar(1.05);
     rim.position.y = -0.03;
     shell.add(rim);
   }
   shell.visible = false;
   group.add(shell);
 
-  // ---- Animated parts (no shadows; the static proxy covers the body).
+  // ---- Hubless spectral wheels: a black tyre ring round a glowing inner rim with three bright teeth (so the spin
+  // reads), and a rune ring drifting outboard.
+  const tyreGeo = new THREE.TorusGeometry(WHEEL_R - 0.09, 0.1, 8, 28).rotateY(Math.PI / 2);
+  const rimGeo = new THREE.TorusGeometry(WHEEL_R - 0.21, 0.03, 4, 28).rotateY(Math.PI / 2);
+  const toothGeo = new THREE.BoxGeometry(0.05, 0.16, 0.05);
+  const tyreMat = new THREE.MeshStandardMaterial({ color: 0x120d18, roughness: 0.8, metalness: 0.2 });
+  const runeGeo = new THREE.TorusGeometry(WHEEL_R + 0.06, 0.02, 4, 28);
+  const runeMat = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
+  const spokes: THREE.Group[] = [];
+  const runes: THREE.Mesh[] = [];
   for (const [x, z] of WHEELS) {
     const sx = Math.sign(x);
-    const sp = new THREE.Group();
-    sp.position.set(sx * 1.19, WHEEL_R, z);
+    const w = new THREE.Group();
+    w.position.set(sx * WHEEL_X, WHEEL_R, z);
+    const tyre = new THREE.Mesh(tyreGeo, tyreMat);
+    tyre.castShadow = true;
+    w.add(tyre, new THREE.Mesh(rimGeo, stripMat));
     for (let k = 0; k < 3; k++) {
-      const s = new THREE.Mesh(spokeGeo, stripMat);
-      s.rotation.x = (k / 3) * Math.PI;
-      sp.add(s);
+      const a = (k / 3) * Math.PI * 2;
+      const t = new THREE.Mesh(toothGeo, edgeGlow);
+      t.position.set(0, Math.cos(a) * (WHEEL_R - 0.21), Math.sin(a) * (WHEEL_R - 0.21));
+      t.rotation.x = -a;
+      w.add(t);
     }
-    group.add(sp);
-    spokes.push(sp);
+    group.add(w);
+    spokes.push(w);
     const r = new THREE.Mesh(runeGeo, runeMat);
-    r.position.set(sx * 1.28, WHEEL_R, z);
+    r.position.set(sx * (WHEEL_X + 0.14), WHEEL_R, z);
     r.rotation.y = Math.PI / 2;
     group.add(r);
     runes.push(r);
   }
+
+  // ---- REAPER SCYTHES: a void arm off each front corner, a sigil band along it, ending in a long silver crescent
+  // blade that hooks back in toward the nose, its inner edge burning violet.
+  const scythes: THREE.Group[] = [];
+  const ARM = 1.45;
+  for (const sx of [-1, 1]) {
+    const piv = new THREE.Group();
+    piv.position.set(sx * SCY_X, SCY_Y, SCY_Z);
+    piv.rotation.y = sx * SCY_REST;
+    // Arm (along local +Z), a collar at each end.
+    addMesh(new THREE.CylinderGeometry(0.055, 0.07, ARM, 8).rotateX(Math.PI / 2), voidMat, 0, 0, ARM / 2, piv, false);
+    for (const z of [0.12, ARM - 0.05]) addMesh(new THREE.TorusGeometry(0.085, 0.022, 4, 12), stripMat, 0, 0, z, piv, false);
+    const band = addMesh(new THREE.PlaneGeometry(ARM * 0.8, 0.07).rotateX(-Math.PI / 2).rotateY(Math.PI / 2), sigilMat, 0, 0.072, ARM / 2, piv, false);
+    band.renderOrder = 1;
+    // Blade: flat crescent in the arm's plane, rooted at the arm tip and hooking inward (toward -sx x) and back.
+    const ix = -sx;
+    const sh = new THREE.Shape();
+    sh.moveTo(0, ARM - 0.12);
+    sh.quadraticCurveTo(ix * 0.6, ARM + 1.15, ix * 1.8, ARM + 0.02); // outer spine out to the tip
+    sh.quadraticCurveTo(ix * 0.72, ARM + 0.3, 0, ARM + 0.12); // inner cutting edge back to the root
+    sh.closePath();
+    const bg = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 1, curveSegments: 14 });
+    bg.rotateX(Math.PI / 2);
+    bg.computeVertexNormals();
+    addMesh(bg, alloy, 0, 0.03, 0, piv, false);
+    const cut = new THREE.QuadraticBezierCurve3(new THREE.Vector3(ix * 1.8, 0.02, ARM + 0.02), new THREE.Vector3(ix * 0.72, 0.02, ARM + 0.3), new THREE.Vector3(0, 0.02, ARM + 0.12));
+    addMesh(new THREE.TubeGeometry(cut, 16, 0.04, 4, false), edgeGlow, 0, 0, 0, piv, false);
+    // Tang at the root: a small hooked spur back along the arm.
+    const spur = addMesh(new THREE.ConeGeometry(0.05, 0.3, 5), alloy, -ix * 0.12, 0.02, ARM - 0.1, piv, false);
+    spur.rotation.set(Math.PI / 2, 0, 0);
+    spur.rotation.z = -ix * 0.9;
+    group.add(piv);
+    scythes.push(piv);
+  }
+
   // Slit headlight anchors (the Plow spills ghostfire from them).
   const heads = [-1, 1].map((sx) => {
     const o = new THREE.Object3D();
-    o.position.set(sx * 0.55, 0.98, 2.75);
+    o.position.set(sx * 0.48, 0.94, 2.78);
     group.add(o);
     return o;
   });
-  // Roof beacon: a bone bell with a violet lamp, and the toll ring it throws.
+  // Toll beacon: a halo hovering over the canopy crown round a violet lamp, and the ring of light each toll throws.
   const beacon = new THREE.Group();
   beacon.position.copy(BEACON_POS);
   const lampMat = new THREE.MeshStandardMaterial({ color: REV_BRIGHT, emissive: REV_CORE, emissiveIntensity: 1.5, roughness: 0.3 });
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), lampMat);
-  lamp.position.y = 0.06;
-  const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.2, 0.26, 10, 1, true), bone);
-  bell.position.y = 0.14;
-  beacon.add(lamp, bell);
+  const lamp = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), lampMat);
+  lamp.position.y = 0.08;
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.035, 6, 32), lampMat);
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = 0.12;
+  const haloRim = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.06, 4, 32), edgeMat);
+  haloRim.rotation.x = Math.PI / 2;
+  haloRim.position.y = 0.1;
+  beacon.add(lamp, halo, haloRim);
   group.add(beacon);
   const tollMat = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
   const tollEdge = new THREE.MeshBasicMaterial({ color: REV_DEEP, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
@@ -427,21 +444,26 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   tollRing.position.copy(BEACON_POS);
   tollRing.visible = false;
   group.add(tollRing);
-  // THE RELIQUARY: a floating glass capsule with bone end caps over a ghostfire cushion; souls swirl inside it.
+  // THE RELIQUARY: a soul cell between two glowing emitter rings, floating over the tail; souls swirl inside it.
   const reliquary = new THREE.Group();
   reliquary.position.copy(RELIC_POS);
-  const capsuleMat = new THREE.MeshStandardMaterial({ color: 0x6a3cb0, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.4, depthWrite: false, emissive: REV_DEEP, emissiveIntensity: 0.6 });
+  const capsuleMat = new THREE.MeshStandardMaterial({ color: 0x6a3cb0, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.42, depthWrite: false, emissive: REV_DEEP, emissiveIntensity: 0.6 });
   const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(RELIC_R, RELIC_L, 6, 14), capsuleMat);
   capsule.renderOrder = 2;
-  const capGeo = new THREE.CylinderGeometry(RELIC_R * 0.9, RELIC_R * 1.05, 0.12, 14);
-  const capTop = new THREE.Mesh(capGeo, bone);
-  capTop.position.y = RELIC_L / 2 + RELIC_R * 0.55;
-  const capBot = new THREE.Mesh(capGeo, bone);
-  capBot.position.y = -RELIC_L / 2 - RELIC_R * 0.55;
-  const capRing = new THREE.Mesh(new THREE.TorusGeometry(RELIC_R + 0.02, 0.025, 4, 18), stripMat);
-  capRing.rotation.x = Math.PI / 2;
-  reliquary.add(capsule, capTop, capBot, capRing);
-  // Souls: violet wisps (bright core + deep shell) on orbits inside the glass.
+  const capGeo = new THREE.CylinderGeometry(RELIC_R * 0.75, RELIC_R * 1.1, 0.1, 14);
+  const capTop = new THREE.Mesh(capGeo, voidMat);
+  capTop.position.y = RELIC_L / 2 + RELIC_R * 0.6;
+  capTop.rotation.x = Math.PI;
+  const capBot = new THREE.Mesh(capGeo, voidMat);
+  capBot.position.y = -RELIC_L / 2 - RELIC_R * 0.6;
+  const ringGeo = new THREE.TorusGeometry(RELIC_R + 0.06, 0.03, 4, 20);
+  const ringTop = new THREE.Mesh(ringGeo, stripMat);
+  ringTop.rotation.x = Math.PI / 2;
+  ringTop.position.y = capTop.position.y;
+  const ringBot = new THREE.Mesh(ringGeo, stripMat);
+  ringBot.rotation.x = Math.PI / 2;
+  ringBot.position.y = capBot.position.y;
+  reliquary.add(capsule, capTop, capBot, ringTop, ringBot);
   const soulGeo = new THREE.SphereGeometry(0.075, 8, 6);
   soulGeo.scale(1, 1.9, 1);
   const soulCore = new THREE.MeshBasicMaterial({ color: 0xc89cff, toneMapped: false });
@@ -449,40 +471,69 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   const souls: THREE.Mesh[] = [];
   for (let i = 0; i < SOULS_MAX; i++) {
     const m = new THREE.Mesh(soulGeo, soulCore);
-    const halo = new THREE.Mesh(soulGeo, soulShell);
-    halo.scale.setScalar(1.9);
-    m.add(halo);
+    const h = new THREE.Mesh(soulGeo, soulShell);
+    h.scale.setScalar(1.9);
+    m.add(h);
     m.visible = false;
     reliquary.add(m);
     souls.push(m);
   }
-  // Ghostfire cushion under the capsule: stacked cones (deep painted shell + bright core), flickered.
-  const fireGeo = new THREE.ConeGeometry(0.28, 0.6, 10, 1, true);
+  // Ghostfire wisp under the cell.
+  const fireGeo = new THREE.ConeGeometry(0.22, 0.45, 10, 1, true);
   fireGeo.rotateX(Math.PI);
   const fireDeep = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.7, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
   const fireHot = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.6, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
   const fire = new THREE.Group();
-  const f1 = new THREE.Mesh(fireGeo, fireDeep);
   const f2 = new THREE.Mesh(fireGeo, fireHot);
   f2.scale.set(0.55, 0.8, 0.55);
-  fire.add(f1, f2);
+  fire.add(new THREE.Mesh(fireGeo, fireDeep), f2);
   fire.position.set(0, -RELIC_L / 2 - RELIC_R - 0.12, 0);
   reliquary.add(fire);
   group.add(reliquary);
-  // Window ghosts: faint faces drifting along the frosted side glass.
+  // Canopy ghosts: faint faces drifting along inside the bubble.
   const gtex = ghostFace();
   const ghostMat = new THREE.MeshBasicMaterial({ color: 0xf0e0ff, map: gtex, transparent: true, opacity: gtex ? 0.55 : 0, depthWrite: false, toneMapped: false });
   const ghosts: THREE.Mesh[] = [];
-  const ghostGeo = new THREE.PlaneGeometry(0.34, 0.44);
+  const ghostGeo = new THREE.PlaneGeometry(0.3, 0.38);
   for (let i = 0; i < 4; i++) {
     const sx = i < 2 ? 1 : -1;
     const g = new THREE.Mesh(ghostGeo, ghostMat);
-    g.position.set(sx * 0.915, 1.74, -0.5);
+    g.position.set(sx * (CANOPY_W / 2 + 0.01), 1.6, -0.5);
     g.rotation.y = (sx * Math.PI) / 2;
     group.add(g);
     ghosts.push(g);
   }
-  // Purple mist underglow (painted, so it shows on snow; the Plow's flicker drives the opacity).
+  // Spectral ribbons: tattered streamers trailing off the fin tips and the tail (vertex-animated each frame), solid
+  // violet fading to nothing, so they read on snow and at night.
+  const RIB_SEG = 10;
+  const RIB_LEN = 1.9;
+  const ribMat = new THREE.MeshBasicMaterial({ color: REV_CORE, vertexColors: true, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+  const ribRoots = [finTips[0], finTips[1], new THREE.Vector3(-0.35, 1.25, -2.62), new THREE.Vector3(0.35, 1.25, -2.62)];
+  const ribWidth = [0.42, 0.42, 0.32, 0.32];
+  const ribbons: THREE.Mesh[] = [];
+  for (let r = 0; r < ribRoots.length; r++) {
+    const g = new THREE.BufferGeometry();
+    const n = (RIB_SEG + 1) * 2;
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const col = new Float32Array(n * 4);
+    for (let j = 0; j <= RIB_SEG; j++) {
+      const a = 0.95 * (1 - j / RIB_SEG) ** 0.8;
+      const v = 1 - 0.55 * (j / RIB_SEG);
+      col.set([v, v, v, a, v, v, v, a], j * 8);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    const idx: number[] = [];
+    for (let j = 0; j < RIB_SEG; j++) {
+      const q = j * 2;
+      idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2);
+    }
+    g.setIndex(idx);
+    const m = new THREE.Mesh(g, ribMat);
+    m.renderOrder = 2;
+    group.add(m);
+    ribbons.push(m);
+  }
+  // Purple mist underglow.
   const mistMat = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.32, depthWrite: false, toneMapped: false });
   const mistGeo = new THREE.CircleGeometry(1, 24);
   mistGeo.rotateX(-Math.PI / 2);
@@ -491,7 +542,7 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   mist.position.y = 0.06;
   mist.renderOrder = 1;
   group.add(mist);
-  for (const o of [...spokes, ...runes, beacon, tollRing, reliquary, ...ghosts, mist, shell]) o.traverse((m) => (m.frustumCulled = false));
+  for (const o of [...spokes, ...runes, ...scythes, ...ribbons, beacon, tollRing, reliquary, ...ghosts, mist, shell]) o.traverse((m) => (m.frustumCulled = false));
 
   let t = 0;
   let spin = 0;
@@ -501,10 +552,12 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
   let swingK = 1;
   let swingSide = 1;
   let prevReap = 0;
+  let sweep = 0;
   const update = (dt: number, s: RevenantRigState): void => {
     t += dt;
-    // Scythe: a new Reap (the glow jumps back up) whips the blade across, wound back on one side and slung through to
-    // the other, then it settles; idle, it sways and rides the bumps.
+    const spd = Math.min(1, Math.abs(s.speed) / 14);
+    // Scythes: a new Reap (the glow jumps back up) whips the scythe on that side in across the nose and back out
+    // (the other one flinches the opposite way); at speed both sweep back a little; idle, they sway.
     const reapNow = Math.abs(s.reap);
     if (reapNow > prevReap + 0.15) {
       swingK = 0;
@@ -512,24 +565,50 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
     }
     prevReap = reapNow;
     swingK = Math.min(1, swingK + dt / SWING_TIME);
-    const wind = swingK < 0.3 ? -0.5 + 1.5 * (swingK / 0.3) : (1 - (swingK - 0.3) / 0.7) ** 2;
-    const swing = swingK < 1 ? swingSide * SWING_YAW * wind : 0;
-    blade.rotation.y = swing + 0.05 * Math.sin(t * 2.3);
-    blade.rotation.z = -swing * 0.3 + 0.03 * Math.sin(t * 3.1 + 1);
-    blade.position.y = 0.04 * Math.sin(t * 4.2) * Math.min(1, Math.abs(s.speed) / 8);
+    const whip = swingK < 1 ? (swingK < 0.35 ? -0.25 + 1.25 * (swingK / 0.35) : (1 - (swingK - 0.35) / 0.65) ** 2) : 0;
+    sweep += (spd * 0.28 - sweep) * Math.min(1, dt * 4);
+    for (let i = 0; i < 2; i++) {
+      const sx = i === 0 ? -1 : 1;
+      const mine = sx === swingSide;
+      const inward = whip * (mine ? SWING_YAW : -0.18);
+      scythes[i].rotation.y = sx * (SCY_REST + sweep - inward + 0.04 * Math.sin(t * 2.3 + i * 1.7));
+      scythes[i].rotation.z = sx * (0.06 * Math.sin(t * 3.1 + i) - (mine ? whip * 0.25 : 0));
+      scythes[i].position.y = SCY_Y + 0.035 * Math.sin(t * 4.2 + i) * (0.3 + spd);
+    }
     spin += (s.speed * dt) / WHEEL_R;
-    // Strips flicker like flame (hotter in the Hunt); spokes turn with the wheels; rune rings drift.
+    // Seams flicker like flame (hotter in the Hunt); wheels turn; rune rings drift.
     const fl = flick(t, 0);
     stripMat.emissiveIntensity = (s.hunt ? 2.4 : 1.25) + fl * (s.hunt ? 1.4 : 0.9) + Math.abs(s.reap) * 0.8;
     sigilMat.emissiveIntensity = 0.9 + 0.5 * flick(t, 1.7) + Math.abs(s.reap) * 1.8;
     slitMat.emissiveIntensity = 2 + flick(t, 3.1) * 1.2;
+    voidMat.emissiveIntensity = 0.3 + 0.15 * fl + (s.hunt ? 0.4 : 0);
     for (let i = 0; i < spokes.length; i++) spokes[i].rotation.x = spin;
     for (let i = 0; i < runes.length; i++) {
       runes[i].rotation.z = t * (0.6 + i * 0.13) * (i % 2 ? -1 : 1);
       runes[i].position.y = WHEEL_R + 0.04 * Math.sin(t * 2 + i);
     }
     runeMat.opacity = 0.55 + 0.3 * flick(t, 4.4);
-    // Reliquary: bobs on its ghostfire; souls orbit inside (count = souls), faster when full.
+    // Ribbons: stream back from their roots, rippling (harder at speed), drooping when parked.
+    for (let r = 0; r < ribbons.length; r++) {
+      const root = ribRoots[r];
+      const pos = ribbons[r].geometry.getAttribute('position') as THREE.BufferAttribute;
+      const hw = ribWidth[r] / 2;
+      const len = RIB_LEN * (0.75 + 0.35 * spd);
+      for (let j = 0; j <= RIB_SEG; j++) {
+        const u = j / RIB_SEG;
+        const wave = Math.sin(t * (5 + 4 * spd) - u * 5 + r * 1.3) * u * (0.12 + 0.12 * spd);
+        const z = root.z - u * len;
+        const y = root.y - u * u * (0.9 - 0.65 * spd) + wave * 0.6;
+        const x = root.x + wave + Math.sign(root.x) * u * 0.15;
+        const w = hw * (1 - 0.55 * u);
+        // Banked: mostly flat (reads from the chase camera above) with some lift.
+        pos.setXYZ(j * 2, x + w * 0.85, y + w * 0.5, z);
+        pos.setXYZ(j * 2 + 1, x - w * 0.85, y - w * 0.5, z);
+      }
+      pos.needsUpdate = true;
+    }
+    ribMat.opacity = 0.8 + 0.2 * fl;
+    // Reliquary: bobs; souls orbit inside (count = souls), faster when full.
     reliquary.position.y = RELIC_Y + 0.07 * Math.sin(t * 1.8);
     reliquary.rotation.y = t * 0.4;
     const n = Math.max(0, Math.min(SOULS_MAX, Math.round(s.souls)));
@@ -546,16 +625,19 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
     const ff = flick(t, 5.5);
     fire.scale.set(0.9 + 0.2 * ff, 0.75 + 0.5 * ff, 0.9 + 0.2 * ff);
     fireDeep.opacity = 0.55 + 0.25 * ff;
-    // Window ghosts drift fore and aft behind the glass, fading in and out.
+    // Canopy ghosts drift fore and aft, fading in and out.
     for (let i = 0; i < ghosts.length; i++) {
       const g = ghosts[i];
       const ph = t * (0.35 + i * 0.07) + i * 1.9;
-      g.position.z = -0.6 + Math.sin(ph) * 1.25;
-      g.position.y = 1.72 + 0.06 * Math.sin(ph * 2.3);
+      g.position.z = -0.55 + Math.sin(ph) * 1.0;
+      g.position.y = 1.58 + 0.05 * Math.sin(ph * 2.3);
       g.scale.setScalar(0.85 + 0.25 * Math.sin(ph * 1.7));
     }
     ghostMat.opacity = gtex ? 0.25 + 0.3 * Math.max(0, Math.sin(t * 0.9)) : 0;
-    // Beacon: pulses; each toll throws a ring of light out from it.
+    // Halo: hovers and turns; each toll throws a ring of light out from it.
+    beacon.position.y = BEACON_POS.y + 0.05 * Math.sin(t * 2.1);
+    halo.rotation.z = haloRim.rotation.z = t * 0.8;
+    lamp.rotation.y = t * 1.6;
     lampMat.emissiveIntensity = 1.2 + fl * 1.2 + (tollT >= 0 ? 3 * Math.max(0, 1 - tollT * 2) : 0);
     if (s.tolls !== tolls) {
       if (s.tolls > tolls) tollT = 0;
@@ -575,7 +657,7 @@ export function buildRevenantVehicle({ mats, chassis }: VehicleBuildIn): Vehicle
       }
     }
     mistMat.opacity = 0.22 + 0.12 * flick(t, 6.6) + s.phase * 0.2;
-    // PHASED: the hull fades into the scanline ghost shell; the bone skeleton shows through, with a little glitch.
+    // PHASED: the body fades into the scanline ghost shell; the bone skeleton shows through, with a little glitch.
     const ph = s.phase;
     hull.visible = ph < 0.5;
     shell.visible = ph > 0.01;

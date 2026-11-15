@@ -259,15 +259,17 @@ within 12 m, half at the rim, thinner shares the more it catches) and everything
 **The hit-and-run reaper:** it dodges THROUGH a pack, chains it, and reaps it. Low HP (+12%, below the Classic's +15%),
 +8% speed, no real ranged attack.
 
-A possessed, semi-modern armoured hearse: long, low and angular with a wedge nose, matte graphite paint and gloss black
-carbon panels, tinted frosted windows with faint ghost silhouettes drifting behind the glass, and violet spectral strip
-lights tracing the body lines that flicker like flame. Narrow slit headlights spill purple ghostfire; the blade is a
-modern alloy swept into a scythe curve, etched with glowing sigils (half circuit, half rune). Over the tail floats
-**the Reliquary**, a glass capsule held up by ghostfire with the souls visibly swirling inside it as wisps (one per
-soul); a roof beacon pulses a ring of light on every toll. Black rims with violet spectral spokes and floating rune
-rings, and a purple mist underglow. PHASED, the body dissolves translucent with a glitchy scanline shimmer, a skeletal
-chassis frame shows inside it and ghostfire wisps trail behind. Every effect is a solid violet with a dark edge, so it
-reads on sunlit snow as well as at night. No blade to plow with, no snowball.
+A spectral reaper-car: a low, sleek void-black core (a fixed colour, never repainted) with violet seams glowing
+through it, wearing **floating armour plates** that take the Paint Shop colours (so any paint reads as armour over
+the ghost), under a gloss-black bubble canopy with faint ghost faces drifting inside. Two wraith fins rise off the
+tail trailing tattered violet ribbons that ripple harder at speed. It rolls on **hubless spectral ring wheels** with
+floating rune rings, and carries two **reaper scythes** on arms off the front corners: long silver crescents with
+burning violet edges that hook in toward the nose and whip across on every Reap (the side swinging alternates).
+A halo hovers over the canopy (the toll beacon: a ring of light on every toll) and **the Reliquary**, a soul cell
+between two glowing emitter rings, floats behind it with the souls swirling inside (one wisp per soul). Slit
+headlights spill purple ghostfire over a fanged grille; purple mist underglow. PHASED, the body dissolves translucent
+with a glitchy scanline shimmer, a skeletal chassis frame shows inside it and ghostfire wisps trail behind. Every
+effect is a solid violet with a dark edge, so it reads on sunlit snow as well as at night. No plow blade, no snowball.
 
 **SOULS (0-10, the Reliquary; the 10-pip soul lantern over the ability row, the first 3 marked).** +1 a wreck (bosses
 and Brawl rivals +2), +1 more if it was Haunted, +1 a bot PHASED through (3 a Phase at most). In the Duel, +1 per 10%

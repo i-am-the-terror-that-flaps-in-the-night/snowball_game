@@ -131,7 +131,7 @@ export const PLOWS: Record<PlowKind, PlowDef> = {
     id: 'revenant',
     name: 'REVENANT',
     icon: '💀',
-    tagline: 'A possessed armoured hearse with a reliquary of stolen souls riding over its tail. It reaps the living and leads the dead.',
+    tagline: 'A spectral reaper-car: floating armour, twin scythes and a reliquary of stolen souls. It reaps the living and leads the dead.',
     traits: [
       'Specialist: a hit-and-run reaper. Haunt bots by phasing THROUGH them, then reap the pack; base HP (the Classic has +15%), +8% speed, no real ranged attack',
       'SOULS (0-10, the Reliquary): +1 a wreck (bosses / rivals +2), +1 a bot phased through (max 3 a Phase) · Duel: +1 per 10% of the foe\'s HP you deal',

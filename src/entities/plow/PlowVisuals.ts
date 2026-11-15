@@ -71,8 +71,8 @@ export abstract class PlowVisuals extends PlowBase {
     this.voltParts.visible = volt;
     this.bruteParts.visible = brute;
     this.bruteBlade.visible = brute;
-    for (const m of this.wheelMeshes) m.visible = !brute && !ars; // BRUTUS runs on tracks, ARSENAL on its own front wheels + gyro
-    for (const w of this.wheelDebris) w.visible = this.wheelsOff && !brute && !ars;
+    for (const m of this.wheelMeshes) m.visible = !brute && !ars && !rev; // BRUTUS runs on tracks, ARSENAL on its own front wheels + gyro, REVENANT on hubless rings
+    for (const w of this.wheelDebris) w.visible = this.wheelsOff && !brute && !ars && !rev;
     // Dash flame: out of the stack (Classic), a rear thruster (VOLT-9) or the right-hand twin stack (BRUTUS).
     if (volt) {
       this.exhaustTip.set(0, 1.05, -2.05);
