@@ -10,11 +10,16 @@ const UPDATE_POOLS_BURST = { color: 0x7dff4a, count: 2, speed: 1, size: 0.22, gr
 const UPDATE_AURA_BURST = { color: 0x5dff3a, count: 1, speed: 0.6, size: 0.18, gravity: -2.5, life: 0.6 };
 const UPDATE_RADS_BURST = { color: 0xb8ff6a, count: 2, speed: 1.6, size: 0.12, gravity: -1.5, life: 0.55 };
 const UPDATE_RADS_BURST_2 = { color: 0x7dff4a, count: 1, speed: 0.8, size: 0.16, gravity: -3, life: 0.5 };
+/** The NUKE's green afterflashes: seconds after the blast, and their sparks. */
+const NUKE_PULSES = [0.16, 0.38, 0.62, 0.9, 1.22, 1.58, 2.0, 2.45, 2.95];
+const NUKE_PULSE_BURST = { color: 0x9dff5a, count: 14, speed: 12, size: 0.3, gravity: 1, life: 0.6 };
 const UPDATE_RADS_BURST_3 = { color: 0x9dff5a, count: 22, speed: 9, size: 0.26, gravity: 2, life: 0.55 };
 
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
  *  Duel victim path), so it stays valid across the nested victim hit. */
 const _kb = new THREE.Vector3();
+/** Afterflash arc end (scratch). */
+const _r = new THREE.Vector3();
 
 /** ISOTOPE: irradiated bots take this much extra damage from the player; radiation lasts RAD_SECONDS after the
  *  last dose. Fallout pools tick every POOL_TICK; Chain Reaction blasts reach CHAIN_RADIUS. */
@@ -289,6 +294,9 @@ export class IsotopeKit extends Kit implements VehicleKit {
   private nukeZ = 0;
   private readonly nukeFrom: CastOrigin = { y: 0, deck: -1 };
   private readonly meltFrom: CastOrigin = { y: 0, deck: -1 };
+  /** Seconds since the NUKE went off (-1 = none), and the next green afterflash in NUKE_PULSES. */
+  private nukePulseT = -1;
+  private nukePulseI = 0;
 
   constructor(h: CombatHost) {
     super(h);
@@ -413,26 +421,36 @@ export class IsotopeKit extends Kit implements VehicleKit {
     const R = NUKE_RADIUS;
     const top = this.nukeFrom.y;
     this.smashProps(px, pz, R);
-    // Flash, shockwave rings, a rising stem and a mushroom cap, all from the floor it went off on.
+    // Flash, shockwave rings, a rising stem and a mushroom cap, all from the floor it went off on: everything glows
+    // radioactive green (a white-hot core, then green light, green rings and a green-lit cloud).
     _q.set(px, top + 0.2, pz);
-    ctx.fx.ring(_q, R * 0.3, 0xffffff);
-    ctx.fx.ring(_q, R * 0.65, 0xfff3a0);
+    ctx.fx.ring(_q, R * 0.3, 0xeaffd0);
+    ctx.fx.ring(_q, R * 0.65, 0xb8ff6a);
     ctx.fx.ring(_q, R, 0x7dff4a);
-    ctx.fx.ring(_q, R * 1.15, 0xff8a1a);
-    ctx.fx.burst(_q, { color: 0xffffff, count: 60, speed: 26, size: 0.4, gravity: 4, life: 0.6 });
-    ctx.fx.smoke(_q, { count: 30, color: 0xffa030, additive: 0.3, size: 1.4, grow: 2.5, life: 0.9, speed: 16, up: 2, rise: 1, drag: 2.5, spread: 1.5, opacity: 0.95, radial: true });
+    ctx.fx.ring(_q, R * 1.15, 0x3dff5a);
+    ctx.fx.burst(_q, { color: 0xeaffc0, count: 40, speed: 26, size: 0.4, gravity: 4, life: 0.6 });
+    ctx.fx.burst(_q, { color: 0x7dff4a, count: 40, speed: 20, size: 0.34, gravity: 2, life: 0.8 });
+    ctx.fx.smoke(_q, { count: 30, color: 0x6dff3a, additive: 0.5, size: 1.4, grow: 2.5, life: 0.9, speed: 16, up: 2, rise: 1, drag: 2.5, spread: 1.5, opacity: 0.95, radial: true });
     ctx.fx.smoke(_q, { count: 2, color: 0xffffff, additive: 1, size: 9, grow: 1.6, life: 0.35, speed: 0, up: 0, rise: 0, spread: 0, opacity: 1 });
-    ctx.fx.smoke(_q, { count: 28, color: 0xd9d6c2, size: 1.6, grow: 2.6, life: 2.4, speed: 17, up: 1, rise: 0.4, drag: 1.6, spread: 2, opacity: 0.75, radial: true });
+    ctx.fx.smoke(_q, { count: 3, color: 0x22ff44, additive: 1, size: 13, grow: 1.5, life: 0.7, speed: 0, up: 0, rise: 0, spread: 1, opacity: 0.55 });
+    ctx.fx.smoke(_q, { count: 28, color: 0xc8d8b0, size: 1.6, grow: 2.6, life: 2.4, speed: 17, up: 1, rise: 0.4, drag: 1.6, spread: 2, opacity: 0.75, radial: true });
     ctx.fx.scorch(_q, R * 0.4, 1);
-    for (let i = 0; i < 8; i++) {
-      _q.set(px, top + 0.8 + i * 1.1, pz);
-      const hot = i < 3;
-      ctx.fx.smoke(_q, { count: 5, color: hot ? 0xffa43a : i < 5 ? 0xb8b088 : 0x8f8f78, additive: hot ? 0.3 : 0, size: 1.3 + i * 0.1, grow: 2, life: 2.6 + i * 0.12, speed: 0.8, up: 5 - i * 0.5, rise: 1, drag: 0.9, spread: 0.9, opacity: hot ? 0.8 : 0.72 });
+    // The mushroom: a hot stem rising into a rolling cap low enough (~5 m) for the chase camera (~8 m up) to frame it,
+    // with a glowing green underside and a ring of churning cloud round its rim.
+    for (let i = 0; i < 7; i++) {
+      _q.set(px, top + 0.6 + i * 0.68, pz);
+      const hot = i < 4;
+      ctx.fx.smoke(_q, { count: 5, color: hot ? 0x7dff50 : 0xa8c890, additive: hot ? 0.6 : 0.1, size: 0.9 + i * 0.08, grow: 2, life: 2.4 + i * 0.1, speed: 0.5, up: 3.2 - i * 0.3, rise: 0.7, drag: 1, spread: 0.55, opacity: hot ? 0.9 : 0.8 });
     }
-    _q.set(px, top + 9.5, pz);
-    ctx.fx.smoke(_q, { count: 30, color: 0xa8a48a, size: 2.2, grow: 2.3, life: 3.4, speed: 6, up: 1.8, rise: 0.5, drag: 0.8, spread: 2.2, opacity: 0.8, radial: true });
-    ctx.fx.smoke(_q, { count: 14, color: 0xffc860, additive: 0.35, size: 2, grow: 2, life: 1.6, speed: 3, up: 1, rise: 0.6, drag: 1, spread: 1.5, opacity: 0.75 });
-    ctx.fx.smoke(_q, { count: 10, color: 0x7dff4a, additive: 0.3, size: 1.6, grow: 2.2, life: 2.2, speed: 7, up: 0.6, rise: 0.2, drag: 1, spread: 2, opacity: 0.5, radial: true });
+    _q.set(px, top + 5.4, pz);
+    ctx.fx.smoke(_q, { count: 26, color: 0xa8b88a, size: 1.7, grow: 2.2, life: 3.2, speed: 5, up: 1.2, rise: 0.35, drag: 1, spread: 1.2, opacity: 0.85, radial: true });
+    ctx.fx.smoke(_q, { count: 12, color: 0xc8dca0, size: 2, grow: 2, life: 3, speed: 1.5, up: 1.6, rise: 0.4, drag: 1, spread: 1.5, opacity: 0.85 });
+    _q.set(px, top + 4.9, pz);
+    ctx.fx.smoke(_q, { count: 16, color: 0x5dff3a, additive: 0.7, size: 1.6, grow: 2, life: 1.8, speed: 4, up: 0.4, rise: 0.2, drag: 1, spread: 1.2, opacity: 0.85, radial: true });
+    ctx.fx.smoke(_q, { count: 14, color: 0x22ff44, additive: 0.8, size: 1.5, grow: 2.2, life: 2.4, speed: 6, up: 0.5, rise: 0.2, drag: 1, spread: 1.6, opacity: 0.65, radial: true });
+    // Then the green afterflashes (updateNukePulses).
+    this.nukePulseT = 0;
+    this.nukePulseI = 0;
     this.shake(1.8);
     this.impactHit('nuke', _q.set(px, top + 2, pz));
     this.b.audio.play('explosion');
@@ -469,10 +487,42 @@ export class IsotopeKit extends Kit implements VehicleKit {
     this.layPool(px, pz, R * 0.55, st.poolSeconds * 1.5, this.nukeFrom, true);
   }
 
+  /** The NUKE's green afterflashes (visual only): the pooled impact light re-fired green, a green glow puff in the
+   *  cap, a green ring racing out over the ground, green sparks and a crackle of green arcs round the cloud. */
+  private updateNukePulses(dt: number): void {
+    if (this.nukePulseT < 0) return;
+    this.nukePulseT += dt;
+    const ctx = this.ctx;
+    const px = this.nukeX;
+    const pz = this.nukeZ;
+    const top = this.nukeFrom.y;
+    while (this.nukePulseI < NUKE_PULSES.length && this.nukePulseT >= NUKE_PULSES[this.nukePulseI]) {
+      const i = this.nukePulseI++;
+      const k = 1 - i / NUKE_PULSES.length;
+      const a = i * 2.4;
+      _q.set(px, top + 4.6 + (i % 3) * 0.6, pz);
+      this.impactHit('nukePulse', _q, 0.6 + 0.6 * k);
+      ctx.fx.smoke(_q, { count: 2, color: i % 2 ? 0x4dff4a : 0x22ff44, additive: 1, size: 3.5 + 3.5 * k, grow: 1.6, life: 0.4, speed: 0, up: 0, rise: 0, spread: 1.4, opacity: 0.6 });
+      ctx.fx.burst(_q, NUKE_PULSE_BURST);
+      // Arcs crackling from the cap out to its rim.
+      for (let j = 0; j < 2; j++) {
+        const b = a + j * Math.PI;
+        _p.set(px + Math.sin(b) * 1.2, top + 4.8, pz + Math.cos(b) * 1.2);
+        _r.set(px + Math.sin(b + 0.6) * (4 + 2 * k), top + 2.6 + Math.random() * 3, pz + Math.cos(b + 0.6) * (4 + 2 * k));
+        this.lightning.bolt(_p, _r, { life: 0.16, width: 0.24, jag: 1.1, color: 0x9dff5a });
+      }
+      _q.set(px, top + 0.2, pz);
+      ctx.fx.ring(_q, NUKE_RADIUS * (0.45 + 0.5 * (1 - k)), i % 2 ? 0x7dff4a : 0xb8ff6a);
+      ctx.fx.smoke(_q, { count: 6, color: 0x3dff4a, additive: 0.8, size: 1.2, grow: 2.4, life: 0.8, speed: 10, up: 0.6, rise: 0.4, drag: 2.2, spread: 2, opacity: 0.7, radial: true });
+    }
+    if (this.nukePulseI >= NUKE_PULSES.length) this.nukePulseT = -1;
+  }
+
   /** Fallout pools: glow, bubble and dose every bot standing in them. */
   updatePools(dt: number): void {
     const ctx = this.ctx;
     const st = this.b.stats;
+    this.updateNukePulses(dt);
     let active = false;
     for (const pl of this.pools) {
       if (pl.t <= 0) continue;
@@ -637,6 +687,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
 
   clear(): void {
     this.meltCharge = 1;
+    this.nukePulseT = -1;
     this.rads.clear();
     this.doses.clear();
     this.chainQueue.length = 0;

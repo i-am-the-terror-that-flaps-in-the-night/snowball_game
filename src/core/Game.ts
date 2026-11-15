@@ -37,7 +37,7 @@ import { todaysDaily } from '../meta/daily';
 import { equippedLook } from '../meta/cosmetics';
 import { emitKillFx } from '../fx/killFx';
 import { brawlLootSource, survivalLootChance, type LootDrop } from '../config/loot';
-import { ULT_CAM_SECONDS, ULT_CAM_TOAST_DELAY, UltKillCam, ultCamLabel } from '../fx/ultCam';
+import { ULT_CAM_SECONDS, ULT_CAM_TOAST_DELAY, UltKillCam, ultCamLabel, ultCamWindow } from '../fx/ultCam';
 import type { GameEvents, KillSource } from './events';
 import { DuelManager, type DuelRole } from '../duel/DuelManager';
 import { NO_TARGETS } from '../duel/opponent';
@@ -1117,7 +1117,7 @@ export class Game {
   private wireEvents(): void {
     const { events, ui } = this.ctx;
     events.on('ability', ({ nuke }) => {
-      if (nuke && this.ultCamAllowed()) this.ultCam.onUlt();
+      if (nuke && this.ultCamAllowed()) this.ultCam.onUlt(ultCamWindow(this.ctx.stats.plowKind));
     });
     events.on('enemyKilled', ({ enemy, source, inLava }) => {
       // Paint Shop kill effect (player kills only: Brawl emits this just for the player's kills).

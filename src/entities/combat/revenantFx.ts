@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { REV_BONE, REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE, revenantHullGeometry } from '../vehicles/revenant';
-import { addMat, paintMat } from './arsenalFx';
+import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE } from '../vehicles/revenant';
+import { currentPreset } from '../../core/settings';
 
 /* REVENANT ability visuals (pooled; nothing allocated per frame). Every effect is a solid, normal-blended violet layer
  * with a dark edge (it has to read on sunlit snow AND at night), with an additive bright line only on top:
@@ -8,7 +8,8 @@ import { addMat, paintMat } from './arsenalFx';
  *   - Chains: wavy ghost chains (instanced links, drawn immediate-mode each frame): Haunt tethers and SOUL GRASP;
  *   - HauntMarks: the pale overlay shell + floating skull wisp over a Haunted bot (immediate mode);
  *   - PhantomMeshes: the hooded ghost a Haunted wreck rises as;
- *   - RiderMeshes: THE WILD HUNT's phantom hearses (the REVENANT hull silhouette, translucent with a dark outline);
+ *   - GhostTrail: THE WILD HUNT's spectral trail (one long glowing ribbon through the rider points, skull wisps
+ *     drifting in it; it coils into the hearse and bursts with the finale);
  *   - HuntDome: the arena tint while the Hunt rides. */
 
 const _m = new THREE.Matrix4();
@@ -353,78 +354,305 @@ export class PhantomMeshes {
   }
 }
 
-/* ------------------------------------------------------------------ Wild Hunt riders */
+/* ------------------------------------------------------------------ Wild Hunt ghost trail */
 
-/** Phantom hearses: the REVENANT hull silhouette in translucent violet over a dark outline shell (BackSide, scaled),
- *  with a bright additive skin on top. */
-const CAM_FADE_IN = 5;
-const CAM_FADE_OUT = 12;
+/** THE WILD HUNT's spectral trail: ONE long glowing ribbon flowing back along the hearse's path through every rider
+ *  point (the trample sample points, so it grows with the souls banked), made of two crossed soft-edged sheets (a
+ *  standing one and a flat one: it reads from the chase camera above AND from the kill-cam beside it), violet at the
+ *  edges and white-hot down the middle, drawn twice (a normal-blended body that reads on sunlit snow, an additive glow
+ *  over it). Skull wisps drift back through it, flickering; at the end it coils into the hearse and the skulls burst
+ *  out with the eruption. Camera-near fade: within CAM_FADE_IN m of the camera the trail fades out (fully drawn from
+ *  CAM_FADE_OUT m). Pooled: buffers sized once for the longest trail; nothing allocated per frame. */
+const CAM_FADE_IN = 2.5;
+const CAM_FADE_OUT = 6.5;
+/** Ribbon columns per rider gap (LOW quality: TRAIL_SUB_LOW). */
+const TRAIL_SUB = 5;
+const TRAIL_SUB_LOW = 3;
+/** Sheet half-width (flat) and half-height (standing), m; centre height over the ground (m). */
+const TRAIL_W = 2.1;
+const TRAIL_H = 1.25;
+const TRAIL_Y = 1.35;
+/** Peak opacities: body, additive glow, skull wisps. */
+const TRAIL_BODY = 0.72;
+const TRAIL_GLOW = 0.3;
+const TRAIL_SKULL = 0.95;
+/** Skull wisps drift back along the trail at this share of its length a second; the burst flies this long (s). */
+const SKULL_DRIFT = 0.07;
+const BURST_SEC = 1;
+/** Edge / middle colours of the sheets (linear RGB 0..1). */
+const EDGE_RGB = [0.36, 0.1, 0.78];
+const MID_RGB = [0.82, 0.62, 1];
 
-export class RiderMeshes {
-  readonly roots: THREE.Group[] = [];
-  private fills: THREE.MeshBasicMaterial[] = [];
-  private rims: THREE.MeshBasicMaterial[] = [];
+interface Skull {
+  s: THREE.Sprite;
+  mat: THREE.SpriteMaterial;
+  seed: number;
+  vx: number;
+  vy: number;
+  vz: number;
+}
 
-  constructor(scene: THREE.Scene, n: number) {
-    const hull = revenantHullGeometry();
-    for (let i = 0; i < n; i++) {
-      const fill = paintMat(REV_CORE, 0.3);
-      fill.side = THREE.DoubleSide;
-      const rim = new THREE.MeshBasicMaterial({ color: REV_EDGE, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.BackSide });
-      const skin = addMat(REV_BRIGHT, 0.1);
-      const root = new THREE.Group();
-      const r = new THREE.Mesh(hull, rim);
-      r.scale.setScalar(1.06);
-      r.position.y = -0.04;
-      const f = new THREE.Mesh(hull, fill);
-      const s = new THREE.Mesh(hull, skin);
-      s.scale.setScalar(1.01);
-      r.renderOrder = 2;
-      f.renderOrder = 3;
-      s.renderOrder = 4;
-      root.add(r, f, s);
-      // Bone-white slit eyes for headlights.
-      for (const sx of [-1, 1]) {
-        const eye = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.07, 0.07), new THREE.MeshBasicMaterial({ color: REV_BONE }));
-        eye.position.set(sx * 0.55, 0.98, 2.7);
-        eye.rotation.y = sx * -0.28;
-        root.add(eye);
-      }
-      root.visible = false;
-      root.traverse((o) => (o.frustumCulled = false));
-      scene.add(root);
-      this.roots.push(root);
-      this.fills.push(fill);
-      this.rims.push(rim);
-    }
-  }
-
-  /** Riders follow the hearse's exact path, which is where the chase camera rides: one closer than CAM_FADE_IN m to
-   *  `camera` (when given) fades out completely, fully drawn again from CAM_FADE_OUT m, so none fills the screen. */
+export class GhostTrail {
+  /** The viewer (the trail fades out near it); null: no fade. */
   camera: THREE.Camera | null = null;
+  private readonly maxPts: number;
+  private readonly cols: number;
+  /** Control points (x, y, z, alpha): 0 = the hearse's tail, i + 1 = rider i. */
+  private readonly pts: Float32Array;
+  /** Column scratch: centre (x, y, z) and alpha. */
+  private readonly cx: Float32Array;
+  private readonly cy: Float32Array;
+  private readonly cz: Float32Array;
+  private readonly ca: Float32Array;
+  private readonly pos: THREE.BufferAttribute;
+  private readonly col: THREE.BufferAttribute;
+  private readonly geo = new THREE.BufferGeometry();
+  private readonly body: THREE.Mesh;
+  private readonly glow: THREE.Mesh;
+  private readonly bodyMat: THREE.MeshBasicMaterial;
+  private readonly glowMat: THREE.MeshBasicMaterial;
+  private readonly skulls: Skull[] = [];
+  private clock = 0;
+  /** Burst: seconds since the eruption (-1 = none) and its centre. */
+  private burstT = -1;
 
-  /** Pose rider i (feet at (x, y, z), heading), `alpha` 0..1 fade. */
-  set(i: number, x: number, y: number, z: number, heading: number, alpha: number, bob: number): void {
-    const r = this.roots[i];
-    const cam = this.camera;
-    if (cam) {
-      const d = Math.hypot(cam.position.x - x, cam.position.y - y - 1, cam.position.z - z);
-      alpha *= Math.min(1, Math.max(0, (d - CAM_FADE_IN) / (CAM_FADE_OUT - CAM_FADE_IN)));
+  constructor(scene: THREE.Scene, riders: number) {
+    this.maxPts = riders + 1;
+    this.cols = (this.maxPts - 1) * TRAIL_SUB + 1;
+    this.pts = new Float32Array(this.maxPts * 4);
+    this.cx = new Float32Array(this.cols);
+    this.cy = new Float32Array(this.cols);
+    this.cz = new Float32Array(this.cols);
+    this.ca = new Float32Array(this.cols);
+    // Six vertices a column: the standing sheet (bottom, middle, top) and the flat one (left, middle, right).
+    this.pos = new THREE.BufferAttribute(new Float32Array(this.cols * 6 * 3), 3);
+    this.col = new THREE.BufferAttribute(new Float32Array(this.cols * 6 * 4), 4);
+    this.pos.setUsage(THREE.DynamicDrawUsage);
+    this.col.setUsage(THREE.DynamicDrawUsage);
+    const idx: number[] = [];
+    for (let j = 0; j < this.cols - 1; j++) {
+      for (const s of [0, 3]) {
+        for (let r = 0; r < 2; r++) {
+          const a = j * 6 + s + r;
+          const b = a + 6;
+          idx.push(a, b, a + 1, a + 1, b, b + 1);
+        }
+      }
     }
-    r.visible = alpha > 0.01;
-    if (!r.visible) return;
-    r.position.set(x, y + 0.15 + bob, z);
-    r.rotation.set(-0.04, heading, 0);
-    this.fills[i].opacity = 0.3 * alpha;
-    this.rims[i].opacity = 0.85 * alpha;
+    this.geo.setAttribute('position', this.pos);
+    this.geo.setAttribute('color', this.col);
+    this.geo.setIndex(idx);
+    this.geo.setDrawRange(0, 0);
+    this.bodyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: TRAIL_BODY, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+    this.glowMat = new THREE.MeshBasicMaterial({ color: 0xd8b8ff, vertexColors: true, transparent: true, opacity: TRAIL_GLOW, depthWrite: false, toneMapped: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    this.body = new THREE.Mesh(this.geo, this.bodyMat);
+    this.glow = new THREE.Mesh(this.geo, this.glowMat);
+    this.body.renderOrder = 3;
+    this.glow.renderOrder = 4;
+    this.body.frustumCulled = this.glow.frustumCulled = false;
+    this.body.visible = this.glow.visible = false;
+    scene.add(this.body, this.glow);
+    const map = skull();
+    for (let i = 0; i < riders; i++) {
+      const mat = new THREE.SpriteMaterial({ map, color: 0xf0e0ff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+      const s = new THREE.Sprite(mat);
+      s.renderOrder = 6;
+      s.frustumCulled = false;
+      s.visible = false;
+      scene.add(s);
+      this.skulls.push({ s, mat, seed: (i * 0.618034) % 1, vx: 0, vy: 0, vz: 0 });
+    }
   }
 
-  hide(i: number): void {
-    this.roots[i].visible = false;
+  /** Control point i (0 = the hearse's tail, i = rider i - 1) at (x, y = ground, z) with fade `alpha` 0..1. */
+  point(i: number, x: number, y: number, z: number, alpha: number): void {
+    const o = i * 4;
+    this.pts[o] = x;
+    this.pts[o + 1] = y;
+    this.pts[o + 2] = z;
+    this.pts[o + 3] = alpha;
+  }
+
+  /** Build the trail through points 0..n-1 (n >= 2), at overall strength k 0..1 and `lift` m extra height (the coil
+   *  rising into the eruption). */
+  build(n: number, k: number, lift = 0): void {
+    n = Math.min(n, this.maxPts);
+    if (n < 2 || k <= 0.001) {
+      this.body.visible = this.glow.visible = false;
+      for (const sk of this.skulls) sk.s.visible = false;
+      return;
+    }
+    const low = currentPreset().fxScale < 1;
+    const sub = low ? TRAIL_SUB_LOW : TRAIL_SUB;
+    const cols = (n - 1) * sub + 1;
+    const P = this.pts;
+    // Catmull-Rom through the control points.
+    for (let j = 0; j < cols; j++) {
+      const seg = Math.min(n - 2, Math.floor(j / sub));
+      const f = j / sub - seg;
+      const i0 = Math.max(0, seg - 1) * 4;
+      const i1 = seg * 4;
+      const i2 = (seg + 1) * 4;
+      const i3 = Math.min(n - 1, seg + 2) * 4;
+      const f2 = f * f;
+      const f3 = f2 * f;
+      const w0 = -0.5 * f3 + f2 - 0.5 * f;
+      const w1 = 1.5 * f3 - 2.5 * f2 + 1;
+      const w2 = -1.5 * f3 + 2 * f2 + 0.5 * f;
+      const w3 = 0.5 * f3 - 0.5 * f2;
+      this.cx[j] = P[i0] * w0 + P[i1] * w1 + P[i2] * w2 + P[i3] * w3;
+      this.cy[j] = P[i1 + 1] + (P[i2 + 1] - P[i1 + 1]) * f;
+      this.cz[j] = P[i0 + 2] * w0 + P[i1 + 2] * w1 + P[i2 + 2] * w2 + P[i3 + 2] * w3;
+      this.ca[j] = P[i1 + 3] + (P[i2 + 3] - P[i1 + 3]) * f;
+    }
+    const pos = this.pos.array as Float32Array;
+    const col = this.col.array as Float32Array;
+    const cam = this.camera;
+    const t = this.clock;
+    const thick = 1 + 0.025 * (n - 1);
+    for (let j = 0; j < cols; j++) {
+      const u = j / (cols - 1);
+      const jp = Math.max(0, j - 1);
+      const jn = Math.min(cols - 1, j + 1);
+      let tx = this.cx[jn] - this.cx[jp];
+      let tz = this.cz[jn] - this.cz[jp];
+      const tl = Math.hypot(tx, tz) || 1;
+      tx /= tl;
+      tz /= tl;
+      // Taper: a slim neck off the hearse's tail, full in the body, wisping out to nothing at the end.
+      const neck = 0.35 + 0.65 * Math.min(1, u * 9);
+      const tail = (1 - u) ** 0.55;
+      const flow = 1 + 0.28 * Math.sin(t * 5.2 - u * 22) * Math.sin(t * 2.1 - u * 9 + 1);
+      const w = TRAIL_W * thick * neck * (0.25 + 0.75 * tail) * flow;
+      const hh = TRAIL_H * thick * neck * (0.3 + 0.7 * tail) * (2 - flow);
+      const x = this.cx[j] + tz * Math.sin(t * 3.1 - u * 15) * 0.35;
+      const z = this.cz[j] - tx * Math.sin(t * 3.1 - u * 15) * 0.35;
+      const y = this.cy[j] + TRAIL_Y + lift * (0.4 + 0.6 * u) + 0.32 * Math.sin(t * 3.7 - u * 17);
+      let a = this.ca[j] * k * tail ** 0.6 * Math.min(1, u * 14 + 0.25);
+      if (cam) {
+        const d = Math.hypot(cam.position.x - x, cam.position.y - y, cam.position.z - z);
+        a *= Math.min(1, Math.max(0, (d - CAM_FADE_IN) / (CAM_FADE_OUT - CAM_FADE_IN)));
+      }
+      // A flicker running down the trail.
+      a *= 0.82 + 0.18 * Math.sin(t * 19 - u * 40);
+      const o = j * 18;
+      pos[o] = x; pos[o + 1] = y - hh; pos[o + 2] = z;
+      pos[o + 3] = x; pos[o + 4] = y; pos[o + 5] = z;
+      pos[o + 6] = x; pos[o + 7] = y + hh; pos[o + 8] = z;
+      pos[o + 9] = x + tz * w; pos[o + 10] = y - 0.15; pos[o + 11] = z - tx * w;
+      pos[o + 12] = x; pos[o + 13] = y; pos[o + 14] = z;
+      pos[o + 15] = x - tz * w; pos[o + 16] = y - 0.15; pos[o + 17] = z + tx * w;
+      const c = j * 24;
+      // Middle brighter toward the head (white-hot), violet down the tail.
+      const hot = 1 - 0.45 * u;
+      for (let v = 0; v < 6; v++) {
+        const mid = v === 1 || v === 4;
+        const q = c + v * 4;
+        if (mid) {
+          col[q] = EDGE_RGB[0] + (MID_RGB[0] - EDGE_RGB[0]) * hot;
+          col[q + 1] = EDGE_RGB[1] + (MID_RGB[1] - EDGE_RGB[1]) * hot;
+          col[q + 2] = EDGE_RGB[2] + (MID_RGB[2] - EDGE_RGB[2]) * hot;
+          col[q + 3] = a;
+        } else {
+          col[q] = EDGE_RGB[0];
+          col[q + 1] = EDGE_RGB[1];
+          col[q + 2] = EDGE_RGB[2];
+          col[q + 3] = 0;
+        }
+      }
+      this.ca[j] = a;
+    }
+    this.pos.needsUpdate = true;
+    this.col.needsUpdate = true;
+    this.pos.clearUpdateRanges();
+    this.col.clearUpdateRanges();
+    this.pos.addUpdateRange(0, cols * 18);
+    this.col.addUpdateRange(0, cols * 24);
+    this.geo.setDrawRange(0, (cols - 1) * 24);
+    this.body.visible = this.glow.visible = true;
+    // Skull wisps: one a rider (LOW: every other), drifting back through the trail, flickering.
+    const nSk = Math.min(this.skulls.length, n - 1);
+    for (let i = 0; i < this.skulls.length; i++) {
+      const sk = this.skulls[i];
+      if (i >= nSk || (low && i % 2)) {
+        sk.s.visible = false;
+        continue;
+      }
+      const u = (sk.seed + t * SKULL_DRIFT) % 1;
+      const fj = u * (cols - 1);
+      const j = Math.floor(fj);
+      const jn = Math.min(cols - 1, j + 1);
+      const f = fj - j;
+      const a = (this.ca[j] + (this.ca[jn] - this.ca[j]) * f) * Math.sin(Math.PI * u);
+      const fl = Math.max(0, Math.sin(t * 11 + i * 2.3) * 0.5 + 0.5) ** 0.6 * (0.7 + 0.3 * Math.sin(t * 29 + i));
+      const op = TRAIL_SKULL * a * fl;
+      sk.s.visible = op > 0.02;
+      if (!sk.s.visible) continue;
+      const ph = t * 2.3 + i * 1.9;
+      sk.s.position.set(
+        this.cx[j] + (this.cx[jn] - this.cx[j]) * f + Math.sin(ph) * 0.8,
+        this.cy[j] + TRAIL_Y + lift * 0.6 + 0.25 + Math.sin(ph * 1.3) * 0.45,
+        this.cz[j] + (this.cz[jn] - this.cz[j]) * f + Math.cos(ph) * 0.8,
+      );
+      const sc = (1.5 + 0.7 * ((i * 0.37) % 1)) * (0.85 + 0.15 * fl);
+      sk.s.scale.set(sc, sc, 1);
+      sk.mat.opacity = op;
+    }
+  }
+
+  /** The eruption at (x, y, z): the ribbon is spent and every skull wisp bursts outward from the hearse. */
+  burst(x: number, y: number, z: number): void {
+    this.body.visible = this.glow.visible = false;
+    this.burstT = 0;
+    const low = currentPreset().fxScale < 1;
+    for (let i = 0; i < this.skulls.length; i++) {
+      const sk = this.skulls[i];
+      if (low && i % 2) {
+        sk.s.visible = false;
+        continue;
+      }
+      const a = (i / this.skulls.length) * Math.PI * 2 + Math.random() * 0.3;
+      const sp = 9 + Math.random() * 7;
+      sk.vx = Math.sin(a) * sp;
+      sk.vz = Math.cos(a) * sp;
+      sk.vy = 5 + Math.random() * 6;
+      sk.s.position.set(x + Math.sin(a) * 1.2, y + 1.6 + Math.random(), z + Math.cos(a) * 1.2);
+      sk.s.visible = true;
+    }
+  }
+
+  /** Advance the flow clock and any burst (once a frame). */
+  update(dt: number): void {
+    this.clock += dt;
+    if (this.burstT < 0) return;
+    this.burstT += dt;
+    const u = this.burstT / BURST_SEC;
+    if (u >= 1) {
+      this.burstT = -1;
+      for (const sk of this.skulls) sk.s.visible = false;
+      return;
+    }
+    const drag = Math.exp(-dt * 2.2);
+    for (let i = 0; i < this.skulls.length; i++) {
+      const sk = this.skulls[i];
+      if (!sk.s.visible) continue;
+      sk.vx *= drag;
+      sk.vz *= drag;
+      sk.vy = sk.vy * drag + dt * 2;
+      sk.s.position.x += sk.vx * dt;
+      sk.s.position.y += sk.vy * dt;
+      sk.s.position.z += sk.vz * dt;
+      const sc = 1.6 + 1.6 * u;
+      sk.s.scale.set(sc, sc, 1);
+      sk.mat.opacity = TRAIL_SKULL * (1 - u) ** 1.3 * (0.75 + 0.25 * Math.sin(this.clock * 31 + i));
+    }
   }
 
   clear(): void {
-    for (const r of this.roots) r.visible = false;
+    this.burstT = -1;
+    this.body.visible = this.glow.visible = false;
+    this.geo.setDrawRange(0, 0);
+    for (const sk of this.skulls) sk.s.visible = false;
   }
 }
 
@@ -433,6 +661,9 @@ export class RiderMeshes {
 /** The darkening while THE WILD HUNT rides: a huge back-faced sphere drawn first among the transparents with no depth
  *  test (it tints the whole opaque scene; the riders and effects draw over it), plus the scene fog pulled in and
  *  tinted. Restores the fog on release. */
+/** Peak darkening of the Hunt dome. */
+const DOME_DARK = 0.28;
+
 export class HuntDome {
   private mesh: THREE.Mesh;
   private mat: THREE.MeshBasicMaterial;
@@ -457,12 +688,13 @@ export class HuntDome {
     }
     this.mesh.visible = true;
     this.mesh.position.set(x, 0, z);
-    this.mat.opacity = 0.42 * k;
+    // Light enough that the riders (bright violet) still pop against the darkened arena.
+    this.mat.opacity = DOME_DARK * k;
     if (fog && (fog as THREE.Fog).isFog) {
       if (!this.saved) this.saved = { color: fog.color.clone(), near: fog.near, far: fog.far };
-      fog.color.copy(this.saved.color).lerp(this.purple, 0.7 * k);
-      fog.near = this.saved.near * (1 - 0.6 * k);
-      fog.far = this.saved.far * (1 - 0.45 * k);
+      fog.color.copy(this.saved.color).lerp(this.purple, 0.55 * k);
+      fog.near = this.saved.near * (1 - 0.45 * k);
+      fog.far = this.saved.far * (1 - 0.3 * k);
     }
   }
 

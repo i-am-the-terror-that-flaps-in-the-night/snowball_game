@@ -1157,7 +1157,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     this.b.audio.play('explosion', { pitch: 0.5, volume: 1 });
     this.b.audio.play('thunder', { pitch: 0.6, volume: 0.9 });
     this.shake(0.9);
-    if (this.b.local) this.impactHit('nuke', C, 1);
+    if (this.b.local) this.impactHit('collapse', C, 1);
     this.b.snow.melt(C.x, C.z, SING_CORE * 0.7, 0.8);
     this.smashProps(C.x, C.z, SING_CORE);
     if (this.puppet) return;

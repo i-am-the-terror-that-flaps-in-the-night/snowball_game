@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ULT_CAM_KILLS, ULT_CAM_WINDOW, UltKillCam, ultCamLabel } from '../src/fx/ultCam';
+import { ULT_CAM_KILLS, ULT_CAM_WINDOW, ULT_CAM_WINDOW_HUNT, UltKillCam, ultCamLabel, ultCamWindow } from '../src/fx/ultCam';
+import { HUNT_SECONDS } from '../src/entities/combat/revenant';
 
 describe('ultimate kill-cam trigger', () => {
   it('fires once, on the 3rd kill inside the window, framed on the kills', () => {
@@ -51,5 +52,18 @@ describe('ultimate kill-cam trigger', () => {
     expect(ultCamLabel(3)).toContain('x3');
     expect(ultCamLabel(6)).toContain('WIPE');
     expect(ultCamLabel(9)).toContain('ANNIHILATION');
+  });
+
+  it("keeps THE WILD HUNT's window open through its finale", () => {
+    expect(ultCamWindow('classic')).toBe(ULT_CAM_WINDOW);
+    expect(ultCamWindow('revenant')).toBe(ULT_CAM_WINDOW_HUNT);
+    // The finale erupts a little after the ride ends (HUNT_SECONDS + FINALE_IN ~ 7.45 s).
+    expect(ULT_CAM_WINDOW_HUNT).toBeGreaterThan(HUNT_SECONDS + 0.6);
+    const c = new UltKillCam();
+    c.onUlt(ultCamWindow('revenant'));
+    c.update(7.5);
+    c.onKill(0, 0);
+    c.onKill(1, 0);
+    expect(c.onKill(2, 0)).not.toBeNull();
   });
 });

@@ -7,6 +7,8 @@ import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
  *  Duel victim path), so it stays valid across the nested victim hit. */
 const _kb = new THREE.Vector3();
+/** An ultimate's sky bolt onto each bot it hits (SUPERCELL): long-lived and wide, white-hot core. */
+const ULT_BOLT = { life: 0.5, width: 0.6, jag: 1.8, color: 0xbff0ff };
 
 /** Ultimates for VOLT-9 / BRUTUS / ARSENAL / REVENANT (ISOTOPE has the NUKE, the Classic the FIRESTORM): any damage you deal
  *  fills the meter (this much fills it on a fresh plow, see ultCharge). While an ultimate and its aftermath play out,
@@ -86,6 +88,8 @@ export class Ultimates {
     castOrigin(plow, this.from);
     h.ctx.ui.toast(h.b.local ? `${ULT_NAME[kind]}!` : `INCOMING ${ULT_NAME[kind]}!`, 'big');
     this.lock = this.scripts[kind].ultStart(this.x, this.z, plow);
+    // Dark smoke and wreck smolder run light for the whole show (THE WILD HUNT rides ~7.5 s).
+    h.ctx.fx.hush?.(this.lock);
   }
 
   update(dt: number): void {
@@ -125,9 +129,10 @@ export function ultBlast(
     if (d + e.radius < inner) continue;
     const nd = d || 1;
     if (o.bolt) {
-      _p.set(e.position.x + (Math.random() - 0.5) * 3, 28, e.position.z + (Math.random() - 0.5) * 3);
+      // From the storm deck (fx/stormCloud.ts, ~6 m up), not from far above the camera.
+      _p.set(e.position.x + (Math.random() - 0.5) * 3, e.position.y + 6, e.position.z + (Math.random() - 0.5) * 3);
       _q.set(e.position.x, e.position.y + e.radius, e.position.z);
-      h.lightning.bolt(_p, _q, { life: 0.35, width: 0.6, jag: 2, color: 0xbff0ff });
+      h.lightning.bolt(_p, _q, ULT_BOLT);
     }
     const hp0 = e.hp;
     const killed = h.b.enemies.damage(e, dmg * h.b.stats.damageMult * h.hitMult(e), {

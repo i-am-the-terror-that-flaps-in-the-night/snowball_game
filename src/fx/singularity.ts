@@ -846,9 +846,10 @@ export class SingularityFx {
     const rf = this.reduceFlash;
     // flash: instant peak, fast decay
     // flash: ~0.1 s peak, gone by ~0.3 s, and only a few core radii wide (big != white)
-    const fi = (rf ? 0.3 : 1) * (e < 0.025 ? e / 0.025 : Math.exp(-(e - 0.025) * 16));
+    // (Toned down: at full strength and size it whited out the whole screen at the chase camera's range.)
+    const fi = (rf ? 0.3 : 0.6) * (e < 0.025 ? e / 0.025 : Math.exp(-(e - 0.025) * 18));
     this.flashMat.uniforms.uI.value = fi;
-    this.flash.scale.setScalar(this.rc * ((rf ? 2 : 2.5) + (rf ? 3 : 6) * (1 - Math.exp(-e * 14))));
+    this.flash.scale.setScalar(this.rc * ((rf ? 2 : 2.2) + (rf ? 3 : 4) * (1 - Math.exp(-e * 14))));
     this.flash.visible = fi > 0.002;
 
     const Rmax = this.R * 0.5;

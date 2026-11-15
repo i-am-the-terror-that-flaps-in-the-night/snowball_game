@@ -7,6 +7,10 @@
 /** Seconds after an ultimate starts during which kills count toward it (the longest ultimates, FIRESTORM's fire
  *  field and the NUKE's radiation, run ~4 s; a little slack for the last burn tick). */
 export const ULT_CAM_WINDOW = 4.5;
+/** ...and THE WILD HUNT's: it rides 7 s and its finale erupts ~7.45 s in (combat/revenant.ts HUNT_SECONDS + FINALE_IN). */
+export const ULT_CAM_WINDOW_HUNT = 8.2;
+/** Kill-cam window for an ultimate cast by `plowKind`. */
+export const ultCamWindow = (plowKind: string): number => (plowKind === 'revenant' ? ULT_CAM_WINDOW_HUNT : ULT_CAM_WINDOW);
 /** Kills inside the window that trigger the kill-cam. */
 export const ULT_CAM_KILLS = 3;
 /** Real-time length of the slow-mo + camera move. */
@@ -38,9 +42,9 @@ export class UltKillCam {
   private sz = 0;
   private sy = 0;
 
-  /** The player's ultimate just went off. A new ultimate opens a fresh window. */
-  onUlt(): void {
-    this.t = ULT_CAM_WINDOW;
+  /** The player's ultimate just went off (`window` s to count kills in). A new ultimate opens a fresh window. */
+  onUlt(window = ULT_CAM_WINDOW): void {
+    this.t = window;
     this.fired = false;
     this.n = this.sx = this.sz = this.sy = 0;
   }

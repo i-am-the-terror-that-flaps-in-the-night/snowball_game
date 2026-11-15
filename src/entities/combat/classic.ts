@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FlameCone } from '../../fx/FlameCone';
 import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import { FX } from '../../config/upgrades';
-import { settings } from '../../core/settings';
+import { currentPreset, settings } from '../../core/settings';
 import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, floorTop, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultMeter } from './ultimates';
@@ -14,6 +14,29 @@ import { FINISHER_KNOCK, FINISHER_RADIUS, STREAK_COLORS, STREAK_CSS, STREAK_DEEP
 const UPDATE_FLAME_BURST = { color: 0xfff2b0, count: 2, speed: 9, size: 0.06, gravity: 8, life: 0.45 };
 const UPDATE_FLAME_BURST_2 = { color: 0x2c2628, count: 2, speed: 1.5, size: 0.7, gravity: -3, life: 1.1 };
 const UPDATE_BURNS_BURST = { color: 0x2c2628, count: 1, speed: 1, size: 0.6, gravity: -2.5, life: 1 };
+/** ...a FIRESTORM-lit bot's: warmer and lighter (it doesn't bury the storm). */
+const STORM_BURNS_SMOKE = { count: 1, color: 0x8a5a40, size: 0.5, grow: 2.6, life: 0.8, speed: 0.6, up: 1.5, rise: 1, drag: 1.6, spread: 0.3, opacity: 0.45 };
+const BURN_FLAME_A = { color: 0xff5a10, count: 3, speed: 2, size: 0.32, gravity: -7, life: 0.45 };
+const BURN_FLAME_B = { color: 0xffd040, count: 3, speed: 2, size: 0.32, gravity: -7, life: 0.45 };
+/** FIRESTORM visuals (no damage): fire whirls (small flame tornadoes) circling the cast point for the fire field's
+ *  life, each a corkscrewing stream of rising glow puffs. Count (fxScale scales the puff rate), radius band (x field
+ *  radius), swirl around the centre (rad/s), spin of each whirl (rad/s) and its radius (m), puffs a second per whirl. */
+const FS_COLUMNS = 6;
+const FS_COL_IN = 0.4;
+const FS_COL_OUT = 0.8;
+const FS_SWIRL = 0.8;
+const FS_SPIN = 11;
+const FS_WHIRL_R = 0.55;
+const FS_COL_RATE = 38;
+/** Scratch options for the whirl puffs (colour / size / dir rewritten per puff, read synchronously by fx.smoke). */
+const FS_FLAME = { count: 1, color: 0xff7a1a, additive: 0.9, size: 0.5, grow: 1.9, life: 0.85, speed: 0.2, up: 0, rise: 3, drag: 0.9, spread: 0.15, opacity: 0.95, dir: new THREE.Vector3() };
+const FS_EMBERS = { color: 0xffb040, count: 3, speed: 6, spread: 0.5, size: 0.08, length: 0.06, gravity: -4, life: 0.8 };
+const FS_FIELD_EMBER_A = { color: 0xff5a10, count: 2, speed: 2, size: 0.35, gravity: -7, life: 0.5 };
+const FS_FIELD_EMBER_B = { color: 0xffd040, count: 2, speed: 2, size: 0.35, gravity: -7, life: 0.5 };
+/** The cast: a white-hot core flash and a burst of rising flame (instead of a dark smoke puff). */
+const FS_CORE_FLASH = { count: 2, color: 0xfff0c0, additive: 1, size: 6, grow: 1.6, life: 0.3, speed: 0, up: 0, rise: 0, drag: 0, spread: 0, opacity: 1 };
+const FS_CORE_FIRE = { count: 18, color: 0xff7a1a, additive: 0.85, size: 1, grow: 2.2, life: 0.9, speed: 9, up: 4, rise: 2.5, drag: 1.8, spread: 1.2, opacity: 0.9, radial: true };
+const _up = new THREE.Vector3(0, 1, 0);
 /** STREAK: a new stack's pop at the target (sparks + chunks per stack colour), ON STREAK's blade embers / smoke, the
  *  fizzle when it drops, and the SHOCKWAVE FINISHER's ice shards, chunks, embers and powder. */
 const STREAK_POP_SPARKS = STREAK_COLORS.map((color) => ({ color, count: 22, speed: 12, spread: 1, size: 0.1, length: 0.04, gravity: 16, life: 0.45 }));
@@ -100,6 +123,11 @@ export class ClassicKit extends Kit {
   /** The floor the FIRESTORM was cast on: the burning ground judges height from it (not from the plow's live height). */
   private readonly fireFrom: CastOrigin = { y: 0, deck: -1 };
   private fireFieldTickT = 0;
+  /** FIRESTORM visuals: the flame columns' angle offset / radius (x field radius) and emit accumulators. */
+  private readonly colA = new Float32Array(FS_COLUMNS);
+  private readonly colR = new Float32Array(FS_COLUMNS);
+  private colAcc = 0;
+  private stormClock = 0;
   readonly flameCone: FlameCone;
   /** SNOW CHUNKS packed by tap BALL SLAM hits (0..CHUNK_MAX); a PLOW RUSH slam spends them all. */
   chunks = 0;
@@ -505,9 +533,17 @@ export class ClassicKit extends Kit {
     }
     _q.set(x, top + 2.5, z);
     ctx.fx.burst(_q, { color: 0xffe070, count: 60, speed: 16, size: 0.35, gravity: -2, life: 0.8 });
-    ctx.fx.burst(_q, { color: 0x2c2628, count: 24, speed: 5, size: 1.2, gravity: -2.5, life: 1.6 });
+    ctx.fx.smoke(_q, FS_CORE_FLASH);
+    _q.set(x, top + 1, z);
+    ctx.fx.smoke(_q, FS_CORE_FIRE);
+    ctx.fx.sparks(_q, _up, { color: 0xffb040, count: 40, speed: 16, spread: 0.6, size: 0.1, length: 0.06, gravity: 4, life: 0.9 });
+    for (let i = 0; i < FS_COLUMNS; i++) {
+      this.colA[i] = (i / FS_COLUMNS) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      this.colR[i] = FS_COL_IN + Math.random() * (FS_COL_OUT - FS_COL_IN);
+    }
+    this.colAcc = this.stormClock = 0;
     this.shake(1);
-    this.impactHit('nuke', _q.set(x, top + 1, z));
+    this.impactHit('firestorm', _q.set(x, top + 1, z));
     this.b.audio.play('explosion', { volume: 1, pitch: 0.6 });
     this.b.audio.play('roar', { volume: 0.7, pitch: 1.3 });
     this.b.snow?.melt(x, z, FIRE_FIELD_RADIUS, 1);
@@ -529,7 +565,7 @@ export class ClassicKit extends Kit {
     }
     const ctx = this.ctx;
     const fade = Math.min(1, this.fireFieldT / 0.8, (FIRE_FIELD_SECONDS - this.fireFieldT) / 0.2 + 0.3);
-    this.fireFieldMat.opacity = (0.3 + 0.1 * Math.sin(ctx.time * 11) + 0.05 * Math.random()) * fade;
+    this.fireFieldMat.opacity = (0.42 + 0.1 * Math.sin(ctx.time * 11) + 0.06 * Math.random()) * fade;
     for (let i = 0; i < 3; i++) {
       const a = Math.random() * Math.PI * 2;
       const rr = Math.sqrt(Math.random()) * FIRE_FIELD_RADIUS;
@@ -539,8 +575,10 @@ export class ClassicKit extends Kit {
       // Past a deck edge (floor far below the cast level) the field doesn't burn: no embers there either.
       if (Math.abs(ey - this.fireFrom.y) > 2 * WAVE_BAND) continue;
       _q.set(ex, ey + 0.4, ez);
-      ctx.fx.burst(_q, { color: Math.random() < 0.6 ? 0xff5a10 : 0xffd040, count: 2, speed: 2, size: 0.35, gravity: -7, life: 0.5 });
+      ctx.fx.burst(_q, Math.random() < 0.6 ? FS_FIELD_EMBER_A : FS_FIELD_EMBER_B);
+      if (i === 0) ctx.fx.sparks(_q, _up, FS_EMBERS);
     }
+    this.updateStormColumns(dt, fade);
     this.fireFieldTickT -= dt;
     if (this.fireFieldTickT > 0) return;
     this.fireFieldTickT = FIRE_FIELD_TICK;
@@ -557,6 +595,39 @@ export class ClassicKit extends Kit {
       this.onPlayerHit(dealt, killed, e, false);
     }
     this.clearTargets();
+  }
+
+  /** FIRESTORM visuals, while the field burns: fire whirls circling the cast point, each puff leaving a small circle
+   *  round the whirl's axis with a tangential kick, so it corkscrews up into a flame column. Pure show: no damage. */
+  private updateStormColumns(dt: number, fade: number): void {
+    const fx = this.ctx.fx;
+    const terrain = this.ctx.terrain;
+    this.stormClock += dt;
+    const t = this.stormClock;
+    const R = FIRE_FIELD_RADIUS;
+    const fy = this.fireFrom.y;
+    // FS_COL_RATE puffs a second per whirl (x fade, x fxScale), round-robin over the whirls.
+    this.colAcc += dt * FS_COL_RATE * FS_COLUMNS * fade * currentPreset().fxScale;
+    let col = Math.floor(t * 97) % FS_COLUMNS;
+    const f = FS_FLAME;
+    while (this.colAcc >= 1) {
+      this.colAcc -= 1;
+      col = (col + 1) % FS_COLUMNS;
+      const a = this.colA[col] + t * FS_SWIRL;
+      const r = this.colR[col] * R;
+      const x = this.fireFieldX + Math.sin(a) * r;
+      const z = this.fireFieldZ + Math.cos(a) * r;
+      const y = waveFloor(terrain, fy, x, z);
+      if (Math.abs(y - fy) > 2 * WAVE_BAND) continue;
+      const s = t * FS_SPIN + col * 2.1 + Math.random() * 0.6;
+      const hot = Math.random() < 0.35;
+      _p.set(x + Math.sin(s) * FS_WHIRL_R, y + 0.3 + Math.random() * 0.6, z + Math.cos(s) * FS_WHIRL_R);
+      f.dir.set(Math.cos(s) * 3, 9.5 + Math.random() * 3, -Math.sin(s) * 3);
+      f.color = hot ? 0xffd060 : Math.random() < 0.5 ? 0xff7a1a : 0xff4a10;
+      f.size = hot ? 0.4 : 0.55;
+      f.additive = hot ? 1 : 0.9;
+      fx.smoke(_p, f);
+    }
   }
 
   /** Burn damage over time from Inferno, credited to the player (lifesteal / adrenaline apply). */
@@ -576,11 +647,12 @@ export class ClassicKit extends Kit {
       // Burning bots are wrapped in flames + trailing smoke.
       if (Math.random() < dt * 30) {
         _p.set(e.position.x + (Math.random() - 0.5) * e.radius * 1.4, e.position.y + 0.6 + Math.random() * e.radius * 1.2, e.position.z + (Math.random() - 0.5) * e.radius * 1.4);
-        ctx.fx.burst(_p, { color: Math.random() < 0.55 ? 0xff5a10 : 0xffd040, count: 3, speed: 2, size: 0.32, gravity: -7, life: 0.45 });
+        ctx.fx.burst(_p, Math.random() < 0.55 ? BURN_FLAME_A : BURN_FLAME_B);
       }
       if (Math.random() < dt * 6) {
         _p.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
-        ctx.fx.burst(_p, UPDATE_BURNS_BURST);
+        if (b.storm) ctx.fx.smoke(_p, STORM_BURNS_SMOKE);
+        else ctx.fx.burst(_p, UPDATE_BURNS_BURST);
       }
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;

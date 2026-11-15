@@ -104,6 +104,7 @@ export class Combat implements CombatAPI {
   prewarm(): void {
     this.arsenal.prewarm();
     this.revenant.prewarm();
+    this.volt.prewarm();
   }
 
   /** Shader warm-up: the Inferno light as if burning (see FlameCone.flipLightForWarmup); returns the undo. */
@@ -713,6 +714,7 @@ export class Combat implements CombatAPI {
     this.volt.updateClap(dt);
     this.brute.updatePound(dt);
     this.volt.updateStorm(dt);
+    this.volt.updateSupercellFx(dt);
     this.volt.updateField(dt);
     this.volt.updateParalysis(dt);
     this.brute.updateSaws(dt);
