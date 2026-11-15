@@ -6,15 +6,20 @@ import { Progression, sanitizeProtocol } from '../src/core/Progression';
 import { ZONES } from '../src/config/zones';
 import { HARD } from '../src/config/challenges';
 import {
-  ECHO_HP, HEADLINE_HP, MAX_ACTIVE, PROTOCOL_CLEAR_REWARD, PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, homeZone, protocolRounds,
-  protocolWaveZone, protocolZone, waveBossCount,
+  ECHO_HP, HEADLINE_CD, HEADLINE_HARD, HEADLINE_HP, MAX_ACTIVE, PROTOCOL_CLEAR_REWARD, PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, homeZone,
+  protocolRounds, protocolWaveZone, protocolZone, waveBossCount,
 } from '../src/config/protocol';
 import {
-  formatRunTime, protocolReward, protocolSave, protocolTeased, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint,
+  formatRunTime, protocolRecordsRun, protocolReward, protocolSave, protocolTeased, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint,
   saveCheckpoint, takeCheckpoint,
 } from '../src/meta/protocol';
 import { maxStars } from '../src/meta/challenges';
-import { BROKEN_RAMPS, FEATURES, RING_R, WAVE_FEATURES, protocolTerrain } from '../src/world/protocol/layout';
+import { BROKEN_RAMPS, DECK_IDS, FEATURES, PROTOCOL_NAV, RING_R, WAVE_FEATURES, deckWave, protocolTerrain } from '../src/world/protocol/layout';
+import { NavGraph } from '../src/world/omega/nav';
+import { EventBus, type GameEvents } from '../src/core/events';
+import { LIFE, life, lifeBoss } from '../src/config/achievements';
+import { Achievements, recordRunLifetime } from '../src/meta/achievements';
+import { LOOT_RULES } from '../src/config/loot';
 import { Terrain } from '../src/world/Terrain';
 import { BOSS_BAR_MAX, bossBarLayout } from '../src/ui/hudParts';
 import type { Bot } from '../src/entities/enemies/Bot';
@@ -92,14 +97,17 @@ describe('wave composition', () => {
     expect(waveBossCount(1)).toEqual({ total: 1, echoes: 0 });
   });
 
-  it('net boss HP: headline = home x HEADLINE_HP, echo = home x ECHO_HP (x the pilot-power scale)', () => {
+  it('net boss HP: headline = home x max(HEADLINE_HP, Hard x HEADLINE_HARD), echo = home x ECHO_HP (x the pilot-power scale)', () => {
     const z = protocolZone({ hp: 1.5, dmg: 1.2 });
     expect(z.enemyHpMult).toBeCloseTo(HARD.hpMult * 1.5);
     expect(z.enemyDmgMult).toBeCloseTo(HARD.dmgMult * 1.2);
     for (const r of rounds) {
       for (const g of r.groups) {
         const home = homeZone(g.type)!.enemyHpMult;
-        expect(PROTOCOL_ZONE.enemyHpMult * g.hpMult!).toBeCloseTo(home * (g.echo ? ECHO_HP : HEADLINE_HP));
+        const net = PROTOCOL_ZONE.enemyHpMult * g.hpMult!;
+        expect(net).toBeCloseTo(home * (g.echo ? ECHO_HP : Math.max(HEADLINE_HP, HARD.hpMult * HEADLINE_HARD)));
+        // a headline is at least its Hard-campaign self (+15%) and at least x1.6 its home HP
+        if (!g.echo) expect(net).toBeGreaterThanOrEqual(Math.max(home * HARD.hpMult * HEADLINE_HARD, home * HEADLINE_HP) - 1e-9);
         expect(g.headline).toBe(!g.echo);
       }
     }
@@ -345,6 +353,8 @@ describe('echo bosses', () => {
     const { boss } = await arena();
     const e = boss('grinder', 0, 10, { echo: true, hpMult: ECHO_HP });
     const h = boss('grinder', 0, -10, { headline: true, hpMult: HEADLINE_HP });
+    expect(e.holo).not.toBeNull();
+    expect(h.holo).toBeNull();
     expect(e.maxHp).toBe(Math.round(1100 * ECHO_HP));
     expect(h.maxHp).toBe(Math.round(1100 * HEADLINE_HP));
     expect(e.displayName).toBe('ECHO THE GRINDER');
@@ -469,5 +479,164 @@ describe('review fixes', () => {
     run(0.2);
     expect(segs.length === 0 || segs.every((s) => s.die >= 0)).toBe(true);
     donaldProps.clear(ctx as unknown as GameContext);
+  });
+});
+
+/* ------------------------------------------------------------------ build stage 2 */
+
+describe('stage 2: echo holograms', () => {
+  it('an echo is drawn with one hologram program (shared with the warm-up set); eyes / glow keep their materials', async () => {
+    const { mgr, boss } = await arena();
+    const warm = mgr.warmSet().filter((o) => ((o as THREE.Mesh).material as THREE.Material).name === 'hologram');
+    expect(warm.length).toBe(2);
+    expect(warm.some((o) => (o as THREE.InstancedMesh).isInstancedMesh)).toBe(true);
+    const ref = (warm[0] as THREE.Mesh).material as THREE.ShaderMaterial;
+    for (const t of ['frostbyte', 'bulldoza', 'grinder', 'slush', 'donald', 'omega']) {
+      const e = boss(t, 0, 0, { echo: true });
+      const h = boss(t, 10, 0, { headline: true });
+      let holo = 0;
+      let kept = 0;
+      e.rig.root.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+        if (!(o as THREE.Mesh).isMesh || !m) return;
+        if (m === e.holo) holo++;
+        else if (['eye', 'glow', 'ball'].includes(m.userData?.inst as string)) kept++;
+      });
+      expect(holo, t).toBeGreaterThan(5);
+      expect(e.holo!.vertexShader).toBe(ref.vertexShader);
+      expect(e.holo!.fragmentShader).toBe(ref.fragmentShader);
+      expect(e.rig.owned).toContain(e.holo);
+      if (e.rig.eye) expect(kept, t).toBeGreaterThan(0);
+      // the headline keeps its paint
+      h.rig.root.traverse((o) => expect(((o as THREE.Mesh).material as THREE.Material | undefined)?.name).not.toBe('hologram'));
+    }
+  });
+
+  it('flashes on a hit and dims while held on the leash', async () => {
+    const { mgr, boss, run } = await arena();
+    const e = boss('bulldoza', 0, 10, { echo: true });
+    e.stun = 10;
+    run(0.1);
+    const a0 = e.holo!.uniforms.uAlpha.value as number;
+    mgr.damage(e, 1, {});
+    run(1 / 60);
+    expect(e.holo!.uniforms.uFlash.value).toBeGreaterThan(0.3);
+    e.held = true;
+    run(1 / 60);
+    expect(e.holo!.uniforms.uAlpha.value).toBeLessThan(a0);
+  });
+});
+
+describe('stage 2: headline tuning', () => {
+  it("a headline's cooldowns between moves run HEADLINE_CD x as fast", async () => {
+    const { boss, run } = await arena();
+    const h = boss('bulldoza', -10, 0, { headline: true });
+    const e = boss('bulldoza', 10, 0, { echo: true });
+    for (const b of [h, e]) {
+      b.stun = 10; // AI off: only the timers run
+      b.cd = b.cd2 = 5;
+    }
+    run(1);
+    expect(HEADLINE_CD).toBeGreaterThan(1);
+    expect(h.cd).toBeCloseTo(5 - HEADLINE_CD, 1);
+    expect(h.cd2).toBeCloseTo(5 - HEADLINE_CD, 1);
+    expect(e.cd).toBeCloseTo(4, 1);
+  });
+});
+
+describe('stage 2: deck routing', () => {
+  it('a nav graph for the wave 6-7 decks: ramps are transit, a bot on the ground is sent to a ramp foot', () => {
+    expect([1, 2, 3, 4, 5].map(deckWave)).toEqual([false, false, false, false, false]);
+    expect(deckWave(6) && deckWave(7)).toBe(true);
+    const nav = new NavGraph(PROTOCOL_NAV);
+    const t = new Terrain(protocolTerrain(7));
+    const ids = t.decks.map((d) => d.id).sort();
+    expect(ids).toEqual(Object.values(DECK_IDS).flatMap((s) => [s.slab, s.rampN, s.rampS]).sort());
+    expect(nav.regionOf(DECK_IDS.east.slab)).toBe(DECK_IDS.east.slab);
+    expect(nav.regionOf(DECK_IDS.east.rampN)).toBeNaN();
+    const out = { x: 0, z: 0 };
+    expect(nav.next(0, 20, -1, 13, -2, DECK_IDS.east.slab, out)).toBe(true);
+    expect(t.surfaceAt(out.x, out.z, 0).y).toBeLessThan(0.3); // a ramp foot on the ground
+    expect(Math.abs(out.x - 13)).toBeLessThan(1);
+    // same level: steer straight
+    expect(nav.next(0, 20, -1, 5, 5, -1, out)).toBe(false);
+    // every node stands where it says, and no ramp foot is near lava (big bosses steer round lava and would stall)
+    for (const [k, n] of Object.entries(PROTOCOL_NAV.nodes)) {
+      const s = t.surfaceAt(n.x, n.z, n.region < 0 ? 0 : 1.2);
+      expect(s.deck, k).toBe(n.region < 0 ? -1 : n.region);
+      const r = n.region < 0 ? 2.5 : 0;
+      for (let a = 0; a < 16; a++) expect(t.materialAt(n.x + Math.cos(a) * r, n.z + Math.sin(a) * r), k).not.toBe('lava');
+    }
+  });
+
+  it('bosses walk up a ramp to a plow parked on a deck (no deck camping)', async () => {
+    const { mgr, ctx, plow, boss, run } = await arena();
+    ctx.terrain = new Terrain(protocolTerrain(6));
+    mgr.nav = new NavGraph(PROTOCOL_NAV);
+    plow.position.set(13, 1.2, -2);
+    plow.deck = DECK_IDS.east.slab;
+    const bots = [boss('bulldoza', -24, 18, { echo: true }), boss('grinder', -20, -20, { echo: true }), boss('omega', 24, 20, { headline: true })];
+    const reached = new Set<string>();
+    run(45, () => {
+      for (const b of bots) if (b.alive && b.deck === DECK_IDS.east.slab) reached.add(b.type);
+      plow.position.set(13, 1.2, -2);
+    });
+    expect([...reached].sort()).toEqual(['bulldoza', 'grinder', 'omega']);
+  });
+});
+
+describe('stage 2: review cleanups', () => {
+  it("echo kills count as bosses scrapped, not toward that boss's own trophy", () => {
+    const p = new Progression();
+    const events = new EventBus();
+    const ctx = { events, progression: p, zone: { ...PROTOCOL_ZONE }, ui: { toast: () => {} }, audio: { play: () => {} } } as unknown as GameContext;
+    new Achievements(ctx);
+    const handle = (echo: boolean) => ({ type: 'grinder', isBoss: true, echo }) as never;
+    events.emit('bossDefeated', { enemy: handle(true), name: 'ECHO THE GRINDER' });
+    expect(life(p, LIFE.bossKills)).toBe(1);
+    expect(life(p, lifeBoss('grinder'))).toBe(0);
+    events.emit('bossDefeated', { enemy: handle(false), name: 'THE GRINDER' });
+    expect(life(p, LIFE.bossKills)).toBe(2);
+    expect(life(p, lifeBoss('grinder'))).toBe(1);
+  });
+
+  it('a clean clear needs the whole rush in one go (no checkpoint retry, no dev start)', () => {
+    const p = new Progression();
+    const r = (partial: boolean): GameEvents['runFinished'] => ({
+      mode: 'campaign', plow: 'classic', won: true, kills: 0, killsBy: { slam: 0, ram: 0, whirl: 0, other: 0 } as never,
+      coins: 0, bestCombo: 0, biggestBall: 0, duration: 60, damageTaken: 0, protocol: true, partial,
+    });
+    recordRunLifetime(p, r(true));
+    expect(life(p, LIFE.cleanClears)).toBe(0);
+    recordRunLifetime(p, r(false));
+    expect(life(p, LIFE.cleanClears)).toBe(1);
+  });
+
+  it('a dev start records nothing: only an unlocked run from wave 1 or a checkpoint does', () => {
+    expect(protocolRecordsRun(false, 1, false)).toBe(false);
+    expect(protocolRecordsRun(false, 5, true)).toBe(false);
+    expect(protocolRecordsRun(true, 1, false)).toBe(true);
+    expect(protocolRecordsRun(true, 5, false)).toBe(false);
+    expect(protocolRecordsRun(true, 5, true)).toBe(true);
+  });
+
+  it('clear loot is labelled as a PROTOCOL C clear, at Hard-clear odds', () => {
+    expect(LOOT_RULES.protocol.label).toBe('PROTOCOL C clear');
+    expect(LOOT_RULES.protocolRepeat.label).toBe('PROTOCOL C clear');
+    expect(LOOT_RULES.protocol.weights).toEqual(LOOT_RULES.hard.weights);
+    expect(LOOT_RULES.protocol.chance).toBe(1);
+  });
+
+  it("props keep the deck ramps' run-ups clear (the bots' way up)", async () => {
+    const { Props } = await import('../src/world/Props');
+    for (const w of [6, 7]) {
+      const t = new Terrain(protocolTerrain(w));
+      for (let seed = 0; seed < 25; seed++) {
+        const ctx = { scene: new THREE.Scene(), fx: noop, audio: noop, pickups: { spawnCoins: () => {} }, terrain: t } as unknown as GameContext;
+        const obs: { x: number; z: number; r: number; breakable?: boolean }[] = [];
+        new Props(ctx).reset(obs, true, 777 + PROTOCOL_INDEX * 131 + seed, false, true);
+        for (const o of obs.filter((q) => q.breakable)) for (const d of t.decks) if (d.rise) expect(t.inDeck(d, o.x, o.z, o.r + 3.9)).toBe(false);
+      }
+    }
   });
 });

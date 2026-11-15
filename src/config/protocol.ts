@@ -10,8 +10,8 @@ import { STAGE_FROM_WAVE, protocolTerrain, splitWave } from '../world/protocol/l
  * (meta/protocol.ts).
  *
  * A seven-wave boss rush on one stadium floor that "restructures" between waves (world/protocol/layout.ts): wave n is
- * campaign boss n PROTOCOL-upgraded (HEADLINE_HP x its home-arena HP, HEADLINE_DMG x damage), and the bosses already
- * beaten come back as ECHOES (ECHO_HP x home HP, one or two signature moves, no phase 2 / summons: Bot.echo, bosses.ts),
+ * campaign boss n PROTOCOL-upgraded (protocolBossHp: at least its Hard-campaign HP +15%; HEADLINE_DMG x damage;
+ * faster cooldowns), and the bosses already beaten come back as ECHOES (ECHO_HP x home HP, one or two signature moves, no phase 2 / summons: Bot.echo, bosses.ts),
  * walking in one after another (ECHO_FIRST + ECHO_GAP), with at most MAX_ACTIVE bosses fighting at once (the rest
  * circle on a leash: EnemyManager.leash). Base difficulty is Hard's (HARD.hpMult / dmgMult, scaled with the pilot's
  * power like hardZone).
@@ -21,9 +21,13 @@ import { STAGE_FROM_WAVE, protocolTerrain, splitWave } from '../world/protocol/l
 export const PROTOCOL_INDEX = ZONES.length;
 export const PROTOCOL_ID = 'protocol';
 export const PROTOCOL_WAVES = 7;
-/** Headline (PROTOCOL-upgraded) boss: x home-arena HP, x outgoing damage. */
+/** Headline (PROTOCOL-upgraded) boss: HP = home-arena HP x max(HEADLINE_HP, HARD.hpMult x HEADLINE_HARD), i.e. at
+ *  least its Hard-campaign strength plus 15% (x1.6 home alone was only ~0.89x Hard); x outgoing damage; its cooldowns
+ *  between moves run HEADLINE_CD x as fast (wind-ups / telegraphs keep their length: EnemyManager.step). */
 export const HEADLINE_HP = 1.6;
+export const HEADLINE_HARD = 1.15;
 export const HEADLINE_DMG = 1.25;
+export const HEADLINE_CD = 1.3;
 /** Echoes: x home-arena HP, x outgoing damage. */
 export const ECHO_HP = 0.35;
 export const ECHO_DMG = 0.85;
@@ -54,9 +58,11 @@ export function homeZone(type: EnemyType): ZoneDef | undefined {
   return ZONES.find((z) => z.rounds.some((r) => r.boss && r.groups.some((g) => g.type === type)));
 }
 
-/** Net HP multiplier of a Protocol boss (before the pilot-power scale): home x HEADLINE_HP or x ECHO_HP. */
+/** Net HP multiplier of a Protocol boss (before the pilot-power scale): home x ECHO_HP for an echo; for the headline
+ *  the larger of home x HEADLINE_HP and its Hard-campaign HP (home x HARD.hpMult) x HEADLINE_HARD. */
 export function protocolBossHp(type: EnemyType, echo: boolean): number {
-  return (homeZone(type)?.enemyHpMult ?? 1) * (echo ? ECHO_HP : HEADLINE_HP);
+  const home = homeZone(type)?.enemyHpMult ?? 1;
+  return echo ? home * ECHO_HP : home * Math.max(HEADLINE_HP, HARD.hpMult * HEADLINE_HARD);
 }
 
 function bossGroups(key: BossKey, delay: number, echo: boolean): SpawnGroup[] {

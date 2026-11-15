@@ -49,6 +49,9 @@ const _c = new THREE.Color();
 /** Props sit this far (in prop half-sizes) into the ground, so none hovers on a gentle slope. */
 const SINK = 0.08;
 
+/** Props keep this far (m, beyond their radius) from a deck ramp's footprint. */
+const RAMP_CLEAR = 4;
+
 export class Props {
   private props: Prop[] = [];
   private meshes: Record<Kind, THREE.InstancedMesh>;
@@ -181,8 +184,9 @@ export class Props {
         if (t.materialAt(x + Math.cos(a) * rr, z + Math.sin(a) * rr) === 'lava') return null;
       }
     }
-    // never in or against a deck (PROTOCOL C's low decks and their ramps): a crate would poke through the slab
-    for (const d of t.decks) if (t.inDeck(d, x, z, r + 0.8)) return null;
+    // never in or against a deck (PROTOCOL C's low decks and their ramps): a crate would poke through the slab; and
+    // well clear of a deck ramp (its run-up is the bots' way up: world/protocol/layout.ts PROTOCOL_NAV)
+    for (const d of t.decks) if (t.inDeck(d, x, z, r + (d.rise ? RAMP_CLEAR : 0.8))) return null;
     if (!t.active) return 0;
     for (const sh of t.shapes) {
       if (sh.kind !== 'ramp') continue;

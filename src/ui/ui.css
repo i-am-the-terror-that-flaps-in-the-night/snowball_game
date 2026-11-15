@@ -930,22 +930,27 @@
 .ss-bosses.twin .ss-bb-badge { width: 26px; height: 26px; font-size: 14px; }
 .ss-bosses.twin .ss-bb-head { margin-bottom: 3px; }
 
-/* PROTOCOL C: the compact boss stack (bossBarLayout 'many'): the headline full width, echoes small, two per row */
-.ss-bosses.many { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; }
-.ss-bosses.many .ss-bossbar:not(.echo) { grid-column: 1 / -1; margin-bottom: 3px; }
-.ss-bosses.many .ss-bossbar:not(.echo) .ss-bb-track { height: 20px; border-width: 2.5px; }
-.ss-bosses.many .ss-bossbar:not(.echo) .ss-bb-name { font-size: 20px; }
-.ss-bosses.many .ss-bossbar:not(.echo) .ss-bb-badge { width: 26px; height: 26px; font-size: 14px; }
+/* PROTOCOL C: the compact boss stack (bossBarLayout 'many'): the headline(s) full width, the echoes as slim gold
+   bars four to a row (icon + name over a thin bar, no HP number); held-back echoes dim with a grey badge. */
+.ss-bosses.many { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px 8px; }
+.ss-bosses.many .ss-bossbar:not(.echo) { grid-column: 1 / -1; margin-bottom: 2px; }
+.ss-bosses.many .ss-bossbar:not(.echo) .ss-bb-track { height: 18px; border-width: 2.5px; }
+.ss-bosses.many .ss-bossbar:not(.echo) .ss-bb-name { font-size: 19px; }
+.ss-bosses.many .ss-bossbar:not(.echo) .ss-bb-badge { width: 24px; height: 24px; font-size: 13px; }
 .ss-bosses.many .ss-bossbar:not(.echo) .ss-bb-head { margin-bottom: 3px; }
-.ss-bossbar.echo .ss-bb-head { margin: 0 4px 2px; gap: 5px; align-items: center; }
-.ss-bossbar.echo .ss-bb-badge { width: 16px; height: 16px; font-size: 9px; border-width: 1.5px; border-radius: 5px; box-shadow: none; }
-.ss-bossbar.echo .ss-bb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; letter-spacing: 0.04em; -webkit-text-stroke-width: 1px; color: #ffe7a8; }
-.ss-bossbar.echo .ss-bb-title, .ss-bossbar.echo .ss-bb-phase, .ss-bossbar.echo .ss-bb-segs { display: none; }
-.ss-bossbar.echo .ss-bb-hp { font-size: 11px; }
-.ss-bossbar.echo .ss-bb-track { height: 9px; border-width: 1.5px; border-radius: 4px; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5); }
-.ss-bossbar.echo .ss-bb-fill { background: linear-gradient(180deg, #fff1b8 0%, #e8b423 55%, #8a6410 100%); }
-.ss-bossbar.held { opacity: 0.5; }
-.ss-bossbar.held .ss-bb-name::after { content: ' · HOLD'; font-size: 0.8em; color: #fff; opacity: 0.8; }
+.ss-bossbar.echo { min-width: 0; }
+.ss-bossbar.echo .ss-bb-head { margin: 0 3px 1px; gap: 4px; align-items: center; }
+.ss-bossbar.echo .ss-bb-badge { width: 14px; height: 14px; font-size: 8px; border-width: 1px; border-radius: 4px; box-shadow: none; transform: none; }
+.ss-bossbar.echo .ss-bb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; letter-spacing: 0.03em; -webkit-text-stroke-width: 0.8px; color: #ffe7a8; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7); }
+.ss-bossbar.echo .ss-bb-title, .ss-bossbar.echo .ss-bb-phase, .ss-bossbar.echo .ss-bb-segs, .ss-bossbar.echo .ss-bb-hp { display: none; }
+.ss-bossbar.echo .ss-bb-track { height: 7px; border-width: 1px; border-radius: 3px; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.5); }
+.ss-bossbar.echo .ss-bb-fill { background: linear-gradient(180deg, #fff1b8 0%, #e8b423 55%, #8a6410 100%); box-shadow: none; }
+.ss-bossbar.held { opacity: 0.45; }
+.ss-bossbar.held .ss-bb-badge { filter: grayscale(1); }
+.ss-bossbar.held:not(.echo) .ss-bb-name::after { content: ' · HOLD'; font-size: 0.8em; color: #fff; opacity: 0.8; }
+@media (max-width: 760px) {
+  .ss-bosses.many { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 
 /* right: combo */
 .ss-combo { --cc: #ffd04a; position: absolute; right: 26px; top: 36%; text-align: right; opacity: 0; transform: translateX(24px); transition: opacity 0.6s ease 0.2s, transform 0.6s ease 0.2s; }

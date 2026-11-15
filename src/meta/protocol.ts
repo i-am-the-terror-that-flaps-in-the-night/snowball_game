@@ -11,6 +11,13 @@ export function protocolUnlocked(p: Progression): boolean {
   return ZONES.every((z) => p.zoneRecord(z.id).cleared && p.data.hardCleared?.[z.id] === true);
 }
 
+/** Does a run started at `wave` write its records (clear, best time / wave, checkpoint, clear reward)? Only with the
+ *  unlock, and only from wave 1 or a saved checkpoint: a dev start (__game.startProtocol(n)) past wave 1 times only
+ *  part of the rush and records nothing. */
+export function protocolRecordsRun(unlocked: boolean, wave: number, fromCheckpoint: boolean): boolean {
+  return unlocked && (wave <= 1 || fromCheckpoint);
+}
+
 /** The teaser: after the normal Omega clear the zone select shows a locked, glitched seventh card. */
 export function protocolTeased(p: Progression): boolean {
   return p.zoneRecord(ZONES[ZONES.length - 1].id).cleared;

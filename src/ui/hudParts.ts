@@ -53,7 +53,7 @@ export interface BossSlot {
 export const BOSS_BAR_MAX = 8;
 
 /** Boss bar layout for `n` visible bars, `echoes` of them echoes: one big bar ('solo'), two equal bars ('twin', the
- *  campaign's SLUSH & SLEET), or a compact stack ('many': the headline full width, the rest small, two per row). */
+ *  campaign's SLUSH & SLEET), or a compact stack ('many': the headline full width, the echoes slim, four per row). */
 export function bossBarLayout(n: number, echoes = 0): 'solo' | 'twin' | 'many' {
   if (n <= 1) return 'solo';
   if (echoes > 0 || n > 2) return 'many';
@@ -293,7 +293,9 @@ export function assignSlot(slot: BossSlot, key: string, b: HudBoss): void {
   slot.held = false;
   slot.root.classList.remove('held');
   slot.badge.textContent = def ? ENEMY_ICON[def.type] ?? '💀' : '💀';
-  slot.name.textContent = b.name;
+  // an echo bar is gold and small: its name without the ECHO prefix (the full name stays in the tooltip)
+  slot.name.textContent = slot.echo ? b.name.replace(/^ECHO /, '') : b.name;
+  slot.root.title = b.name;
   slot.title.textContent = b.title;
   slot.phase.classList.add('hidden');
   slot.root.classList.remove('hidden', 'down', 'low');
@@ -301,6 +303,7 @@ export function assignSlot(slot: BossSlot, key: string, b: HudBoss): void {
 
 export function freeSlot(s: BossSlot): void {
   s.key = '';
+  s.root.title = '';
   s.echo = s.held = false;
   s.root.classList.remove('echo', 'held');
   s.down = 0;

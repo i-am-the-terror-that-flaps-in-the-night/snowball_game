@@ -63,6 +63,9 @@ export interface GameEvents {
     damageTaken: number;
     /** PROTOCOL C run (mode 'campaign', no zoneIndex: arena challenges never judge it). */
     protocol?: boolean;
+    /** PROTOCOL C: the run did not play every wave in one go (a checkpoint retry, or a dev start past wave 1): its
+     *  damageTaken covers only part of it, so it never counts as a clean clear. */
+    partial?: boolean;
     /** Campaign: arena index, rounds cleared, Hard mode. */
     zoneIndex?: number;
     roundsCleared?: number;

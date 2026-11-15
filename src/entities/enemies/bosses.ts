@@ -10,6 +10,7 @@ import { waveHitPlow, waveHits } from '../combat/shared';
 import { makeSurface } from '../../world/Terrain';
 import { CampWatch, deckLeap, pickHatches, type LeapPlan } from '../../world/omega/zone';
 import { OMEGA_HATCHES, OMEGA_TERRAIN } from '../../world/omega/layout';
+import { detour } from '../../world/omega/nav';
 
 /* Boss AI. Every big move has a readable wind-up (>= 0.6s): glowing parts, the bot backing up / revving,
  * and a ground decal (red chevron stripe for charges/dashes, a filling warning ring for AOE moves). */
@@ -870,6 +871,7 @@ interface DeckLeapState {
 }
 const DECK_LEAPS = new WeakMap<Bot, DeckLeapState>();
 const _navOut = { x: 0, z: 0 };
+const _detourOut = { x: 0, z: 0 };
 
 function deckLeapState(e: Bot): DeckLeapState {
   let s = DECK_LEAPS.get(e);
@@ -1125,7 +1127,20 @@ function omega(h: Host, e: Bot, dt: number): void {
       }
       // The Omega Works: route via ramps / round decks when the player is on another level.
       const nav = h.ctx.enemies.nav;
-      if (nav && nav.next(e.position.x, e.position.z, e.vert.deck, h.px, h.pz, h.ctx.plow.deck, _navOut)) goTo(e, _navOut.x, _navOut.z, spd, 1);
+      let routed = !!nav && nav.next(e.position.x, e.position.z, e.vert.deck, h.px, h.pz, h.ctx.plow.deck, _navOut);
+      // PROTOCOL C's decks stand in the open floor: round a slab / ramp side in the way (as EnemyManager.routeBoss)
+      if (h.ctx.zone.theme === 'protocol') {
+        if (!routed) {
+          _navOut.x = h.px;
+          _navOut.z = h.pz;
+        }
+        if (detour(h.ctx.terrain, e.position.x, e.position.z, e.vert.y, e.rig.height, e.radius, _navOut.x, _navOut.z, _detourOut)) {
+          _navOut.x = _detourOut.x;
+          _navOut.z = _detourOut.z;
+          routed = true;
+        }
+      }
+      if (routed) goTo(e, _navOut.x, _navOut.z, spd, 1);
       else goTo(e, h.px, h.pz, spd, 3);
       e.turnRate = 1.1 * (e.enraged ? 1.3 : 1);
       // Camping on a deck it can't drive onto: leap up after the player.
@@ -1138,6 +1153,12 @@ function omega(h: Host, e: Bot, dt: number): void {
       // Player up on a deck above it: no charges or pounds into the deck side, just follow the routing (up a ramp)
       // until the camp timer fires the leap.
       if (dl.camp.t > 0) break;
+      // PROTOCOL C's decks are too low for the camp leap: while routing up a ramp to the plow's deck, no charges into
+      // the deck side either (EnemyManager.routeBoss does the same for every other boss).
+      if (routed && h.ctx.zone.theme === 'protocol') {
+        e.routed = true;
+        break;
+      }
       if (e.cd <= 0) {
         if (d < e.radius + h.pr + 1.4) {
           if (e.phase >= 1 && Math.random() < 0.45) {

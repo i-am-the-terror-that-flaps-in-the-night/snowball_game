@@ -14,11 +14,13 @@ import {
 import { DecalPool } from './enemies/decals';
 import { MINION_AI, MOVE_COLOR, aroundAngle, clamp, initAI, orbit, resetAI, segDist, wrap } from './enemies/ai';
 import { BOSS_AI } from './enemies/bosses';
-import { ECHO_DMG, HEADLINE_DMG } from '../config/protocol';
+import { ECHO_DMG, HEADLINE_CD, HEADLINE_DMG } from '../config/protocol';
 import { donaldProps } from './enemies/donaldProps';
+import { applyHologram, holoTime, holoWarmSet, hologramMaterial } from './enemies/hologram';
 import type { KillSource, KillWeapon } from '../core/events';
 import type { BotNav } from '../core/types';
 import { makeSurface } from '../world/Terrain';
+import { detour } from '../world/omega/nav';
 import {
   AIR_STEER, ICE_ACCEL, ICE_GRIP, LAVA_DPS, LAVA_OUT, LavaCache, SLOPE_PULL, V_LANDED, bonkCeiling, launchVert, stepVertical, steerLava,
 } from '../world/terrainMotion';
@@ -71,9 +73,6 @@ const ENRAGE_COLOR: Partial<Record<EnemyType, number>> = { twinlink: 0xffb020, s
 
 const _c = new THREE.Color();
 const _ec = new THREE.Color();
-/** PROTOCOL C echoes: paint pulled toward gold, a gold shimmer on top (stage 2 polishes the hologram look). */
-const ECHO_GOLD = new THREE.Color(0xffd257);
-const ECHO_TINT = 0.5;
 /** Boss leash (ZoneDef.maxActiveBosses): an active echo is swapped for the longest-held one after LEASH_SWAP s in
  *  play (once it is between moves); a held boss circles the plow LEASH_R (+ a little per id) away. */
 export const LEASH_SWAP = 9;
@@ -214,6 +213,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   private conv = { x: 0, z: 0 };
   private wallOut = { x: 0, z: 0 };
   private navOut = { x: 0, z: 0 };
+  private detourOut = { x: 0, z: 0 };
   /** Last-bot hunt is on this frame (HUNT_LEFT or fewer minions alive). */
   private hunting = false;
   /**
@@ -275,7 +275,10 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (def.isBoss && opts?.echo) {
       e.echo = true;
       e.dmgOutMult = ECHO_DMG;
-      for (const c of rig.paintBase) c.lerp(ECHO_GOLD, ECHO_TINT);
+      // a translucent gold hologram (the program is compiled by every arena build's warm-up: hologram.ts)
+      e.holo = hologramMaterial(e.id * 0.37);
+      rig.owned.push(e.holo);
+      applyHologram(rig.root, e.holo, [rig.crust, rig.stars]);
     } else if (def.isBoss && opts?.headline) {
       e.headline = true;
       e.dmgOutMult = HEADLINE_DMG;
@@ -520,6 +523,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const ctx = this.ctx;
     const plow = ctx.plow;
     this.time += dt;
+    holoTime.value = this.time;
     // The last boss is down: its summoned adds power down one after another (no mop-up hunt round the arena).
     if (this.powerDownT > 0 && (this.powerDownT -= dt) <= 0) {
       const next = this.list.find((b) => b.alive && b.summoned);
@@ -971,9 +975,12 @@ export class EnemyManager implements EnemyManagerAPI, Host {
 
   private step(e: Bot, dt: number): void {
     e.stateT -= dt;
-    e.cd -= dt;
-    e.cd2 -= dt;
-    e.cd3 -= dt;
+    // A PROTOCOL headline is ready for its next move sooner (the cooldowns between moves run fast; wind-ups and
+    // telegraphs keep their length). cd3 also times THE GRINDER's spin damage ticks: not during the spin.
+    const cdk = e.headline ? HEADLINE_CD : 1;
+    e.cd -= dt * cdk;
+    e.cd2 -= dt * cdk;
+    e.cd3 -= e.state === 'spin' ? dt : dt * cdk;
     e.retargetT -= dt;
     e.sparkT -= dt;
     e.flash -= dt;
@@ -993,6 +1000,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     }
     e.turnRate = e.baseTurn;
     e.accel = e.baseAccel;
+    e.routed = false;
 
     // Lava burns bots too (LAVA_DPS, no armour); a lava death is credited as a 'lava' kill.
     if (e.mat === 'lava' && !e.vert.airborne && !e.entering) {
@@ -1037,6 +1045,7 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       e.desSpeed *= e.spdMult;
       if (this.hunting && !e.isBoss) this.hunt(e);
       else if (this.nav && !e.isBoss) this.route(e);
+      else if (this.nav && e.isBoss && (e.echo || e.type !== 'omega')) this.routeBoss(e);
     }
     e.wallHit = false;
     const terr = this.ctx.terrain;
@@ -1128,6 +1137,35 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     e.desSpeed = Math.max(e.desSpeed, Math.max(4.5, e.def.speed) * 0.85 * e.spdMult);
   }
 
+  /** Level routing for bosses (PROTOCOL C's gold decks; MEGAPLOW Ω's headline routes itself): between moves, a boss
+   *  whose plow is on another level heads up the next ramp (or off the deck), and one whose straight line to the plow
+   *  (or to that ramp) is walled off by a slab / ramp side goes round it, instead of grinding against the deck side.
+   *  While routed it holds its next move (cd-gated attacks would only hit the deck wall); mid-attack / winding up it
+   *  is left alone. */
+  private routeBoss(e: Bot): void {
+    if (e.entering || e.atk || e.windup > 0 || e.stun > 0 || e.stagger > 0 || e.vert.airborne || !BOSS_NEUTRAL.has(e.state)) return;
+    const plow = this.ctx.plow;
+    const o = this.navOut;
+    const leveled = this.nav!.next(e.position.x, e.position.z, e.vert.deck, this.px, this.pz, plow.deck, o);
+    if (!leveled) {
+      o.x = this.px;
+      o.z = this.pz;
+    }
+    // the ground "region" has the decks standing in it: go round a slab / ramp side that walls off the straight line
+    const round = detour(this.ctx.terrain, e.position.x, e.position.z, e.vert.y, e.rig.height, e.radius, o.x, o.z, this.detourOut);
+    if (!leveled && !round) return;
+    if (round) {
+      o.x = this.detourOut.x;
+      o.z = this.detourOut.z;
+    }
+    e.routed = true;
+    e.desHeading = Math.atan2(o.x - e.position.x, o.z - e.position.z);
+    e.desSpeed = Math.max(e.desSpeed, Math.max(4.5, e.def.speed) * 0.85 * e.spdMult);
+    e.turnRate = Math.max(e.turnRate, 1.6);
+    e.cd = Math.max(e.cd, 0.4);
+    e.cd2 = Math.max(e.cd2, 0.4);
+  }
+
   /** Deck sides (The Omega Works): push the bot out of any deck it cannot step onto. */
   private pushOutDecks(e: Bot): void {
     const t = this.ctx.terrain;
@@ -1188,7 +1226,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     if (!obs || obs.length === 0) return;
     const p = e.position;
     const knocked = e.kvx * e.kvx + e.kvz * e.kvz > BOT_PROP_SMASH_SPEED * BOT_PROP_SMASH_SPEED;
-    const charging = !!e.atk && e.speed > BOT_PROP_CHARGE_SPEED;
+    // a boss routing up to the plow's level (routeBoss) shoves through crates rather than stalling behind one
+    const charging = (!!e.atk && e.speed > BOT_PROP_CHARGE_SPEED) || e.routed;
     for (let i = 0; i < obs.length; i++) {
       const o = obs[i];
       const dx = p.x - o.x;
@@ -1730,10 +1769,14 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       _ec.setHex(ENRAGE_COLOR[e.type] ?? 0xff2020).multiplyScalar(0.16 + 0.1 * Math.sin(t * 8));
       _c.add(_ec);
     }
-    if (e.echo) {
-      // hologram shimmer: a gold glow that flickers, brighter while on the leash
-      const k = (e.held ? 0.22 : 0.12) + 0.08 * Math.sin(t * 5 + e.id) + (Math.sin(t * 23 + e.id * 3) > 0.92 ? 0.25 : 0);
-      _c.add(_ec.copy(ECHO_GOLD).multiplyScalar(k));
+    if (e.holo) {
+      // hologram: flash on hits, flicker (a slow breath + rare hard glitches), brighter on the leash / winding up
+      const u = e.holo.uniforms;
+      const glitch = Math.sin(t * 23 + e.id * 3) > 0.93 ? 1 : 0;
+      u.uFlash.value = fl * 0.9;
+      u.uBoost.value = (e.held ? 0.15 : 0) + 0.12 * Math.sin(t * 5 + e.id) + glitch * 0.6 + Math.max(e.windup, e.glow) * 0.6 + (e.enraged ? 0.3 : 0);
+      u.uAlpha.value = (e.held ? 0.7 : 1) * (glitch ? 0.55 : 1) * (e.freeze > 0 ? 0.6 : 1);
+      u.uBase.value = e.position.y;
     }
     if ((e.stun > 0 || e.vuln === Vuln.Dizzy) && Math.sin(t * 12) > 0) {
       _c.r += 0.12;
@@ -1902,12 +1945,14 @@ export class EnemyManager implements EnemyManagerAPI, Host {
   /** Warm-up set (render/warmup.ts): off-scene stand-ins for the debris batches the first kill creates, one
    *  InstancedMesh per debris material kind (configured like debrisBatch), never added to the scene. */
   warmSet(): THREE.Object3D[] {
-    return debrisWarmMaterials().map((m, i) => {
+    const debris = debrisWarmMaterials().map((m, i) => {
       const b = new THREE.InstancedMesh(debrisGeometry(i), m, 1);
       b.castShadow = true;
       b.count = 0;
       return b;
     });
+    // + PROTOCOL C's echo hologram (plain + instanced variants: hologram.ts)
+    return [...debris, ...holoWarmSet()];
   }
 
   /** Write every active chunk's transform into its batch; empty batches are hidden, the rest get a fresh bounding

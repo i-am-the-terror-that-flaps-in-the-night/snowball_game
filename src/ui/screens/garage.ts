@@ -233,7 +233,7 @@ export function renderRoundPreview(ui: Pick<GarageDeps, 'shopPreview' | 'ctx'>, 
   w.classList.remove('hidden');
   w.classList.toggle('boss', isBoss);
   const t = el('div', 'ss-rp-title', undefined, w);
-  t.innerHTML = `Round <b>${nextRound}</b> of ${totalRounds} next`;
+  t.innerHTML = `${zone?.theme === 'protocol' ? 'Wave' : 'Round'} <b>${nextRound}</b> of ${totalRounds} next`;
 
   // by type, PROTOCOL C's echoes as their own chips
   const counts = new Map<string, { type: EnemyType; echo: boolean; n: number }>();

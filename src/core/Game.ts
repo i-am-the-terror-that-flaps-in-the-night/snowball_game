@@ -46,9 +46,10 @@ import { hostRoom, joinRoom, type HostRoom, type LocalLinkOpts, type Transport, 
 import { ROOM_CODE_LEN, cleanRoomCode } from '../ui/DuelUI';
 import { NavGraph } from '../world/omega/nav';
 import { OMEGA_NAV } from '../world/omega/layout';
+import { PROTOCOL_NAV, deckWave } from '../world/protocol/layout';
 import { ZONE_BEATS } from '../config/lore';
 import { PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, protocolWaveZone, protocolZone, waveBossCount } from '../config/protocol';
-import { protocolSave, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint, saveCheckpoint, takeCheckpoint } from '../meta/protocol';
+import { protocolRecordsRun, protocolSave, protocolUnlocked, recordProtocolClear, recordProtocolWave, restoreCheckpoint, saveCheckpoint, takeCheckpoint } from '../meta/protocol';
 import type { ProtocolCheckpoint } from './Progression';
 import type { ZoneDef } from '../config/zones';
 
@@ -118,6 +119,10 @@ export class Game {
   private protocolBase: ZoneDef = PROTOCOL_ZONE;
   private protocolCk: ProtocolCheckpoint | null = null;
   private protocolUses = 0;
+  private protocolNavGraph: NavGraph | null = null;
+  /** This PROTOCOL C run writes its records (clear, best time / wave, checkpoint, clear reward): false for a dev start
+   *  (__game.startProtocol) without the unlock or past wave 1 without a checkpoint. */
+  private protocolRecord = false;
   private protocolKills0 = 0;
   /** Sim time this attempt (a fresh start or a checkpoint retry) began: runFinished's duration, so lifetime play time
    *  never counts the waves before a checkpoint twice (run.start is rewound to keep the run clock going). */
@@ -528,6 +533,9 @@ export class Game {
     forceNight(); // PROTOCOL C is always at night
     this.setMode('campaign');
     this.protocol = true;
+    // a retry from this session's checkpoint keeps the attempt's own rule (a dev run stays a dev run)
+    const fromMemory = resume && !!this.protocolCk;
+    this.protocolRecord = fromMemory ? this.protocolRecord && protocolUnlocked(p) : protocolRecordsRun(protocolUnlocked(p), w, !!ck);
     this.zoneIndex = PROTOCOL_INDEX;
     this.hard = false;
     this.roundIndex = w - 1;
@@ -539,7 +547,7 @@ export class Game {
     this.clearArena();
     setArenaHalfSize(CAMPAIGN_ARENA_HALF);
     setBrawlPerf(ctx, false);
-    ctx.enemies.nav = null;
+    this.protocolNav(w);
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
@@ -572,7 +580,12 @@ export class Game {
       wave: this.roundIndex + 1, hp: ctx.plow.hp, maxHp: ctx.plow.maxHp, time: ctx.time, start: this.run.start,
       kills: this.run.kills, coins: this.run.coins, uses: this.protocolUses,
     });
-    saveCheckpoint(ctx.progression, this.protocolCk);
+    if (this.protocolRecord) saveCheckpoint(ctx.progression, this.protocolCk);
+  }
+
+  /** PROTOCOL C: bot routing up the gold decks on the waves that have them (world/protocol/layout.ts PROTOCOL_NAV). */
+  private protocolNav(wave: number): void {
+    this.ctx.enemies.nav = deckWave(wave) ? (this.protocolNavGraph ??= new NavGraph(PROTOCOL_NAV)) : null;
   }
 
   /** PROTOCOL C between waves: "restructure" the arena for wave `wave` (its floor, decor and snow), the plow back on
@@ -580,6 +593,7 @@ export class Game {
   private protocolRestructure(wave: number): void {
     const { ctx } = this;
     ctx.zone = protocolWaveZone(this.protocolBase, wave);
+    this.protocolNav(wave);
     ctx.fx.clear();
     ctx.world.setZone(ctx.zone);
     ctx.snow.reset(ctx.zone);
@@ -944,13 +958,18 @@ export class Game {
     this.run.bossDefeated = true;
     const time = Math.max(0, ctx.time - this.run.start);
     const p = ctx.progression;
-    const rec = recordProtocolClear(p, time, this.protocolUses);
+    // A dev start (protocolRecord false) records nothing and pays nothing: the summary only.
+    const rec = this.protocolRecord
+      ? recordProtocolClear(p, time, this.protocolUses)
+      : { firstClear: false, reward: 0, newBest: false, bestTime: protocolSave(p).bestTime };
     this.protocolCk = null;
     p.data.totalKills += Math.max(0, this.run.kills - this.protocolKills0);
-    p.addCoins(rec.reward);
-    this.run.coins += rec.reward;
-    const loot = p.rollLoot(rec.firstClear ? 'hard' : 'hardRepeat');
-    if (loot) this.run.loot.push(loot);
+    if (rec.reward > 0) {
+      p.addCoins(rec.reward);
+      this.run.coins += rec.reward;
+      const loot = p.rollLoot(rec.firstClear ? 'protocol' : 'protocolRepeat');
+      if (loot) this.run.loot.push(loot);
+    }
     const summary: RunSummary = {
       ...this.summaryBase(ctx.zone.rounds.length),
       firstClear: rec.firstClear,
@@ -959,7 +978,7 @@ export class Game {
       loot: this.run.loot,
       protocol: { wave: PROTOCOL_WAVES, time, bestTime: rec.bestTime, newBest: rec.newBest, uses: this.protocolUses, checkpointWave: null },
     };
-    this.emitRunFinished({ mode: 'campaign', won: true, protocol: true, roundsCleared: ctx.zone.rounds.length, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
+    this.emitRunFinished({ mode: 'campaign', won: true, protocol: true, partial: this.protocolPartial(), roundsCleared: ctx.zone.rounds.length, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
     ctx.audio.setEngine(0, 0);
     ctx.audio.setPlowing(0);
     ctx.audio.play('victory');
@@ -967,16 +986,21 @@ export class Game {
     ctx.ui.showVictory(summary);
   }
 
+  /** PROTOCOL C: this attempt did not play every wave from wave 1 (a checkpoint retry or a dev start). */
+  private protocolPartial(): boolean {
+    return this.protocolUses > 0 || !this.protocolRecord;
+  }
+
   /** PROTOCOL C wrecked: keep the best wave; the results screen offers RETRY WAVE n (the checkpoint). */
   private protocolGameOver(): void {
     const { ctx } = this;
     this.state = 'gameover';
     const p = ctx.progression;
-    recordProtocolWave(p, this.roundIndex + 1);
+    if (this.protocolRecord) recordProtocolWave(p, this.roundIndex + 1);
     p.data.totalKills += Math.max(0, this.run.kills - this.protocolKills0);
     this.protocolKills0 = this.run.kills;
     p.commit();
-    this.emitRunFinished({ mode: 'campaign', won: false, protocol: true, roundsCleared: this.roundIndex, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
+    this.emitRunFinished({ mode: 'campaign', won: false, protocol: true, partial: this.protocolPartial(), roundsCleared: this.roundIndex, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
     ctx.audio.play('gameOver');
     ctx.ui.setHudVisible(false);
     const time = Math.max(0, ctx.time - this.run.start);

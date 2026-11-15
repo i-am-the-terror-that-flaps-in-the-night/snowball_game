@@ -80,7 +80,7 @@ export function recordRunLifetime(p: Progression, r: GameEvents['runFinished']):
   if (r.mode === 'campaign' && r.won) {
     bumpLifetime(p, LIFE.campaignWins);
     bumpLifetime(p, lifeWinsPlow(r.plow));
-    if (n(r.damageTaken) < CLEAN_CLEAR_HP) bumpLifetime(p, LIFE.cleanClears);
+    if (n(r.damageTaken) < CLEAN_CLEAR_HP && !r.partial) bumpLifetime(p, LIFE.cleanClears);
     // "Q4: Total Defeat": Hard Omega Works with a spotless boss round (bossDamage is only set once the round started).
     const zone = r.zoneIndex === undefined ? undefined : ZONES[r.zoneIndex];
     if (r.hard && zone?.id === OMEGA_WORKS.id && typeof r.bossDamage === 'number' && r.bossDamage <= 0) bumpLifetime(p, LIFE.omegaHardFlawless);
@@ -130,7 +130,8 @@ export class Achievements {
     events.on('bossDefeated', ({ enemy }) => {
       if (this.tutorial()) return;
       bumpLifetime(p(), LIFE.bossKills);
-      bumpLifetime(p(), lifeBoss(enemy.type));
+      // PROTOCOL C's echoes (x0.35 HP copies) count as bosses scrapped, but not toward a boss's own kill trophies.
+      if (!enemy.echo) bumpLifetime(p(), lifeBoss(enemy.type));
       this.check();
     });
     events.on('brawlKill', ({ killerIsPlayer, method }) => {

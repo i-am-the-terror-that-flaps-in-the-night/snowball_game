@@ -139,6 +139,10 @@ export class Bot implements EnemyHandle {
    *  wave's PROTOCOL-upgraded headline boss. */
   echo = false;
   headline = false;
+  /** An echo's hologram material (hologram.ts; owned by the rig, disposed with it). */
+  holo: THREE.ShaderMaterial | null = null;
+  /** This frame a level route (EnemyManager.routeBoss) steers it, not its own AI. */
+  routed = false;
   /** Boss leash (ZoneDef.maxActiveBosses): held back, circling at a distance instead of attacking; seconds in the
    *  current held / active stint. */
   held = false;

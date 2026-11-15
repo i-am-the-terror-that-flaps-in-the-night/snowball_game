@@ -15,6 +15,7 @@
  * lava covers well under 15% of the floor, the rally spot is never lava, no lava touches a deck or a ramp's lane.
  */
 import type { Deck, MaterialPatch, TerrainDef, TerrainShape } from '../Terrain';
+import type { NavDef } from '../omega/nav';
 
 const PI = Math.PI;
 
@@ -69,9 +70,12 @@ export const DECK_TOP = 1.2;
 const RAMP_HD = 1.75;
 const RAMP_TOE = 0.15;
 
+/** Deck ids (DECKS): per side (west then east) the slab, its north ramp (toe at the -z end) and its south ramp. */
+export const DECK_IDS = { west: { slab: 900, rampN: 901, rampS: 902 }, east: { slab: 903, rampN: 904, rampS: 905 } } as const;
+
 function deckSet(): Deck[] {
   const out: Deck[] = [];
-  let id = 900;
+  let id = DECK_IDS.west.slab;
   for (const sx of [-1, 1]) {
     const x = sx * DECK_X;
     out.push({ id: id++, x, z: DECK_Z, hw: DECK_HW, hd: DECK_HD, rot: 0, top: DECK_TOP, thickness: DECK_TOP, material: 'steel' });
@@ -106,8 +110,8 @@ export const FEATURES = {
       { material: 'ice', x: 14, z: 10, r: 2.2 },
       { material: 'ice', x: 21, z: 14, r: 2.4 },
       // hot west: lava vents
-      { material: 'lava', x: -10, z: -13, r: 1.5 },
-      { material: 'lava', x: -14, z: 9.5, r: 1.2 },
+      { material: 'lava', x: -18, z: -18.5, r: 1.5 }, // clear of the west deck's north ramp approach (bots route there)
+      { material: 'lava', x: -7, z: 7.5, r: 1.2 },
       { material: 'lava', x: -21, z: 14, r: 1.2 },
     ],
   },
@@ -134,6 +138,46 @@ export const STAGE_FROM_WAVE = 5;
 export function splitWave(wave: number): boolean {
   return (WAVE_FEATURES[wave - 1] ?? []).includes('HALVES');
 }
+
+/** Wave (1-based) floors with the gold decks (bots route up their ramps: PROTOCOL_NAV). */
+export function deckWave(wave: number): boolean {
+  return (WAVE_FEATURES[wave - 1] ?? []).includes('DECKS');
+}
+
+/**
+ * Bot routing for the deck waves (world/omega/nav.ts NavGraph, like OMEGA_NAV): regions = the ground (-1) and each
+ * slab; each ramp a transit region. Ramp-bottom nodes sit 1.5 m off the toe on the ramp's axis, ramp-top nodes just
+ * onto the slab; slabs drop off their long sides (one-way edges), so a bot up top never has to queue for a ramp to get
+ * back down. Set on ctx.enemies.nav for deckWave() waves (Game.protocolNav): bosses on a neutral move route up after a
+ * plow parked on a deck instead of grinding against its side (EnemyManager.step).
+ */
+function deckNav(): NavDef {
+  const nodes: NavDef['nodes'] = {};
+  const ramps: NavDef['ramps'] = [];
+  const edges: NavDef['edges'] = [];
+  const regionOfDeck: NavDef['regionOfDeck'] = {};
+  const toeN = DECK_Z - DECK_HD - 2 * RAMP_HD;
+  const toeS = DECK_Z + DECK_HD + 2 * RAMP_HD;
+  for (const [side, sx] of [['west', -1], ['east', 1]] as const) {
+    const ids = DECK_IDS[side];
+    const x = sx * DECK_X;
+    const k = side[0];
+    regionOfDeck[ids.slab] = ids.slab;
+    nodes[`${k}NBot`] = { x, z: toeN - 1.5, region: -1 };
+    nodes[`${k}NTop`] = { x, z: DECK_Z - DECK_HD + 1, region: ids.slab };
+    nodes[`${k}SBot`] = { x, z: toeS + 1.5, region: -1 };
+    nodes[`${k}STop`] = { x, z: DECK_Z + DECK_HD - 1, region: ids.slab };
+    ramps.push({ deck: ids.rampN, bottom: `${k}NBot`, top: `${k}NTop` }, { deck: ids.rampS, bottom: `${k}SBot`, top: `${k}STop` });
+    // drops off both long sides
+    for (const [d, dx] of [['In', -sx], ['Out', sx]] as const) {
+      nodes[`${k}Drop${d}`] = { x: x + dx * (DECK_HW - 0.8), z: DECK_Z, region: ids.slab };
+      nodes[`${k}Land${d}`] = { x: x + dx * (DECK_HW + 2.5), z: DECK_Z, region: -1 };
+      edges.push([`${k}Drop${d}`, `${k}Land${d}`]);
+    }
+  }
+  return { regionOfDeck, nodes, ramps, edges };
+}
+export const PROTOCOL_NAV: NavDef = deckNav();
 
 const cache = new Map<number, TerrainDef>();
 

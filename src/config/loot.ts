@@ -6,7 +6,7 @@ import { GEAR, GEAR_MAX_LEVEL, type GearDef, type Rarity } from './gear';
  * already ★10 -> coins instead. Works on GEAR generically (by rarity), never on specific ids.
  * ---------------------------------------------------------------------------------------------- */
 
-export type LootSource = 'bossFirst' | 'boss' | 'hard' | 'hardRepeat' | 'survivalBoss' | 'survivalMilestone' | 'brawl1' | 'brawl2' | 'brawl3';
+export type LootSource = 'bossFirst' | 'boss' | 'hard' | 'hardRepeat' | 'protocol' | 'protocolRepeat' | 'survivalBoss' | 'survivalMilestone' | 'brawl1' | 'brawl2' | 'brawl3';
 
 export interface LootRule {
   /** Chance (0..1) that this source drops anything. */
@@ -23,6 +23,9 @@ export const LOOT_RULES: Record<LootSource, LootRule> = {
   hard: { chance: 1, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'First Hard clear' },
   // Repeat Hard clears keep the good odds but don't always drop (otherwise Hard arena 1 is a gear farm).
   hardRepeat: { chance: 0.35, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'Hard clear' },
+  // PROTOCOL C clears: Hard-clear odds, labelled as the secret arena's.
+  protocol: { chance: 1, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'PROTOCOL C clear' },
+  protocolRepeat: { chance: 0.35, weights: { common: 20, rare: 40, epic: 28, legendary: 12 }, label: 'PROTOCOL C clear' },
   survivalBoss: { chance: 0.3, weights: { common: 45, rare: 35, epic: 15, legendary: 5 }, label: 'Boss wave' },
   // Every 10th Survival wave (SurvivalManager MILESTONE_EVERY): always drops, Hard-clear-like odds. Replaces that wave's
   // boss-wave roll.

@@ -67,7 +67,7 @@ Boss clears drop gear: the first clear always does, repeat clears sometimes, and
 
 ## Protocol C
 
-The secret seventh arena (build stage 1 of 5: foundation; THE CHAIRMAN, THE WHITEOUT, rewards and its own stars come
+The secret seventh arena (build stages 1-2 of 5: foundation, echo holograms + tuning; THE CHAIRMAN, THE WHITEOUT, rewards and its own stars come
 later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (unlock, record, checkpoint),
 `src/world/protocol/layout.ts` (floor), `src/world/environment/ProtocolScenery.ts` (venue).
 
@@ -76,27 +76,39 @@ later). Code: `src/config/protocol.ts` (zone + waves), `src/meta/protocol.ts` (u
   shows a glitched, locked seventh card ("PROTOCOL C: TODO — clear every arena on Hard", with the Hard count); it opens
   once every arena is cleared on normal and Hard, showing its best time, best wave and reward.
 - **Run**: 7 boss waves on one stadium (±30 m, stands on four sides, a glass boardroom box over the north stand, gold
-  on ice; its own night look). Wave n = campaign boss n PROTOCOL-upgraded (×1.6 its home-arena HP, ×1.25 damage); the
-  bosses already beaten walk back in as **echoes** (×0.35 home HP, ×0.85 damage, gold-tinted, "ECHO" in the HUD) one by
-  one, 6 s apart. Wave 7 is every headline as an echo, in two groups, around a stand-in final boss (THE DONALD at
+  on ice; always night). Wave n = campaign boss n PROTOCOL-upgraded: at least its Hard-campaign HP +15% (home HP ×
+  max(1.6, 1.8 × 1.15)), ×1.25 damage, and its cooldowns between moves run ×1.3 as fast (wind-ups and telegraphs keep
+  their length); the bosses already beaten walk back in as **echoes** (×0.35 home HP, ×0.85 damage, "ECHO" in the
+  HUD) one by one, 6 s apart. Wave 7 is every headline as an echo, in two groups, around a stand-in final boss (THE DONALD at
   headline strength until THE CHAIRMAN lands in stage 3). Base difficulty is Hard's (×1.8 HP / ×1.5 damage on summoned
   minions and bot hits, scaled with your power like Hard). The normal upgrade shop runs between waves.
 - **Echoes** keep one or two signature moves and never reach phase 2 or summon: FROSTBYTE ball slam · BULLDOZA charge +
   leap · THE GRINDER auger pull · SLUSH charge / SLEET shove (as a pair) · THE DONALD wall (+ its steamroll) · Ω ground
   pound. Twins pair by spawn partner and THE DONALD's props follow the Donald that raised them (passing to the other
-  Donald if it falls; they collapse with the last one), so two of a kind can share a fight.
+  Donald if it falls; they collapse with the last one), so two of a kind can share a fight. An echo is a translucent
+  gold **hologram** (scanlines, a sweeping glitch band, fresnel rim, flicker; eyes / glow strips / FROSTBYTE's ball
+  keep their own look); it flashes white on hits and dims on the leash. One shader for every echo, compiled by each
+  arena build's warm-up (`src/entities/enemies/hologram.ts`), so the first echo never stalls a frame.
+  Echo kills count as bosses scrapped but not toward a boss's own trophy.
 - **Boss leash**: at most 4 bosses fight at once (`ZoneDef.maxActiveBosses`); headlines always do, the extra echoes
-  circle 15 m out ("ON HOLD", dimmed bar) and rotate in every ~9 s. The HUD stacks up to 8 boss bars: the headline
-  full width, echoes compact, two per row (the campaign's one / two bar layouts are unchanged).
+  circle 15 m out (dimmed bar, grey badge) and rotate in every ~9 s. The HUD stacks up to 8 boss bars: the headline
+  full width, echoes as slim gold bars four to a row (three on narrow screens; the campaign's one / two bar layouts are
+  unchanged).
 - **Restructuring**: during each shop the floor is swapped: 1 ice rink · 2 + a broken lava ring · 3 + craters and two
   launch ramps · 4 rink + hot (lava vents, scorched) west / cold (ice) east · 5 + a rally stage behind the north wall
   (in front of THE DONALD's rally spot) · 6 + two low gold decks with ramps · 7 everything. The plow is set back on
-  its spawn with its HP; destructible props never stand on or against the decks.
+  its spawn with its HP; destructible props never stand on or against the decks, nor within 4 m of a deck ramp.
+- **Deck routing** (waves 6-7): a small nav graph (`PROTOCOL_NAV` in the layout, like the Omega Works') is set for
+  the deck waves: a boss between moves whose plow is up on a deck heads for the nearest ramp foot and drives up (or
+  drops off the side to come back down), goes round a slab / ramp side that walls off its way, shoves through crates,
+  and holds its next move until it is on the plow's level. Parking on a deck no longer keeps them off you.
 - **Checkpoints**: each wave's start is saved (HP fraction, kills, coins, run time, retries). Wrecked on wave 2 or
   later, the results screen offers RETRY WAVE n (restores it, +1 retry) or a full restart; a saved run can also be resumed from the card.
   Coins and upgrades are permanent as everywhere else. A clear records the best total time (fights only) and whether
-  it used no retries, and pays 6,000 coins the first time (40% after) plus Hard-grade loot.
-- **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock.
+  it used no retries, and pays 6,000 coins the first time (40% after) plus Hard-grade loot ("PROTOCOL C clear"). A run
+  that used a retry never counts as a clean clear ("Not a Scratch"); the shop preview reads "Wave n of 7".
+- **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock. Such a dev run records
+  nothing (no clear, best time / wave, checkpoint or clear reward) unless the arena is unlocked and it starts on wave 1.
 
 ## Snowdome Brawl
 
