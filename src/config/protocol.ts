@@ -29,7 +29,7 @@ export const PROTOCOL_FINALE = 8;
 export function protocolWaveLabel(wave: number): string {
   return wave >= PROTOCOL_FINALE ? 'FINALE' : `WAVE ${wave}`;
 }
-/** Headline (PROTOCOL-upgraded) bosses: their HP at the reference spend (SPEND_REF: spendScale 1; the SLUSH & SLEET
+/** Headline (PROTOCOL-upgraded) bosses: their in-game HP at the reference spend (SPEND_REF: spendScale 1; the SLUSH & SLEET
  *  pair shares its number), the same for every pilot before spendScale. Not their home-arena HP x a factor any more
  *  (stage-5 balance pass, docs/balance.md "PROTOCOL C"): that left FROSTBYTE at ~1.7k HP against a garage that has
  *  cleared every Hard arena, and waves 1-6 ended as soon as their last echo walked in (4-8 s for wave 1-2 on the
@@ -37,15 +37,26 @@ export function protocolWaveLabel(wave: number): string {
  *  unlock garage (scripts/protocol-probe.mjs). Every headline is still well above its Hard-campaign self.
  *  x outgoing damage (HEADLINE_DMG); its cooldowns between moves run HEADLINE_CD x as fast (wind-ups / telegraphs keep
  *  their length: EnemyManager.step). */
-export const PROTOCOL_HP: Readonly<Record<'frostbyte' | 'bulldoza' | 'grinder' | 'twins' | 'donald' | 'omega' | 'chairman', number>> = {
-  frostbyte: 34000,
-  bulldoza: 40000,
-  grinder: 48000,
-  twins: 58000,
-  donald: 54000,
-  omega: 74000,
-  chairman: 78000,
+export type ProtocolBoss = 'frostbyte' | 'bulldoza' | 'grinder' | 'twins' | 'donald' | 'omega' | 'chairman';
+/** Spend scaling stops here (spendScale): HP x SPEND_HP_MAX (about 2x SPEND_REF coins spent), damage x SPEND_DMG_MAX
+ *  (about 70k). */
+export const SPEND_HP_MAX = 1.4;
+export const SPEND_DMG_MAX = 1.3;
+/** The most HP each headline boss can ever have (at SPEND_HP_MAX; the SLUSH & SLEET pair shares its number). THE
+ *  WHITEOUT tops out at WHITEOUT_HP_CAP (config/whiteout.ts EYE_HP_K) and everything else stays below it. */
+export const PROTOCOL_HP_CAP: Readonly<Record<ProtocolBoss, number>> = {
+  frostbyte: 40000,
+  bulldoza: 50000,
+  grinder: 55000,
+  twins: 70000,
+  donald: 65000,
+  omega: 80000,
+  chairman: 90000,
 };
+export const WHITEOUT_HP_CAP = 100000;
+export const PROTOCOL_HP: Readonly<Record<ProtocolBoss, number>> = Object.fromEntries(
+  Object.entries(PROTOCOL_HP_CAP).map(([k, v]) => [k, v / SPEND_HP_MAX]),
+) as Record<ProtocolBoss, number>;
 export const HEADLINE_DMG = 1.25;
 export const HEADLINE_CD = 1.3;
 /** Echoes: x their own headline HP (PROTOCOL_HP), x outgoing damage. Sturdy enough to matter (wave 6's five come to
@@ -170,15 +181,15 @@ export function waveBossCount(wave: number): { total: number; echoes: number } {
 /** Enemy scaling in PROTOCOL C follows the coins the pilot has put into getting stronger (upgrades + gear; cosmetics
  *  and plows don't count): at SPEND_REF coins (about what a pilot has spent by the unlock: every arena cleared on
  *  normal and Hard) bots are at the plain Hard-based numbers; HP grows with the square root of the spend ratio and
- *  damage more gently. Floored (a thrifty pilot's run stays a real final test), no cap: it keeps up however far a
- *  pilot upgrades. SPEND_REF checked in the stage-5 pass: one clean pass of every arena on normal + Hard with its stars
+ *  damage more gently. Floored (a thrifty pilot's run stays a real final test) and capped (SPEND_HP_MAX /
+ *  SPEND_DMG_MAX: no 250k-HP FROSTBYTE, no one-shots for a maxed garage; PROTOCOL_HP_CAP is the most HP a boss gets). SPEND_REF checked in the stage-5 pass: one clean pass of every arena on normal + Hard with its stars
  *  pays ~46k coins (kills, clear rewards, star bonuses; loot and replays on top), and the sim's unlock garage (core 7,
  *  line 6, five rares at item level 5) costs 22-25k in one plow, ~30k with the other lines and spare gear a save buys. */
 export const SPEND_REF = 30000;
 export const SPEND_HP_EXP = 0.5;
 export const SPEND_DMG_EXP = 0.3;
-export const SPEND_HP_RANGE: readonly [number, number] = [0.8, Infinity];
-export const SPEND_DMG_RANGE: readonly [number, number] = [0.85, Infinity];
+export const SPEND_HP_RANGE: readonly [number, number] = [0.8, SPEND_HP_MAX];
+export const SPEND_DMG_RANGE: readonly [number, number] = [0.85, SPEND_DMG_MAX];
 
 /** HP / damage multipliers for a pilot who has spent `spent` coins on upgrades and gear. */
 export function spendScale(spent: number): { hp: number; dmg: number } {

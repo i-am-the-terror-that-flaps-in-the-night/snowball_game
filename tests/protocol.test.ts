@@ -110,8 +110,8 @@ describe('wave composition', () => {
         const key = g.type === 'slush' || g.type === 'sleet' ? 'twins' : (g.type as keyof typeof PROTOCOL_HP);
         const head = PROTOCOL_HP[key] / (key === 'twins' ? 2 : 1);
         expect(hp).toBeCloseTo(g.echo ? head * ECHO_HP : head);
-        // a headline is far above its Hard-campaign self (+15% was the old floor)
-        if (!g.echo) expect(hp).toBeGreaterThan(ENEMIES[g.type].hp * home * HARD.hpMult * 1.15 * 3);
+        // a headline stays well above its Hard-campaign self
+        if (!g.echo) expect(hp).toBeGreaterThan(ENEMIES[g.type].hp * home * HARD.hpMult * 1.5);
         expect(g.headline).toBe(!g.echo);
       }
     }
@@ -700,17 +700,35 @@ describe('stage 2: review cleanups', () => {
 });
 
 describe('PROTOCOL C scales with coins spent', () => {
-  it('is 1x at the reference spend, floored below, uncapped above', async () => {
-    const { spendScale, SPEND_REF, SPEND_HP_RANGE, SPEND_DMG_RANGE } = await import('../src/config/protocol');
+  it('is 1x at the reference spend, floored below, capped above', async () => {
+    const { spendScale, SPEND_REF, SPEND_HP_RANGE, SPEND_DMG_RANGE, SPEND_HP_MAX, SPEND_DMG_MAX } = await import('../src/config/protocol');
     expect(spendScale(SPEND_REF)).toEqual({ hp: 1, dmg: 1 });
-    const hi = spendScale(SPEND_REF * 4);
-    expect(hi.hp).toBeCloseTo(2, 5);
+    const hi = spendScale(SPEND_REF * 1.5);
+    expect(hi.hp).toBeCloseTo(Math.sqrt(1.5), 5);
     expect(hi.dmg).toBeGreaterThan(1);
     expect(hi.dmg).toBeLessThan(hi.hp);
     expect(spendScale(0)).toEqual({ hp: SPEND_HP_RANGE[0], dmg: SPEND_DMG_RANGE[0] });
-    // No cap: it keeps growing.
-    expect(SPEND_HP_RANGE[1]).toBe(Infinity);
-    expect(spendScale(SPEND_REF * 100).hp).toBeCloseTo(10, 5);
-    expect(spendScale(SPEND_REF * 100).dmg).toBeCloseTo(100 ** 0.3, 5);
+    expect(spendScale(SPEND_REF * 100)).toEqual({ hp: SPEND_HP_MAX, dmg: SPEND_DMG_MAX });
+  });
+
+  it('no boss ever passes its HP cap; THE WHITEOUT tops out at 100k and every other boss stays below it', async () => {
+    const { spendScale, PROTOCOL_HP_CAP, WHITEOUT_HP_CAP, protocolBossHp, protocolZone } = await import('../src/config/protocol');
+    const { ENEMIES } = await import('../src/config/enemies');
+    const { WO } = await import('../src/config/whiteout');
+    const { HARD } = await import('../src/config/challenges');
+    const k = spendScale(1e9);
+    const z = protocolZone(k);
+    const types = ['frostbyte', 'bulldoza', 'grinder', 'slush', 'sleet', 'donald', 'omega', 'chairman'] as const;
+    for (const t of types) {
+      if (!(t in ENEMIES)) continue;
+      const hp = ENEMIES[t].hp * z.enemyHpMult * (protocolBossHp(t, false) / HARD.hpMult);
+      const key = t === 'slush' || t === 'sleet' ? 'twins' : t;
+      const cap = PROTOCOL_HP_CAP[key as keyof typeof PROTOCOL_HP_CAP] / (key === 'twins' ? 2 : 1);
+      expect(hp).toBeLessThanOrEqual(cap * 1.0001);
+      expect(hp).toBeLessThan(WHITEOUT_HP_CAP);
+    }
+    // the eye (whiteoutDirector.spawnEye)
+    const eye = ENEMIES.whiteout.hp * ((z.enemyHpMult * protocolBossHp('chairman', false) * WO.EYE_HP_K) / HARD.hpMult);
+    expect(eye).toBeCloseTo(WHITEOUT_HP_CAP, -1);
   });
 });

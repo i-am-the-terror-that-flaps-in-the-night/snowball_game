@@ -77,8 +77,10 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
   once every arena is cleared on normal and Hard, showing its best time, best wave and reward.
 - **Run**: 7 boss waves on one stadium (±30 m, stands on four sides, a glass boardroom box over the north stand, gold
   on ice; always night). Wave n = campaign boss n PROTOCOL-upgraded: a fixed HP at the reference spend
-  (`PROTOCOL_HP`: FROSTBYTE 34k, BULLDOZA 40k, THE GRINDER 48k, SLUSH & SLEET 58k for the pair, THE DONALD 54k,
-  MEGAPLOW Ω 74k, THE CHAIRMAN 78k; ×spendScale below), ×1.25 damage, and its cooldowns between moves run ×1.3 as fast
+  (`PROTOCOL_HP` = `PROTOCOL_HP_CAP` / 1.4 at the reference spend: FROSTBYTE 28.6k, BULLDOZA 35.7k, THE GRINDER 39.3k,
+  SLUSH & SLEET 50k for the pair, THE DONALD 46.4k, MEGAPLOW Ω 57.1k, THE CHAIRMAN 64.3k; ×spendScale below, which
+  caps at ×1.4 HP / ×1.3 damage, so the most any boss ever has is its cap: 40k / 50k / 55k / 70k / 65k / 80k / 90k,
+  and THE WHITEOUT 100k), ×1.25 damage, and its cooldowns between moves run ×1.3 as fast
   (wind-ups and telegraphs keep their length); the bosses already beaten walk back in as **echoes** (6% of their
   headline HP, ×0.85 damage, "ECHO" in the HUD) one by one, 6 s apart. Stage-5 balance numbers and how they were
   measured: [balance.md](balance.md) "PROTOCOL C". Wave 7 is every headline as an echo, in two groups, around THE CHAIRMAN (below). Base difficulty is Hard's (×1.8 HP / ×1.5 damage on summoned
@@ -131,7 +133,7 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
     windows (0.8 s warning, 2.5 s plated, 5 s open): while plated he reflects 15% of the damage taken, capped at 2% of
     the plow's max HP per half second and not scaled by Hard / spend (shared with THE DONALD's plating), so holding
     fire while he glows costs nothing; also cooldowns ×0.7, briefcases in volleys of three.
-  - Ultimates hurt him like any boss. HP: 78k at the reference spend (`PROTOCOL_HP.chairman`; a ~60-70 s fight
+  - Ultimates hurt him like any boss. HP: 64.3k at the reference spend, 90k at most (`PROTOCOL_HP_CAP.chairman`; a ~60-70 s fight
     for the autopilot with the unlock garage), ×1.25 damage like every headline; he always counts as fighting on the leash.
   - At 0 HP: the defeat (3.8 s, untouchable): the tower sags and lists, the treads seize, the echoes freeze, and
     through the glass he slams the PROTOCOL C button. His wreck runs `ChairmanDirector.onChairmanDefeated`: everything

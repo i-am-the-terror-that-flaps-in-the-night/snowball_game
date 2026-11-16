@@ -760,7 +760,7 @@ target mid-pack, clusters high (Phase -> Grasp -> Reap and the phantom chains), 
 
 Goal: a hard but beatable ~12-20 min final run for a pilot who has just cleared every arena on Hard, and still a real
 fight for a heavily upgraded one. Enemy HP / damage keep the spend scale (`config/protocol.ts` `spendScale`: x1 at
-`SPEND_REF` 30,000 coins spent on upgrades + gear, HP ^0.5, damage ^0.3, floored at 0.8 / 0.85, no cap).
+`SPEND_REF` 30,000 coins spent on upgrades + gear, HP ^0.5, damage ^0.3, floored at 0.8 / 0.85; capped at 1.4 / 1.3 since the HP-cap pass: `PROTOCOL_HP_CAP`, THE WHITEOUT 100k at most, every other boss below it).
 
 **Tools.** `scripts/protocol-probe.mjs` (built on `omega-probe.mjs`): the campaign sweep autopilot plays the whole rush
 headless (waves 1-7 and THE WHITEOUT, no purchases in the shop, a death revived in place and counted) with a sim garage,
