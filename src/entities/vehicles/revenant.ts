@@ -70,8 +70,10 @@ const SWD_Y = 1.15;
 const SWD_Z = 3.6;
 /** The Reap's origin ahead of the plow centre (combat/revenant.ts REAP_FWD): blade tips reach REAP_FWD + reach. */
 const REAP_ORIGIN = 1.2;
-/** Crossguard-to-tip length of a sword at scale 1 (0.12 + BLADE_L). */
-const SWD_LEN = 1.87;
+/** The blade floats this far ahead of the crossguard (model units at scale 1). */
+const SWD_GAP = 0.24;
+/** Crossguard-to-tip length of a sword at scale 1 (SWD_GAP + BLADE_L). */
+const SWD_LEN = SWD_GAP + 1.75;
 const SWING_TIME = 0.3;
 const SWING_YAW = 1.35;
 /** Hubless wheels sit a touch outboard of the plates. */
@@ -394,41 +396,66 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   // chase camera above): silver blade with burning violet edges and fuller, a void crossguard with glowing tips, a
   // wrapped grip and a glowing pommel. Each slashes across the nose on its side's Reap.
   const swords: THREE.Group[] = [];
+  /** The rune rings in the gap between guard and blade (spun by the rig). */
+  const swordRunes: THREE.Object3D[] = [];
   const BLADE_L = 1.75;
+  /** The blade hovers this far ahead of the crossguard (spectral: nothing holds it on). */
+  const GAP = SWD_GAP;
+  // A slim blade: a slight waist, then a long tapering point.
   const bladeShape = new THREE.Shape();
-  bladeShape.moveTo(-0.09, 0);
-  bladeShape.lineTo(0.09, 0);
-  bladeShape.lineTo(0.075, BLADE_L - 0.3);
+  bladeShape.moveTo(-0.055, 0);
+  bladeShape.lineTo(0.055, 0);
+  bladeShape.quadraticCurveTo(0.04, BLADE_L * 0.35, 0.05, BLADE_L - 0.55);
   bladeShape.lineTo(0, BLADE_L);
-  bladeShape.lineTo(-0.075, BLADE_L - 0.3);
-  bladeShape.closePath();
-  const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 1 });
-  bladeGeo.translate(0, 0, -0.015);
+  bladeShape.lineTo(-0.05, BLADE_L - 0.55);
+  bladeShape.quadraticCurveTo(-0.04, BLADE_L * 0.35, -0.055, 0);
+  const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.008, bevelSegments: 1, curveSegments: 6 });
+  bladeGeo.translate(0, 0, -0.01);
   bladeGeo.rotateX(Math.PI / 2); // shape y (length) -> +z, flat in xz
   bladeGeo.computeVertexNormals();
-  const edgeGeo = new THREE.BoxGeometry(0.022, 0.022, BLADE_L - 0.3);
-  const tipGeo = new THREE.ConeGeometry(0.03, 0.34, 4).rotateX(Math.PI / 2);
-  const fullerGeo = new THREE.BoxGeometry(0.03, 0.05, BLADE_L * 0.7);
+  // The ghost aura: a wider, soft additive copy of the blade's outline that flares on every Reap.
+  const auraShape = new THREE.Shape();
+  auraShape.moveTo(-0.13, -0.05);
+  auraShape.lineTo(0.13, -0.05);
+  auraShape.lineTo(0.11, BLADE_L - 0.5);
+  auraShape.lineTo(0, BLADE_L + 0.18);
+  auraShape.lineTo(-0.11, BLADE_L - 0.5);
+  auraShape.closePath();
+  const auraGeo = new THREE.ShapeGeometry(auraShape).rotateX(Math.PI / 2);
+  const auraMat = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  const edgeGeo = new THREE.BoxGeometry(0.012, 0.012, BLADE_L - 0.6);
+  const tipGeo = new THREE.ConeGeometry(0.022, 0.5, 4).rotateX(Math.PI / 2);
+  const coreGeo = new THREE.BoxGeometry(0.014, 0.034, BLADE_L * 0.82);
+  const swRuneGeo = new THREE.TorusGeometry(0.075, 0.008, 4, 18);
   for (const sx of [-1, 1]) {
     const sw = new THREE.Group();
     sw.position.set(sx * SWD_X, SWD_Y, SWD_Z);
     sw.scale.setScalar((REAP_ORIGIN + 7 - SWD_Z) / SWD_LEN);
-    addMesh(bladeGeo, alloy, 0, 0, 0.12, sw, false);
+    addMesh(bladeGeo, alloy, 0, 0, GAP, sw, false);
+    addMesh(auraGeo, auraMat, 0, 0, GAP, sw, false);
     for (const ex of [-1, 1]) {
-      const e = addMesh(edgeGeo, edgeGlow, ex * 0.083, 0, 0.12 + (BLADE_L - 0.3) / 2, sw, false);
-      e.rotation.y = ex * -0.01;
+      const e = addMesh(edgeGeo, edgeGlow, ex * 0.047, 0, GAP + 0.05 + (BLADE_L - 0.6) / 2, sw, false);
+      e.rotation.y = ex * -0.004;
     }
-    addMesh(tipGeo, edgeGlow, 0, 0, 0.12 + BLADE_L - 0.15, sw, false);
-    addMesh(fullerGeo, stripMat, 0, 0, 0.12 + BLADE_L * 0.38, sw, false);
-    // Crossguard (swept slightly forward), its glowing tips, the grip and pommel.
+    addMesh(tipGeo, edgeGlow, 0, 0, GAP + BLADE_L - 0.25, sw, false);
+    addMesh(coreGeo, stripMat, 0, 0, GAP + BLADE_L * 0.43, sw, false);
+    // Two rune rings spinning in the gap, standing across the blade line.
+    for (const rz of [0.07, 0.15]) {
+      const r = addMesh(swRuneGeo, edgeGlow, 0, 0, rz, sw, false);
+      r.scale.setScalar(rz > 0.1 ? 0.8 : 1);
+      swordRunes.push(r);
+    }
+    // Crossguard: two thin crescent wings swept back toward the grip, glowing tips.
     for (const gx of [-1, 1]) {
-      const arm = addMesh(new THREE.BoxGeometry(0.26, 0.07, 0.08), voidMat, gx * 0.15, 0, 0.06, sw, false);
-      arm.rotation.y = gx * -0.3;
-      addMesh(new THREE.OctahedronGeometry(0.055, 0), edgeGlow, gx * 0.29, 0, 0.13, sw, false);
+      const arm = addMesh(new THREE.BoxGeometry(0.3, 0.035, 0.05), voidMat, gx * 0.15, 0, -0.02, sw, false);
+      arm.rotation.y = gx * 0.42;
+      const tip = addMesh(new THREE.ConeGeometry(0.03, 0.16, 4).rotateZ(-gx * Math.PI / 2), edgeGlow, gx * 0.32, 0, -0.1, sw, false);
+      tip.rotation.y = gx * 0.42;
     }
-    addMesh(new THREE.CylinderGeometry(0.045, 0.05, 0.4, 8).rotateX(Math.PI / 2), voidMat, 0, 0, -0.2, sw, false);
-    for (const z of [-0.08, -0.2, -0.32]) addMesh(new THREE.TorusGeometry(0.052, 0.012, 4, 10), stripMat, 0, 0, z, sw, false);
-    addMesh(new THREE.OctahedronGeometry(0.075, 0), lampMatSw, 0, 0, -0.45, sw, false);
+    addMesh(new THREE.OctahedronGeometry(0.05, 0), lampMatSw, 0, 0, 0, sw, false);
+    addMesh(new THREE.CylinderGeometry(0.032, 0.038, 0.36, 8).rotateX(Math.PI / 2), voidMat, 0, 0, -0.2, sw, false);
+    for (const z of [-0.1, -0.2, -0.3]) addMesh(new THREE.TorusGeometry(0.038, 0.009, 4, 10), stripMat, 0, 0, z, sw, false);
+    addMesh(new THREE.OctahedronGeometry(0.06, 0), lampMatSw, 0, 0, -0.43, sw, false);
     group.add(sw);
     swords.push(sw);
   }
@@ -594,6 +621,8 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
     swingK = Math.min(1, swingK + dt / SWING_TIME);
     const whip = swingK < 1 ? (swingK < 0.3 ? -0.2 + 1.2 * (swingK / 0.3) : (1 - (swingK - 0.3) / 0.7) ** 2) : 0;
     sweep += (spd * 0.12 - sweep) * Math.min(1, dt * 4);
+    for (let i = 0; i < swordRunes.length; i++) swordRunes[i].rotation.z = t * (i % 2 ? -2.4 : 3.1);
+    auraMat.opacity = 0.16 + 0.06 * flick(t, 5.3) + Math.abs(s.reap) * 0.35;
     for (let i = 0; i < 2; i++) {
       const sx = i === 0 ? -1 : 1;
       const mine = sx === swingSide;
