@@ -60,7 +60,11 @@ const WHEELS = [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as c
 const WHEEL_R = 0.48;
 /** Scythe pivot (model z) and its Reap whip: the swing time (s) and how far it swings (rad). */
 /** Floating swords: hilt position (model, per side x sign), the Reap slash (s, rad of yaw in across the nose). */
-const SWD_X = 1.05;
+const SWD_X = 1.45;
+/** Idle splay outward (rad) and the per-side stagger (height, depth), so the pair reads as two swords, not scissors. */
+const SWD_SPLAY = 0.26;
+const SWD_STAGGER_Y = 0.32;
+const SWD_STAGGER_Z = 0.55;
 const SWD_Y = 1.15;
 /** Crossguards just ahead of the nose (the grips and pommels sit over the nose tip). */
 const SWD_Z = 3.6;
@@ -69,7 +73,7 @@ const REAP_ORIGIN = 1.2;
 /** Crossguard-to-tip length of a sword at scale 1 (0.12 + BLADE_L). */
 const SWD_LEN = 1.87;
 const SWING_TIME = 0.3;
-const SWING_YAW = 1.1;
+const SWING_YAW = 1.35;
 /** Hubless wheels sit a touch outboard of the plates. */
 const WHEEL_X = 1.06;
 
@@ -593,12 +597,13 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
     for (let i = 0; i < 2; i++) {
       const sx = i === 0 ? -1 : 1;
       const mine = sx === swingSide;
-      const inward = whip * (mine ? SWING_YAW : -0.12);
+      const inward = whip * (mine ? SWING_YAW : -0.3);
       const sw = swords[i];
-      sw.rotation.y = sx * (0.05 + sweep * -0.5 - inward + 0.035 * Math.sin(t * 1.9 + i * 2.1));
+      sw.rotation.y = sx * (SWD_SPLAY + sweep * -0.5 - inward + 0.035 * Math.sin(t * 1.9 + i * 2.1));
       sw.rotation.z = sx * (0.18 + 0.05 * Math.sin(t * 2.6 + i) + (mine ? whip * 0.6 : 0));
       sw.rotation.x = -0.06 + 0.04 * Math.sin(t * 1.4 + i * 1.3) + (mine ? whip * 0.12 : 0);
-      sw.position.y = SWD_Y + 0.09 * Math.sin(t * 2.2 + i * Math.PI);
+      sw.position.y = SWD_Y + (i === 0 ? SWD_STAGGER_Y : 0) + 0.09 * Math.sin(t * 2.2 + i * Math.PI);
+      sw.position.z = SWD_Z - (i === 0 ? SWD_STAGGER_Z : 0);
       sw.position.x = sx * (SWD_X - sweep);
     }
     spin += (s.speed * dt) / WHEEL_R;
