@@ -15,6 +15,23 @@ The Garage has three tabs, each with a badge counting what you can afford; switc
 
 Hover a card for the full mechanics of that upgrade.
 
+### Focus
+
+The Core tab also sells two **Focus** upgrades. They work on every plow, are endless (+7% a level for 5 levels, then
+tapering), cost 200 coins for the first level (x1.44 per level to 5, x1.1 after) and you can own only **one**:
+
+| | 🔮 Ability Focus | 🎯 Weapon Focus |
+|---|---|---|
+| Boosts | E and F damage (+7% a level) and recharge (-4% a level, toward -40%) | SPACE, passive and ultimate damage (+7% a level) and ultimate charge (+4% a level, toward +40%) |
+| Trade-off (from level 1) | SPACE, passives and the ultimate deal x0.9 | E and F deal x0.9 and recharge x1.1 slower |
+
+Owning a level of one locks the other card ("Ability Focus chosen · respec it in the Garage to switch"). The owned
+card's **↺ RESPEC** button (tap twice to confirm) refunds every coin spent on it and sets it back to 0. RESPEC is
+only offered in the Garage between runs, never in a run's Upgrade Shop / Pit Stop or the Duel garage, which respect
+the lock all the same. Brawl rivals never get Focus. In the online Duel, Focus counts like any other garage level
+(nothing in the Duel normalises garages), AUTO-SPEND / MATCH OPPONENT never buy it, and a profile claiming both
+focuses gets neither. Which hits count as what, per plow: [plows.md](plows.md#focus-which-hits-are-space--passive--ultimate-and-which-are-e--f).
+
 ## Gear
 
 Prodigy-style items in 5 slots. Buy an item once, level it up to ★10, and equip it. **Any number of items can be
@@ -111,6 +128,8 @@ There's no loot in the Tutorial or the Duel. Tables live in `src/config/loot.ts`
   one pooled sprite batch (`fx/ghostFx.ts`, owned by Fx).
 
 ## Old saves
+
+Focus levels are new save keys: older saves read them as 0 (no Focus, nothing changes).
 
 Saves migrate on load and on import. Coins spent on upgrades that became gear, on the cut Wrecking Ball upgrade, and
 on removed gear items (Wrecker Core, Adrenaline Shot) are refunded once, and removed items are unequipped. Items

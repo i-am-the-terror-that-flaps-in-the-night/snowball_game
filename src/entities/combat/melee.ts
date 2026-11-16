@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SLAM_DAMAGE_K, type EnemyHandle } from '../../core/types';
 import { COMBO_MAX, COMBO_WINDOW } from '../../config/upgrades';
-import { Kit, Reach, _fwd, _p, _q, floorTop } from './shared';
+import { Focus, Kit, Reach, _fwd, _p, _q, floorTop } from './shared';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
 const PLAYER_RAM_BURST = { color: 0x9aa4b0, count: 4, speed: 4, size: 0.16, gravity: 20, life: 0.6 };
@@ -172,7 +172,10 @@ export class MeleeKit extends Kit {
     // Slam Combo (Classic Plow): stacks from slams that landed recently.
     if (ctx.time - this.lastSlamHitAt > COMBO_WINDOW) this.comboStacks = 0;
     const combo = stats.comboStep > 0 ? this.comboStacks : 0;
-    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo) * dmgMult;
+    // FOCUS: the slam is the Classic's SPACE (primary); a snowball slam on any other plow stays neutral. Shatter
+    // shards inherit it through `dmg`.
+    const focus = this.focus(stats.plowKind === 'classic' ? Focus.Primary : Focus.Neutral);
+    const dmg = SLAM_DAMAGE_K * r * r * stats.damageMult * (1 + stats.comboStep * combo) * dmgMult * focus;
     const knockMag = (10 + 6 * r) * (avalanche ? 1.6 : 1) * knockMult;
     this.slamHits.length = 0;
     this.slamZone = zone;
@@ -300,7 +303,8 @@ export class MeleeKit extends Kit {
     const ctx = this.ctx;
     const stats = this.b.stats;
     const fx = ctx.fx;
-    const dmg = (stats.whirlDamage + (ballR >= 0.2 ? 3 * ballR * ballR * stats.damageMult : 0)) * WHIRL_PLAYER_BONUS;
+    // FOCUS: the whirl is an E ability on every plow that has it.
+    const dmg = (stats.whirlDamage + (ballR >= 0.2 ? 3 * ballR * ballR * stats.damageMult : 0)) * WHIRL_PLAYER_BONUS * this.focus(Focus.Ability);
     if (final) this.smashProps(x, z, radius);
     const hits = this.collect(x, z, radius, Reach.Body);
     let count = 0;

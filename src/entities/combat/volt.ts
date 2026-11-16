@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, type AbilityDesc, type VehicleKit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
+import { Focus, Kit, type AbilityDesc, type VehicleKit, Reach, _p, _q, castOrigin, waveFloor, type CastOrigin } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 import { StormCloud } from '../../fx/stormCloud';
 import { currentPreset } from '../../core/settings';
@@ -228,7 +228,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       this.groundedOn = false;
       return;
     }
-    const dmg = ARC_DAMAGE * st.damageMult * coilBoost(st.clapDamage) ** ARC_COIL_EXP * (st.arcBoost || 1);
+    const dmg = ARC_DAMAGE * st.damageMult * coilBoost(st.clapDamage) ** ARC_COIL_EXP * (st.arcBoost || 1) * this.focus(Focus.Primary);
     this.arcHit.clear();
     let src = tgt;
     let hit: EnemyHandle | null = tgt;
@@ -447,7 +447,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       this.lightning.bolt(from, _q, { life: 0.2, width: 0.2, jag: 1.0, color: 0x6fc8ff });
     }
     if (!first) this.b.audio.play('zap', { pitch: 1.1 + Math.random() * 0.2, volume: 0.4 });
-    const dmg = STATIC_DAMAGE * (first ? STATIC_FIRST : 1) * st.damageMult * coilBoost(st.clapDamage) ** STATIC_COIL_EXP;
+    const dmg = STATIC_DAMAGE * (first ? STATIC_FIRST : 1) * st.damageMult * coilBoost(st.clapDamage) ** STATIC_COIL_EXP * this.focus(Focus.Ability);
     const hits = this.collect(px, pz, R, Reach.Body);
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
@@ -565,7 +565,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
       this.lightning.bolt(_p, _q, { life: 0.14, width: 0.18 });
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
+      const killed = this.b.enemies.damage(e, st.fieldDps * st.damageMult * TICK * this.focus(Focus.Primary) * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z });
       this.onPlayerHit(Math.max(0, hp0 - Math.max(0, e.hp)), killed, e, false, false);
     }
     if (any) this.b.audio.play('zap', { volume: 0.35, pitch: 1.4 });
@@ -626,7 +626,7 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
       const at = this.hitAt.set(e.position.x, e.position.y + e.radius, e.position.z);
       this.lightning.bolt(_p, at, { life: 0.3, width: 0.35 });
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.clapDamage * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.clapDamage * st.damageMult * this.focus(Focus.Ability) * this.hitMult(e), {
         source: 'other',
         knockback: _kb.set(dx * 14, 0, dz * 14),
         freezeSeconds: st.clapStun,
@@ -684,7 +684,8 @@ export class VoltKit extends Kit implements UltScript, VehicleKit {
     const st = this.b.stats;
     this.stormT -= dt;
     const R = st.clapRadius;
-    const dmgBase = st.clapDamage * st.damageMult;
+    // (the storm is the Thunderclap's aftermath: an F ability for FOCUS)
+    const dmgBase = st.clapDamage * st.damageMult * this.focus(Focus.Ability);
     // Sky strikes: each one hammers a 3.5m circle. Prefer landing on bots inside the storm.
     this.stormStrikeT -= dt;
     if (this.stormStrikes > 0 && this.stormStrikeT <= 0) {

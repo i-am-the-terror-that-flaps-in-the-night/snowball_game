@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CombatAPI, EnemyHandle, EnemyManagerAPI, GameContext, ImpactKind, ImpactOpts, PlowAPI } from '../../core/types';
+import type { CombatAPI, EnemyHandle, EnemyManagerAPI, GameContext, ImpactKind, ImpactOpts, PlayerStats, PlowAPI } from '../../core/types';
 import type { Lightning } from '../../fx/Lightning';
 import type { PilotBinding } from '../pilot';
 import type { Terrain } from '../../world/Terrain';
@@ -115,6 +115,32 @@ export function waveHitPlow(
   const dealt = combat.hitPlow(dmg * e.dmgOutMult * (ctx.zone.enemyDmgMult ?? 1), opts?.fromX ?? e.position.x, opts?.fromZ ?? e.position.z, o);
   o.attacker = undefined;
   return dealt;
+}
+
+/* ------------------------------------------------------------------ FOCUS (config/upgrades.ts focusAbility / focusWeapon)
+ * Every player hit is one of four kinds, and the FOCUS stats scale it on top of damageMult:
+ *   - Ability: E and F (and what they leave behind: Inferno burns / fireball, Thunderclap storm, Meltdown pools...).
+ *   - Primary: SPACE, plus PASSIVE damage (auras, fields, spikes, scrap ring, Haunting shades / PHANTOM bursts).
+ *   - Ult:     an ultimate's own damage (FIRESTORM, NUKE, SUPERCELL, EARTHQUAKE, SINGULARITY, THE WILD HUNT).
+ *   - Neutral: generic rams, dash strikes, stomps, snowball slams / air slams on non-Classic plows, and hits derived
+ *              from an already-scaled hit (VOLT-9's Chain Lightning arcs; ISOTOPE's base radiation burn and tank-buster
+ *              slice; the RAD DOSE burn is scaled when the spray soaks it in).
+ * docs/plows.md "Focus" has the per-plow table. */
+export const Focus = { Neutral: 0, Ability: 1, Primary: 2, Ult: 3 } as const;
+export type Focus = (typeof Focus)[keyof typeof Focus];
+
+/** FOCUS damage multiplier for one hit kind (1 for Neutral, and for stats built without the fields). */
+export function focusMult(st: Pick<PlayerStats, 'abilityDmgMult' | 'primaryDmgMult' | 'ultDmgMult'>, kind: Focus): number {
+  switch (kind) {
+    case Focus.Ability:
+      return st.abilityDmgMult || 1;
+    case Focus.Primary:
+      return st.primaryDmgMult || 1;
+    case Focus.Ult:
+      return st.ultDmgMult || 1;
+    default:
+      return 1;
+  }
 }
 
 /** How a player attack filters its targets by height (Combat.collect): none, body (feet-to-feet) or ground wave. */
@@ -241,6 +267,10 @@ export abstract class Kit {
   }
   protected lastStandMult(): number {
     return this.h.lastStandMult();
+  }
+  /** FOCUS damage multiplier for a hit of `kind` by the bound pilot (see focusMult). */
+  protected focus(kind: Focus): number {
+    return focusMult(this.h.b.stats, kind);
   }
   protected onPlayerHit(dealt: number, killed: boolean, target?: EnemyHandle, canChain = true, heal = true, healMult = 1): void {
     this.h.onPlayerHit(dealt, killed, target, canChain, heal, healMult);

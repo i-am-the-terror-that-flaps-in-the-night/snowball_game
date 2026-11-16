@@ -681,7 +681,8 @@ export class Combat implements CombatAPI {
         else if (st.plowKind === 'isotope') this.critCharge = Math.min(1, this.critCharge + dealt / ultMeter(this.b, NUKE_CHARGE_DMG));
       }
       if (killed && !block) {
-        const frac = target?.isBoss ? ULT_KILL_BOSS : ULT_KILL;
+        // (x Weapon Focus's charge rate, like the damage feed through ultMeter)
+        const frac = (target?.isBoss ? ULT_KILL_BOSS : ULT_KILL) * (st.ultChargeMult || 1);
         if (st.plowKind === 'classic') this.classic.feedFire(frac * ultMeter(this.b, FIRESTORM_CHARGE));
         else if (st.plowKind === 'isotope') this.critCharge = Math.min(1, this.critCharge + frac);
         else this.ult.feedFrac(frac);

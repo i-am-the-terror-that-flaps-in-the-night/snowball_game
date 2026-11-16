@@ -3,7 +3,7 @@ import { isVehicle } from '../../config/plows';
 import { SLAM_DAMAGE_K } from '../../core/types';
 import { GRAVITY } from '../../world/Terrain';
 import { MIN_AIR } from '../../world/terrainMotion';
-import { Kit, Reach, _fwd, _p, _q, type CombatHost } from './shared';
+import { Focus, Kit, Reach, _fwd, _p, _q, type CombatHost } from './shared';
 import type { BruteKit } from './brute';
 
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
@@ -229,7 +229,8 @@ export class AirKit extends Kit {
     if (r < 0.2) r = 0;
     const volume = r > 0 ? plow.stealSnow(1 - st.reserveFrac) : 0;
     const R = airSlamRadius(impact, fall, r);
-    const dmg = airSlamDamage(impact, fall, r, st.damageMult);
+    // FOCUS: the Classic's air slam is its SPACE slam (primary); on other plows it is a generic slam (neutral).
+    const dmg = airSlamDamage(impact, fall, r, st.damageMult) * this.focus(st.plowKind === 'classic' ? Focus.Primary : Focus.Neutral);
     const knockMag = 12 + 0.3 * Math.min(AIR_IMPACT_CAP, impact) + 4 * r;
     const freeze = st.frostCore && r > 0 ? 3 : 0;
     const x = plow.position.x;

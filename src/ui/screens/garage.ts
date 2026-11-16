@@ -1,6 +1,6 @@
 /** Garage / upgrade shop pieces: tab table, upgrade and gear cards, the tab bar's badges and the round preview. */
 import type { GameContext, SoundName } from '../../core/types';
-import type { UpgradeCategory, UpgradeDef } from '../../config/upgrades';
+import { UPGRADE_BY_ID, type UpgradeCategory, type UpgradeDef, type UpgradeId } from '../../config/upgrades';
 import { GEAR, GEAR_MAX_LEVEL, GEAR_SLOTS, RARITY_COLOR, grantLabel, type GearDef, type GearSlot } from '../../config/gear';
 import { PLOWS } from '../../config/plows';
 import { ENEMIES, type EnemyDef, type EnemyType } from '../../config/enemies';
@@ -12,7 +12,7 @@ export type ShopTabId = 'core' | 'gear' | 'line';
 /** Garage tabs, each listing one or more upgrade categories. 'line' only shows the driven plow's own line
  *  (category id === PlowKind), and takes that plow's name and icon. */
 export const SHOP_TABS: { id: ShopTabId; label: string; icon: string; blurb: string; groups: { cat: UpgradeCategory; title?: string }[] }[] = [
-  { id: 'core', label: 'Core', icon: '⚙️', blurb: 'The four core upgrades: speed, slam power, ball size and HP. They never max out.', groups: [{ cat: 'plow' }, { cat: 'ball' }, { cat: 'defense' }] },
+  { id: 'core', label: 'Core', icon: '⚙️', blurb: 'The four core upgrades (speed, slam power, ball size, HP) and a Focus pick: abilities or your main attack. They never max out.', groups: [{ cat: 'plow' }, { cat: 'ball' }, { cat: 'defense' }, { cat: 'focus', title: '🔮🎯 Focus · pick one' }] },
   { id: 'gear', label: 'Gear', icon: '🎒', blurb: 'Buy items, level them up to 10 and equip as many as you like. Gear works on every plow.', groups: [] },
   { id: 'line', label: 'Plow', icon: '🚜', blurb: '', groups: [{ cat: 'classic' }, { cat: 'volt' }, { cat: 'brute' }, { cat: 'isotope' }, { cat: 'arsenal' }, { cat: 'revenant' }] },
 ];
@@ -34,6 +34,9 @@ export interface CardRefs {
   next: HTMLElement;
   arrow: HTMLElement;
   buy: HTMLButtonElement;
+  /** FOCUS cards only: the RESPEC button (Garage outside a run, while owned) and the "other focus chosen" note. */
+  respec?: HTMLButtonElement;
+  lock?: HTMLElement;
 }
 
 export interface GearCardRefs {
@@ -65,6 +68,8 @@ export interface GarageDeps {
   tabTraits: HTMLElement;
   plowPick: HTMLElement;
   shopPreview: HTMLElement;
+  /** RESPEC a FOCUS upgrade (refund + reset). False when not allowed here (in a run's shop, the duel garage). */
+  respec: (id: UpgradeId) => boolean;
 }
 
 /** Tab labels, affordable-upgrade badges and the info line under the tabs. */
@@ -99,7 +104,7 @@ export function refreshTabs(ui: Pick<GarageDeps, 'shop' | 'tabBtns' | 'lineSecti
   }
 }
 
-export function buildCard(ui: Pick<GarageDeps, 'shop' | 'sfx'>, def: UpgradeDef, tab: ShopTabId, parent: HTMLElement): CardRefs {
+export function buildCard(ui: Pick<GarageDeps, 'shop' | 'sfx' | 'respec'>, def: UpgradeDef, tab: ShopTabId, parent: HTMLElement): CardRefs {
   const root = el('div', 'ss-card', undefined, parent);
   root.dataset.id = def.id;
   if (def.details) root.title = def.details;
@@ -116,10 +121,75 @@ export function buildCard(ui: Pick<GarageDeps, 'shop' | 'sfx'>, def: UpgradeDef,
   const cur = el('span', 'ss-val-cur', '', val);
   const arrow = el('span', 'ss-val-arrow', '→', val);
   const next = el('span', 'ss-val-next', '', val);
+  if (def.exclusiveWith) return buildFocusParts(ui, def, root, info, { def, tab, root, pips, lvl, cur, next, arrow, buy: null as unknown as HTMLButtonElement });
   const buy = el('button', 'ss-btn ss-buy', '', root);
   buy.type = 'button';
   buy.addEventListener('click', () => onBuy(ui, def, root));
   return { def, tab, root, pips, lvl, cur, next, arrow, buy };
+}
+
+/** How long a first RESPEC tap stays armed, waiting for the confirming second tap (ms). */
+const RESPEC_CONFIRM_MS = 3000;
+
+/** FOCUS card extras: a "the other focus is chosen" note, and BUY + RESPEC stacked (RESPEC asks for a second tap). */
+function buildFocusParts(ui: Pick<GarageDeps, 'shop' | 'sfx' | 'respec'>, def: UpgradeDef, root: HTMLElement, info: HTMLElement, refs: CardRefs): CardRefs {
+  root.classList.add('ss-focus-card');
+  refs.lock = el('div', 'ss-focus-lock hidden', '', info);
+  const btns = el('div', 'ss-gear-btns', undefined, root);
+  const buy = el('button', 'ss-btn ss-buy', '', btns) as HTMLButtonElement;
+  buy.type = 'button';
+  buy.addEventListener('click', () => onBuy(ui, def, root));
+  const respec = el('button', 'ss-btn ss-ice ss-respec hidden', '', btns) as HTMLButtonElement;
+  respec.type = 'button';
+  let armedAt = 0;
+  respec.addEventListener('click', () => {
+    const now = performance.now();
+    if (now - armedAt > RESPEC_CONFIRM_MS) {
+      armedAt = now;
+      respec.classList.add('armed');
+      respec.dataset.label = respec.textContent ?? '';
+      respec.textContent = 'TAP AGAIN TO RESPEC';
+      ui.sfx('click');
+      setTimeout(() => {
+        if (armedAt !== now) return;
+        armedAt = 0;
+        respec.classList.remove('armed');
+        if (respec.dataset.label) respec.textContent = respec.dataset.label;
+      }, RESPEC_CONFIRM_MS);
+      return;
+    }
+    armedAt = 0;
+    respec.classList.remove('armed');
+    if (ui.respec(def.id)) {
+      ui.sfx('buy');
+      restart(root, 'bought');
+    } else {
+      ui.sfx('error');
+      restart(root, 'shake');
+    }
+  });
+  refs.buy = buy;
+  refs.respec = respec;
+  return refs;
+}
+
+/** FOCUS card state: locked by the other focus (note + LOCKED button), RESPEC shown while owned and `canRespec`. */
+export function refreshFocusCard(c: CardRefs, lvl: number, lockedBy: UpgradeId | null, refund: number, canRespec: boolean): void {
+  if (!c.lock || !c.respec) return;
+  const by = lockedBy ? UPGRADE_BY_ID[lockedBy] : null;
+  c.root.classList.toggle('locked', !!by);
+  c.lock.classList.toggle('hidden', !by);
+  c.lock.textContent = by ? `🔒 ${by.name} chosen · respec it in the Garage to switch` : '';
+  if (by) {
+    c.buy.textContent = '🔒 LOCKED';
+    c.buy.title = `${by.name} chosen: respec it in the Garage to switch.`;
+  }
+  const show = canRespec && lvl > 0;
+  c.respec.classList.toggle('hidden', !show);
+  if (show && !c.respec.classList.contains('armed')) {
+    c.respec.innerHTML = `↺ RESPEC +<span class="ss-coin sm"></span>${fmt(refund)}`;
+    c.respec.title = `Refund all ${fmt(refund)} coins spent on ${c.def.name} and unlock the other focus.`;
+  }
 }
 
 /** Gear tab: one section per slot (a browsing category: any number of items can be equipped), each with its items. */
