@@ -116,6 +116,20 @@ describe('REVENANT', () => {
     expect(front.dealt).toBeCloseTo(per * (k.reapN - big + big * BIG_MULT), 3);
   });
 
+  it('SOUL SIPHON: every Reap hit repairs the plow by REV_LIFESTEAL of the damage dealt (3% in the Duel)', async () => {
+    const { REV_LIFESTEAL, REV_LIFESTEAL_DUEL } = await import('../src/entities/combat/revenant');
+    for (const pvp of [false, true]) {
+      const front = bot(0, 4, 1e6);
+      const r = rig([front], { pvp });
+      r.plow.hp = 10;
+      r.held.add('Space');
+      r.run(1);
+      const k = pvp ? REV_LIFESTEAL_DUEL : REV_LIFESTEAL;
+      expect(front.dealt).toBeGreaterThan(0);
+      expect(r.plow.hp).toBeCloseTo(Math.min(100, 10 + front.dealt * k), 3);
+    }
+  });
+
   it('PHASE: spectral for 1.2 s, Haunts and takes a soul from each bot passed (3 at most), then MANIFESTs', () => {
     const bots = [0, 1, 2, 3, 4].map((i) => bot(0, 0.5 + i * 0.01));
     const r = rig(bots);

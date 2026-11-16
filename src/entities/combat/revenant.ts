@@ -128,6 +128,10 @@ const FINALE_WHITE = { color: 0xffffff, count: 20, speed: 9, size: 0.25, gravity
 export const BURST_ULT_SHARE = 0.34;
 /** ...and a REAP sweep's damage past its nearest target. */
 export const REAP_ULT_SPLASH = 0.3;
+/** Innate lifesteal: every PHANTOM hit (REAP, MANIFEST, SOUL GRASP, SHADE bursts; not THE WILD HUNT's own damage)
+ *  repairs the plow by this share of the damage dealt (the Duel: REV_LIFESTEAL_DUEL), on top of the Salvage Rig perk. */
+export const REV_LIFESTEAL = 0.06;
+export const REV_LIFESTEAL_DUEL = 0.03;
 const GHOST_PALETTE: ShockPalette = { band: REV_CORE, hot: REV_BRIGHT, wall: REV_DEEP, tint: 0xc890ff };
 
 const _kb = new THREE.Vector3();
@@ -359,6 +363,8 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
       fromZ: fz,
     });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
+    const plow = this.b.plow;
+    if (dealt > 0 && !opts?.ult && plow && !plow.dead) plow.hp = Math.min(plow.maxHp, plow.hp + dealt * (this.b.pvp ? REV_LIFESTEAL_DUEL : REV_LIFESTEAL));
     this.onPlayerHit(dealt, killed, e, true, !opts?.ult);
     return dealt;
   }

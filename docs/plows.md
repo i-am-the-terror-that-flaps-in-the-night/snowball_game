@@ -272,6 +272,10 @@ headlights spill purple ghostfire over a fanged grille; purple mist underglow. P
 with a glitchy scanline shimmer, a skeletal chassis frame shows inside it and ghostfire wisps trail behind. Every
 effect is a solid violet with a dark edge, so it reads on sunlit snow as well as at night. No plow blade, no snowball.
 
+**SOUL SIPHON (passive).** Every PHANTOM hit (REAP, MANIFEST, SOUL GRASP, SHADE bursts) repairs the plow by 6% of the
+damage dealt (3% in the Duel; `REV_LIFESTEAL` / `REV_LIFESTEAL_DUEL` in combat/revenant.ts), on top of the Salvage Rig
+perk. THE WILD HUNT's own damage doesn't heal.
+
 **SOULS (0-10, the Reliquary; the 10-pip soul lantern over the ability row, the first 3 marked).** +1 a wreck (bosses
 and Brawl rivals +2), +1 more if it was Haunted, +1 a bot PHASED through (3 a Phase at most). In the Duel, +1 per 10%
 of the other pilot's max HP you deal. SOUL GRASP spends them; banked souls power THE WILD HUNT.
