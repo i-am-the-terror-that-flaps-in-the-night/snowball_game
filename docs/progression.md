@@ -23,7 +23,7 @@ tapering), cost 200 coins for the first level (x1.44 per level to 5, x1.1 after)
 | | 🔮 Ability Focus | 🎯 Weapon Focus |
 |---|---|---|
 | Boosts | E and F damage (+7% a level) and recharge (-4% a level, toward -40%) | SPACE, passive and ultimate damage (+7% a level) and ultimate charge (+4% a level, toward +40%) |
-| Trade-off (from level 1) | SPACE, passives and the ultimate deal x0.9 | E and F deal x0.9 and recharge x1.1 slower |
+| Trade-off | none: the other side is left as it is | none |
 
 Owning a level of one locks the other card ("Ability Focus chosen · respec it in the Garage to switch"). The owned
 card's **↺ RESPEC** button (tap twice to confirm) refunds every coin spent on it and sets it back to 0. RESPEC is

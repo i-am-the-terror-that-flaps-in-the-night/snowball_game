@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { Progression, computeStatsFor } from '../src/core/Progression';
-import { FOCUS_OFF_CD, FOCUS_OFF_DMG, FX, MIN_COOLDOWN, PHASE_MIN_COOLDOWN, UPGRADE_BY_ID, UPGRADES, upgradeCost, type UpgradeId } from '../src/config/upgrades';
+import { FX, MIN_COOLDOWN, PHASE_MIN_COOLDOWN, UPGRADE_BY_ID, UPGRADES, upgradeCost, type UpgradeId } from '../src/config/upgrades';
 import { Combat } from '../src/entities/Combat';
 import { DuelWallet } from '../src/duel/DuelWallet';
 import { Focus, focusMult } from '../src/entities/combat/shared';
@@ -41,9 +41,8 @@ describe('Focus: shop rules', () => {
     expect(a.exclusiveWith).toBe('focusWeapon');
     expect(w.exclusiveWith).toBe('focusAbility');
     expect(a.plowOnly).toBeUndefined();
-    // Card text mentions the trade-off and the exclusivity.
+    // Card text mentions the exclusivity and the respec.
     for (const d of [a, w]) {
-      expect(d.description).toMatch(/10%/);
       expect(d.details).toMatch(/RESPEC/);
       expect(d.details).toMatch(/locks/);
     }
@@ -119,7 +118,7 @@ describe('Focus: stats', () => {
     }
   });
 
-  it('Ability Focus at 1 / 5: E/F damage and recharge up, the rest x0.9', () => {
+  it('Ability Focus at 1 / 5: E/F damage and recharge up, the rest unchanged', () => {
     const base = computeStatsFor({}, 'volt');
     const s1 = computeStatsFor({ focusAbility: 1 }, 'volt');
     const s5 = computeStatsFor({ focusAbility: 5 }, 'volt');
@@ -128,8 +127,8 @@ describe('Focus: stats', () => {
     expect(s1.abilityCdMult).toBeCloseTo(0.96, 6);
     expect(s5.abilityCdMult).toBeCloseTo(0.8, 6);
     for (const s of [s1, s5]) {
-      expect(s.primaryDmgMult).toBe(FOCUS_OFF_DMG);
-      expect(s.ultDmgMult).toBe(FOCUS_OFF_DMG);
+      expect(s.primaryDmgMult).toBe(1);
+      expect(s.ultDmgMult).toBe(1);
       expect(s.ultChargeMult).toBe(1);
     }
     expect(s5.clapCooldown).toBeCloseTo(base.clapCooldown * 0.8, 6);
@@ -145,7 +144,7 @@ describe('Focus: stats', () => {
     expect(s50.abilityCdMult).toBeGreaterThanOrEqual(0.6);
   });
 
-  it('Weapon Focus at 1 / 5: SPACE, passive and ultimate damage and ultimate charge up; E/F x0.9 damage, x1.1 recharge', () => {
+  it('Weapon Focus at 1 / 5: SPACE, passive and ultimate damage and ultimate charge up; E/F unchanged', () => {
     const base = computeStatsFor({}, 'brute');
     const s1 = computeStatsFor({ focusWeapon: 1 }, 'brute');
     const s5 = computeStatsFor({ focusWeapon: 5 }, 'brute');
@@ -155,10 +154,10 @@ describe('Focus: stats', () => {
     expect(s1.ultChargeMult).toBeCloseTo(1.04, 6);
     expect(s5.ultChargeMult).toBeCloseTo(1.2, 6);
     for (const s of [s1, s5]) {
-      expect(s.abilityDmgMult).toBe(FOCUS_OFF_DMG);
-      expect(s.abilityCdMult).toBe(FOCUS_OFF_CD);
+      expect(s.abilityDmgMult).toBe(1);
+      expect(s.abilityCdMult).toBe(1);
     }
-    expect(s5.poundCooldown).toBeCloseTo(base.poundCooldown * 1.1, 6);
+    expect(s5.poundCooldown).toBeCloseTo(base.poundCooldown, 6);
     // A smaller meter = faster charge.
     const b = (stats: typeof base) => ({ stats, enemies: {} as never });
     expect(ultMeter(b(s5), 1000)).toBeCloseTo(ultMeter(b(base), 1000) / 1.2, 6);
@@ -177,7 +176,7 @@ describe('Focus: stats', () => {
     const s = computeStatsFor({ focusWeapon: 5 }, 'classic');
     expect(focusMult(s, Focus.Primary)).toBeCloseTo(1.35, 6);
     expect(focusMult(s, Focus.Ult)).toBeCloseTo(1.35, 6);
-    expect(focusMult(s, Focus.Ability)).toBe(0.9);
+    expect(focusMult(s, Focus.Ability)).toBe(1);
     expect(focusMult(s, Focus.Neutral)).toBe(1);
   });
 
@@ -268,29 +267,29 @@ const tap = (key: string, s: number) => (r: ReturnType<typeof rig>) => {
 };
 
 describe('Focus: kits', () => {
-  it('PHANTOM: Ability Focus raises MANIFEST (E) and lowers REAP (SPACE); Weapon Focus the other way round', () => {
+  it('PHANTOM: Ability Focus raises MANIFEST (E) and leaves REAP (SPACE) alone; Weapon Focus the other way round', () => {
     const reap = (lv: Partial<Record<UpgradeId, number>>) => dealt('revenant', lv, [0, 4], holdSpace(1));
     const manifest = (lv: Partial<Record<UpgradeId, number>>) => dealt('revenant', lv, [0, 0.5], tap('KeyE', 2));
     const r0 = reap({});
     const m0 = manifest({});
     expect(r0).toBeGreaterThan(0);
     expect(m0).toBeGreaterThan(0);
-    expect(reap({ focusAbility: 5 }) / r0).toBeCloseTo(0.9, 3);
+    expect(reap({ focusAbility: 5 }) / r0).toBeCloseTo(1, 3);
     expect(manifest({ focusAbility: 5 }) / m0).toBeCloseTo(1.35, 3);
     expect(reap({ focusWeapon: 5 }) / r0).toBeCloseTo(1.35, 3);
-    expect(manifest({ focusWeapon: 5 }) / m0).toBeCloseTo(0.9, 3);
+    expect(manifest({ focusWeapon: 5 }) / m0).toBeCloseTo(1, 3);
   });
 
-  it('VOLT-9: Ability Focus raises STATIC FIELD (E) and lowers the ARC LANCE (SPACE); Weapon Focus the other way round', () => {
+  it('VOLT-9: Ability Focus raises STATIC FIELD (E) and leaves the ARC LANCE (SPACE) alone; Weapon Focus the other way round', () => {
     const arc = (lv: Partial<Record<UpgradeId, number>>) => dealt('volt', lv, [0, 5], holdSpace(1));
     const field = (lv: Partial<Record<UpgradeId, number>>) => dealt('volt', lv, [0, 2.5], tap('KeyE', 1.5));
     const a0 = arc({});
     const f0 = field({});
     expect(a0).toBeGreaterThan(0);
     expect(f0).toBeGreaterThan(0);
-    expect(arc({ focusAbility: 3 }) / a0).toBeCloseTo(0.9, 3);
+    expect(arc({ focusAbility: 3 }) / a0).toBeCloseTo(1, 3);
     expect(field({ focusAbility: 3 }) / f0).toBeCloseTo(1.21, 3);
     expect(arc({ focusWeapon: 3 }) / a0).toBeCloseTo(1.21, 3);
-    expect(field({ focusWeapon: 3 }) / f0).toBeCloseTo(0.9, 3);
+    expect(field({ focusWeapon: 3 }) / f0).toBeCloseTo(1, 3);
   });
 });

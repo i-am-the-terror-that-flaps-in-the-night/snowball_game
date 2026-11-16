@@ -327,7 +327,7 @@ in its kit (`Focus` in `src/entities/combat/shared.ts`) and multiplied on top of
 | ARSENAL | Mag Laser; Scrap Magnet field and shard ring | SINGULARITY | E Mag Repulsor; F Polarity Burst | rams, dash strikes, stomps |
 | PHANTOM | Reaper's Scythe; Haunting SHADE bursts | THE WILD HUNT riders and finale | E PHASE's MANIFEST; F SOUL GRASP | rams, dash strikes, stomps, air slam |
 
-Cooldowns: Ability Focus shortens (Weapon Focus lengthens) every time-based E / F recharge: the whirl / E charge
+Cooldowns: Ability Focus shortens every time-based E / F recharge (Weapon Focus leaves them alone): the whirl / E charge
 (Static Field, Saw Charge, Fallout Trail, Mag Repulsor), PHASE, Inferno, Thunderclap, Ground Pound, Meltdown,
 Polarity Burst and SOUL GRASP's short recharge (its soul cost is unchanged). The floors still hold (0.35 s for
 everything, 4 s for PHASE). On the **SNOWBALL** main-attack setting a vehicle's ball slam is a generic slam (neutral)

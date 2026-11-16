@@ -1,4 +1,4 @@
-import { FX, FOCUS_OFF_CD, FOCUS_OFF_DMG, ITEM_STATS, focusBlocker, upgradeSpent, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, PHASE_MIN_COOLDOWN, soft, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
+import { FX, ITEM_STATS, focusBlocker, upgradeSpent, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, PHASE_MIN_COOLDOWN, soft, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_PRICE_REV, REMOVED_GEAR, REPRICED_GEAR, cleanEquipped, gearCost, gearLevels, gearSpent, type GearDef, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
@@ -624,9 +624,10 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
   let fA = L('focusAbility');
   let fW = L('focusWeapon');
   if (fA > 0 && fW > 0) fA = fW = 0;
-  const abilityDmgMult = fA ? FX.focusDmg(fA) : fW ? FOCUS_OFF_DMG : 1;
-  const primaryDmgMult = fW ? FX.focusDmg(fW) : fA ? FOCUS_OFF_DMG : 1;
-  const abilityCdMult = fA ? FX.focusCd(fA) : fW ? FOCUS_OFF_CD : 1;
+  // Pure bonuses: the side you did not focus is left as it is.
+  const abilityDmgMult = fA ? FX.focusDmg(fA) : 1;
+  const primaryDmgMult = fW ? FX.focusDmg(fW) : 1;
+  const abilityCdMult = fA ? FX.focusCd(fA) : 1;
   // E / F recharges: Overclock x Focus (the MIN_COOLDOWN / PHASE_MIN_COOLDOWN floors still apply after both).
   const acd = cd * abilityCdMult;
   const fire = plow.fAbility === 'fire';
