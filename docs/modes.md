@@ -76,10 +76,12 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
   shows a glitched, locked seventh card ("PROTOCOL C: TODO — clear every arena on Hard", with the Hard count); it opens
   once every arena is cleared on normal and Hard, showing its best time, best wave and reward.
 - **Run**: 7 boss waves on one stadium (±30 m, stands on four sides, a glass boardroom box over the north stand, gold
-  on ice; always night). Wave n = campaign boss n PROTOCOL-upgraded: at least its Hard-campaign HP +15% (home HP ×
-  max(1.6, 1.8 × 1.15)), ×1.25 damage, and its cooldowns between moves run ×1.3 as fast (wind-ups and telegraphs keep
-  their length); the bosses already beaten walk back in as **echoes** (×0.35 home HP, ×0.85 damage, "ECHO" in the
-  HUD) one by one, 6 s apart. Wave 7 is every headline as an echo, in two groups, around THE CHAIRMAN (below). Base difficulty is Hard's (×1.8 HP / ×1.5 damage on summoned
+  on ice; always night). Wave n = campaign boss n PROTOCOL-upgraded: a fixed HP at the reference spend
+  (`PROTOCOL_HP`: FROSTBYTE 34k, BULLDOZA 40k, THE GRINDER 48k, SLUSH & SLEET 58k for the pair, THE DONALD 54k,
+  MEGAPLOW Ω 74k, THE CHAIRMAN 78k; ×spendScale below), ×1.25 damage, and its cooldowns between moves run ×1.3 as fast
+  (wind-ups and telegraphs keep their length); the bosses already beaten walk back in as **echoes** (6% of their
+  headline HP, ×0.85 damage, "ECHO" in the HUD) one by one, 6 s apart. Stage-5 balance numbers and how they were
+  measured: [balance.md](balance.md) "PROTOCOL C". Wave 7 is every headline as an echo, in two groups, around THE CHAIRMAN (below). Base difficulty is Hard's (×1.8 HP / ×1.5 damage on summoned
   minions and bot hits, scaled with your power like Hard). The normal upgrade shop runs between waves.
 - **Echoes** keep one or two signature moves and never reach phase 2 or summon: FROSTBYTE ball slam · BULLDOZA charge +
   leap · THE GRINDER auger pull · SLUSH charge / SLEET shove (as a pair) · THE DONALD wall (+ its steamroll) · Ω ground
@@ -127,8 +129,8 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
     ranged): parking on a deck he cannot climb still gets the whole fight.
   - Phase 2 at 50%: GOLDEN PARACHUTE (a gold canopy pops from the roof): reflects 15% of the damage taken, +25%
     speed, cooldowns ×0.7, briefcases in volleys of three.
-  - Ultimates hurt him like any boss. HP: Ω's PROTOCOL headline ×1.1 on a
-    3,000 base (the run's toughest boss), ×1.25 damage like every headline; he always counts as fighting on the leash.
+  - Ultimates hurt him like any boss. HP: 78k at the reference spend (`PROTOCOL_HP.chairman`; a ~60-70 s fight
+    for the autopilot with the unlock garage), ×1.25 damage like every headline; he always counts as fighting on the leash.
   - At 0 HP: the defeat (3.8 s, untouchable): the tower sags and lists, the treads seize, the echoes freeze, and
     through the glass he slams the PROTOCOL C button. His wreck runs `ChairmanDirector.onChairmanDefeated`: everything
     left on the floor (rally bots, minions) powers down, the rest of the wave is dropped, and THE WHITEOUT starts.
@@ -142,9 +144,13 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
     FINALE checkpoint (internal wave 8: a death in the finale offers RETRY FINALE; `startProtocol(8)` starts there).
   - STORM HEARTS (3, then 4, then 5 a cycle; ice crystals beamed to the giant, fixed bots every plow can break). Every
     Heart broken makes it ANGRIER for the rest of the fight (shorter gaps, more shards, faster telegraphs, stronger
-    gusts, more snow copies) and knocks 3% off the eye. The last Heart of a cycle STAGGERS it: it leans over the stand
-    and its eye crashes onto the stand front at arena level for 8 s (×1.6 damage from everything), then it rises again.
-  - The EYE (a fixed boss bot, HP = THE CHAIRMAN's): SEALED while closed (no damage), ×0.3 chip while open between
+    gusts, more snow copies) and knocks 3% off the eye. A Heart has 4× the base Storm Heart HP (×the zone's HP). The
+    last Heart of a cycle STAGGERS it: it leans over the stand and its eye crashes onto the stand front at arena level
+    (the crash knocks 5% off) for 7 s (×1.3 damage from everything), then it rises again. Every cycle moves the bar
+    ~14-20% before any damage of your own, so a weak garage gets there in a cycle or two more, a strong one in ~3.
+  - The HUD round panel reads the Hearts left / "Hit the eye!" / "Roll the ball into the eye" in the finale instead of
+    a bot count, and the plow's own 1.0-1.6 m snowball tier reads "Landslide" during THE AVALANCHE.
+  - The EYE (a fixed boss bot, HP = THE CHAIRMAN's ×1.3): SEALED while closed (no damage), ×0.3 chip while open between
     staggers (it opens every ~10 s and during a glare). At 25% HP THE AVALANCHE starts.
   - Attacks, all telegraphed, none during a STAGGER: ICE SHARD RAIN (blue rings fill, a spike drops onto each and
     stands 3 s as an obstacle), VORTEX ARM (a violet chevron lane, then a funnel runs it: one hit + a big knock), GUSTS
@@ -155,7 +161,7 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
     down onto the north stand front for good (sealed: ONLY THE AVALANCHE) and a GIANT SNOWBALL forms
     (`src/entities/GiantSnowball.ts`) ahead of the plow. Any plow pushes it (contact: the plow's closing speed along the
     contact line, leaning toward its heading; a big ball is heavy); it rolls with drag (down slopes, off deck sides and
-    walls; the arena edge is banked, so it never sits pinned in a corner), grows as it rolls through snow (scooping a trench; ~70 m of fresh snow from 1.5 m to the full 3.3 m), picks up
+    walls; the arena edge is banked, so it never sits pinned in a corner), grows as it rolls through snow (scooping a trench; ~70 m of deep fresh snow from 1.5 m to the full 3.3 m), picks up
     the fight's wreckage (bot scrap, briefcases, gold, crate planks it smashes, THE CHAIRMAN's red cap). Gusts push it,
     every other shard volley drops a ring on its path (a spike striking the ball chips 0.2 m off; steer it off the ring's
     middle to escape), lava melts it (0.35 m/s: steer round it); under 1 m it bursts into
@@ -180,8 +186,8 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
   fx/frostFx.ts (pooled, LOW halves them). Six trophies (unlock, clear, no-retry clear, THE CHAIRMAN, a broken HOSTILE
   TAKEOVER, THE AVALANCHE), a radio broadcast when it unlocks, a Story chapter + true epilogue and THE CHAIRMAN's profile
   (after a clear). **Five combat stars of its own** (config/challenges.ts `PROTOCOL_CHALLENGES`, save.protocol.stars,
-  750 coins each, not in the campaign's 30): no checkpoint retry; under 60 HP lost in wave 4; wave 6's echoes wrecked
-  within 30 s of the first arriving; THE CHAIRMAN beaten within 90 s of landing; THE AVALANCHE at full size on the first
+  750 coins each, not in the campaign's 30): no checkpoint retry; under 100 HP lost in wave 4; wave 6's echoes wrecked
+  within 30 s of the first arriving; THE CHAIRMAN beaten within 100 s of landing; THE AVALANCHE at full size on the first
   throw (the finale emits `avalancheHit { fullSize, attempt }` or sets `runFinished.avalancheFirstTry`).
 - **Testing**: `__game.startProtocol(wave)` in the console starts any wave without the unlock (8: THE WHITEOUT). Such a dev run records
   nothing (no clear, best time / wave, checkpoint or clear reward) unless the arena is unlocked and it starts on wave 1.

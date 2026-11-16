@@ -347,9 +347,11 @@ export class GameHud {
       this.topDirty = true;
     }
     const en = Math.max(0, Math.round(s.enemiesRemaining));
-    if (en !== L.enemies) {
+    const note = s.roundNote ?? '';
+    if (en !== L.enemies || note !== L.roundNote) {
       L.enemies = en;
-      H.enemies.textContent = en > 0 ? `${en} bot${en === 1 ? '' : 's'} left` : 'Get ready…';
+      L.roundNote = note;
+      H.enemies.textContent = note || (en > 0 ? `${en} bot${en === 1 ? '' : 's'} left` : 'Get ready…');
       this.topDirty = true; // "9 bots" -> "10 bots" can wrap the round row
     }
 

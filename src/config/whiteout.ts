@@ -32,27 +32,31 @@ export const WO = {
   HEARTS: [3, 4, 5] as readonly number[],
   /** Each broken Heart knocks this share of the eye's max HP off (the giant reels; keeps every pilot moving). */
   HEART_CHIP: 0.03,
+  /** The eye crashing onto the stand front (a STAGGER's start) knocks this share of its max HP off. */
+  CRASH_CHIP: 0.05,
+  /** Storm Heart HP x the zone's enemy HP multiplier (config/enemies.ts stormheart base HP). */
+  HEART_HP: 4,
   /** Hearts spawn at least this far from the plow (m) when a spot allows it. */
   HEART_CLEAR: 8,
   /** STAGGER: the lean-in (s, the eye travels to the stand front), the window (s), the recovery (s). */
   LEAN_T: 1.7,
-  STAGGER_T: 8,
+  STAGGER_T: 7,
   RECOVER_T: 2.2,
   /** Damage multipliers on the eye: open between staggers (chip), in the STAGGER window (bonus). */
   EYE_CHIP: 0.3,
-  EYE_STAGGER: 1.6,
+  EYE_STAGGER: 1.3,
   /** Between staggers the eye opens for EYE_OPEN_T s after every EYE_CLOSED_T s closed (and during a glare). */
   EYE_CLOSED_T: 7,
   EYE_OPEN_T: 3.6,
   /** The EYE's HP x THE CHAIRMAN's (same scaling: config/protocol.ts protocolBossHp). */
-  EYE_HP_K: 1.0,
+  EYE_HP_K: 1.3,
   /** At this share of its max HP: THE AVALANCHE. The eye never goes lower: only the giant snowball finishes it. */
   AVALANCHE_AT: 0.25,
 
   /* ---- escalation: anger 0..1 = broken Hearts / ANGER_FULL (cumulative, never resets) */
   ANGER_FULL: 12,
   /** Gap between the main attacks (shards / sweep / glare), s: calm .. furious. */
-  GAP: [3.4, 1.7] as readonly [number, number],
+  GAP: [3.0, 1.5] as readonly [number, number],
   /** First attack after a cycle's Hearts form (s). */
   FIRST_ATTACK: 2.2,
 
@@ -62,7 +66,7 @@ export const WO = {
   SHARD_FALL: 0.42,
   SHARDS: [4, 10] as readonly [number, number],
   SHARD_R: 2.2,
-  SHARD_DMG: 20,
+  SHARD_DMG: 24,
   SHARD_STAY: 3,
   SHARD_STEP: 0.12,
   /** Scatter radius around the plow (m) and the minimum spacing of the rings. */
@@ -74,7 +78,7 @@ export const WO = {
   SWEEP_TELE: 1.7,
   SWEEP_T: 1.05,
   SWEEP_HW: 2.6,
-  SWEEP_DMG: 28,
+  SWEEP_DMG: 34,
   SWEEP_KNOCK: 16,
   DOUBLE_AT: 0.5,
   SWEEP_SECOND: 1.3,
@@ -233,7 +237,7 @@ export const AV = {
   FORM_T: 0.8,
   /** Growth: m of radius per m rolled on snow as deep as REF_DEPTH (less on thinner snow, nothing on bare ground or a
    *  deck). Shrinks as it grows (a bigger ball needs more snow per cm): x 1 / (1 + GROW_FALLOFF x (r - START_R)). */
-  GROW: 0.034,
+  GROW: 0.03,
   GROW_FALLOFF: 0.18,
   REF_DEPTH: 0.8,
   /** Its rolling drag (1/s) and the extra drag of a big ball (x r / FULL_R); slope pull (m/s^2 per unit gradient). */

@@ -279,13 +279,18 @@ describe('Storm Hearts, escalation, STAGGER', () => {
     expect(wo.anger).toBeCloseTo(angerFrom(1));
     expect(eye.hp).toBeCloseTo(eye.maxHp * (1 - WO.HEART_CHIP));
     expect(wo.phase).toBe('hearts');
+    // the HUD round panel counts the Hearts, not the bots (the eye, copies)
+    expect(wo.roundNote).toBe('2 Storm Hearts left');
     mgr.damage(hs[1], 1e6, {});
     mgr.damage(hs[2], 1e6, {});
     run(0.05);
     expect(wo.phase).toBe('lean');
+    expect(wo.roundNote).toBe('Hit the eye!');
     run(WO.LEAN_T);
     expect(wo.phase).toBe('stagger');
     expect(wo.eyeMode).toBe('stagger');
+    // the crash onto the stand front knocks CRASH_CHIP off too
+    expect(eye.hp).toBeCloseTo(eye.maxHp * (1 - 3 * WO.HEART_CHIP - WO.CRASH_CHIP));
     // the eye lies on the stand front, inside the arena's reach
     expect(eye.position.z).toBeCloseTo(EYE_DOWN.z);
     run(WO.STAGGER_T);

@@ -16,7 +16,7 @@ import type { PlowKind } from '../../src/config/plows';
 import { RUSH_COST_MIN, RUSH_MIN_SLAM_R } from '../../src/entities/combat/classicRush';
 
 export const KINDS: PlowKind[] = ['classic', 'volt', 'brute', 'isotope', 'arsenal', 'revenant'];
-export type Tier = 'fresh' | 'mid' | 'high';
+export type Tier = 'fresh' | 'mid' | 'unlock' | 'high';
 export const TIERS: Tier[] = ['fresh', 'mid', 'high'];
 
 export const LINE: Record<PlowKind, UpgradeId[]> = {
@@ -33,6 +33,9 @@ export const TIER_DEF: Record<Tier, { core: number; line: number; gear: Record<s
   fresh: { core: 0, line: 0, gear: {} },
   // Mid-game: a few levels everywhere, commons + a couple of rares at item level 3 (one per slot; multi-equip would allow more, see docs/balance.md).
   mid: { core: 4, line: 3, gear: { steelWedge: 3, scrapRecycler: 3, turbineFan: 3, packCompactor: 3, repairDrone: 3 } },
+  // PROTOCOL C unlock (every arena cleared on normal and Hard: about 20-25k coins in this one garage, ~30k with what a
+  // save spreads over other plows and spare gear; config/protocol.ts SPEND_REF): not part of TIERS (the main report).
+  unlock: { core: 7, line: 6, gear: { spikedShare: 5, scrapRecycler: 5, jetTurbine: 5, packCompactor: 5, repairDrone: 5 } },
   // Late-game: heavily upgraded, legendary / epic gear at item level 8.
   high: { core: 10, line: 8, gear: { avalancheBlade: 8, phoenixPlating: 8, jetTurbine: 8, overclockChip: 8, repairDrone: 8 } },
 };
@@ -413,7 +416,7 @@ const RING_GAP = 1;
 
 /** Representative fight: bot HP per tier (zone 1 brutes and spinners / mid zones and rivals / late hard zones), and
  *  the seconds before a wrecked bot's replacement is in reach. */
-export const FIGHT_HP: Record<Tier, number> = { fresh: 80, mid: 200, high: 500 };
+export const FIGHT_HP: Record<Tier, number> = { fresh: 80, mid: 200, unlock: 320, high: 500 };
 const RESPAWN = 1;
 
 /** Seconds of the full rotation to fill the ultimate meter in a representative fight: five finite-HP bots in reach

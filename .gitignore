@@ -7,3 +7,4 @@ dist/
 .env.local
 .env.*.local
 duel2-report.md
+protocol-probe-out/

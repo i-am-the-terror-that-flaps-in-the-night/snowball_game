@@ -762,6 +762,8 @@ export interface HudState {
   totalRounds: number;
   bossRound: boolean;
   enemiesRemaining: number;
+  /** Replaces the round panel's "N bots left" when set (PROTOCOL C's finale: whiteoutDirector roundNote). */
+  roundNote?: string;
   plowHp: number;
   plowMaxHp: number;
   ballRadius: number;

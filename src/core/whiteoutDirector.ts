@@ -166,6 +166,25 @@ export class WhiteoutDirector {
     h.bursts = b.bursts;
     return h;
   }
+  /** The HUD round panel's line in the finale, in place of "N bots left" (the eye, Hearts and snow copies are bots, but
+   *  the count means nothing here): what to do now. Empty outside THE WHITEOUT. */
+  get roundNote(): string {
+    switch (this.phase) {
+      case 'hearts': {
+        const n = this.hearts.reduce((a, h) => a + (h.alive ? 1 : 0), 0);
+        return n > 0 ? `${n} Storm Heart${n === 1 ? '' : 's'} left` : 'THE WHITEOUT';
+      }
+      case 'lean':
+      case 'stagger':
+        return 'Hit the eye!';
+      case 'avalanche':
+        return 'Roll the ball into the eye';
+      case 'off':
+        return '';
+      default:
+        return 'THE WHITEOUT';
+    }
+  }
   /** Escalation 0..1. */
   get anger(): number {
     return angerFrom(this.broken);
@@ -853,6 +872,12 @@ export class WhiteoutDirector {
     ctx.impact.hit('pound', _v, 1, { stop: false });
     ctx.audio?.play('explosion', { volume: 1, pitch: 0.6 });
     ctx.ui.toast('STAGGERED! HIT THE EYE!', 'big');
+    // the crash itself hurts it (a share of its max HP: every cycle moves the bar, whatever the plow's damage)
+    const eye = this.eye;
+    if (eye?.alive && WO.CRASH_CHIP > 0) {
+      eye.hp = Math.max(eye.hpFloor, eye.hp - eye.maxHp * WO.CRASH_CHIP);
+      eye.flash = 0.4;
+    }
     this.note('stagger');
   }
 
@@ -1053,7 +1078,7 @@ export class WhiteoutDirector {
     whiteoutGiant.clearBeams();
     const spots = pickHeartSpots(n, ctx.plow.position.x, ctx.plow.position.z, Math.random(), WO.HEART_CLEAR, this.spots);
     for (const s of spots) {
-      const h = ctx.enemies.spawn('stormheart', s.x, s.z, { hpMult: ctx.zone.enemyHpMult ?? 1, noGate: true, heading: 0 }) as Bot;
+      const h = ctx.enemies.spawn('stormheart', s.x, s.z, { hpMult: (ctx.zone.enemyHpMult ?? 1) * WO.HEART_HP, noGate: true, heading: 0 }) as Bot;
       h.fixed = true;
       h.entering = false;
       this.gone[this.hearts.length] = false;

@@ -4,7 +4,7 @@ import type { GameContext } from '../src/core/types';
 import { Terrain } from '../src/world/Terrain';
 import type { Bot } from '../src/entities/enemies/Bot';
 import { ENEMIES } from '../src/config/enemies';
-import { CHAIRMAN_HP_K, CHAIRMAN_SPAWN, PROTOCOL_WAVES, headlineName, protocolBossHp, protocolRounds, protocolWaveZone, PROTOCOL_ZONE } from '../src/config/protocol';
+import { PROTOCOL_HP, CHAIRMAN_SPAWN, PROTOCOL_WAVES, headlineName, protocolBossHp, protocolRounds, protocolWaveZone, PROTOCOL_ZONE } from '../src/config/protocol';
 import {
   BEAT_MAX_CHARS, CHAIRMAN_ACQUIRE, CHAIRMAN_INTRO, CHAIRMAN_KILL, CHAIRMAN_KILL_ANY, CHAIRMAN_KNOCKOFF, CHAIRMAN_LAST, CHAIRMAN_LOW_HP, CHAIRMAN_REVEAL,
   CHAIRMAN_TAUNTS,
@@ -146,7 +146,7 @@ describe('wave 7', () => {
     expect(headlineName(7)).toBe('THE CHAIRMAN');
     expect(protocolWaveZone(PROTOCOL_ZONE, 7).bossName).toBe('THE CHAIRMAN');
     const net = ENEMIES.chairman.hp * protocolBossHp('chairman', false);
-    expect(protocolBossHp('chairman', false)).toBeCloseTo(protocolBossHp('omega', false) * CHAIRMAN_HP_K);
+    expect(net).toBeCloseTo(PROTOCOL_HP.chairman);
     for (const t of ['frostbyte', 'bulldoza', 'grinder', 'slush', 'donald', 'omega'] as const) expect(net).toBeGreaterThan(ENEMIES[t].hp * protocolBossHp(t, false));
   });
 

@@ -1545,6 +1545,7 @@ export class Game {
     hud.overloadCost = ctx.combat.overloadCost;
     hud.snowFraction = ctx.snow.totalSnowFraction();
     hud.avalanche = this.protocol ? this.whiteout.ballHud : null;
+    hud.roundNote = this.protocol ? this.whiteout.roundNote : '';
     hud.bosses = ctx.enemies.bosses.map((b) => ({
       name: b.snow ? `SNOW ${ENEMIES[b.type].name}` : b.echo ? `ECHO ${ENEMIES[b.type].name}` : ENEMIES[b.type].name,
       title: b.snow ? 'Snow copy' : b.echo ? 'Echo' : b.headline && b.type !== 'chairman' ? `PROTOCOL · ${ENEMIES[b.type].title}` : ENEMIES[b.type].title,

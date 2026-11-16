@@ -755,3 +755,92 @@ target mid-pack, clusters high (Phase -> Grasp -> Reap and the phantom chains), 
   numbers compare plows; they don't predict round length.
 - Thunderclap's storm strikes and other effects roll `Math.random`. The report and the tests seed it, so runs repeat
   exactly.
+
+## PROTOCOL C (stage-5 balance pass)
+
+Goal: a hard but beatable ~12-20 min final run for a pilot who has just cleared every arena on Hard, and still a real
+fight for a heavily upgraded one. Enemy HP / damage keep the spend scale (`config/protocol.ts` `spendScale`: x1 at
+`SPEND_REF` 30,000 coins spent on upgrades + gear, HP ^0.5, damage ^0.3, floored at 0.8 / 0.85, no cap).
+
+**Tools.** `scripts/protocol-probe.mjs` (built on `omega-probe.mjs`): the campaign sweep autopilot plays the whole rush
+headless (waves 1-7 and THE WHITEOUT, no purchases in the shop, a death revived in place and counted) with a sim garage,
+and logs each wave's time and HP lost, wave 6's echo sweep, THE CHAIRMAN's time from landing, the finale's phases,
+staggers and Avalanche bursts. `node scripts/protocol-probe.mjs --tiers mid,unlock,high --plows classic,volt,brute,isotope,arsenal`.
+`npm run balance` prints the per-wave HP / single-target DPS estimate (`scripts/balance/protocol-report.md`), now with
+an **unlock** garage (`TIER_DEF.unlock`: core 7, line 6, five rares at item level 5; 22-25k coins in one plow; not in
+the main report's tiers).
+
+**SPEND_REF stays 30,000.** One clean pass of all six arenas on normal and Hard with their stars pays ~46k coins
+(kills x coinMult, clear rewards, star bonuses; loot, achievements and replays on top), and the unlock garage costs
+22-25k in one plow (protocolSpent counts every line and every owned item, so a real save sits nearer 30k). The probe
+agrees: the high garage (~100k, k 1.82) clears in about the unlock garage's time (before and after), so the scale
+itself was right; the HP it scaled was not.
+
+**What was wrong (before, autopilot, one run per plow, REVENANT excluded: see the limits below).**
+
+| garage | total (fights) | w1 | w2 | w3 | w4 | w5 | w6 | w7 (CHAIRMAN) | finale |
+|---|---|---|---|---|---|---|---|---|---|
+| mid (6k, k 0.80) | 231-290 s | 6-9 | 8-9 | 14 | 20-22 | 28 | 34-37 | 23-53 (20-51 from landing) | 82-135 |
+| unlock (22-25k, k 0.85-0.91) | 190-223 s | 4-5 | 7-8 | 13-14 | 20-21 | 27 | 33-44 | 15-22 (12-19) | 53-96 |
+| high (100k, k 1.82-1.88) | 180-219 s | 4-7 | 7-9 | 13-14 | 20-21 | 26-27 | 33-36 | 16-22 (13-19) | 62-93 |
+
+- Waves 2-6 ended the moment their last echo walked in (6 + 6 s per echo): the headline (home HP x max(1.6, 1.8 x
+  1.15): FROSTBYTE ~1.7k, Ω ~12k at k 1) died in seconds and the echoes (x0.35 home: 270-2,000 HP) in one hit.
+- THE CHAIRMAN (16.4k) lasted 12-19 s: none of his big moves came round twice.
+- THE WHITEOUT: a Storm Heart (468 HP at k 1) broke in under a second, so a cycle of Hearts took 5-15 s, and one
+  STAGGER (8 s at x1.6, with the ultimate saved from wave 7) took the eye (16.4k) from ~90% to 25%: one cycle, then
+  THE AVALANCHE. The finale's fight part was ~15-25 s.
+
+**Changes.**
+
+| number | before | after | why |
+|---|---|---|---|
+| headline HP (`PROTOCOL_HP`, in-game HP at k 1) | home HP x max(1.6, 2.07): FROSTBYTE 1.7k, BULLDOZA 1.6k, GRINDER 3.3k, SLUSH & SLEET 4.3k, DONALD 11.3k, Ω 11.9k | FROSTBYTE 34k, BULLDOZA 40k, GRINDER 48k, SLUSH & SLEET 58k (pair), DONALD 54k, Ω 74k | a ramp from ~30 s to ~60 s per wave for the unlock autopilot; THE DONALD kept below Ω (wave 5 is the deadliest wave: 1-6 non-dodging deaths at mid / high) |
+| THE CHAIRMAN HP | Ω headline x1.1 = 16.4k | 78k (`PROTOCOL_HP.chairman`) | a ~50-85 s fight (median ~70 s at unlock / high) so his moves come round 2-3 times; still the run's biggest bar |
+| echo HP (`ECHO_HP`) | x0.35 home HP (270-2,000) | 6% of their own headline HP (2.0-4.4k; wave 6's five ~10k) | echoes now take a few seconds each: they matter in the fight and in the wave 6 sweep star |
+| Storm Heart HP (`WO.HEART_HP`) | x1 (468 at k 1) | x4 (1,870) | 2-4 s of fire per Heart at unlock instead of <1 s; travelling between them still takes most of a cycle |
+| crash chip (`WO.CRASH_CHIP`, new) | - | 5% of the eye's max HP when it crashes onto the stand | with the Hearts' 3% each every cycle moves the bar 14-20% on its own: a weak garage needs a cycle or two more, never forever |
+| eye HP (`WO.EYE_HP_K`) | x1.0 THE CHAIRMAN (16.4k) | x1.3 THE CHAIRMAN (101k) | three cycles for the unlock / high garages (two for ARSENAL), up from one |
+| STAGGER window / bonus (`WO.STAGGER_T` / `EYE_STAGGER`) | 8 s / x1.6 | 7 s / x1.3 | one stagger with the ultimate held from wave 7 no longer ends the fight; the window is still the big damage moment |
+| shard / sweep damage (`WO.SHARD_DMG` / `SWEEP_DMG`) | 20 / 28 | 24 / 34 | the finale cost the unlock autopilot 10-100 HP; now it lasts 2-3 cycles and the escalation should bite |
+| attack gap calm .. furious (`WO.GAP`) | 3.4 .. 1.7 s | 3.0 .. 1.5 s | as above |
+| Avalanche growth (`AV.GROW`) | 0.034 m per m | 0.030 | ~70 m of deep snow to full size (was ~61): the autopilot's best push was 13 s, too quick next to the 45-90 s target |
+| wave 4 star (`PROTOCOL_STAR_HP`) | under 60 HP | under 100 HP | wave 4 now lasts ~40 s (was ~20 s); 100 HP is about a quarter of an unlock plow's HP; the non-dodging autopilot loses 2-510 there |
+| CHAIRMAN star (`PROTOCOL_STAR_CHAIRMAN_S`) | 90 s from landing | 100 s | his fight went from 12-19 s to a median ~70 s on the autopilot (47-88 s); a human who dodges is slower |
+| echo sweep star, Avalanche star, no-retry star | 30 s / first try / no retry | unchanged | the autopilot sweeps wave 6 in 24-38 s (one 52 s), so 30 s is already demanding; the other two are skill checks |
+| SPEND_REF | 30,000 | 30,000 | see above |
+
+THE CHAIRMAN's move cadence is unchanged: the longer fight (rather than shorter cooldowns) is what lets every big move
+come round two or three times, and wave 7 already costs the non-dodging autopilot the most HP of the run.
+
+HUD: in the finale the round panel reads "N Storm Hearts left" / "Hit the eye!" / "Roll the ball into the eye" instead
+of a bot count (the eye, Hearts and snow copies are bots), and the plow's own 1.0-1.6 m snowball tier reads "Landslide"
+instead of "Avalanche" during THE AVALANCHE.
+
+**After (autopilot, one run per plow; waves 6-7 rerun after the Ω / CHAIRMAN swap to 74k / 78k).**
+
+| garage | total (fights) | w1 | w2 | w3 | w4 | w5 | w6 | w7 | CHAIRMAN from landing | finale (staggers) | Avalanche (bursts) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| mid | 627-993 s (mean 870) | 41-96 | 52-76 | 41-100 | 49-95 | 59-116 | 97-155 | 111-180 | 109-177 | 158-253 (3) | 25-96 (0) |
+| unlock | 354-575 s (mean 449) | 21-39 | 21-35 | 22-45 | 25-49 | 28-49 | 40-63 | 50-85 | 47-82 | 94-264 (2-3) | 17-168 (0-1) |
+| high | 381-527 s (mean 466) | 25-43 | 22-41 | 26-46 | 28-52 | 33-61 | 38-78 | 54-91 | 51-88 | 101-196 (2-3) | 16-105 (0) |
+
+- The unlock autopilot needs ~7.5 min of fighting (shops excluded, as the best time). It locks on perfectly, fires
+  every ability on cooldown and never dodges, so a human with the same garage is slower; at 1.5-2x that is the
+  12-15 min target. The finale is ~2 min on the autopilot (3-4 min for a human on a well-upgraded plow).
+- Mid's waves 6-7 and totals are from the sweep before the swap (Ω 80k, THE CHAIRMAN 72k).
+- Danger: the autopilot face-tanks everything. Unlock garage: 0-1 deaths a run (waves 5 and 7). High garage: 5-16
+  deaths a run, nearly all in waves 5 and 7 (damage x1.44 on top of Hard's x1.5): the heavily upgraded plow gets a
+  real fight. The finale costs either 10-180 HP.
+- Stars on the autopilot: wave 6 sweep 24-38 s (one 52 s; 30 s is demanding), THE CHAIRMAN 47-88 s (100 s), wave 4
+  HP 2-830 (100 HP; only ARSENAL's kiting gets under), Avalanche at full size first try in all but one run per sweep.
+
+**Limits.**
+- One run per plow per garage; wave times swing ~+-20% between plows and runs.
+- REVENANT is out of the tables: the sweep autopilot does not play its kit (before the change it already took 528 s at
+  mid and 2-6x every other plow per wave), so its numbers measure the autopilot, not the plow.
+- A mid garage (6k spent, at the 0.8 floor) takes ~14.5 min on the autopilot with 3-13 deaths (waves 5 and 7), i.e.
+  likely 20-30 min and several retries for a human. That is the floor's doing (a thrifty pilot faces x0.8 HP with
+  roughly a third of the unlock garage's damage); lowering `SPEND_HP_RANGE[0]` would shorten it.
+- The Avalanche times are the autopilot's waypoint loop (it never misses the ball, never lets a gust carry it); the
+  45-90 s human target is an estimate from that.

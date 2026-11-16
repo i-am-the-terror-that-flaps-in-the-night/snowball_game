@@ -1,4 +1,4 @@
-import type { EnemyType } from './enemies';
+import { ENEMIES, type EnemyType } from './enemies';
 import { ZONES, type RoundDef, type SpawnGroup, type ZoneDef } from './zones';
 import { HARD } from './challenges';
 import { STAGE_FROM_WAVE, protocolTerrain, splitWave } from '../world/protocol/layout';
@@ -29,19 +29,30 @@ export const PROTOCOL_FINALE = 8;
 export function protocolWaveLabel(wave: number): string {
   return wave >= PROTOCOL_FINALE ? 'FINALE' : `WAVE ${wave}`;
 }
-/** Headline (PROTOCOL-upgraded) boss: HP = home-arena HP x max(HEADLINE_HP, HARD.hpMult x HEADLINE_HARD), i.e. at
- *  least its Hard-campaign strength plus 15% (x1.6 home alone was only ~0.89x Hard); x outgoing damage; its cooldowns
- *  between moves run HEADLINE_CD x as fast (wind-ups / telegraphs keep their length: EnemyManager.step). */
-export const HEADLINE_HP = 1.6;
-export const HEADLINE_HARD = 1.15;
+/** Headline (PROTOCOL-upgraded) bosses: their HP at the reference spend (SPEND_REF: spendScale 1; the SLUSH & SLEET
+ *  pair shares its number), the same for every pilot before spendScale. Not their home-arena HP x a factor any more
+ *  (stage-5 balance pass, docs/balance.md "PROTOCOL C"): that left FROSTBYTE at ~1.7k HP against a garage that has
+ *  cleared every Hard arena, and waves 1-6 ended as soon as their last echo walked in (4-8 s for wave 1-2 on the
+ *  autopilot). A ramp instead: ~25-30 s for wave 1 up to ~60 s for MEGAPLOW Ω and THE CHAIRMAN for an autopilot with the
+ *  unlock garage (scripts/protocol-probe.mjs). Every headline is still well above its Hard-campaign self.
+ *  x outgoing damage (HEADLINE_DMG); its cooldowns between moves run HEADLINE_CD x as fast (wind-ups / telegraphs keep
+ *  their length: EnemyManager.step). */
+export const PROTOCOL_HP: Readonly<Record<'frostbyte' | 'bulldoza' | 'grinder' | 'twins' | 'donald' | 'omega' | 'chairman', number>> = {
+  frostbyte: 34000,
+  bulldoza: 40000,
+  grinder: 48000,
+  twins: 58000,
+  donald: 54000,
+  omega: 74000,
+  chairman: 78000,
+};
 export const HEADLINE_DMG = 1.25;
 export const HEADLINE_CD = 1.3;
-/** Echoes: x home-arena HP, x outgoing damage. */
-export const ECHO_HP = 0.35;
+/** Echoes: x their own headline HP (PROTOCOL_HP), x outgoing damage. Sturdy enough to matter (wave 6's five come to
+ *  ~11k HP at SPEND_REF): wave 6's "Restructuring" star asks you to wreck them as they walk in. */
+export const ECHO_HP = 0.06;
 export const ECHO_DMG = 0.85;
-/** THE CHAIRMAN (wave 7's final boss, no home arena): his HP multiplier is MEGAPLOW Ω's PROTOCOL headline's x this
- *  (with his bigger base HP: ~1.4x the Ω headline, the run's toughest boss); he lands at CHAIRMAN_SPAWN, under his box. */
-export const CHAIRMAN_HP_K = 1.1;
+/** THE CHAIRMAN (wave 7's final boss, PROTOCOL_HP.chairman, the run's toughest) lands at CHAIRMAN_SPAWN, under his box. */
 export const CHAIRMAN_SPAWN = { x: 0, z: -19, heading: 0 } as const;
 /** Wave 7's countdown: long enough for the boardroom box to light up and the camera to find it (the reveal). */
 export const REVEAL_COUNTDOWN = 6;
@@ -73,12 +84,19 @@ export function homeZone(type: EnemyType): ZoneDef | undefined {
   return ZONES.find((z) => z.rounds.some((r) => r.boss && r.groups.some((g) => g.type === type)));
 }
 
-/** Net HP multiplier of a Protocol boss (before the pilot-power scale): home x ECHO_HP for an echo; for the headline
- *  the larger of home x HEADLINE_HP and its Hard-campaign HP (home x HARD.hpMult) x HEADLINE_HARD. */
+/** The PROTOCOL_HP slot of a boss type. */
+function hpKey(type: EnemyType): keyof typeof PROTOCOL_HP | null {
+  if (type === 'slush' || type === 'sleet') return 'twins';
+  return type in PROTOCOL_HP ? (type as keyof typeof PROTOCOL_HP) : null;
+}
+
+/** Net HP multiplier of a Protocol boss over its base HP (ENEMIES[type].hp), before the pilot-power scale: its
+ *  PROTOCOL_HP (a twin: half the pair's) / base HP, x ECHO_HP for an echo. A boss with no PROTOCOL_HP entry: its home
+ *  arena's HP x HARD.hpMult (its Hard-campaign self). */
 export function protocolBossHp(type: EnemyType, echo: boolean): number {
-  if (type === 'chairman') return protocolBossHp('omega', false) * CHAIRMAN_HP_K;
-  const home = homeZone(type)?.enemyHpMult ?? 1;
-  return echo ? home * ECHO_HP : home * Math.max(HEADLINE_HP, HARD.hpMult * HEADLINE_HARD);
+  const key = hpKey(type);
+  const head = key ? PROTOCOL_HP[key] / (key === 'twins' ? 2 : 1) / ENEMIES[type].hp : (homeZone(type)?.enemyHpMult ?? 1) * HARD.hpMult;
+  return echo ? head * ECHO_HP : head;
 }
 
 function bossGroups(key: BossKey, delay: number, echo: boolean): SpawnGroup[] {
@@ -153,7 +171,9 @@ export function waveBossCount(wave: number): { total: number; echoes: number } {
  *  and plows don't count): at SPEND_REF coins (about what a pilot has spent by the unlock: every arena cleared on
  *  normal and Hard) bots are at the plain Hard-based numbers; HP grows with the square root of the spend ratio and
  *  damage more gently. Floored (a thrifty pilot's run stays a real final test), no cap: it keeps up however far a
- *  pilot upgrades. */
+ *  pilot upgrades. SPEND_REF checked in the stage-5 pass: one clean pass of every arena on normal + Hard with its stars
+ *  pays ~46k coins (kills, clear rewards, star bonuses; loot and replays on top), and the sim's unlock garage (core 7,
+ *  line 6, five rares at item level 5) costs 22-25k in one plow, ~30k with the other lines and spare gear a save buys. */
 export const SPEND_REF = 30000;
 export const SPEND_HP_EXP = 0.5;
 export const SPEND_DMG_EXP = 0.3;

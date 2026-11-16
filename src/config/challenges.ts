@@ -267,12 +267,12 @@ export function protocolChallengeText(def: ProtocolChallengeDef, cleared: boolea
 
 /** "Quiet Quarter": the wave judged and the HP budget (wave 4: SLUSH & SLEET upgraded + three echoes). */
 export const PROTOCOL_STAR_HP_WAVE = 4;
-export const PROTOCOL_STAR_HP = 60;
+export const PROTOCOL_STAR_HP = 100;
 /** "Restructuring": wave 6's echoes all wrecked within this many seconds of the first one arriving. */
 export const PROTOCOL_STAR_SWEEP_WAVE = 6;
 export const PROTOCOL_STAR_SWEEP_S = 30;
 /** "Hostile Exit": THE CHAIRMAN beaten within this many seconds of landing. */
-export const PROTOCOL_STAR_CHAIRMAN_S = 90;
+export const PROTOCOL_STAR_CHAIRMAN_S = 100;
 /** Coins per newly earned PROTOCOL C star. */
 export const PROTOCOL_STAR_REWARD = 750;
 

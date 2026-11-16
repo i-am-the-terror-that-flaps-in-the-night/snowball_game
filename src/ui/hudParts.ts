@@ -14,10 +14,12 @@ const ULT_HUD: Record<HudState['fAbility'], { bar: string; tag: string; icon: st
   grasp: { bar: '⚰️', tag: 'WILD HUNT', icon: '⚰️', name: 'HUNT', baseIcon: '⛓️', baseName: 'GRASP' },
 };
 
-function tierName(r: number): string {
+/** `giant`: PROTOCOL C's AVALANCHE phase is on (the giant snowball has the name there: the plow's own 1.0-1.6 m tier
+ *  reads 'Landslide' instead). */
+function tierName(r: number, giant = false): string {
   if (r < 0.6) return 'Snowball';
   if (r < 1.0) return 'Boulder';
-  if (r < 1.6) return 'Avalanche';
+  if (r < 1.6) return giant ? 'Landslide' : 'Avalanche';
   if (r < 2.4) return 'Glacier';
   return 'SNOWPOCALYPSE';
 }
@@ -86,9 +88,9 @@ export interface HudRefs {
 /** Last values written to the HUD, so updateHud only touches what changed (GameHud's `last`). */
 export function hudLast() {
   return {
-    zone: '', round: -1, total: -1, bossRound: false, enemies: -1,
+    zone: '', round: -1, total: -1, bossRound: false, enemies: -1, roundNote: '',
     coins: -1, plowHp: -1, plowMax: -1, plowF: -1, low: false, mid: false,
-    ballR: -1, ballFrac: -1, tier: -1, ready: false, full: false, held: false,
+    ballR: -1, ballFrac: -1, tier: -1, tierAlt: false, ready: false, full: false, held: false,
     dash: -1, whirl: -2, flame: -2, primary: -2, abKey: '', fKind: '', crit: -2, batt: -2, heat: -2, heatCost: -1, chunks: -2, souls: -2, streak: -2, streakLeft: -1, combo: 0, comboTier: -1, snow: -1, count: -1, bossCount: -1, bossLayout: '', brawl: -1, hideRound: false, arena: '', waveTag: '',
   };
 }
@@ -377,14 +379,16 @@ export function updateHudPanels(ui: { h: HudRefs; last: HudLast; hud: HTMLElemen
 
   // snowball gauge
   const r = Math.round(s.ballRadius * 100) / 100;
-  if (r !== L.ballR) {
+  const giant = !!s.avalanche;
+  if (r !== L.ballR || giant !== L.tierAlt) {
     L.ballR = r;
     H.radius.textContent = `${r.toFixed(2)}m`;
     const t = tierIndex(r);
-    if (t !== L.tier) {
+    if (t !== L.tier || giant !== L.tierAlt) {
       if (L.tier >= 0 && t > L.tier) restart(H.gauge, 'tierup');
       L.tier = t;
-      H.tier.textContent = tierName(r);
+      L.tierAlt = giant;
+      H.tier.textContent = tierName(r, giant);
       H.gauge.dataset.tier = String(t);
     }
     const ready = s.ballRadius >= MIN_BALL_RADIUS;

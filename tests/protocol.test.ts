@@ -5,8 +5,9 @@ import { ENEMY_GATES, PLOW_SPAWN } from '../src/core/types';
 import { Progression, sanitizeProtocol } from '../src/core/Progression';
 import { ZONES } from '../src/config/zones';
 import { HARD } from '../src/config/challenges';
+import { ENEMIES } from '../src/config/enemies';
 import {
-  ECHO_HP, HEADLINE_CD, HEADLINE_HARD, HEADLINE_HP, MAX_ACTIVE, PROTOCOL_CLEAR_REWARD, PROTOCOL_FINALE, PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, homeZone,
+  ECHO_HP, HEADLINE_CD, MAX_ACTIVE, PROTOCOL_HP, PROTOCOL_CLEAR_REWARD, PROTOCOL_FINALE, PROTOCOL_INDEX, PROTOCOL_WAVES, PROTOCOL_ZONE, homeZone,
   protocolRounds, protocolWaveZone, protocolZone, waveBossCount,
 } from '../src/config/protocol';
 import {
@@ -97,7 +98,7 @@ describe('wave composition', () => {
     expect(waveBossCount(1)).toEqual({ total: 1, echoes: 0 });
   });
 
-  it('net boss HP: headline = home x max(HEADLINE_HP, Hard x HEADLINE_HARD), echo = home x ECHO_HP (x the pilot-power scale)', () => {
+  it('net boss HP: headline = PROTOCOL_HP at the reference spend, echo = ECHO_HP x that (x the pilot-power scale)', () => {
     const z = protocolZone({ hp: 1.5, dmg: 1.2 });
     expect(z.enemyHpMult).toBeCloseTo(HARD.hpMult * 1.5);
     expect(z.enemyDmgMult).toBeCloseTo(HARD.dmgMult * 1.2);
@@ -105,10 +106,12 @@ describe('wave composition', () => {
       for (const g of r.groups) {
         if (g.type === 'chairman') continue; // no home arena (tests/chairman.test.ts)
         const home = homeZone(g.type)!.enemyHpMult;
-        const net = PROTOCOL_ZONE.enemyHpMult * g.hpMult!;
-        expect(net).toBeCloseTo(home * (g.echo ? ECHO_HP : Math.max(HEADLINE_HP, HARD.hpMult * HEADLINE_HARD)));
-        // a headline is at least its Hard-campaign self (+15%) and at least x1.6 its home HP
-        if (!g.echo) expect(net).toBeGreaterThanOrEqual(Math.max(home * HARD.hpMult * HEADLINE_HARD, home * HEADLINE_HP) - 1e-9);
+        const hp = ENEMIES[g.type].hp * PROTOCOL_ZONE.enemyHpMult * g.hpMult!;
+        const key = g.type === 'slush' || g.type === 'sleet' ? 'twins' : (g.type as keyof typeof PROTOCOL_HP);
+        const head = PROTOCOL_HP[key] / (key === 'twins' ? 2 : 1);
+        expect(hp).toBeCloseTo(g.echo ? head * ECHO_HP : head);
+        // a headline is far above its Hard-campaign self (+15% was the old floor)
+        if (!g.echo) expect(hp).toBeGreaterThan(ENEMIES[g.type].hp * home * HARD.hpMult * 1.15 * 3);
         expect(g.headline).toBe(!g.echo);
       }
     }
@@ -353,12 +356,12 @@ async function arena(maxActiveBosses?: number) {
 describe('echo bosses', () => {
   it('carry ECHO HP and names, and the headline / echo damage multipliers', async () => {
     const { boss } = await arena();
-    const e = boss('grinder', 0, 10, { echo: true, hpMult: ECHO_HP });
-    const h = boss('grinder', 0, -10, { headline: true, hpMult: HEADLINE_HP });
+    const e = boss('grinder', 0, 10, { echo: true, hpMult: 0.35 });
+    const h = boss('grinder', 0, -10, { headline: true, hpMult: 1.6 });
     expect(e.holo).not.toBeNull();
     expect(h.holo).toBeNull();
-    expect(e.maxHp).toBe(Math.round(1100 * ECHO_HP));
-    expect(h.maxHp).toBe(Math.round(1100 * HEADLINE_HP));
+    expect(e.maxHp).toBe(Math.round(1100 * 0.35));
+    expect(h.maxHp).toBe(Math.round(1100 * 1.6));
     expect(e.displayName).toBe('ECHO THE GRINDER');
     expect(h.displayName).toBe('THE GRINDER');
     expect(e.dmgOutMult).toBeLessThan(1);
