@@ -423,9 +423,9 @@ describe('gear', () => {
     }
   });
 
-  it('the Garage only sells the core upgrades and plow lines', () => {
+  it('the Garage only sells the core upgrades, the two Focus picks and plow lines', () => {
     for (const u of SHOP_UPGRADES) expect(u.itemOnly).toBeFalsy();
-    expect(SHOP_UPGRADES.filter((u) => !u.plowOnly).map((u) => u.id).sort()).toEqual(['armor', 'engine', 'hopper', 'packedIce']);
+    expect(SHOP_UPGRADES.filter((u) => !u.plowOnly).map((u) => u.id).sort()).toEqual(['armor', 'engine', 'focusAbility', 'focusWeapon', 'hopper', 'packedIce']);
     // Every item-only stat is reachable through some gear.
     for (const id of ITEM_STATS) expect(GEAR.some((g) => g.grants.some((x) => x.stat === id)), id).toBe(true);
   });

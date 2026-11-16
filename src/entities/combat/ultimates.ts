@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { KillWeapon } from '../../core/events';
 import type { EnemyManagerAPI, PlayerStats, PlowAPI } from '../../core/types';
 import { DUEL_ULT_CHARGE, DUEL_ULT_KIND_CHARGE } from '../../config/duel';
-import { Reach, _p, _q, _tip, castOrigin, type CastOrigin, type CombatHost, type UltKind } from './shared';
+import { Focus, Reach, _p, _q, _tip, castOrigin, focusMult, type CastOrigin, type CombatHost, type UltKind } from './shared';
 
 /** Knockback scratch: damage() copies it synchronously and never keeps it. Never written from Combat.hitPlow (the
  *  Duel victim path), so it stays valid across the nested victim hit. */
@@ -35,9 +35,11 @@ export const ultCharge = (st: PlayerStats, base: number) => (base * Math.max(1, 
  *  / sqrt(cooldownMult) for Overclock; config/duel.ts). */
 export function ultMeter(b: { readonly stats: PlayerStats; readonly pvp?: boolean; readonly enemies: EnemyManagerAPI }, base: number): number {
   const foe = b.pvp ? (b.enemies as { duelFoeMaxHp?: number }).duelFoeMaxHp : undefined;
-  if (!foe || !(foe > 0)) return ultCharge(b.stats, base) / (b.pvp ? 1 : PVE_ULT_RATE);
+  // Weapon Focus charges every meter faster: a smaller meter (ultChargeMult, 1 without it).
+  const rate = b.stats.ultChargeMult || 1;
+  if (!foe || !(foe > 0)) return ultCharge(b.stats, base) / (b.pvp ? 1 : PVE_ULT_RATE) / rate;
   const st = b.stats;
-  return (DUEL_ULT_CHARGE * (DUEL_ULT_KIND_CHARGE[st.plowKind] ?? 1) * foe) / Math.sqrt(Math.min(1, st.cooldownMult || 1));
+  return (DUEL_ULT_CHARGE * (DUEL_ULT_KIND_CHARGE[st.plowKind] ?? 1) * foe) / Math.sqrt(Math.min(1, st.cooldownMult || 1)) / rate;
 }
 
 /** One plow's ultimate, driven by Ultimates. */
@@ -158,7 +160,7 @@ export function ultBlast(
       h.lightning.bolt(_p, _q, ULT_BOLT);
     }
     const hp0 = e.hp;
-    const killed = h.b.enemies.damage(e, dmg * h.b.stats.damageMult * h.hitMult(e), {
+    const killed = h.b.enemies.damage(e, dmg * h.b.stats.damageMult * focusMult(h.b.stats, Focus.Ult) * h.hitMult(e), {
       source: 'other',
       knockback: _kb.set((dx / nd) * o.knock, 0, (dz / nd) * o.knock),
       stunSeconds: o.stun,

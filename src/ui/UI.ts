@@ -3,7 +3,7 @@ import './ui.css';
 import './brawl.css';
 import './challenges.css';
 import type { BrawlResult, GameContext, HudState, RunSummary, SoundName, SurvivalShopOpts, UIAPI, UIHandlers } from '../core/types';
-import { SHOP_UPGRADES, type UpgradeCategory } from '../config/upgrades';
+import { SHOP_UPGRADES, type UpgradeCategory, type UpgradeId } from '../config/upgrades';
 import type { GearSlot } from '../config/gear';
 import { PLOWS, type PlowKind } from '../config/plows';
 import { ZONES } from '../config/zones';
@@ -648,8 +648,21 @@ export class UI implements UIAPI {
       ctx: this.ctx, shop: () => this.shop, duelWallet: this.duelWallet, sfx: (n) => this.sfx(n),
       cards: this.cards, gearCards: this.gearCards, gearSlotLabels: this.gearSlotLabels, tabBtns: this.tabBtns,
       lineSections: this.lineSections, shopTab: this.shopTab, tabBlurb: this.tabBlurb, tabTraits: this.tabTraits,
-      plowPick: this.plowPick, shopPreview: this.shopPreview,
+      plowPick: this.plowPick, shopPreview: this.shopPreview, respec: (id) => this.respecFocus(id),
     };
+  }
+
+  /** RESPEC a FOCUS upgrade: the Garage outside a run only (not a run's shop, not the duel garage). */
+  private get canRespec(): boolean {
+    return !this.shopContinue && !this.survivalShop && !this.duelWallet;
+  }
+
+  private respecFocus(id: UpgradeId): boolean {
+    if (!this.canRespec || !this.ctx.progression.respec(id)) return false;
+    this.ctx.stats = this.ctx.progression.computeStats();
+    this.ctx.plow.applyStats(this.ctx.stats);
+    this.refreshCards();
+    return true;
   }
 
   /** Q / E (gamepad LB / RB): previous / next Garage tab. */
@@ -694,6 +707,7 @@ export class UI implements UIAPI {
       c.buy.innerHTML = maxed ? (c.def.maxLevel === 1 ? '✓ OWNED' : '★ MAXED') : `${bonus ? '🎁' : '<span class="ss-coin sm"></span>'}${fmt(p.cost(c.def.id))}`;
       c.buy.title = bonus ? 'Paid with catch-up coins: yours to keep once the duel starts.' : '';
       c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
+      if (c.def.exclusiveWith) garage.refreshFocusCard(c, lvl, p.focusLock(c.def.id), this.ctx.progression.respecRefund(c.def.id), this.canRespec);
     }
     garage.refreshTabs(this.garageDeps());
   }

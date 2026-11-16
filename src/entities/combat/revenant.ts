@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, Reach, _p, _q, castOrigin, waveFloor, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './shared';
+import { Focus, Kit, Reach, _p, _q, castOrigin, waveFloor, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 import { Shockwaves, type ShockPalette } from './arsenalFx';
 import { Chains, GhostTrail, HauntMarks, HuntDome, PhantomMeshes, ScytheArcs } from './revenantFx';
@@ -334,7 +334,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
       this.h.ultFeedShare = i === near ? 1 : REAP_ULT_SPLASH;
       // (Duel: one hit; a second big Reap on a Haunted pilot two-shot the lighter plows.)
       const twice = big && !this.b.pvp && this.haunts.has(e) ? 2 : 1;
-      for (let k = 0; k < twice && e.alive; k++) this.hit(e, dmg, ox, oz, REAP_KNOCK * (big ? 1.6 : 1), { blade: big || !this.b.pvp });
+      for (let k = 0; k < twice && e.alive; k++) this.hit(e, dmg, ox, oz, REAP_KNOCK * (big ? 1.6 : 1), { blade: big || !this.b.pvp, kind: Focus.Primary });
       _p.set(e.position.x, e.position.y + e.radius, e.position.z);
       ctx.fx.burst(_p, REAP_HIT);
       ctx.fx.sparks(_p, null, REAP_SPARKS);
@@ -343,13 +343,14 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     this.clearTargets();
   }
 
-  /** One hit on a bot (x damage mult x the host's hit mult, Haunt included), knocked away from (fx, fz). */
-  private hit(e: EnemyHandle, dmg: number, fx: number, fz: number, knock: number, opts?: { stun?: number; hold?: number; ult?: boolean; area?: boolean; blade?: boolean }): number {
+  /** One hit on a bot (x damage mult x the host's hit mult, Haunt included), knocked away from (fx, fz). `kind`: the
+   *  hit's FOCUS kind (an `ult` hit is always Ult). */
+  private hit(e: EnemyHandle, dmg: number, fx: number, fz: number, knock: number, opts?: { stun?: number; hold?: number; ult?: boolean; area?: boolean; blade?: boolean; kind?: Focus }): number {
     const dx = e.position.x - fx;
     const dz = e.position.z - fz;
     const d = Math.hypot(dx, dz) || 1;
     const hp0 = e.hp;
-    const killed = this.b.enemies.damage(e, dmg * this.b.stats.damageMult * this.hitMult(e), {
+    const killed = this.b.enemies.damage(e, dmg * this.b.stats.damageMult * this.focus(opts?.ult ? Focus.Ult : opts?.kind ?? Focus.Neutral) * this.hitMult(e), {
       // The scythe is a blade hit (melee, like BRUTUS's fists: no Duel area-ability diminishing returns).
       source: opts?.blade ? 'ram' : 'other',
       crackArmor: opts?.blade || undefined,
@@ -444,7 +445,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive) continue;
-      const dealt = this.hit(e, dmg, px, pz, MANIFEST_KNOCK, { area: true });
+      const dealt = this.hit(e, dmg, px, pz, MANIFEST_KNOCK, { area: true, kind: Focus.Ability });
       if (dealt > 0) {
         _p.set(e.position.x, e.position.y + e.radius + 1.1, e.position.z);
         ctx.fx.floatText(_p, `👻${Math.round(dealt)}`, '#d8a8ff', 1);
@@ -522,13 +523,14 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     this.b.audio.play('steal', { volume: 0.5, pitch: 0.5 });
     this.shake(0.4);
     const pvp = !!this.b.pvp;
-    this.graspCd = GRASP_CD * Math.max(0.4, st.cooldownMult || 1);
+    // Overclock x Focus (Ability Focus shortens it, Weapon Focus lengthens it), never under 0.4 x the base.
+    this.graspCd = GRASP_CD * Math.max(0.4, (st.cooldownMult || 1) * (st.abilityCdMult || 1));
     this.h.ultFeedShare = BURST_ULT_SHARE;
     for (let i = 0; i < n; i++) {
       const e = this.buf[i];
       if (!e.alive) continue;
       this.grasped.push({ e, t: GRASP_YANK });
-      this.hit(e, st.graspDamage, px, pz, 0, { stun: st.graspStun || 1, hold: pvp ? DUEL_GRASP_HOLD : undefined });
+      this.hit(e, st.graspDamage, px, pz, 0, { stun: st.graspStun || 1, hold: pvp ? DUEL_GRASP_HOLD : undefined, kind: Focus.Ability });
       _p.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
       ctx.fx.floatText(_p, '⛓ SEIZED', '#e0a8ff', 0.9);
     }
@@ -736,7 +738,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     for (let i = 0; i < n && i < 12; i++) {
       const e = this.buf[i];
       if (!e.alive) continue;
-      this.hit(e, dmg, p.x, p.z, 6, { area: true });
+      this.hit(e, dmg, p.x, p.z, 6, { area: true, kind: Focus.Primary });
     }
     this.h.ultFeedShare = 1;
   }

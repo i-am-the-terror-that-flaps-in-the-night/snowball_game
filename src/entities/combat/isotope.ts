@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlowAPI } from '../../core/types';
-import { Kit, type AbilityDesc, type VehicleKit, Reach, WAVE_BAND, _p, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
+import { Focus, Kit, type AbilityDesc, type VehicleKit, Reach, WAVE_BAND, _p, _q, castOrigin, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultMeter } from './ultimates';
 
@@ -177,8 +177,9 @@ export class IsotopeKit extends Kit implements VehicleKit {
         const e = hits[i];
         const hp0 = e.hp;
         const share = dmg * (e === near ? 1 : SPRAY_SPLASH);
-        this.radHit(e, share * SPRAY_DIRECT, true, SPRAY_CRIT);
-        this.addDose(e, share * (1 - SPRAY_DIRECT) * DOSE_BONUS);
+        // FOCUS: the Rad Sprayer is SPACE (primary), its RAD DOSE too (scaled here, so the burn doesn't scale it again).
+        this.radHit(e, share * SPRAY_DIRECT, true, SPRAY_CRIT, 0, false, Focus.Primary);
+        this.addDose(e, share * (1 - SPRAY_DIRECT) * DOSE_BONUS * this.focus(Focus.Primary));
         if (this.sprayN % 2 === 0) {
           _q.set(e.position.x, e.position.y + e.radius * 0.8, e.position.z);
           ctx.fx.burst(_q, { color: 0x9dff5a, count: 3, speed: 3, size: 0.1, gravity: -2, life: 0.4 });
@@ -266,7 +267,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         const e = hits[i];
         if (!e.alive || this.trailDosed.has(e.id) || !this.reaches(e, Reach.Wave, pd.from)) continue;
         this.trailDosed.add(e.id);
-        this.radHit(e, dmg, false, SPRAY_CRIT, st.frostCore ? SLUDGE_HOLD : SLUDGE_GRIP);
+        this.radHit(e, dmg, false, SPRAY_CRIT, st.frostCore ? SLUDGE_HOLD : SLUDGE_GRIP, false, Focus.Ability);
       }
     }
   }
@@ -339,12 +340,13 @@ export class IsotopeKit extends Kit implements VehicleKit {
     this.doses.set(e, (this.doses.get(e) ?? 0) + amount);
   }
 
-  /** Radiation damage to one bot (player credit, irradiates it). */
-  private radHit(e: EnemyHandle, amount: number, heal = false, critFrac = 1, freezeSeconds = 0, ult = false): void {
+  /** Radiation damage to one bot (player credit, irradiates it). `kind`: the FOCUS kind of the hit (an `ult` hit is
+   *  always Ult). */
+  private radHit(e: EnemyHandle, amount: number, heal = false, critFrac = 1, freezeSeconds = 0, ult = false, kind: Focus = Focus.Neutral): void {
     if (!e.alive) return;
     this.irradiate(e);
     const hp0 = e.hp;
-    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, freezeSeconds: freezeSeconds || undefined, ult: ult || undefined });
+    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.focus(ult ? Focus.Ult : kind) * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, freezeSeconds: freezeSeconds || undefined, ult: ult || undefined });
     const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
     this.h.crit = Math.min(1, this.h.crit + (dealt * critFrac) / ultMeter(this.b, NUKE_CHARGE_DMG));
     this.h.ultFed = true;
@@ -393,7 +395,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       const d = Math.hypot(e.position.x - px, e.position.z - pz);
       const fall = 1 - 0.4 * Math.min(1, d / R);
       const hp0 = e.hp;
-      this.radHit(e, st.meltDamage * fall, true);
+      this.radHit(e, st.meltDamage * fall, true, 1, 0, false, Focus.Ability);
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       _q.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
       if (dealt > 0) ctx.fx.floatText(_q, `☢${Math.round(dealt)}`, '#9dff5a', 1.1);
@@ -472,7 +474,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       const fall = 1 - (1 - NUKE_RIM_FRAC) * Math.min(1, d / R);
       this.irradiate(e);
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.meltDamage * NUKE_DMG_MULT * fall * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.meltDamage * NUKE_DMG_MULT * fall * st.damageMult * this.focus(Focus.Ult) * this.hitMult(e), {
         source: 'other',
         knockback: _kb.set(dx * NUKE_KNOCK * fall, 0, dz * NUKE_KNOCK * fall),
         fromX: px,
@@ -558,7 +560,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
         if (!this.reaches(e, Reach.Wave, pl.from)) continue;
         if (ctx.time - (this.poolHitAt.get(e) ?? -1) < POOL_TICK * 0.9) continue;
         this.poolHitAt.set(e, ctx.time);
-        this.radHit(e, st.poolDps * POOL_TICK, false, 1, 0, pl.ult);
+        this.radHit(e, st.poolDps * POOL_TICK, false, 1, 0, pl.ult, Focus.Ability);
       }
     }
     if (!active && this.poolHitAt.size) this.poolHitAt.clear();
@@ -582,7 +584,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       ctx.fx.burst(_q, UPDATE_AURA_BURST);
     }
     const hits = this.b.enemies.query(plow.position.x, plow.position.z, R, this.buf);
-    for (let i = 0; i < hits.length; i++) if (this.reaches(hits[i], Reach.Body)) this.radHit(hits[i], st.auraDps * TICK);
+    for (let i = 0; i < hits.length; i++) if (this.reaches(hits[i], Reach.Body)) this.radHit(hits[i], st.auraDps * TICK, false, 1, 0, false, Focus.Primary);
   }
 
   /** Radiation timers + the green glow over irradiated bots; Chain Reaction blasts from irradiated wrecks. */
@@ -667,7 +669,7 @@ export class IsotopeKit extends Kit implements VehicleKit {
       this.b.audio.play('thud', { volume: 0.5, pitch: 1.3 });
       if (st.chainBlast <= 0) continue;
       const hits = this.b.enemies.query(c.x, c.z, CHAIN_RADIUS, this.buf);
-      for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.chainBlast);
+      for (let i = 0; i < hits.length; i++) this.radHit(hits[i], st.chainBlast, false, 1, 0, false, Focus.Primary);
     }
   }
 

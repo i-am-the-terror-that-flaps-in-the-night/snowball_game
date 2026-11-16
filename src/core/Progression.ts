@@ -1,4 +1,4 @@
-import { FX, ITEM_STATS, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, PHASE_MIN_COOLDOWN, soft, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
+import { FX, FOCUS_OFF_CD, FOCUS_OFF_DMG, ITEM_STATS, focusBlocker, upgradeSpent, REMOVED_UPGRADES, UPGRADES, UPGRADE_BY_ID, cooldown, PHASE_MIN_COOLDOWN, soft, ultPower, upgradeCost, type UpgradeDef, type UpgradeId } from '../config/upgrades';
 import { GEAR_BY_ID, GEAR_MAX_LEVEL, GEAR_PRICE_REV, REMOVED_GEAR, REPRICED_GEAR, cleanEquipped, gearCost, gearLevels, gearSpent, type GearDef, type GearState } from '../config/gear';
 import { ZONES } from '../config/zones';
 import { LOOT_RULES, pickItem, resolveDrop, rollRarity, type LootDrop, type LootSource, type Rng } from '../config/loot';
@@ -381,7 +381,30 @@ export class Progression {
   }
 
   canBuy(id: UpgradeId): boolean {
-    return !this.isMaxed(id) && this.data.coins >= this.cost(id);
+    return !this.isMaxed(id) && !this.focusLock(id) && this.data.coins >= this.cost(id);
+  }
+
+  /** FOCUS exclusivity: the rival focus that blocks buying `id` (it owns levels), or null. */
+  focusLock(id: UpgradeId): UpgradeId | null {
+    return focusBlocker(id, (r) => this.level(r));
+  }
+
+  /** Coins a RESPEC of `id` would refund (every coin spent on its levels); 0 when it can't be respecced. */
+  respecRefund(id: UpgradeId): number {
+    const def = UPGRADE_BY_ID[id];
+    if (!def?.exclusiveWith) return 0;
+    return upgradeSpent(def, this.level(id));
+  }
+
+  /** RESPEC a FOCUS upgrade (Garage, outside runs): refund every coin spent on its levels and set it back to 0, which
+   *  unlocks the other focus. Refunded coins are not counted as earned. False when there is nothing to respec. */
+  respec(id: UpgradeId): boolean {
+    const def = UPGRADE_BY_ID[id];
+    if (!def?.exclusiveWith || this.level(id) <= 0) return false;
+    this.data.coins += this.respecRefund(id);
+    delete this.data.upgrades[id];
+    this.changed();
+    return true;
   }
 
   buy(id: UpgradeId): boolean {
@@ -597,6 +620,15 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     return Number.isFinite(v) ? Math.max(0, Math.min(UPGRADE_BY_ID[id].maxLevel, Math.floor(v))) : 0;
   };
   const cd = FX.cooldownMult(L('overclock'));
+  // FOCUS: one or the other. A garage holding both (a tampered save / Duel profile) gets neither.
+  let fA = L('focusAbility');
+  let fW = L('focusWeapon');
+  if (fA > 0 && fW > 0) fA = fW = 0;
+  const abilityDmgMult = fA ? FX.focusDmg(fA) : fW ? FOCUS_OFF_DMG : 1;
+  const primaryDmgMult = fW ? FX.focusDmg(fW) : fA ? FOCUS_OFF_DMG : 1;
+  const abilityCdMult = fA ? FX.focusCd(fA) : fW ? FOCUS_OFF_CD : 1;
+  // E / F recharges: Overclock x Focus (the MIN_COOLDOWN / PHASE_MIN_COOLDOWN floors still apply after both).
+  const acd = cd * abilityCdMult;
   const fire = plow.fAbility === 'fire';
   const arsenal = plow.id === 'arsenal';
   const rev = plow.id === 'revenant';
@@ -614,7 +646,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     clapRadius: FX.clapRadius(L('voltClap')),
     clapDamage: plow.id === 'volt' ? FX.clapDamage(L('voltClap')) : 0,
     clapStun: FX.clapStun(L('voltClap')),
-    clapCooldown: cooldown(FX.clapCooldown(L('voltClap')), cd),
+    clapCooldown: cooldown(FX.clapCooldown(L('voltClap')), acd),
     shieldMax: arsenal ? FX.barrier(L('armBarrier')) : FX.shieldMax(L('voltCell')),
     gunDamage: arsenal ? FX.gunDamage(L('armCannon')) : 0,
     gunRate: FX.gunRate(L('armCannon')),
@@ -623,18 +655,18 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     laserRange: FX.laserRange(L('armLaser')),
     missileCount: FX.missileCount(L('armMissiles')),
     missileDamage: arsenal ? FX.missileDamage(L('armMissiles')) : 0,
-    missileCooldown: cooldown(FX.missileCooldown(L('armMissiles')), cd),
+    missileCooldown: cooldown(FX.missileCooldown(L('armMissiles')), acd),
     poundRadius: FX.poundRadius(L('brutePound')),
     poundDamage: plow.id === 'brute' ? FX.poundDamage(L('brutePound')) : 0,
     poundStun: FX.poundStun(L('brutePound')),
     poundKnock: FX.poundKnock(L('brutePound')),
-    poundCooldown: cooldown(FX.poundCooldown(L('brutePound')), cd),
+    poundCooldown: cooldown(FX.poundCooldown(L('brutePound')), acd),
     momentum: FX.momentum(L('bruteMomentum')),
     sawRadius: FX.sawRadius(L('bruteSaws')),
     sawDps: plow.id === 'brute' ? FX.sawDps(L('bruteSaws')) : 0,
     meltRadius: FX.meltRadius(L('isoMeltdown')),
     meltDamage: plow.id === 'isotope' ? FX.meltDamage(L('isoMeltdown')) : 0,
-    meltCooldown: cooldown(FX.meltCooldown(L('isoMeltdown')), cd),
+    meltCooldown: cooldown(FX.meltCooldown(L('isoMeltdown')), acd),
     poolRadius: FX.poolRadius(L('isoHalfLife')),
     poolDps: FX.poolDps(L('isoHalfLife')),
     poolSeconds: FX.poolSeconds(L('isoHalfLife')),
@@ -658,7 +690,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     reapReach: FX.reapReach(L('revReap')) + 0.5 * Math.max(0, FX.bladeWidth(L('blade')) - FX.bladeWidth(0)),
     manifestDamage: FX.manifestDamage(L('revPhase')),
     manifestRadius: FX.manifestRadius(L('revPhase')),
-    phaseCooldown: Math.max(PHASE_MIN_COOLDOWN, cooldown(FX.phaseCooldown(L('revPhase')) * (0.6 + 0.4 * (FX.dashCooldown(L('nitro')) / FX.dashCooldown(0))), cd)),
+    phaseCooldown: Math.max(PHASE_MIN_COOLDOWN, cooldown(FX.phaseCooldown(L('revPhase')) * (0.6 + 0.4 * (FX.dashCooldown(L('nitro')) / FX.dashCooldown(0))), acd)),
     graspDamage: FX.graspDamage(L('revGrasp')),
     graspStun: FX.graspStun(L('revGrasp')),
     graspRange: FX.graspRange(L('revGrasp')),
@@ -683,7 +715,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     whirlRadius: FX.whirlRadius(L('whirl')),
     whirlDamage: FX.whirlDamage(L('whirl')),
     // ARSENAL's E is the laser: its recharge rides on the whirl charge.
-    whirlCooldown: cooldown(arsenal ? FX.laserCooldown(L('armLaser')) : FX.whirlCooldown(L('whirl')), cd),
+    whirlCooldown: cooldown(arsenal ? FX.laserCooldown(L('armLaser')) : FX.whirlCooldown(L('whirl')), acd),
     snowRegen: FX.snowRegen(L('snowMachine')),
     magnetRadius: FX.magnetRadius(L('magnet')),
     shieldBlock: L('iceShield') > 0 ? 0.75 : 0.4,
@@ -699,9 +731,14 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     flameRange: FX.flameRange(L('inferno')),
     flameDps: fire ? FX.flameDps(L('inferno')) : 0,
     // Inferno is free on the Classic Plow (level 0 = base fire); the upgrade only strengthens it.
-    flameCooldown: cooldown(FX.flameCooldown(L('inferno')), cd),
+    flameCooldown: cooldown(FX.flameCooldown(L('inferno')), acd),
     cooldownMult: cd,
     ultPower: ultPower(iceL, L(F_UPGRADE[plow.id])) * plowIce,
+    abilityDmgMult,
+    primaryDmgMult,
+    ultDmgMult: primaryDmgMult,
+    abilityCdMult,
+    ultChargeMult: fW ? FX.focusUlt(fW) : 1,
     frostCore: L('frostCore') > 0,
     avalancheCore: L('avalancheCore') > 0,
   };

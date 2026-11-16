@@ -5,7 +5,7 @@ import { settings } from '../../core/settings';
 import { SingularityFx } from '../../fx/singularity';
 import { MAG_LASER_MAX_RATE } from '../../config/upgrades';
 import { ArcWaves, CYAN, Horizon, LaserFx, Shockwaves, addMat, beamGeometry, paintMat } from './arsenalFx';
-import { Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, type CombatHost } from './shared';
+import { Focus, Kit, type AbilityDesc, type VehicleKit, _fwd, _p, _q, _tip, type CombatHost } from './shared';
 import type { UltScript } from './ultimates';
 
 /* Constant FX options for per-frame / per-hit paths (hoisted so they are not rebuilt per call; never mutated). */
@@ -351,7 +351,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       this.scrapT = SCRAP_TICK;
       if (!this.puppet) {
         const hits = this.collect(px, pz, R);
-        for (let i = 0; i < hits.length; i++) this.weaponHit(hits[i], st.scrapDps * SCRAP_TICK, px, pz, 0, undefined, SHED_SELF);
+        for (let i = 0; i < hits.length; i++) this.weaponHit(hits[i], st.scrapDps * SCRAP_TICK, px, pz, 0, undefined, SHED_SELF, false, undefined, Focus.Primary);
       }
     }
     this.scrapSpin += dt * SCRAP_SPIN;
@@ -383,7 +383,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
         const en = hits[i];
         if (!en.alive || ctx.time - (s.hitAt.get(en) ?? -1e9) < SCRAP_HIT_CD) continue;
         s.hitAt.set(en, ctx.time);
-        if (this.weaponHit(en, st.scrapHit, px, pz, 2, undefined, SHED_SELF) > 0) ctx.fx.burst(s.mesh.position, UPDATE_SCRAP_BURST_2);
+        if (this.weaponHit(en, st.scrapHit, px, pz, 2, undefined, SHED_SELF, false, undefined, Focus.Primary) > 0) ctx.fx.burst(s.mesh.position, UPDATE_SCRAP_BURST_2);
       }
     }
   }
@@ -449,16 +449,17 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   /** One weapon hit from ARSENAL (player credit). `direct`: rapid single-target fire (laser bolts), see
    *  DamageOpts.direct. `knock` > 0 pushes away from (fromX, fromZ), < 0 pulls toward it (bots divide it by their mass;
    *  a plow scales it by its heaviness, knockScale in Combat.hitPlow, like every push). `weapon`: kill credit for
-   *  challenge stars (no effect on damage). Returns damage dealt. */
+   *  challenge stars (no effect on damage). `kind`: the hit's FOCUS kind (an `ult` hit is always Ult). Returns damage dealt. */
   private weaponHit(
     e: EnemyHandle, amount: number, fromX: number, fromZ: number, knock: number, direct?: 'round' | 'beam', shed = 1, ult = false, weapon?: KillWeapon,
+    kind: Focus = Focus.Neutral,
   ): number {
     if (!e.alive) return 0;
     const dx = e.position.x - fromX;
     const dz = e.position.z - fromZ;
     const d = Math.hypot(dx, dz) || 1;
     const hp0 = e.hp;
-    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.pveMult * this.hitMult(e), {
+    const killed = this.b.enemies.damage(e, amount * this.b.stats.damageMult * this.pveMult * this.focus(ult ? Focus.Ult : kind) * this.hitMult(e), {
       source: 'other',
       knockback: _kb.set((dx / d) * knock, 0, (dz / d) * knock),
       fromX: knock < 0 ? e.position.x + (dx / d) * 2 : fromX,
@@ -715,7 +716,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
   private laserStrike(e: EnemyHandle, fx: number, fz: number): boolean {
     const plow = this.b.plow;
     const knock = -(this.b.pvp ? LASER_DUEL_TUG : LASER_TUG * (e.isBoss ? LASER_TUG_BOSS : 1));
-    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round', 1, false, 'magLaser');
+    const dealt = this.weaponHit(e, this.b.stats.gunDamage, plow.position.x, plow.position.z, knock, 'round', 1, false, 'magLaser', Focus.Primary);
     this.chest(e, _r);
     _fwd.set(-fx, 0.35, -fz).normalize();
     const f = this.ctx.fx;
@@ -851,7 +852,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
       this.repHit.add(e);
       const far = 1 - (1 - REP_FAR) * THREE.MathUtils.clamp((d - R * 0.5) / (R * 0.5), 0, 1);
       const knock = this.b.pvp ? REP_DUEL_KNOCK : REP_KNOCK * (e.isBoss ? REP_BOSS : 1);
-      const dealt = this.weaponHit(e, dmg0 * far * (this.b.pvp ? REP_PVP : 1), A.x, A.z, knock);
+      const dealt = this.weaponHit(e, dmg0 * far * (this.b.pvp ? REP_PVP : 1), A.x, A.z, knock, undefined, 1, false, undefined, Focus.Ability);
       this.chest(e, _tip);
       _fwd.set(dx / (d || 1), 0.3, dz / (d || 1)).normalize();
       this.ctx.fx.sparks(_tip, _fwd, { count: 8, color: CYAN, speed: 12, spread: 0.6, size: 0.06, life: 0.25, gravity: 4 });
@@ -1009,7 +1010,7 @@ export class ArsenalKit extends Kit implements UltScript, VehicleKit {
     for (let i = 0; i < hits.length; i++) {
       const e = hits[i];
       if (!e.alive || Math.abs(e.position.y - this.burstY) >= BURST_DET_R) continue;
-      const dealt = this.weaponHit(e, per, S.x, S.z, BURST_KNOCK, undefined, 1, false, 'polarity');
+      const dealt = this.weaponHit(e, per, S.x, S.z, BURST_KNOCK, undefined, 1, false, 'polarity', Focus.Ability);
       if (dealt > 0) {
         _tip.set(e.position.x, e.position.y + e.radius + 1.2, e.position.z);
         fx.floatText(_tip, `🌀${Math.round(dealt)}`, '#7ff0ff', 1);

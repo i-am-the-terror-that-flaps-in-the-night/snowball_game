@@ -312,6 +312,27 @@ path is trampled by every rider that passes (1.6x Soul Chains damage a rider, ea
 0.5 s). At the end they all converge on you and ERUPT (10 m +0.3 m per soul spent; 4x Soul Chains damage +0.5x per
 soul spent; the souls are consumed). In the Duel the riders hit the other pilot as they pass, under the usual Duel ultimate cap.
 
+## Focus: which hits are SPACE / passive / ultimate and which are E / F
+
+The two Garage **Focus** upgrades ([progression.md](progression.md#focus)) scale a plow's hits by kind:
+🔮 Ability Focus boosts **E / F**, 🎯 Weapon Focus boosts **SPACE + passives + the ultimate**. Each hit is tagged
+in its kit (`Focus` in `src/entities/combat/shared.ts`) and multiplied on top of the damage multiplier:
+
+| Plow | SPACE / passive (🎯) | Ultimate (🎯) | E / F (🔮) | Neutral (no Focus) |
+|---|---|---|---|---|
+| Classic | ball slam (tap, PLOW RUSH, STREAK finisher), Shatter Slam shards, air slam | FIRESTORM nova, burning ground, storm burns | E whirlwind; F Inferno cone, fireball and its burns | rams, dash strikes, stomps |
+| VOLT-9 | ARC LANCE; Tesla Field aura | SUPERCELL | E STATIC FIELD; F Thunderclap blast, sky strikes and electrified ground | Chain Lightning arcs (a share of a hit already scaled), rams, dash strikes, stomps, air slam |
+| BRUTUS | Wrecking Fist jabs and finisher shockwave; Spiked Hull | EARTHQUAKE | E Saw Charge; F Ground Pound (also the air pound) | rams, dash strikes, stomps, air slam |
+| ISOTOPE | RAD SPRAYER and its RAD DOSE; Rad Aura; Chain Reaction blasts | NUKE blast and its giant pool | E FALLOUT TRAIL puddles; F Meltdown blast and fallout pool | the base radiation burn and tank-buster slice, rams, dash strikes, stomps, air slam |
+| ARSENAL | Mag Laser; Scrap Magnet field and shard ring | SINGULARITY | E Mag Repulsor; F Polarity Burst | rams, dash strikes, stomps |
+| PHANTOM | Reaper's Scythe; Haunting SHADE bursts | THE WILD HUNT riders and finale | E PHASE's MANIFEST; F SOUL GRASP | rams, dash strikes, stomps, air slam |
+
+Cooldowns: Ability Focus shortens (Weapon Focus lengthens) every time-based E / F recharge: the whirl / E charge
+(Static Field, Saw Charge, Fallout Trail, Mag Repulsor), PHASE, Inferno, Thunderclap, Ground Pound, Meltdown,
+Polarity Burst and SOUL GRASP's short recharge (its soul cost is unchanged). The floors still hold (0.35 s for
+everything, 4 s for PHASE). On the **SNOWBALL** main-attack setting a vehicle's ball slam is a generic slam (neutral)
+and its E whirl is an ability. The dash, the Classic's slam cooldown and the PLOW RUSH meter are untouched.
+
 ## Ultimates and the kill-cam
 
 The ultimate meter sits under your HP bar, and the F button changes when it's full. An ultimate's own damage never

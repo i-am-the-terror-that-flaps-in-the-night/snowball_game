@@ -3,7 +3,7 @@ import { FlameCone } from '../../fx/FlameCone';
 import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import { FX } from '../../config/upgrades';
 import { currentPreset, settings } from '../../core/settings';
-import { Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, floorTop, waveFloor, type CastOrigin, type CombatHost } from './shared';
+import { Focus, Kit, Reach, WAVE_BAND, _fwd, _p, _q, _tip, castOrigin, floorTop, waveFloor, type CastOrigin, type CombatHost } from './shared';
 import { GroundDisc } from './groundDisc';
 import { ultMeter } from './ultimates';
 import { CHUNK_BIG, CHUNK_MAX, addChunks, cashIn } from './classicRush';
@@ -386,7 +386,7 @@ export class ClassicKit extends Kit {
       // Scorch: direct damage + a shove away from the blade while caught in the cone.
       const nd = d || 1;
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN * this.lastStandMult(), {
+      const killed = this.b.enemies.damage(e, st.flameDps * st.damageMult * FLAME_CONTACT * FLAME_IGNITE_EVERY * BURN_VULN * this.lastStandMult() * this.focus(Focus.Ability), {
         source: 'other',
         knockback: _kb.set((dx / nd) * 3, 0, (dz / nd) * 3),
         fromX: e.position.x,
@@ -465,7 +465,7 @@ export class ClassicKit extends Kit {
       const fall = 1 - (1 - rim) * Math.min(1, d / R);
       this.ignite(e, !feed);
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, dmg * fall * this.b.stats.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, dmg * fall * this.b.stats.damageMult * this.focus(feed ? Focus.Ability : Focus.Ult) * this.hitMult(e), {
         source: 'other',
         knockback: _kb.set((dx / nd) * knock, 0, (dz / nd) * knock),
         fromX: x,
@@ -592,7 +592,7 @@ export class ClassicKit extends Kit {
       if (!e.alive) continue;
       this.ignite(e, true);
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, stormDps(st) * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: true });
+      const killed = this.b.enemies.damage(e, stormDps(st) * FIRE_FIELD_DPS * FIRE_FIELD_TICK * st.damageMult * this.focus(Focus.Ult) * this.hitMult(e), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: true });
       const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
       this.h.ultFed = this.h.ultBlock = true; // the FIRESTORM's burning ground never refills it
       this.onPlayerHit(dealt, killed, e, false);
@@ -660,7 +660,7 @@ export class ClassicKit extends Kit {
       if (b.tickT <= 0) {
         b.tickT = BURN_TICK;
         const hp0 = e.hp;
-        const killed = this.b.enemies.damage(e, (b.storm ? storm : dps) * st.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult(), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: b.storm });
+        const killed = this.b.enemies.damage(e, (b.storm ? storm : dps) * st.damageMult * BURN_TICK * BURN_VULN * this.lastStandMult() * this.focus(b.storm ? Focus.Ult : Focus.Ability), { source: 'other', fromX: e.position.x, fromZ: e.position.z, ult: b.storm });
         const dealt = Math.max(0, hp0 - Math.max(0, e.hp));
         if (!b.storm) this.feedFire(dealt);
         else this.h.ultFed = this.h.ultBlock = true;

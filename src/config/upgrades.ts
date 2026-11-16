@@ -56,9 +56,12 @@ export type UpgradeId =
   | 'revReap'
   | 'revPhase'
   | 'revGrasp'
-  | 'revHaunt';
+  | 'revHaunt'
+  // FOCUS — player-only, global (every plow), mutually exclusive: levels in one lock the other (respec in the Garage).
+  | 'focusAbility'
+  | 'focusWeapon';
 
-export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal' | 'revenant' | 'special';
+export type UpgradeCategory = 'plow' | 'ball' | 'defense' | 'utility' | 'pilot' | 'classic' | 'volt' | 'brute' | 'isotope' | 'arsenal' | 'revenant' | 'focus' | 'special';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -85,6 +88,9 @@ export interface UpgradeDef {
   plowOnly?: PlowKind;
   /** Not sold in the Garage any more: its levels come only from equipped gear (config/gear.ts). */
   itemOnly?: boolean;
+  /** FOCUS: owning any level of this upgrade locks `exclusiveWith` (and vice versa). Only the Garage's RESPEC (outside
+   *  a run) undoes it, refunding every coin spent. */
+  exclusiveWith?: UpgradeId;
 }
 
 /** Cost multiplier per level beyond an upgrade's pips. */
@@ -92,6 +98,11 @@ export const ENDLESS_COST_GROWTH = 1.1;
 /** Every upgrade's listed costGrowth is softened by this much (1.7 -> ~1.39 per level), so repeat levels stay
  *  affordable for every upgrade and plow line. */
 export const COST_GROWTH_SOFTEN = 0.55;
+
+/** FOCUS trade-off once a level is owned: the side you did NOT focus deals this much (x0.9) ... */
+export const FOCUS_OFF_DMG = 0.9;
+/** ... and, for Weapon Focus, E / F cooldowns are this much longer (x1.1). */
+export const FOCUS_OFF_CD = 1.1;
 
 /** Hard floor on every player ability recharge (slam, dash, whirl, F ability) after Overclock: nothing is ever
  *  free to spam. */
@@ -272,6 +283,13 @@ export const FX = {
   scrapDps: (L: number) => (L <= 0 ? 0 : 1.5 + 0.6 * grow(L - 1, 4)),
   scrapMax: (L: number) => (L <= 0 ? 0 : Math.min(12, 4 + Math.round(soft(L, 5, 4)))),
   scrapHit: (L: number) => (L <= 0 ? 0 : 4 + 1.5 * grow(L - 1, 4)),
+  // ---- FOCUS (player-only, global; 1 = not owned). +7% a level for 5 levels, then tapering toward +70%.
+  /** Ability Focus: E / F damage. Weapon Focus: SPACE, passive and ultimate damage. */
+  focusDmg: (L: number) => (L <= 0 ? 1 : 1 + 0.07 * soft(L, 5)),
+  /** Ability Focus: multiplier on E / F recharge times (-4% a level, tapering toward -40%; floors still apply). */
+  focusCd: (L: number) => (L <= 0 ? 1 : 1 - 0.04 * soft(L, 5)),
+  /** Weapon Focus: ultimate meter charge rate (+4% a level, tapering toward +40%). */
+  focusUlt: (L: number) => (L <= 0 ? 1 : 1 + 0.04 * soft(L, 5)),
 };
 
 /** Pilot power, 1 on a fresh plow: the Packed Ice damage multiplier x a common per-level factor for the plow's
@@ -331,6 +349,8 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'revPhase', name: 'Ectoplasm', icon: '👻', category: 'revenant', playerOnly: true, plowOnly: 'revenant', description: 'E: PHASE recharges faster and its MANIFEST shockwave hits harder and wider.', details: 'Free on PHANTOM. PHASE: 1.2 s spectral, +30% speed, through bots, props and attacks (no damage taken, no pulls or knockback). Every bot you pass through is Haunted and gives a soul (3 a Phase at most). On exit, MANIFEST: a ghostfire shockwave, +25% damage and +0.8 m radius per soul taken in that Phase. Nitro Dash shortens the Phase recharge too.', pips: 5, maxLevel: ENDLESS, baseCost: 120, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.manifestDamage(l))} dmg, ${f1(FX.manifestRadius(l))} m, ${f1(FX.phaseCooldown(l))}s` },
   { id: 'revGrasp', name: 'Soul Chains', icon: '⛓️', category: 'revenant', playerOnly: true, plowOnly: 'revenant', description: 'F: SOUL GRASP (3 souls) yanks every Haunted bot in reach to you, hurts and stuns it. Also feeds THE WILD HUNT.', details: 'Free on PHANTOM. Greyed out under 3 souls. In the Duel the chains hold the other pilot for 0.6 s. Damage you deal fills the ⚰️ WILD HUNT meter (under your HP): when it is full, F tolls the beacon three times and you lead a stampede of 8 spectral riders (+1 per banked soul) for 7 s, phased, trampling everything on your path; at the end they converge and ERUPT, bigger for every soul spent. Riders and finale scale with this upgrade.', pips: 5, maxLevel: ENDLESS, baseCost: 140, costGrowth: 1.8, valueLabel: (l) => `${Math.round(FX.graspDamage(l))} dmg, ${f1(FX.graspStun(l))}s stun, ${Math.round(FX.graspRange(l))} m` },
   { id: 'revHaunt', name: 'Haunting', icon: '🕯️', category: 'revenant', playerOnly: true, plowOnly: 'revenant', description: 'Passive HAUNT: Haunted bots take more damage from you for longer, and their SHADES burst harder.', details: 'Free on PHANTOM. A Haunted bot is tethered to you by a ghost chain. Wrecked while Haunted it drops a soul and rises as a SHADE: a short-lived ghost that charges the nearest bot and bursts in ghostfire (area damage), so kills chain through a pack (4 shades at a time at most).', pips: 5, maxLevel: ENDLESS, baseCost: 110, costGrowth: 1.8, valueLabel: (l) => `+${Math.round(FX.hauntVuln(l) * 100)}% dmg, ${f1(FX.hauntSeconds(l))}s, ${Math.round(FX.phantomDamage(l))} burst` },
+  { id: 'focusAbility', name: 'Ability Focus', icon: '🔮', category: 'focus', playerOnly: true, exclusiveWith: 'focusWeapon', description: 'Specialise in your E and F abilities: they hit harder and recharge faster. Your SPACE attack, passives and ultimate hit 10% softer.', details: 'Works on every plow. Each level: +7% E and F damage and 4% faster E and F recharge (gains taper after 5 levels). The catch, from the first level: SPACE attacks, passive damage (auras, fields, spikes, shades and the like) and your ultimate deal 10% less. Pick ONE focus: owning Ability Focus locks Weapon Focus. Changed your mind? RESPEC in the Garage (outside a run) refunds every coin.', pips: 5, maxLevel: ENDLESS, baseCost: 200, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round((FX.focusDmg(l) - 1) * 100)}% E/F dmg, -${Math.round((1 - FX.focusCd(l)) * 100)}% E/F recharge` : 'Not chosen') },
+  { id: 'focusWeapon', name: 'Weapon Focus', icon: '🎯', category: 'focus', playerOnly: true, exclusiveWith: 'focusAbility', description: 'Specialise in your SPACE attack: it, your passives and your ultimate hit harder, and the ultimate charges faster. E and F get 10% weaker and slower.', details: 'Works on every plow. Each level: +7% damage for SPACE attacks, passive damage (auras, fields, spikes, shades and the like) and your ultimate, and +4% ultimate charge (gains taper after 5 levels). The catch, from the first level: E and F deal 10% less and take 10% longer to recharge. Pick ONE focus: owning Weapon Focus locks Ability Focus. Changed your mind? RESPEC in the Garage (outside a run) refunds every coin.', pips: 5, maxLevel: ENDLESS, baseCost: 200, costGrowth: 1.8, valueLabel: (l) => (l ? `+${Math.round((FX.focusDmg(l) - 1) * 100)}% SPACE/passive/ult dmg, +${Math.round((FX.focusUlt(l) - 1) * 100)}% ult charge` : 'Not chosen') },
   { id: 'iceShield', name: 'Ice Shield', icon: '🧱', category: 'special', description: 'Your held snowball blocks 75% of frontal damage (instead of 40%).', pips: 1, maxLevel: 1, baseCost: 240, costGrowth: 1, valueLabel: owned },
   { id: 'frostCore', name: 'Frost Core', icon: '❄️', category: 'special', description: 'Slams freeze bots, slowing them for 3s.', pips: 1, maxLevel: 1, baseCost: 300, costGrowth: 1, valueLabel: owned },
   { id: 'avalancheCore', name: 'Avalanche Core', icon: '🌋', category: 'special', description: 'Slams hit a 50% wider area and knock bots flying.', pips: 1, maxLevel: 1, baseCost: 400, costGrowth: 1, valueLabel: owned },
@@ -354,6 +374,19 @@ export const REMOVED_UPGRADES: Record<string, Pick<UpgradeDef, 'pips' | 'baseCos
 export const SHOP_UPGRADES = UPGRADES.filter((u) => !u.itemOnly);
 
 export const UPGRADE_BY_ID: Record<UpgradeId, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u])) as Record<UpgradeId, UpgradeDef>;
+
+/** Coins spent buying levels 0..level-1 of `def` (what a RESPEC refunds). */
+export function upgradeSpent(def: UpgradeDef, level: number): number {
+  let total = 0;
+  for (let l = 0; l < Math.min(level, 9999); l++) total += upgradeCost(def, l);
+  return total;
+}
+
+/** FOCUS exclusivity: the rival upgrade that blocks buying `id` (it has levels), or null when nothing blocks it. */
+export function focusBlocker(id: UpgradeId, level: (id: UpgradeId) => number): UpgradeId | null {
+  const rival = UPGRADE_BY_ID[id]?.exclusiveWith;
+  return rival && level(rival) > 0 ? rival : null;
+}
 
 export function upgradeCost(def: UpgradeDef, currentLevel: number): number {
   const full = Math.min(currentLevel, def.pips);

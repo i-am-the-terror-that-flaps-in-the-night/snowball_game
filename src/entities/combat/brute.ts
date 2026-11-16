@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { EnemyHandle, PlayerStats, PlowAPI } from '../../core/types';
 import type { KillSource } from '../../core/events';
-import { Kit, type AbilityDesc, type VehicleKit, Reach, _fwd, _q, waveFloor, type CastOrigin } from './shared';
+import { Focus, Kit, type AbilityDesc, type VehicleKit, Reach, _fwd, _q, waveFloor, type CastOrigin } from './shared';
 import { MOMENTUM_FIST } from '../../config/upgrades';
 import { ultBlast, type UltScript } from './ultimates';
 
@@ -215,7 +215,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const share = e === best ? 1 : FIST_SPLASH;
       const knock = fin ? FIST_FINISH_KNOCK : FIST_KNOCK;
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, dmg * share * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, dmg * share * st.damageMult * this.focus(Focus.Primary) * this.hitMult(e), {
         source: 'ram',
         knockback: _kb.set(fwx * knock * share, 0, fwz * knock * share),
         stunSeconds: fin ? FIST_FINISH_STUN : e === best ? FIST_STAGGER : undefined,
@@ -291,7 +291,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       // Past the fist's own blast, inside the lane.
       if (Math.hypot(dx, dz) < near || along < 0 || along > SHOCK_LEN || side > SHOCK_W + e.radius) continue;
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, jab * SHOCK_MULT * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, jab * SHOCK_MULT * st.damageMult * this.focus(Focus.Primary) * this.hitMult(e), {
         source: 'ram',
         knockback: _kb.set(fx * 12, 0, fz * 12),
         fromX: plow.position.x,
@@ -328,7 +328,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       // Flung off to whichever side of the nose it is on.
       const side = dx * _fwd.z - dz * _fwd.x >= 0 ? 1 : -1;
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, dmg * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, dmg * st.damageMult * this.focus(Focus.Ability) * this.hitMult(e), {
         source: 'other',
         knockback: _kb.set(_fwd.z * side * CHARGE_FLING + _fwd.x * 3, 0, -_fwd.x * side * CHARGE_FLING + _fwd.z * 3),
         fromX: plow.position.x,
@@ -408,7 +408,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       const dz = e.position.z - pz;
       const d = Math.hypot(dx, dz) || 1;
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.spikeDps * SPIKE_TICK * st.damageMult * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.spikeDps * SPIKE_TICK * st.damageMult * this.focus(Focus.Primary) * this.hitMult(e), {
         source: 'other',
         knockback: _kb.set((dx / d) * SPIKE_KNOCK, 0, (dz / d) * SPIKE_KNOCK),
         fromX: px,
@@ -523,7 +523,7 @@ export class BruteKit extends Kit implements UltScript, VehicleKit {
       }
       const fall = 1 - (1 - POUND_RIM_FRAC) * Math.min(1, d / R);
       const hp0 = e.hp;
-      const killed = this.b.enemies.damage(e, st.poundDamage * POUND_LEAP_DMG * dMult * st.damageMult * fall * this.hitMult(e), {
+      const killed = this.b.enemies.damage(e, st.poundDamage * POUND_LEAP_DMG * dMult * st.damageMult * fall * this.focus(Focus.Ability) * this.hitMult(e), {
         source,
         knockback: _kb.set(dx * st.poundKnock * fall, 0, dz * st.poundKnock * fall),
         stunSeconds: st.poundStun,

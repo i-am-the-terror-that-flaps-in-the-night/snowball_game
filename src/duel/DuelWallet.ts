@@ -1,4 +1,4 @@
-import { SHOP_UPGRADES, UPGRADES, UPGRADE_BY_ID, upgradeCost, type UpgradeId } from '../config/upgrades';
+import { SHOP_UPGRADES, UPGRADES, UPGRADE_BY_ID, focusBlocker, upgradeCost, type UpgradeId } from '../config/upgrades';
 import type { PlowKind } from '../config/plows';
 import { GEAR, GEAR_BY_ID, GEAR_MAX_LEVEL, gearCost, gearLevels, type GearState } from '../config/gear';
 import type { Progression } from '../core/Progression';
@@ -12,6 +12,8 @@ export interface ShopWallet {
   cost(id: UpgradeId): number;
   canBuy(id: UpgradeId): boolean;
   buy(id: UpgradeId): boolean;
+  /** FOCUS exclusivity: the rival focus that blocks buying `id`, or null. */
+  focusLock(id: UpgradeId): UpgradeId | null;
   /** Gear (items): owned levels + what's equipped, as this wallet sees it. */
   readonly gear: GearState;
   itemLevel(id: string): number;
@@ -99,12 +101,17 @@ export class DuelWallet implements ShopWallet {
   }
 
   canBuy(id: UpgradeId): boolean {
-    if (this.isMaxed(id)) return false;
+    if (this.isMaxed(id) || this.focusLock(id)) return false;
     return this.paysWithBonus(id) || this.p.canBuy(id);
   }
 
+  /** FOCUS exclusivity on the effective (saved + catch-up) levels. No respec here: only the Garage outside a run. */
+  focusLock(id: UpgradeId): UpgradeId | null {
+    return focusBlocker(id, (r) => this.level(r));
+  }
+
   buy(id: UpgradeId): boolean {
-    if (this.isMaxed(id)) return false;
+    if (this.isMaxed(id) || this.focusLock(id)) return false;
     if (this.paysWithBonus(id)) {
       this.bonus -= this.bonusCost(id);
       this.temp[id] = this.tempLevel(id) + 1;
@@ -203,7 +210,8 @@ export class DuelWallet implements ShopWallet {
     const lvl = new Map<UpgradeId, number>();
     let want = 0;
     for (const def of UPGRADES) {
-      if (def.plowOnly || def.itemOnly) continue;
+      // (FOCUS is a choice, never matched: the opponent's pick may be the one this garage can't own.)
+      if (def.plowOnly || def.itemOnly || def.exclusiveWith) continue;
       const goal = Math.min(def.maxLevel, target[def.id] ?? 0);
       const have = this.level(def.id);
       if (goal > have) {
@@ -252,6 +260,8 @@ export class DuelWallet implements ShopWallet {
     let best: { kind: 'up'; id: UpgradeId; cost: number } | { kind: 'item'; id: string; cost: number } | null = null;
     for (const def of SHOP_UPGRADES) {
       if (def.plowOnly && def.plowOnly !== this.plow) continue;
+      // FOCUS is the player's own pick: AUTO-SPEND never chooses one for them.
+      if (def.exclusiveWith) continue;
       const cost = this.bonusCost(def.id);
       if (cost <= this.bonus && (!best || cost < best.cost)) best = { kind: 'up', id: def.id, cost };
     }

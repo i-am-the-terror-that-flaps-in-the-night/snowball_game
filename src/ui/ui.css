@@ -1781,3 +1781,13 @@
 .ss-avalanche.full { border-left-color: #ffd23a; box-shadow: 0 0 18px rgba(255, 210, 58, 0.45); }
 .ss-avalanche.full .ss-av-fill { background: linear-gradient(90deg, #ffe58a, #ffffff); }
 .ss-avalanche.full .ss-av-text { color: #ffd23a; animation: ss-blink 0.8s ease-in-out infinite; }
+
+/* FOCUS cards (Core tab): one of two; the other shows locked, the owned one offers a two-tap RESPEC. */
+.ss-focus-card .ss-gear-btns .ss-buy { min-width: 112px; }
+.ss-focus-lock { margin-top: 5px; font-size: 11.5px; font-weight: 800; color: var(--ink-soft); }
+.ss-card.locked { opacity: 0.62; filter: saturate(0.4); }
+.ss-card.locked .ss-buy { background: var(--slab-3); color: var(--ink-soft); cursor: not-allowed; }
+.ss-respec { font-size: 12px; padding: 7px 10px; white-space: nowrap; }
+.ss-respec.armed { background: var(--hazard); color: var(--ink-inv); }
+.ss-cat-focus .ss-card[data-id='focusAbility'] { --acc: #a46bff; }
+.ss-cat-focus .ss-card[data-id='focusWeapon'] { --acc: #ff5a4a; }

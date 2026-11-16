@@ -218,6 +218,16 @@ export interface PlayerStats {
   cooldownMult: number;
   /** Pilot power (ultPower in config/upgrades.ts), 1 on a fresh plow: sizes the ultimate meters, damps Duel damage. */
   ultPower: number;
+  /** FOCUS (config/upgrades.ts focusAbility / focusWeapon; 1 = neutral). Damage multipliers on top of damageMult for
+   *  E / F ability hits, SPACE + passive hits and ultimate hits (combat/shared.ts focusMult picks one per hit). */
+  abilityDmgMult: number;
+  primaryDmgMult: number;
+  ultDmgMult: number;
+  /** FOCUS: multiplier on E / F recharge times; already folded into whirlCooldown / flameCooldown / clapCooldown /
+   *  poundCooldown / meltCooldown / missileCooldown / phaseCooldown (and the Soul Grasp recharge reads it). */
+  abilityCdMult: number;
+  /** FOCUS: ultimate meter charge rate (the meter's size is divided by it, combat/ultimates.ts ultMeter). */
+  ultChargeMult: number;
   frostCore: boolean;
   avalancheCore: boolean;
 }
