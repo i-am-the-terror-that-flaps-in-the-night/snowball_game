@@ -61,10 +61,10 @@ const WHEEL_R = 0.48;
 /** Scythe pivot (model z) and its Reap whip: the swing time (s) and how far it swings (rad). */
 /** Floating swords: hilt position (model, per side x sign), the Reap slash (s, rad of yaw in across the nose). */
 const SWD_X = 1.45;
-/** Idle splay outward (rad) and the per-side stagger (height, depth), so the pair reads as two swords, not scissors. */
+/** Idle splay outward (rad), so the pair reads as two swords, not scissors; per-side stagger (height, depth): none. */
 const SWD_SPLAY = 0.26;
-const SWD_STAGGER_Y = 0.32;
-const SWD_STAGGER_Z = 0.55;
+const SWD_STAGGER_Y = 0;
+const SWD_STAGGER_Z = 0;
 const SWD_Y = 1.15;
 /** Crossguards just ahead of the nose (the grips and pommels sit over the nose tip). */
 const SWD_Z = 3.6;
