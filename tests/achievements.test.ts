@@ -32,7 +32,7 @@ function run(extra: Partial<GameEvents['runFinished']> = {}): GameEvents['runFin
   };
 }
 
-function fakeCtx(p = new Progression()) {
+function fakeCtx(p = new Progression(), unrecorded?: () => boolean) {
   const toast = vi.fn();
   const play = vi.fn();
   const ctx = {
@@ -42,7 +42,7 @@ function fakeCtx(p = new Progression()) {
     ui: { toast },
     audio: { play },
   } as unknown as GameContext;
-  const ach = new Achievements(ctx);
+  const ach = new Achievements(ctx, unrecorded);
   return { ctx, ach, toast, play, p };
 }
 
@@ -198,6 +198,32 @@ describe('Achievements (event wiring)', () => {
     expect(life(p, LIFE.slamHitsBest)).toBe(0);
     expect(isUnlocked(p, 'slam_5')).toBe(false);
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('a PROTOCOL C dev start (unrecorded run) earns no Board Dismissed / Deal Blocked / AVALANCHE / win trophies', () => {
+    let dev = true;
+    const { ctx, p, toast } = fakeCtx(new Progression(), () => dev);
+    const chairman = bot('chairman', true);
+    const echo = { id: 2, type: 'bulldoza', isBoss: true, echo: true, acquired: 3 } as unknown as EnemyHandle;
+    ctx.events.emit('enemyKilled', { enemy: echo, coins: 0, source: 'ram' });
+    ctx.events.emit('bossDefeated', { enemy: chairman, name: 'THE CHAIRMAN' });
+    ctx.events.emit('avalancheHit', { fullSize: true, attempt: 1 });
+    ctx.events.emit('runFinished', run({ won: true, protocol: true, devStart: true, partial: true, plow: 'brute' }));
+    expect(life(p, lifeBoss('chairman'))).toBe(0);
+    expect(life(p, LIFE.takeoversBroken)).toBe(0);
+    expect(life(p, LIFE.avalancheHits)).toBe(0);
+    expect(life(p, LIFE.bossKills)).toBe(0);
+    expect(life(p, lifeWinsPlow('brute'))).toBe(0);
+    expect(life(p, LIFE.campaignWins)).toBe(0);
+    for (const id of ['boss_chairman', 'takeover_broken', 'avalanche', 'win_brute']) expect(isUnlocked(p, id)).toBe(false);
+    vi.advanceTimersByTime(1000);
+    expect(toast).not.toHaveBeenCalled();
+    // The same fights in a legit (recorded) PROTOCOL C run count.
+    dev = false;
+    ctx.events.emit('enemyKilled', { enemy: echo, coins: 0, source: 'ram' });
+    ctx.events.emit('bossDefeated', { enemy: chairman, name: 'THE CHAIRMAN' });
+    ctx.events.emit('avalancheHit', { fullSize: true, attempt: 1 });
+    for (const id of ['boss_chairman', 'takeover_broken', 'avalanche']) expect(isUnlocked(p, id)).toBe(true);
   });
 
   it('Brawl: only the player\'s kills, streaks and shutdowns count', () => {

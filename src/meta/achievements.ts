@@ -78,7 +78,8 @@ export function recordRunLifetime(p: Progression, r: GameEvents['runFinished']):
   maxLifetime(p, LIFE.ballBestCm, Math.round(n(r.biggestBall) * 100));
   // Longest flight, in centiseconds (counters are whole numbers).
   maxLifetime(p, LIFE.airtimeBestCs, Math.round(n(r.airtime) * 100));
-  if (r.mode === 'campaign' && r.won) {
+  // A PROTOCOL C dev start (Game.startProtocol past wave 1 / without the unlock) counts as no win.
+  if (r.mode === 'campaign' && r.won && !r.devStart) {
     bumpLifetime(p, LIFE.campaignWins);
     bumpLifetime(p, lifeWinsPlow(r.plow));
     if (n(r.damageTaken) < CLEAN_CLEAR_HP && !r.partial) bumpLifetime(p, LIFE.cleanClears);
@@ -101,14 +102,17 @@ export function recordRunLifetime(p: Progression, r: GameEvents['runFinished']):
 export class Achievements {
   private ctx: GameContext;
   private checking = false;
+  /** This fight records nothing (a PROTOCOL C dev start): its kills / bosses / AVALANCHE never count. */
+  private readonly unrecorded: () => boolean;
 
-  constructor(ctx: GameContext) {
+  constructor(ctx: GameContext, unrecorded: () => boolean = () => false) {
     this.ctx = ctx;
+    this.unrecorded = unrecorded;
     const { events } = ctx;
     const p = () => ctx.progression;
 
     events.on('enemyKilled', ({ enemy, source, inLava, weapon }) => {
-      if (this.tutorial()) return;
+      if (this.ignored()) return;
       bumpLifetime(p(), LIFE.kills);
       bumpLifetime(p(), SOURCE_KEY[source ?? 'other'] ?? LIFE.killsOther);
       // Kills in lava are counted on top of the finishing blow's own counter (knock it in, finish it however).
@@ -120,18 +124,18 @@ export class Achievements {
       this.check();
     });
     events.on('slam', ({ hits }) => {
-      if (this.tutorial()) return;
+      if (this.ignored()) return;
       bumpLifetime(p(), LIFE.slams);
       maxLifetime(p(), LIFE.slamHitsBest, hits);
       this.check();
     });
     events.on('strike', () => {
-      if (this.tutorial()) return;
+      if (this.ignored()) return;
       bumpLifetime(p(), LIFE.strikes);
       this.check();
     });
     events.on('bossDefeated', ({ enemy }) => {
-      if (this.tutorial()) return;
+      if (this.ignored()) return;
       bumpLifetime(p(), LIFE.bossKills);
       // PROTOCOL C's echoes (x0.35 HP copies) count as bosses scrapped, but not toward a boss's own kill trophies.
       if (!enemy.echo) bumpLifetime(p(), lifeBoss(enemy.type));
@@ -139,6 +143,7 @@ export class Achievements {
     });
     // PROTOCOL C finale (stage 4 emits it when THE AVALANCHE hits THE WHITEOUT).
     events.on('avalancheHit', () => {
+      if (this.ignored()) return;
       bumpLifetime(p(), LIFE.avalancheHits);
       this.check();
     });
@@ -171,9 +176,10 @@ export class Achievements {
     setTimeout(() => this.check(), 1200);
   }
 
-  /** The Tutorial runs arena 1 with coinMult 0 (Game's TUTORIAL_ZONE): its fights don't count. */
-  private tutorial(): boolean {
-    return this.ctx.zone?.coinMult === 0;
+  /** The Tutorial runs arena 1 with coinMult 0 (Game's TUTORIAL_ZONE), and a PROTOCOL C dev start records nothing:
+   *  their fights don't count. */
+  private ignored(): boolean {
+    return this.ctx.zone?.coinMult === 0 || this.unrecorded();
   }
 
   /** Unlock whatever is due; commits and announces if anything unlocked. Returns whether anything did. */

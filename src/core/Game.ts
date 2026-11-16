@@ -301,7 +301,8 @@ export class Game {
     this.tutorial = new Tutorial(ctx, uiRoot, (next) => (next === 'arena' ? this.startRun(0) : this.toMenu()));
     // Meta progression: both only listen to ctx.events (runFinished etc.).
     new ChallengeTracker(ctx);
-    new Achievements(ctx);
+    // A PROTOCOL C dev start (protocolRecord false) earns no trophies, like it records no clear / stars.
+    new Achievements(ctx, () => this.protocol && !this.protocolRecord);
 
     this.hud = this.blankHud();
     this.wireEvents();
@@ -1031,7 +1032,7 @@ export class Game {
       loot: this.run.loot,
       protocol: { wave: PROTOCOL_WAVES, time, bestTime: rec.bestTime, newBest: rec.newBest, uses: this.protocolUses, checkpointWave: null },
     };
-    this.emitRunFinished({ mode: 'campaign', won: true, protocol: true, partial: this.protocolPartial(), roundsCleared: ctx.zone.rounds.length, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
+    this.emitRunFinished({ mode: 'campaign', won: true, protocol: true, devStart: !this.protocolRecord, partial: this.protocolPartial(), roundsCleared: ctx.zone.rounds.length, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
     ctx.audio.setEngine(0, 0);
     ctx.audio.setPlowing(0);
     ctx.audio.play('victory');
@@ -1055,7 +1056,7 @@ export class Game {
     p.data.totalKills += Math.max(0, this.run.kills - this.protocolKills0);
     this.protocolKills0 = this.run.kills;
     p.commit();
-    this.emitRunFinished({ mode: 'campaign', won: false, protocol: true, partial: this.protocolPartial(), roundsCleared: this.roundIndex, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
+    this.emitRunFinished({ mode: 'campaign', won: false, protocol: true, devStart: !this.protocolRecord, partial: this.protocolPartial(), roundsCleared: this.roundIndex, duration: Math.max(0, ctx.time - this.protocolAttempt0) });
     ctx.audio.play('gameOver');
     ctx.ui.setHudVisible(false);
     const time = Math.max(0, ctx.time - this.run.start);

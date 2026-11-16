@@ -74,6 +74,9 @@ export interface GameEvents {
     /** PROTOCOL C: the run did not play every wave in one go (a checkpoint retry, or a dev start past wave 1): its
      *  damageTaken covers only part of it, so it never counts as a clean clear. */
     partial?: boolean;
+    /** PROTOCOL C: a dev start (__game.startProtocol past wave 1, or without the unlock) that records nothing: no
+     *  clear, stars, trophies or campaign-win counters. */
+    devStart?: boolean;
     /** Campaign: arena index, rounds cleared, Hard mode. */
     zoneIndex?: number;
     roundsCleared?: number;
