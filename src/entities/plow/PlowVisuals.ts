@@ -174,6 +174,16 @@ export abstract class PlowVisuals extends PlowBase {
     // REVENANT rides on black rims (its spectral spokes are its own).
     const fh = this.kind === 'volt' ? 0x2f9be0 : this.kind === 'brute' ? 0xd8611f : this.kind === 'isotope' ? 0x7dff4a : this.kind === 'revenant' ? 0x16131c : 0xffd23a;
     this.hubBase.setHex(p.accent ?? (this.kind === 'classic' ? 0xc9d2dc : fh)); // Classic: polished alloy hubs
+    // Hubs share a paint's own trim finish (Hostile Takeover: polished gold). Half-metal with nothing to reflect, a gold
+    // accent loses its diffuse to metalness and reads as dark olive; a metal finish needs the sky to look like metal.
+    const hubMetal = p.trimMetalness ?? 0.4;
+    this.hubMat.metalness = hubMetal;
+    this.hubMat.roughness = p.trimRoughness ?? 0.4;
+    const hubEnv = hubMetal >= 0.5 ? getPaintEnvMap(this.ctx.renderer) : null;
+    if (this.hubMat.envMap !== hubEnv) {
+      this.hubMat.envMap = hubEnv;
+      this.hubMat.needsUpdate = true;
+    }
     if (!this._dead) {
       this.hubMat.color.copy(this.hubBase);
       this.paintMat.color.copy(this.paintBase);
