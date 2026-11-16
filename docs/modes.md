@@ -127,8 +127,10 @@ its Avalanche and ending; rewards, story and its own stars come later). Code: `s
     60% less damage until half the bots or the podium are wrecked; it tops the floor up to at most 10 red caps) · a
     shove up close. A ready BRIEFCASE CANNON always follows a big move. Deck routing never holds his moves (they are
     ranged): parking on a deck he cannot climb still gets the whole fight.
-  - Phase 2 at 50%: GOLDEN PARACHUTE (a gold canopy pops from the roof): reflects 15% of the damage taken, +25%
-    speed, cooldowns ×0.7, briefcases in volleys of three.
+  - Phase 2 at 50%: GOLDEN PARACHUTE (a gold canopy pops from the roof): +25% speed, and GOLD PLATED
+    windows (0.8 s warning, 2.5 s plated, 5 s open): while plated he reflects 15% of the damage taken, capped at 2% of
+    the plow's max HP per half second and not scaled by Hard / spend (shared with THE DONALD's plating), so holding
+    fire while he glows costs nothing; also cooldowns ×0.7, briefcases in volleys of three.
   - Ultimates hurt him like any boss. HP: 78k at the reference spend (`PROTOCOL_HP.chairman`; a ~60-70 s fight
     for the autopilot with the unlock garage), ×1.25 damage like every headline; he always counts as fighting on the leash.
   - At 0 HP: the defeat (3.8 s, untouchable): the tower sags and lists, the treads seize, the echoes freeze, and

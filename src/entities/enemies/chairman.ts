@@ -18,8 +18,8 @@ import { CHAIRMAN_LAST, CHAIRMAN_TAUNTS } from '../../config/lore';
  *  - RESTRUCTURING: rows of gold partition walls across the arena (DonaldProps walls, smashable like THE DONALD's).
  *  - DEPORTATION (a wider beam) and RALLY (the boardroom becomes a podium: rally bots, 60% less damage until half the
  *    bots or the podium are wrecked).
- *  - Phase 2 at PHASE2 HP: GOLDEN PARACHUTE (the canopy pops from the roof): reflects CHUTE_REFLECT of the damage taken,
- *    CHUTE_SPEED x speed, faster cooldowns, briefcases in volleys of three.
+ *  - Phase 2 at PHASE2 HP: GOLDEN PARACHUTE (the canopy pops from the roof): GOLD PLATED windows (PLATE_ON s after a
+ *    warning, every PLATE_OFF s) reflect CHUTE_REFLECT of the damage taken (capped, donaldProps), CHUTE_SPEED x speed, faster cooldowns, briefcases in volleys of three.
  * Scripted (Bot.scripted: no damage, its AI runs whatever the plow does): the REVEAL descent from the boardroom box onto
  * the floor, and the DEFEAT (the tower sags, the treads seize, he slams PROTOCOL C; then the wreck). Ultimates hurt him
  * like any boss. */
@@ -72,6 +72,11 @@ export const CH = {
   /** Phase 2. */
   PHASE2: 0.5,
   CHUTE_REFLECT: 0.15,
+  /** GOLD PLATED windows in phase 2: he reflects only while plated (PLATE_ON s, after a PLATE_WARN s warning), then
+   *  PLATE_OFF s open. Stop hitting him while he glows and nothing comes back. */
+  PLATE_ON: 2.5,
+  PLATE_OFF: 5,
+  PLATE_WARN: 0.8,
   CHUTE_SPEED: 1.25,
   /** Cooldowns run x this in phase 2 (shorter). */
   CHUTE_CD: 0.7,
@@ -97,6 +102,9 @@ export interface ChairmanState {
   rallied: boolean;
   chute: boolean;
   chuteK: number;
+  /** Phase 2 GOLD PLATED cycle: time left in the current step, and the step (0 open, 1 warning, 2 plated). */
+  plateT: number;
+  plate: 0 | 1 | 2;
   shots: number;
   tauntT: number;
   tauntI: number;
@@ -121,7 +129,7 @@ export function chairmanState(e: Bot): ChairmanState {
   let s = STATE.get(e);
   if (!s) {
     s = {
-      caseCd: 2.5, reportCd: 9, takeCd: 7, wallCd: 14, beamCd: 11, rallyCd: 26, rallied: false, chute: false, chuteK: 0, shots: 0,
+      caseCd: 2.5, reportCd: 9, takeCd: 7, wallCd: 14, beamCd: 11, rallyCd: 26, rallied: false, chute: false, chuteK: 0, plateT: 0, plate: 0, shots: 0,
       tauntT: 6, tauntI: 0, rally: [], podPending: false, podX: 0, podZ: 0, target: null, acquired: null, acqHp: 0, seqT: 0, pressed: false, landed: false, last: null,
     };
     STATE.set(e, s);
@@ -416,11 +424,41 @@ function rallyEnd(h: Host, e: Bot, s: ChairmanState, broken: boolean): void {
   } else e.set('recover', 0.5);
 }
 
+/** Phase 2 GOLD PLATED cycle: open (no reflect) -> warning (sparks, label) -> plated (reflects CHUTE_REFLECT). */
+function plateTick(h: Host, e: Bot, s: ChairmanState, dt: number): void {
+  s.plateT -= dt;
+  if (s.plate === 2 && e.sparkT <= 0) {
+    e.sparkT = 0.06;
+    h.sparks(e, 0xffd24a, 4);
+  }
+  if (s.plateT > 0) return;
+  if (s.plate === 0) {
+    s.plate = 1;
+    s.plateT = CH.PLATE_WARN;
+    h.label(e, 'GOLD PLATING...', '#ffd24a', 0.9);
+  } else if (s.plate === 1) {
+    s.plate = 2;
+    s.plateT = CH.PLATE_ON;
+    e.reflect = CH.CHUTE_REFLECT;
+    h.label(e, 'GOLD PLATED! HOLD FIRE!', '#ffd24a', 1.2);
+    anchor(e, [0, CHAIRMAN_ROOM_Y, 0], _v);
+    h.ctx.fx.burst(_v, { color: 0xffd257, count: 30, speed: 9, size: 0.14, gravity: 4, life: 0.8 });
+  } else {
+    s.plate = 0;
+    s.plateT = CH.PLATE_OFF;
+    e.reflect = 0;
+    e.reflectPool = 0;
+  }
+}
+
 function chuteOpen(h: Host, e: Bot, s: ChairmanState): void {
   s.chute = true;
   s.chuteK = 0;
   e.enraged = true;
-  e.reflect = CH.CHUTE_REFLECT;
+  // reflection comes in GOLD PLATED windows (plateTick), starting with a short open spell after the pop
+  e.reflect = 0;
+  s.plate = 0;
+  s.plateT = 3;
   h.bossPhase(e, 'GOLDEN PARACHUTE!');
   s.caseCd = Math.min(s.caseCd, 1.5);
   const c = parts(e).chute;
@@ -587,6 +625,7 @@ export function chairman(h: Host, e: Bot, dt: number): void {
   takeoverTick(h, s, dt);
   if (e.state !== 'rally' && e.dmgTakenMult !== 1) rallyEnd(h, e, s, false);
   if (!s.chute && e.hpFrac <= CH.PHASE2) chuteOpen(h, e, s);
+  if (s.chute) plateTick(h, e, s, dt);
   if (s.chute && p.chute) {
     // the canopy pops (overshoot) then breathes
     s.chuteK = Math.min(1, s.chuteK + dt * 2.5);

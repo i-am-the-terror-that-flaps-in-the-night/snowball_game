@@ -330,9 +330,34 @@ describe('phase 2 and the end', () => {
     c.hp = c.maxHp * (CH.PHASE2 - 0.01);
     run(0.6);
     expect(phases).toEqual(['chairman:GOLDEN PARACHUTE!']);
+    // reflection only in GOLD PLATED windows: open at first, then a warning, then plated, then open again
+    expect(c.reflect).toBe(0);
+    run(3 + CH.PLATE_WARN + 0.1);
     expect(c.reflect).toBe(CH.CHUTE_REFLECT);
+    run(CH.PLATE_ON);
+    expect(c.reflect).toBe(0);
     expect(c.enraged).toBe(true);
     expect(c.rig.root.getObjectByName(CHAIRMAN_PART.chute)!.visible).toBe(true);
+  });
+
+  it('GOLD PLATED reflection is capped at REFLECT_CAP of max HP per batch, whatever the burst and damage scaling', async () => {
+    const { c, s, mgr, run, hits, ctx, park } = await onFloor();
+    const { REFLECT_CAP, REFLECT_EVERY } = await import('../src/entities/enemies/donaldProps');
+    (ctx.zone as { enemyDmgMult: number }).enemyDmgMult = 3;
+    c.hp = c.maxHp * 0.49;
+    run(0.2);
+    park();
+    s.plate = 1;
+    s.plateT = 0;
+    run(0.1);
+    expect(c.reflect).toBeGreaterThan(0);
+    hits.length = 0;
+    mgr.damage(c, 30000);
+    run(REFLECT_EVERY * 2 + 0.05, () => park());
+    const total = hits.reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThan(0);
+    expect(total).toBeLessThanOrEqual(REFLECT_CAP * 100 * 3 * 1.0001);
+    for (const h of hits) expect(h).toBeLessThanOrEqual(REFLECT_CAP * 100 * 1.0001);
   });
 
   it('ultimates hurt him like any boss (and his echoes)', async () => {

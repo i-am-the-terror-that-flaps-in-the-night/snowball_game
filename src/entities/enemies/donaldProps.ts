@@ -15,6 +15,10 @@ import { waveHitPlow } from '../combat/shared';
  * Everything is a handful of draws: one InstancedMesh for wall blocks, one for their gold caps, a beam column and
  * the podium group. */
 
+/** GOLD PLATED reflection: at most this share of the plow's max HP per batch, one batch every REFLECT_EVERY s
+ *  (so at most 4% of max HP a second while he is plated, however hard he is hit). */
+export const REFLECT_CAP = 0.02;
+export const REFLECT_EVERY = 0.5;
 const SEG = 1.3;
 const SEG_R = 0.85;
 const WALL_H = 2.5;
@@ -354,14 +358,17 @@ class DonaldProps {
     let plated: Bot | null = null;
     for (const b of ctx.enemies.bosses) if (b.alive && (b.type === 'donald' || b.type === 'chairman') && (b as Bot).reflectPool >= 1) plated = b as Bot;
     if (plated && this.reflectT <= 0) {
-      const amt = Math.min(22, plated.reflectPool);
+      // Capped at REFLECT_CAP of the plow's max HP per batch and NOT scaled by the enemy damage multipliers (Hard,
+      // PROTOCOL spend), so a big burst on him costs a bounded, predictable bite instead of a share of the burst.
+      const amt = Math.min(REFLECT_CAP * plow.maxHp, plated.reflectPool);
       plated.reflectPool = 0;
-      this.reflectT = 0.45;
+      this.reflectT = REFLECT_EVERY;
       if (!plow.dead) {
         // Not a body hit: the reflection reaches the plow at any height (mesa top, mid-air), see waveHitPlow.
-        waveHitPlow(ctx, plated, amt, { knockback: 3, unblockable: true });
+        const scale = plated.dmgOutMult * (ctx.zone.enemyDmgMult ?? 1);
+        const dealt = waveHitPlow(ctx, plated, amt / Math.max(0.01, scale), { knockback: 3, unblockable: true });
         _v.set(plow.position.x, plow.position.y + 2.6, plow.position.z);
-        ctx.fx.floatText(_v, `REFLECTED ${Math.round(amt)}`, '#ffd24a', 0.75);
+        ctx.fx.floatText(_v, `REFLECTED ${Math.round(dealt)}`, '#ffd24a', 0.75);
         ctx.fx.burst(_v.set(plow.position.x, plow.position.y + 1.2, plow.position.z), { color: 0xffd24a, count: 12, speed: 6, size: 0.1, gravity: 10, life: 0.4 });
       }
     } else if (!plated) this.reflectT = 0;
