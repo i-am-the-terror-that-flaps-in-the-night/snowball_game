@@ -9,10 +9,14 @@ const f1 = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : '∞');
 const pct = (v: number, mean: number) => `${v >= mean ? '+' : ''}${Math.round((v / mean - 1) * 100)}%`;
 const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
 
-it('balance report', () => {
-  // Storm strikes etc. roll Math.random: seed it so two runs print the same tables.
-  let seed = 12345;
+/** Storm strikes etc. roll Math.random: each report seeds its own stream, so two runs print the same tables and the
+ *  PROTOCOL C report (committed as scripts/balance/protocol-report.md) does not depend on what ran before it. */
+function seedRandom(seed = 12345): void {
   Math.random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
+
+it('balance report', () => {
+  seedRandom();
   const out: string[] = [];
   for (const tier of TIERS) {
     const rows = KINDS.map((k) => {
@@ -44,6 +48,7 @@ it('balance report', () => {
 it('PROTOCOL C wave estimate', () => {
   // Boss HP per wave (spend-scaled) vs each plow's single-target DPS at the mid / unlock / high garages: a planning
   // number (the real clears: scripts/protocol-probe.mjs, docs/balance.md "PROTOCOL C").
+  seedRandom();
   const out: string[] = ['\n### PROTOCOL C: seconds of single-target DPS to clear each wave\n'];
   for (const tier of ['mid', 'unlock', 'high'] as const) {
     out.push(`\n#### ${tier}\n`, '| plow | spent | k.hp | w1 | w2 | w3 | w4 | w5 | w6 | w7 | total |', '|---|---|---|---|---|---|---|---|---|---|---|');
