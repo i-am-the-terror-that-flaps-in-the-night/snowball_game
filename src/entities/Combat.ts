@@ -382,14 +382,15 @@ export class Combat implements CombatAPI {
   }
 
   /** REVENANT rig state for the hearse model (vehicles/revenant.ts): beacon tolls, Reap glow (signed by side), Hunt. */
-  get revenantRig(): { tolls: number; reap: number; hunt: boolean } {
+  get revenantRig(): { tolls: number; reap: number; hunt: boolean; reach: number } {
     const r = this.revRig;
+    r.reach = this.b.stats.reapReach || 7;
     r.tolls = this.revenant.tolls;
     r.reap = this.revenant.reapGlow * this.revenant.reapSide;
     r.hunt = this.revenant.huntT >= 0;
     return r;
   }
-  private revRig = { tolls: 0, reap: 0, hunt: false };
+  private revRig = { tolls: 0, reap: 0, hunt: false, reach: 7 };
 
   /** Last Stand (pilot perk): 1 + bonus while the plow is under LAST_STAND_HP, else 1. */
   private lastStandMult(): number {

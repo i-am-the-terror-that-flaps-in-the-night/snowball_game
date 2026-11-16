@@ -686,6 +686,7 @@ export abstract class PlowVisuals extends PlowBase {
       st.tolls = rig ? rig.tolls : 0;
       st.reap = rig ? rig.reap : 0;
       st.hunt = rig ? rig.hunt : false;
+      st.reach = rig ? rig.reach : 7;
       this.revRig.update(dt, st);
       this.beaconLight.intensity = 2 + pf * 2 + (st.hunt ? 6 : 0);
       this.revSpillT -= dt;

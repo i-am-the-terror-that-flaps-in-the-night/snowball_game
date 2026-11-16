@@ -32,6 +32,8 @@ export interface RevenantRigState {
   reap: number;
   /** Wild Hunt running (spectral strips burn hot). */
   hunt: boolean;
+  /** Reap reach (m, stats.reapReach): the swords are sized so their points reach the end of the Reap arc. */
+  reach?: number;
 }
 
 export interface RevenantVehicleParts {
@@ -58,9 +60,14 @@ const WHEELS = [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as c
 const WHEEL_R = 0.48;
 /** Scythe pivot (model z) and its Reap whip: the swing time (s) and how far it swings (rad). */
 /** Floating swords: hilt position (model, per side x sign), the Reap slash (s, rad of yaw in across the nose). */
-const SWD_X = 1.38;
-const SWD_Y = 1.5;
-const SWD_Z = 0.15;
+const SWD_X = 1.05;
+const SWD_Y = 1.15;
+/** Crossguards just ahead of the nose (the grips and pommels sit over the nose tip). */
+const SWD_Z = 3.6;
+/** The Reap's origin ahead of the plow centre (combat/revenant.ts REAP_FWD): blade tips reach REAP_FWD + reach. */
+const REAP_ORIGIN = 1.2;
+/** Crossguard-to-tip length of a sword at scale 1 (0.12 + BLADE_L). */
+const SWD_LEN = 1.87;
 const SWING_TIME = 0.3;
 const SWING_YAW = 1.1;
 /** Hubless wheels sit a touch outboard of the plates. */
@@ -379,7 +386,7 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
     runes.push(r);
   }
 
-  // ---- SPECTRAL SWORDS: two long swords floating at the flanks, points forward, blades laid flat (they read from the
+  // ---- SPECTRAL SWORDS: two big swords floating ahead of the nose (sized to the Reap reach), points forward, blades laid flat (they read from the
   // chase camera above): silver blade with burning violet edges and fuller, a void crossguard with glowing tips, a
   // wrapped grip and a glowing pommel. Each slashes across the nose on its side's Reap.
   const swords: THREE.Group[] = [];
@@ -401,7 +408,7 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   for (const sx of [-1, 1]) {
     const sw = new THREE.Group();
     sw.position.set(sx * SWD_X, SWD_Y, SWD_Z);
-    sw.scale.setScalar(1.25);
+    sw.scale.setScalar((REAP_ORIGIN + 7 - SWD_Z) / SWD_LEN);
     addMesh(bladeGeo, alloy, 0, 0, 0.12, sw, false);
     for (const ex of [-1, 1]) {
       const e = addMesh(edgeGeo, edgeGlow, ex * 0.083, 0, 0.12 + (BLADE_L - 0.3) / 2, sw, false);
@@ -562,7 +569,14 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   let swingSide = 1;
   let prevReap = 0;
   let sweep = 0;
+  let swdScale = 0;
   const update = (dt: number, s: RevenantRigState): void => {
+    // the swords grow with the Reap's reach (upgrades): uniform scale, so the width stays in proportion
+    const want = (REAP_ORIGIN + (s.reach || 7) - SWD_Z) / SWD_LEN;
+    if (Math.abs(want - swdScale) > 1e-3) {
+      swdScale = want;
+      for (const sw of swords) sw.scale.setScalar(want);
+    }
     t += dt;
     const spd = Math.min(1, Math.abs(s.speed) / 14);
     // Swords: a new Reap (the glow jumps back up) slashes the sword on that side in across the nose and back (the
