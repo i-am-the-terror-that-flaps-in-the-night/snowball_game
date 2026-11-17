@@ -1334,7 +1334,7 @@ function gunner(): Tpl {
   b.add(G.cyl(12), M.dark(), [-0.38, GUNNER_MUZZLE_Y - 0.05, -0.15], [0.17, 0.2, 0.17], [0, 0, PI / 2]);
   b.add(G.cyl(12), M.steel(), [-0.49, GUNNER_MUZZLE_Y - 0.05, -0.15], [0.12, 0.03, 0.12], [0, 0, PI / 2]);
   for (const sx of [-1, 1]) kb(b, paint(t), [sx * 0.24, GUNNER_MUZZLE_Y + 0.02, 0.35], [0.06, 0.34, 0.3], [0, sx * 0.25, 0]);
-  b.add(G.cyl(8), M.chrome(), [0, 1.0, 0.2], [0.035, 0.42, 0.035], [0.7, 0, 0]);
+  b.add(G.cyl(8), M.steel(), [0, 1.0, 0.2], [0.035, 0.42, 0.035], [0.7, 0, 0]);
   stack(b, stacks, 0.24, 0.85, -0.55, 0.05, 0.22, M.steel(), M.dark());
   b.flush();
   base.flush();
