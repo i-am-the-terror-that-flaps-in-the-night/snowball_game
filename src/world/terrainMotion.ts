@@ -193,6 +193,56 @@ function flat(t: Terrain, x: number, z: number, s: Surface): void {
   s.material = t.patches.length ? t.materialAt(x, z) : t.baseMaterial;
 }
 
+/* ------------------------------------------------------------------ resting on the snow */
+
+/** Most a body sinks into the snow (m): packed snow carries a vehicle, it only presses in a little. */
+export const SNOW_SINK_MAX = 0.12;
+/** ... and never more than this share of the depth (thin snow: wheels still touch it, not the ground below). */
+export const SNOW_SINK_FRAC = 0.25;
+/**
+ * Limits on a smoothed ride height. The ride feeds stepVertical's grounded target, so its changes read as surface
+ * motion: a climb that stops, or a drop faster than gravity follows in a frame, would leave the ground (a hop: a brief
+ * airborne state with air steering). stepVertical leaves the ground when last frame's climb speed x this frame's dt,
+ * minus this frame's drop, beats AIR_GAP (+ a frame of gravity). So the climb is a speed cap (RIDE_RISE_MAX m/s: even
+ * a 0.05 s frame hitch right after a climb stays grounded) and each frame's drop is capped at RIDE_STEP_MAX, less
+ * what last frame's climb carries into this one.
+ */
+export const RIDE_RISE_MAX = 0.6;
+export const RIDE_STEP_MAX = AIR_GAP * 0.8;
+
+/**
+ * Ride height (m above the ground) of a vehicle / bot / prop resting on snow `depth` deep: ON the visible snow top
+ * (the snow mesh is drawn at ground + depth, SnowField.topAt), pressed in by a small sink. 0 on bare ground.
+ */
+export function snowRide(depth: number): number {
+  if (depth <= 0) return 0;
+  return depth - Math.min(SNOW_SINK_MAX, depth * SNOW_SINK_FRAC);
+}
+
+/**
+ * Smooth a ride height toward `target` (exponential at `rate` 1/s) within the RIDE_RISE_MAX / RIDE_STEP_MAX caps, so
+ * it never launches the body. `lastStep` = the change applied last frame (next - cur of the previous call).
+ */
+export function followRide(cur: number, target: number, dt: number, rate: number, lastStep = 0): number {
+  let next = cur + (target - cur) * Math.min(1, dt * rate);
+  const up = RIDE_RISE_MAX * dt;
+  if (next - cur > up) next = cur + up;
+  const down = Math.max(0, RIDE_STEP_MAX - (lastStep > 0 ? up : 0));
+  if (cur - next > down) next = cur - down;
+  return next;
+}
+
+/**
+ * Ride re-based on a grounded deck hand-over (ground -> deck, deck -> ground, deck -> deck): `rise` = new surface
+ * height - old. The ride is relative to the surface under the body, so without this a step up onto a deck from deep
+ * snow would lift the body by the full snow ride and then let it settle (a pop), and a step down off a deck would drop
+ * it to the bare ground first. Keeps the feet at the same world height when the new surface is below them (they then
+ * settle onto it smoothly), never below the new surface, and never above where they were or would ride anyway.
+ */
+export function rebaseRide(ride: number, rise: number, target: number): number {
+  return Math.min(Math.max(ride - rise, 0), Math.max(ride, target));
+}
+
 /* ------------------------------------------------------------------ hazards */
 
 /** Lava burn rate (HP/s) for anyone touching it (plows, bots, rivals). */

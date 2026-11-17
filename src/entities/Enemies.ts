@@ -24,7 +24,7 @@ import type { BotNav } from '../core/types';
 import { makeSurface } from '../world/Terrain';
 import { detour } from '../world/omega/nav';
 import {
-  AIR_STEER, ICE_ACCEL, ICE_GRIP, LAVA_DPS, LAVA_OUT, LavaCache, SLOPE_PULL, V_LANDED, bonkCeiling, launchVert, stepVertical, steerLava,
+  AIR_STEER, ICE_ACCEL, ICE_GRIP, LAVA_DPS, LAVA_OUT, LavaCache, SLOPE_PULL, V_LANDED, bonkCeiling, followRide, launchVert, rebaseRide, snowRide, stepVertical, steerLava,
 } from '../world/terrainMotion';
 
 /* EnemyManager: owns every bot (minions + bosses) of Snowplow Showdown.
@@ -330,12 +330,13 @@ export class EnemyManager implements EnemyManagerAPI, Host {
         e.orbitDir = mate.orbitDir;
       }
     }
-    // Feet on the surface at the spawn height (ground by default; flat arenas: 0) plus the snow sink (ground only).
+    // Feet on the surface at the spawn height (ground by default; flat arenas: 0) plus the snow ride (ground only):
+    // resting on the visible snow top, pressed in a little (terrainMotion.snowRide).
     const terr = ctx.terrain;
     const sy = terr && terr.active ? terr.surfaceAt(x, z, opts?.y ?? 0, this.surf).y : 0;
     e.vert.surfaceY = sy;
     e.vert.deck = terr && terr.active ? this.surf.deck : -1;
-    e.sink = e.vert.deck < 0 ? this.depthFn(x, z) * 0.6 : 0;
+    e.sink = e.vert.deck < 0 ? snowRide(this.depthFn(x, z)) : 0;
     e.vert.y = sy + e.sink;
     e.groundY = e.vert.y;
     e.position.y = e.groundY;
@@ -1784,9 +1785,19 @@ export class EnemyManager implements EnemyManagerAPI, Host {
     const rig = e.rig;
     const t = this.time;
     const p = e.position;
-    const gy = e.vert.deck < 0 ? this.depthFn(p.x, p.z) * 0.6 : 0; // decks carry no snow
-    e.sink += (gy - e.sink) * Math.min(1, dt * 8);
+    const v = e.vert;
+    const gy = v.deck < 0 ? snowRide(this.depthFn(p.x, p.z)) : 0; // decks carry no snow
+    const s0 = e.sink;
+    e.sink = followRide(s0, gy, dt, 8, e.sinkStep);
+    e.sinkStep = e.sink - s0;
+    const surfY = v.surfaceY;
+    const deck = v.deck;
     this.vertical(e, dt);
+    // A grounded step onto / off a deck: keep the feet where they were and let them settle (no pop).
+    if (v.deck !== deck && !v.airborne) {
+      e.sink = rebaseRide(e.sink, v.surfaceY - surfY, v.deck < 0 ? snowRide(this.depthFn(p.x, p.z)) : 0);
+      v.y = v.surfaceY + e.sink;
+    }
     e.groundY = p.y = e.vert.y;
 
     // visual spin (spinner / grinder / sleet swipe); merge back into heading when it stops
@@ -2021,8 +2032,8 @@ export class EnemyManager implements EnemyManagerAPI, Host {
       if (t.decks.length) {
         // Decks: chunks land on the deck under them (queried from before the move); snow only on the ground.
         t.surfaceAt(m.position.x, m.position.z, y0, this.debrisSurf);
-        g = this.debrisSurf.y + (this.debrisSurf.deck < 0 ? this.depthFn(m.position.x, m.position.z) * 0.8 : 0) + d.sy * 0.5;
-      } else g = (t.active ? t.ground(m.position.x, m.position.z) : 0) + this.depthFn(m.position.x, m.position.z) * 0.8 + d.sy * 0.5;
+        g = this.debrisSurf.y + (this.debrisSurf.deck < 0 ? snowRide(this.depthFn(m.position.x, m.position.z)) : 0) + d.sy * 0.5;
+      } else g = (t.active ? t.ground(m.position.x, m.position.z) : 0) + snowRide(this.depthFn(m.position.x, m.position.z)) + d.sy * 0.5;
       if (m.position.y < g) {
         m.position.y = g;
         if (d.vy < 0) d.vy *= -0.32;

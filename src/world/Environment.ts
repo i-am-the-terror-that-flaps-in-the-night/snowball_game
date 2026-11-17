@@ -505,6 +505,7 @@ export class Environment extends NightScenery implements WorldAPI {
     }
     this.bobTime.value = t;
     if (this.carpet) this.drapeCarpet();
+    this.props.update(dt);
     if (this.omega) {
       const p = this.ctx.plow?.position;
       this.omega.works.update(dt, p?.x ?? 0, p?.y ?? 0, p?.z ?? 0);

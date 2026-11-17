@@ -6,6 +6,7 @@ import { makeSurface } from '../world/Terrain';
 import { AV, WO, ballFrac, ballFull, ballGrow } from '../config/whiteout';
 import { M } from './enemies/models';
 import { standIns } from '../render/standIns';
+import { snowRide } from '../world/terrainMotion';
 
 /**
  * THE AVALANCHE's GIANT SNOWBALL (PROTOCOL C finale, core/whiteoutDirector.ts runs it). One ball at a time:
@@ -500,7 +501,7 @@ export class GiantSnowball {
     } else snowD = ctx.snow?.getDepth(this.x, this.z) ?? 0;
     const form = this.forming > 0 ? 1 - this.forming / AV.FORM_T : 1;
     const shown = this.r * (form * form * (3 - 2 * form));
-    const want = ground + snowD * 0.6 + shown * 0.95;
+    const want = ground + snowRide(snowD) + shown * 0.95;
     this.y = dt > 0 ? this.y + (want - this.y) * Math.min(1, dt * 14) : want;
     this.group.position.set(this.x, this.y, this.z);
     this.mesh.scale.setScalar(Math.max(0.02, shown));

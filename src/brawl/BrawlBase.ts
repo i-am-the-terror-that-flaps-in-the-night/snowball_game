@@ -207,6 +207,7 @@ export abstract class BrawlBase {
     v.airTime = 0;
     r.position.y = v.y;
     r.sink = 0;
+    r.sinkSnap = true;
     r.ice = 0;
     r.ivx = r.ivz = 0;
     r.tiltP = r.tiltR = 0;

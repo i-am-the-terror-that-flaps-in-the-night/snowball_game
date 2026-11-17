@@ -19,6 +19,7 @@ import {
 import { _a, _b, _c, _dir, _q, _m, _s, _col, _e, _p, _one, _up, _ballSurf } from './scratch';
 import type { Streak } from './assets';
 import { floorTop } from '../combat/shared';
+import { followRide, rebaseRide, snowRide } from '../../world/terrainMotion';
 import { installPinstripe, type Pinstripe } from './pinstripe';
 
 /** STREAK underglow: radius (m) at which the snow round the hull is sampled for the ring's height. */
@@ -565,13 +566,26 @@ export abstract class PlowVisuals extends PlowBase {
     this.spin.rotation.y = this.spinAngle;
     this.spin.position.y = this.hop;
 
-    // Ride height: sink a little into the snow, bob more in deep snow (ground only: decks carry no snow).
-    const depth = this.vert.deck < 0 ? snow.getDepth(this.position.x, this.position.z) : 0;
+    // Ride height: rest on the visible snow top, pressed in a little; bob more in deep snow (ground only: decks carry
+    // no snow). In the plow's own ploughed trench the depth is low, so it drops into the trench.
+    const v = this.vert;
+    const depth = v.deck < 0 ? snow.getDepth(this.position.x, this.position.z) : 0;
     this.bobT += dt * (3 + absS * 1.4);
     const bob = Math.sin(this.bobT) * (0.015 + Math.min(0.05, depth * 0.08)) * Math.min(1, absS / 3 + 0.25);
-    const targetY = Math.min(0.25, depth * 0.3);
-    this.ride += (targetY - this.ride) * Math.min(1, dt * 6);
-    const v = this.vert;
+    const targetY = snowRide(depth);
+    if (this.rideSnap) {
+      this.rideSnap = false;
+      this.ride = targetY;
+      this.rideStep = 0;
+    } else {
+      // A grounded step onto / off a deck: keep the feet where they were and let them settle (no pop).
+      if (v.deck !== this.rideDeck && !v.airborne) this.ride = rebaseRide(this.ride, v.surfaceY - this.rideSurfY, targetY);
+      const r0 = this.ride;
+      this.ride = followRide(r0, targetY, dt, 6, this.rideStep);
+      this.rideStep = this.ride - r0;
+    }
+    this.rideSurfY = v.surfaceY;
+    this.rideDeck = v.deck;
     const terr = ctx.terrain;
     if (this.puppetY !== null) {
       // Duel opponent: the host's height when there is terrain or a flight to show, else the local ride (as always).

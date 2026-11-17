@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { ARENA, ballVolume } from '../../core/types';
 import { cooldown } from '../../config/upgrades';
 import { STEP_UP, type Deck } from '../../world/Terrain';
-import { LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, stepVertical } from '../../world/terrainMotion';
+import { LAVA_DPS, V_LANDED, V_LAUNCHED, bonkCeiling, snowRide, stepVertical } from '../../world/terrainMotion';
 import {
   TIP_Z, PROP_SMASH_SPEED, REAR_Z, SLAM_COOLDOWN, DASH_SECONDS, WHIRL_SECONDS, WHIRL_TICKS, WHIRL_TURNS,
   PLOW_HEIGHT, ICE_LINGER, LAVA_SFX_GAP, LAVA_EVENT_GAP, INPUT_BUFFER,
@@ -811,8 +811,10 @@ export abstract class PlowMotion extends PlowVisuals {
       o.rotation.x += d.spin.x * dt;
       o.rotation.y += d.spin.y * dt;
       o.rotation.z += d.spin.z * dt;
-      if (o.position.y < d.rest + this.wreckGround) {
-        o.position.y = d.rest + this.wreckGround;
+      // Pieces come to rest on the snow top where they land (decks carry no snow).
+      const floor = d.rest + this.wreckGround + (this.vert.deck < 0 ? snowRide(this.b.snow.getDepth(o.position.x, o.position.z)) : 0);
+      if (o.position.y < floor) {
+        o.position.y = floor;
         if (d.vel.y < 0) d.vel.y *= -0.3;
         d.vel.x *= 0.6;
         d.vel.z *= 0.6;

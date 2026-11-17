@@ -47,8 +47,12 @@ export class Rival implements EnemyHandle {
   lean = 0;
   // terrain (world/terrainMotion.ts)
   readonly vert = makeVert();
-  /** Smoothed snow ride height (m). */
+  /** Smoothed snow ride height (m): on the visible snow top, pressed in a little (terrainMotion.snowRide). */
   sink = 0;
+  /** Snap the ride to the snow under the rival on the next frame (spawn / respawn). */
+  sinkSnap = true;
+  /** Last frame's sink change (terrainMotion.followRide caps the next one from it). */
+  sinkStep = 0;
   mat: GroundMaterial = 'snow';
   gx = 0;
   gz = 0;

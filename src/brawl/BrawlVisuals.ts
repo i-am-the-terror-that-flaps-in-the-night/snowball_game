@@ -4,7 +4,7 @@ import { BLADE_Z, createCocoa, createRivalBalls } from './models';
 import { VOLT_CLAP_R, VOLT_CLAP_WIND } from './voltRival';
 import { POUND_CROUCH, POUND_HOP, POUND_HOP_H, POUND_R } from './bruteRival';
 import { makeSurface } from '../world/Terrain';
-import { V_LANDED, bonkCeiling, stepVertical } from '../world/terrainMotion';
+import { V_LANDED, bonkCeiling, followRide, rebaseRide, snowRide, stepVertical } from '../world/terrainMotion';
 import { RIVAL_R, SLAM_WIND, WHIRL_T, COCOA_MAX, COCOA_EVERY, COCOA_HEAL, RIVAL_HEIGHT, RIVAL_ICE_LINGER, _cam, clamp, type Fighter, type Debris } from './shared';
 import type { Rival } from './rival';
 import { BrawlBase } from './BrawlBase';
@@ -133,9 +133,26 @@ export abstract class BrawlVisuals extends BrawlBase {
       r.bubble.sprite.visible = false;
       return;
     }
-    const depth = r.vert.deck < 0 ? this.ctx.snow.getDepth(r.position.x, r.position.z) : 0;
-    r.sink += (Math.min(0.25, depth * 0.3) - r.sink) * Math.min(1, dt * 6);
+    // Snow ride: rest on the visible snow top, pressed in a little (terrainMotion.snowRide; decks carry no snow).
+    const v = r.vert;
+    const target = snowRide(v.deck < 0 ? this.ctx.snow.getDepth(r.position.x, r.position.z) : 0);
+    if (r.sinkSnap) {
+      r.sinkSnap = false;
+      r.sink = target;
+      r.sinkStep = 0;
+    } else {
+      const s0 = r.sink;
+      r.sink = followRide(s0, target, dt, 6, r.sinkStep);
+      r.sinkStep = r.sink - s0;
+    }
+    const surfY = v.surfaceY;
+    const deck = v.deck;
     this.vertical(r, dt);
+    // A grounded step onto / off a deck: keep the feet where they were and let them settle (no pop).
+    if (v.deck !== deck && !v.airborne) {
+      r.sink = rebaseRide(r.sink, v.surfaceY - surfY, v.deck < 0 ? snowRide(this.ctx.snow.getDepth(r.position.x, r.position.z)) : 0);
+      r.position.y = v.y = v.surfaceY + r.sink;
+    }
     rig.root.rotation.set(r.tiltP, r.heading, r.tiltR);
     // Whirl spin of the body + tornado.
     if (r.whirlT >= 0) {
@@ -162,8 +179,16 @@ export abstract class BrawlVisuals extends BrawlBase {
     if (r.ballOn) {
       r.ballSpin += (r.speed * dt) / Math.max(0.2, br);
       _e.set(r.ballSpin, 0, 0);
-      // Root space: the ball sits on the snow under the blade (the root rides at surface + sink).
-      _v.set(0, br - (r.vert.airborne ? 0 : r.sink) + 0.02, BLADE_Z + br);
+      // Root space: the ball sits on the snow top in front of the blade, like the player's (the root rides at surface
+      // + sink; decks carry no snow).
+      let lift = 0;
+      if (!r.vert.airborne) {
+        const bd = BLADE_Z + br;
+        const bx = r.position.x + Math.sin(r.heading) * bd;
+        const bz = r.position.z + Math.cos(r.heading) * bd;
+        lift = (r.vert.deck < 0 ? this.ctx.snow.getDepth(bx, bz) : 0) - r.sink;
+      }
+      _v.set(0, br + lift + 0.02, BLADE_Z + br);
       r.ballLocal.compose(_v, _q.setFromEuler(_e), _v2.setScalar(br));
     }
     // Glow: slam wind-up / bounty.

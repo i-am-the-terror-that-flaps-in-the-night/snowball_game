@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Terrain, makeSurface } from '../src/world/Terrain';
 import {
   LAVA_AVOID, LAVA_CLEAR, LAVA_DPS, LAVA_OUT, LavaCache, MIN_AIR, V_HOP, V_LANDED, V_LAUNCHED, V_LEFT, avoidLava, bonkCeiling, launchVert, lavaAhead,
-  makeVert, slopeAccel, stepVertical, steerLava,
+  makeVert, slopeAccel, stepVertical, steerLava, snowRide, followRide, rebaseRide, RIDE_RISE_MAX, RIDE_STEP_MAX, SNOW_SINK_MAX, V_NONE,
 } from '../src/world/terrainMotion';
 import { DEV_FEATURES, DEV_TERRAIN } from '../src/world/devTerrain';
 import { OMEGA_TERRAIN } from '../src/world/omega/layout';
@@ -450,5 +450,67 @@ describe('terrain hazards', () => {
     const out = { x: 0, z: 0 };
     t.conveyorAt(24, -20, -1, out);
     expect(out.z).toBe(DEV_FEATURES.conveyor.speed);
+  });
+});
+
+describe('resting on the snow (snowRide / followRide / rebaseRide)', () => {
+  it('rides on the visible snow top, pressed in only a little', () => {
+    expect(snowRide(0)).toBe(0);
+    expect(snowRide(-0.1)).toBe(0);
+    for (const d of [0.05, 0.2, 0.45, 0.55, 0.7, 1.2]) {
+      const r = snowRide(d);
+      expect(r).toBeLessThan(d);
+      expect(d - r).toBeLessThanOrEqual(SNOW_SINK_MAX + 1e-9);
+      expect(r).toBeGreaterThanOrEqual(d * 0.75 - 1e-9);
+    }
+  });
+
+  it('caps each frame\'s change (a slow climb, a quick sink, less right after a climb)', () => {
+    expect(followRide(0, 0.6, DT, 6)).toBeCloseTo(RIDE_RISE_MAX * DT, 9);
+    expect(followRide(0.6, 0, DT, 60)).toBeCloseTo(0.6 - RIDE_STEP_MAX, 9);
+    expect(followRide(0.6, 0, DT, 60, 0.01)).toBeCloseTo(0.6 - (RIDE_STEP_MAX - RIDE_RISE_MAX * DT), 9);
+    expect(followRide(0.3, 0.301, DT, 6)).toBeCloseTo(0.3001, 9);
+  });
+
+  it('a ride climbing out of a trench and stopping never launches the body', () => {
+    // an active terrain (so the ballistic launch test runs), standing on a flat spot of it
+    const t = new Terrain({ shapes: [{ kind: 'dome', x: 25, z: 25, r: 3, h: 1 }] });
+    expect(t.active).toBe(true);
+    const v = makeVert();
+    const s = makeSurface();
+    let ride = 0;
+    // alternate trench (0) / fresh deep snow (0.7) every few frames
+    const x = -10;
+    const z = -10;
+    t.surfaceAt(x, z, 10, s);
+    expect(s.y).toBe(0);
+    v.y = s.y;
+    v.surfaceY = s.y;
+    v.px = x;
+    v.pz = z;
+    // any frame rate the game runs at (dt is clamped to 0.05), fast and slow switching
+    let step = 0;
+    for (const dt of [1 / 144, DT, 1 / 30, 0.05, 1 / 144, 0.05, DT]) {
+      for (const every of [1, 2, 7, 20]) {
+        for (let i = 0; i < 240; i++) {
+          const target = Math.floor(i / every) % 2 ? snowRide(i % 3 ? 0.7 : 1.4) : 0;
+          const r0 = ride;
+          ride = followRide(r0, target, dt, 8, step);
+          step = ride - r0;
+          expect(stepVertical(t, v, x, z, ride, dt, s)).toBe(V_NONE);
+          expect(v.airborne).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('re-bases the ride on a deck hand-over so the feet keep their height', () => {
+    // ground (snow ride 0.43) up onto a deck 0.3 higher: feet stay put, then settle
+    expect(rebaseRide(0.43, 0.3, 0)).toBeCloseTo(0.13, 6);
+    // a deck higher than the feet: snap onto it (ride 0), as before
+    expect(rebaseRide(0.43, 0.6, 0)).toBe(0);
+    // off a deck 0.3 down into deep snow: feet stay at the deck height, never above the snow ride
+    expect(rebaseRide(0, -0.3, 0.43)).toBeCloseTo(0.3, 6);
+    expect(rebaseRide(0, -0.6, 0.43)).toBeCloseTo(0.43, 6);
   });
 });

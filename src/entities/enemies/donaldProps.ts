@@ -3,6 +3,7 @@ import { ARENA, type GameContext, type Obstacle } from '../../core/types';
 import type { Bot, Host } from './Bot';
 import { DecalPool, type Decal } from './decals';
 import { waveHitPlow } from '../combat/shared';
+import { snowRide } from '../../world/terrainMotion';
 
 /* THE DONALD's arena props, owned by the EnemyManager (update / clear) and driven by the boss AI (bosses.ts):
  *  - BUILD THE WALL: lines of snow-brick wall segments. Each line is telegraphed by a gold ground stripe, then
@@ -653,7 +654,7 @@ class DonaldProps {
         }
         plow.position.x = x;
         plow.position.z = z;
-        plow.position.y = this.depth(x, z) * 0.6 + arc;
+        plow.position.y = snowRide(this.depth(x, z)) + arc;
         plow.speed = 0;
       }
       if (k >= 1) {
@@ -692,7 +693,7 @@ class DonaldProps {
     p.visible = this.podiumK > 0.01;
     if (p.visible) {
       const k = this.podiumK;
-      const g = this.depth(this.podiumO.x, this.podiumO.z) * 0.6;
+      const g = snowRide(this.depth(this.podiumO.x, this.podiumO.z));
       p.position.y = g - 1.9 * (1 - k) + (this.podiumUp ? Math.sin(Math.min(1, k) * Math.PI) * 0.15 : 0);
     }
   }
