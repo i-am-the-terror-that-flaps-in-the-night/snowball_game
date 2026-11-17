@@ -6,6 +6,7 @@ import { PLOW_WHEEL_POS, PLOW_WHEEL_R, buildBruteParts, buildVoltParts, cleatZ }
 import { makeShadowProxy, type ShadowProxy } from '../render/shadowProxy';
 import { Palette, paletteEligible } from '../render/palette';
 import { bakeGeometry, mergeBaked } from '../render/mergeStatic';
+import { chamferBox } from '../render/kit/shapes';
 
 /* Procedural rival snowplow vehicles for Brawl mode. All face local +Z, ground at y = 0.
  * Static parts of each kind are merged per material ONCE (cached); instances share those geometries and
@@ -97,8 +98,16 @@ function place(g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0,
   g.applyMatrix4(_m);
   return g;
 }
+/** A box part: bevelled (render/kit, the art pass) unless thinner than 10 cm; always non-indexed (see mergeList). */
 const box = (w: number, h: number, d: number, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) =>
-  place(new THREE.BoxGeometry(w, h, d), x, y, z, rx, ry, rz);
+  place(
+    Math.min(w, h, d) >= 0.1 ? chamferBox(w, h, d, Math.max(0.02, Math.min(0.12, 0.12 * Math.min(w, h, d)))).clone() : new THREE.BoxGeometry(w, h, d).toNonIndexed(),
+    x, y, z, rx, ry, rz,
+  );
+/** mergeGeometries needs all-indexed or all-non-indexed parts: bevelled boxes are non-indexed, cylinders indexed. */
+function mergeList(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  return mergeGeometries(list.map((g) => (g.index ? g.toNonIndexed() : g)))!;
+}
 const cyl = (rt: number, rb: number, h: number, seg: number, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) =>
   place(new THREE.CylinderGeometry(rt, rb, h, seg), x, y, z, rx, ry, rz);
 
@@ -134,10 +143,10 @@ function wheelGeo(r: number, w: number): THREE.BufferGeometry {
   // Spokes so the spin reads.
   hubs.push(box(w + 0.06, r * 1.5, r * 0.18, 0, 0, 0));
   hubs.push(box(w + 0.06, r * 0.18, r * 1.5, 0, 0, 0));
-  const hub = mergeGeometries(hubs)!;
+  const hub = mergeList(hubs);
   // Black tire + steel hub on the wheel palette: one draw.
   const pal = palette('wheel', true);
-  g = mergeGeometries([pal.apply(tire, shared('black')), pal.apply(hub, shared('steel'))])!;
+  g = mergeList([pal.apply(tire, shared('black')), pal.apply(hub, shared('steel'))]);
   tire.dispose();
   hub.dispose();
   for (const x of hubs) x.dispose();
@@ -313,7 +322,7 @@ function buildTemplate(kind: RivalKind): KindTemplate {
   const merged: KindTemplate['parts'] = [];
   const statics: { geo: THREE.BufferGeometry; mat: THREE.MeshStandardMaterial }[] = [];
   for (const [key, list] of byKey) {
-    const g = mergeGeometries(list)!;
+    const g = mergeList(list);
     for (const x of list) x.dispose();
     if (key !== 'paint' && key !== 'blade' && paletteEligible(shared(key), { side: THREE.FrontSide, flatShading: shared(key).flatShading })) statics.push({ geo: g, mat: shared(key) });
     else {
@@ -404,7 +413,7 @@ function buildPlowTemplate(kind: 'volt' | 'brute'): PlowTemplate {
   const parts: PlowTemplate['parts'] = [];
   let height = 1.5;
   for (const [mat, list] of byMat) {
-    const g = mergeGeometries(list)!;
+    const g = mergeList(list);
     for (const x of list) x.dispose();
     g.computeBoundingSphere();
     g.computeBoundingBox();
@@ -423,7 +432,7 @@ function buildPlowTemplate(kind: 'volt' | 'brute'): PlowTemplate {
     a.push(p.geo);
   }
   for (const [key, list] of bladeBy) {
-    const g = mergeGeometries(list)!;
+    const g = mergeList(list);
     for (const x of list) x.dispose();
     g.computeBoundingSphere();
     parts.push({ geo: g, slot: key === 'blade' ? 'blade' : null, mat: shared(key), shadow: true });
