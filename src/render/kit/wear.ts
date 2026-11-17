@@ -16,8 +16,10 @@ export interface WearProfile {
   mottle: number;
   /** 0..1: scuff coverage. */
   scuff: number;
-  /** Object-space height (m) the grime fades out at. */
+  /** Object-space height (m) the grime fades out at, above the model's floor `y0` (default 0: models stand on y = 0;
+   *  a centred box passes its bottom). */
   grimeH?: number;
+  y0?: number;
 }
 
 const KEY = 'kitWear1';
@@ -33,21 +35,22 @@ float kwNoise(vec3 x) {
 
 /** Install the wear patch on `m` (idempotent). */
 export function applyWear(m: THREE.MeshStandardMaterial, p: WearProfile): THREE.MeshStandardMaterial {
-  const u = { kwWear: { value: new THREE.Vector4(p.grime, p.mottle, p.scuff, p.grimeH ?? 0.75) } };
+  const u = { kwWear: { value: new THREE.Vector4(p.grime, p.mottle, p.scuff, p.grimeH ?? 0.75) }, kwY0: { value: p.y0 ?? 0 } };
   m.userData.kitWear = u;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.kwWear = u.kwWear;
+    sh.uniforms.kwY0 = u.kwY0;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vKwPos;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvKwPos = position;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vKwPos;\nuniform vec4 kwWear;\n${NOISE}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vKwPos;\nuniform vec4 kwWear;\nuniform float kwY0;\n${NOISE}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         float kwN = kwNoise(vKwPos * 2.3);
         float kwF = kwNoise(vKwPos * 6.5 + 7.3);
-        float kwG = (1.0 - smoothstep(0.0, kwWear.w, vKwPos.y)) * kwWear.x;
+        float kwG = (1.0 - smoothstep(kwY0, kwY0 + kwWear.w, vKwPos.y)) * kwWear.x;
         float kwS = smoothstep(0.8, 0.9, kwF) * kwWear.z * smoothstep(0.45, 0.7, kwN);
         diffuseColor.rgb *= (1.0 - kwG * 0.62) * (1.0 + (kwN - 0.5) * 2.0 * kwWear.y);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.52, 0.55), kwS * 0.35);`,

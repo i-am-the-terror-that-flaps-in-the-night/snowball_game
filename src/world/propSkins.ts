@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { applyWear } from '../render/kit/wear';
 
 /**
  * Per-arena looks for the destructible props (Props.ts). Every arena keeps the same two prop kinds (the "crate" and
@@ -41,6 +42,8 @@ export function getPropSkin(key: PropSkinKey): PropSkin {
   let s = cache.get(key);
   if (!s) {
     s = build(key);
+    // art pass: grime toward the foot of the 2 m crate (a centred box: its floor is y = -1) and a few scuffs
+    applyWear(s.crate as THREE.MeshStandardMaterial, { grime: 0.35, mottle: 0.05, scuff: 0.2, grimeH: 0.8, y0: -1 });
     cache.set(key, s);
   }
   return s;
