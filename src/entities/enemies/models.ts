@@ -332,8 +332,8 @@ function writeWheels(attr: THREE.InstancedBufferAttribute, spots: readonly numbe
 function treads(base: Part, wheels: Wheels, x: number, len: number, h: number, w: number, nWheels: number, hub: THREE.Material): void {
   for (const sx of [-1, 1]) {
     kb(base, M.rubber(), [sx * x, h / 2, 0], [w, h, len], ZERO, Math.min(0.06, h * 0.12));
-    // track guard: a thin bevelled steel rail along the top outer edge of the belt
-    kb(base, M.dark(), [sx * (x + w * 0.42), h + 0.05, 0], [w * 0.22, 0.07, len * 0.96], ZERO, 0.02);
+    // track guard: a thin bevelled rail along the top outer edge of the belt (cleat material: no extra draw)
+    kb(base, M.cleat(), [sx * (x + w * 0.42), h + 0.05, 0], [w * 0.22, 0.07, len * 0.96], ZERO, 0.02);
     base.add(G.cyl(10), M.rubber(), [sx * x, h / 2, len / 2], [h / 2, w, h / 2], [0, 0, PI / 2]);
     base.add(G.cyl(10), M.rubber(), [sx * x, h / 2, -len / 2], [h / 2, w, h / 2], [0, 0, PI / 2]);
     const n = Math.max(3, Math.round(len / 0.34));
