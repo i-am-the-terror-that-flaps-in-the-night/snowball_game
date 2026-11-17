@@ -670,62 +670,68 @@ function frostbyte(): Tpl {
   const root = new THREE.Group();
   const stacks: number[] = [];
   const P = paint(t);
+  const A = accent(t);
+  const EYE = eyeMat(t, 0x40e0ff, 2.8);
+  const GLOW = glowMat(t, 0x40e0ff, 0.9);
   const wheels = new Wheels();
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 1.15, 0.56, sz * 1.0 - 0.2, 0.56, 0.46, accent(t));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 1.15, 0.56, sz * 1.0 - 0.2, 0.56, 0.46, A);
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  kb(b, P, [0, 1.05, -0.2], [1.75, 0.7, 3.0], ZERO, 0.07);
-  kb(b, M.dark(), [0, 0.7, -0.2], [1.6, 0.16, 2.9], ZERO, 0.04);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) kb(b, P, [sx * 1.15, 1.2, sz * 1.0 - 0.2], [0.58, 0.14, 1.25], ZERO, 0.04);
-  // cab with the visor-face
-  kb(b, P, [0, 2.0, -0.55], [1.7, 1.35, 1.55], ZERO, 0.08);
-  kb(b, M.black(), [0, 2.72, -0.55], [1.85, 0.1, 1.7], ZERO, 0.035);
-  // boss detail: seams, deck vents, steel bolt rows on the fenders and the blade, tail lights, side grab rails
+  // RESHAPE: a rounded hull (side profile: a curved tail, a flat deck, a sloped hood to a rounded nose)
+  b.add(profileSolid('frostHull', [
+    [-1.62, 0.72], [1.2, 0.72], { p: [1.32, 0.92], q: [1.34, 0.72] }, { p: [0.55, 1.42], q: [1.1, 1.42] }, [-1.35, 1.42],
+    { p: [-1.62, 1.1], q: [-1.62, 1.42] },
+  ], 1.78, 0.2), P, [0, 0, -0.2]);
+  b.add(roundBlock(1.6, 0.16, 2.9, 0.06), M.dark(), [0, 0.66, -0.2]);
+  // arched fenders over the four wheels
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    b.add(profileSolid('frostFender', [
+      [-0.72, 0.95], { p: [0, 1.32], q: [-0.66, 1.32] }, { p: [0.72, 0.95], q: [0.66, 1.32] }, [0.62, 0.95],
+      { p: [0, 1.22], q: [0.56, 1.22] }, { p: [-0.62, 0.95], q: [-0.56, 1.22] },
+    ], 0.62, 0.06), P, [sx * 1.15, 0, sz * 1.0 - 0.2]);
+    bolts(b, M.steel(), [sx * 1.15 - 0.22, 1.27, sz * 1.0 - 0.2 - 0.2], [sx * 1.15 - 0.22, 1.27, sz * 1.0 - 0.2 + 0.2], 3);
+  }
+  // cab: an upright visor face, a rounded roof sweeping back
+  b.add(profileSolid('frostCab', [
+    [-1.3, 1.36], [0.28, 1.36], [0.28, 2.42], { p: [-0.05, 2.74], q: [0.28, 2.74] }, [-0.95, 2.74],
+    { p: [-1.3, 2.38], q: [-1.3, 2.74] },
+  ], 1.72, 0.18), P, [0, 0, 0]);
+  b.add(roundBlock(1.52, 0.86, 0.06, 0.08), M.black(), [0, 2.06, 0.27]);
+  for (const sx of [-1, 1]) kb(b, EYE, [sx * 0.38, 2.2, 0.31], [0.46, 0.15, 0.04], [0, 0, sx * 0.22]);
+  kb(b, EYE, [0, 1.86, 0.31], [0.75, 0.06, 0.04]);
+  for (const x of [-0.25, 0, 0.25]) kb(b, EYE, [x, 1.8, 0.31], [0.05, 0.1, 0.04]);
+  kb(b, A, [0, 2.54, 0.25], [1.5, 0.06, 0.08]);
+  kb(b, GLOW, [0, 2.8, -0.55], [1.2, 0.1, 0.25]);
+  // roof light rack (chrome lenses)
+  kb(b, M.black(), [0, 2.82, 0.0], [1.4, 0.07, 0.16], ZERO, 0.025);
+  for (const x of [-0.5, -0.17, 0.17, 0.5]) {
+    b.add(roundBlock(0.2, 0.14, 0.12, 0.04), M.black(), [x, 2.92, 0.04]);
+    b.add(G.cyl(12), M.chrome(), [x, 2.92, 0.105], [0.06, 0.02, 0.06], [PI / 2, 0, 0]);
+  }
+  // deck vents, side grilles, tail lights, cab grab rails
+  vent(b, M.black(), [0, 1.43, -1.15], 1.0, 0.45, 5, [-PI / 2, 0, 0]);
   for (const sx of [-1, 1]) {
-    kb(b, M.black(), [sx * 0.877, 1.05, 0.35], [0.012, 0.55, 0.02]);
-    kb(b, M.black(), [sx * 0.877, 1.05, -0.75], [0.012, 0.55, 0.02]);
-    kb(b, M.black(), [sx * 0.852, 2.0, -0.95], [0.012, 1.1, 0.02]);
-    vent(b, M.black(), [sx * 0.88, 1.08, -1.25], 0.5, 0.36, 4, [0, sx * PI / 2, 0]);
-    kb(b, eyeMat(t, 0x40e0ff, 2.8), [sx * 0.62, 1.05, -1.705], [0.3, 0.1, 0.02]);
-    for (const sz of [-1, 1]) bolts(b, M.steel(), [sx * 1.15 - 0.2, 1.275, sz * 1.0 - 0.2 - 0.5], [sx * 1.15 - 0.2, 1.275, sz * 1.0 - 0.2 + 0.5], 4);
-    // grab rail on the cab side, on two standoffs
-    kb(b, M.chrome(), [sx * 0.905, 2.25, -0.55], [0.045, 0.045, 1.0], ZERO, 0.012);
-    for (const z of [-0.95, -0.15]) kb(b, M.dark(), [sx * 0.88, 2.25, z], [0.06, 0.04, 0.04]);
+    vent(b, M.black(), [sx * 0.89, 1.08, -1.2], 0.5, 0.3, 4, [0, sx * PI / 2, 0]);
+    b.add(roundBlock(0.3, 0.1, 0.03, 0.02), EYE, [sx * 0.62, 1.05, -1.83]);
+    kb(b, M.chrome(), [sx * 0.9, 2.15, -0.5], [0.045, 0.045, 0.9], ZERO, 0.012);
+    for (const z of [-0.85, -0.15]) b.add(G.box(), M.dark(), [sx * 0.87, 2.15, z], [0.06, 0.04, 0.04]);
+    b.add(G.box(), A, [sx * 0.875, 1.75, -0.5], [0.02, 0.07, 1.4]);
   }
-  vent(b, M.black(), [0, 1.405, -1.2], 1.0, 0.5, 5, [-PI / 2, 0, 0]);
-  // BOLD PASS: hydraulic rams to the blade, a roof light rack (chrome lenses), cab side armour, a rear radiator
-  // grille, and ice-blue accent stripes
+  // the BLADE: a curved moldboard with angled wings, glowing ice edges, hydraulic rams
+  b.add(moldboard(3.5, 1.25, 0.38, 0.18), M.steel(), [0, 0.34, 1.62]);
+  for (const sx of [-1, 1]) b.add(moldboard(0.62, 1.25, 0.38, 0.18), M.steel(), [sx * 2.02, 0.34, 1.47], ONE, [0, sx * -0.5, 0]);
+  kb(b, GLOW, [0, 0.38, 1.64], [3.5, 0.1, 0.2]);
+  kb(b, GLOW, [0, 1.6, 2.0], [3.6, 0.08, 0.24]);
+  // push frame behind the blade: two beams and hydraulic rams (all end at the blade's back face)
   for (const sx of [-1, 1]) {
-    b.add(G.cyl(8), M.dark(), [sx * 0.55, 1.15, 0.85], [0.08, 0.6, 0.08], [PI / 2 - 0.25, 0, 0]);
-    b.add(G.cyl(8), M.chrome(), [sx * 0.55, 1.05, 1.25], [0.05, 0.45, 0.05], [PI / 2 - 0.25, 0, 0]);
-    kb(b, P, [sx * 0.9, 1.75, -0.35], [0.08, 0.7, 1.0], [0, 0, sx * 0.05], 0.03);
-    kb(b, accent(t), [sx * 0.94, 1.75, -0.35], [0.02, 0.07, 0.9]);
+    kb(b, M.black(), [sx * 0.55, 0.9, 0.98], [0.16, 0.16, 0.7]);
+    b.add(G.cyl(8), M.dark(), [sx * 0.95, 1.18, 0.9], [0.08, 0.5, 0.08], [PI / 2 - 0.3, 0, 0]);
+    b.add(G.cyl(8), M.chrome(), [sx * 0.95, 1.07, 1.25], [0.05, 0.35, 0.05], [PI / 2 - 0.3, 0, 0]);
   }
-  kb(b, M.black(), [0, 2.86, -0.1], [1.5, 0.08, 0.18], ZERO, 0.025);
-  for (const x of [-0.55, -0.2, 0.2, 0.55]) {
-    kb(b, M.black(), [x, 2.95, -0.06], [0.2, 0.14, 0.12], ZERO, 0.02);
-    b.add(G.cyl(10), M.chrome(), [x, 2.95, 0.005], [0.06, 0.02, 0.06], [PI / 2, 0, 0]);
-  }
-  vent(b, M.black(), [0, 1.05, -1.71], 1.3, 0.45, 6);
-  kb(b, M.black(), [0, 2.08, 0.24], [1.55, 0.9, 0.06]);
-  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0x40e0ff, 2.8), [sx * 0.38, 2.2, 0.28], [0.46, 0.15, 0.04], [0, 0, sx * 0.22]);
-  kb(b, eyeMat(t, 0x40e0ff, 2.8), [0, 1.86, 0.28], [0.75, 0.06, 0.04]);
-  for (const x of [-0.25, 0, 0.25]) kb(b, eyeMat(t, 0x40e0ff, 2.8), [x, 1.8, 0.28], [0.05, 0.1, 0.04]);
-  kb(b, accent(t), [0, 2.56, 0.24], [1.6, 0.06, 0.08]);
-  kb(b, glowMat(t, 0x40e0ff, 0.9), [0, 2.82, -0.55], [1.2, 0.12, 0.25]);
-  // glowing blade
-  kb(b, M.steel(), [0, 0.95, 1.62], [3.5, 1.2, 0.22], [-0.2, 0, 0], 0.05);
-  for (const sx of [-1, 1]) kb(b, M.steel(), [sx * 1.85, 0.95, 1.45], [0.3, 1.2, 0.22], [-0.2, sx * -0.6, 0], 0.04);
-  // a bolt row along the blade's top edge (heads face the blade's front)
-  bolts(b, M.dark(), [-1.5, 1.416, 1.655], [1.5, 1.416, 1.655], 9, [PI / 2 - 0.2, 0, 0], 0.045);
-  kb(b, glowMat(t, 0x40e0ff, 0.9), [0, 0.32, 1.76], [3.5, 0.1, 0.2]);
-  kb(b, glowMat(t, 0x40e0ff, 0.9), [0, 1.58, 1.52], [3.6, 0.08, 0.3]);
-  kb(b, P, [0, 1.25, 1.75], [1.0, 0.3, 0.04], [-0.2, 0, 0]);
-  for (const sx of [-1, 1]) kb(b, M.black(), [sx * 0.55, 0.95, 1.0], [0.16, 0.16, 0.9]);
-  // antenna + dish
+  // antenna + dish, exhaust stacks
   b.add(G.cyl(6), M.black(), [-0.6, 3.1, -1.0], [0.025, 0.7, 0.025]);
-  b.add(G.sph(0), eyeMat(t, 0x40e0ff, 2.8), [-0.6, 3.47, -1.0], [0.07, 0.07, 0.07]);
-  b.add(G.hemi(), M.steel(), [0.5, 2.85, -1.0], [0.3, 0.12, 0.3], [-0.6, 0, 0]);
+  b.add(G.sph(1), EYE, [-0.6, 3.47, -1.0], [0.07, 0.07, 0.07]);
+  b.add(lathe('frostDish', [[0.02, 0], [0.3, 0.1], [0.32, 0.13]], 16), M.steel(), [0.5, 2.78, -1.0], ONE, [-0.6, 0, 0]);
   for (const sx of [-1, 1]) stack(b, stacks, sx * 0.62, 1.4, -1.55, 0.09, 0.9, M.chrome(), M.black());
   b.flush();
   // its own snowball (repositioned/scaled every frame)
