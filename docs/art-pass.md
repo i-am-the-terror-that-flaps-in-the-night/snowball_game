@@ -1,7 +1,20 @@
 # Art pass plan: "polished realistic-lite"
 
-Status: stage 0 (sample + tools) built, awaiting the gate (see "Stage 0 lighting sample" below). Stage 0 is an approval gate: nothing rolls out
-to the whole game until the sample is approved.
+Status: SHIPPED (first full pass). The stage-0 sample was approved ("apply this to all the stuff") and rolled out:
+- kit (src/render/kit/shapes.ts: chamferBox / chamferWedge / chamferTaper / boltHead / kitBox with BoxGeometry-style
+  UVs; src/render/kit/wear.ts: grime / mottle / scuffs shader patch, optional WearFrame for plows);
+- every bot and boss (models.ts: all untextured boxes / wedges bevelled via kb / kw, thin parts plain, strong strength
+  KIT_K 1.9; hand-made layering per type; wear on all opaque non-glowing materials); zero extra draws per type;
+- all 6 plows (bevels, layered parts, wear composed with the paint system and Hostile Takeover's pinstripes);
+- Brawl rivals (bevelled boxes), arena scenery (105 box types -> kitBox, +4% scene triangles, same meshes), crates
+  (wear), crowd (per-spectator build + arm wave in the bob shader, same draws);
+- lighting (render/look.ts default): arena reflections (arenaEnv.ts, scene.environment) at 'strong', SSAO on HIGH (the
+  Bloom path), contact-shadow patches on all tiers; baked AO kept switchable (`?look=all|baked`) but off; `?look=off`
+  restores the old lighting; Settings > Performance readout (perfHud.ts);
+- objects seated on the snow top (terrainMotion.ts snowRide / followRide / rebaseRide, Props re-seat).
+Open follow-ups: plow programs +8 per scene (over the +3 budget, kept for the paint wear); the Brawl rivals' VOLT /
+BRUTUS bodies (plowModels.ts builders) are not bevelled; arena scenery has no wear yet (it would need the palette
+patch); real-GPU check of SSAO at DPR 2 and of the env-map build time.
 
 Goal: the game keeps today's lighting model (PBR, no outlines) but everything looks finished: beveled shapes instead
 of raw boxes, panel detail, soft shadow in corners, reflections that match the arena, tuned lighting per arena. No
