@@ -11,8 +11,8 @@ import { withPrivateRandom } from '../src/render/privateRandom';
 afterEach(() => setLook('off', 'strong'));
 
 describe('art pass look switches (render/look.ts)', () => {
-  it('is off by default and the presets switch the parts', () => {
-    expect(look.env || look.bakedAO || look.ssao || look.contact).toBe(false);
+  it('ships env + SSAO + contact by default (baked AO off) and the presets switch the parts', () => {
+    expect({ env: look.env, bakedAO: look.bakedAO, ssao: look.ssao, contact: look.contact }).toEqual(lookPreset('ssao'));
     expect(lookPreset('env')).toEqual({ env: true, bakedAO: false, ssao: false, contact: false });
     expect(lookPreset('baked')).toEqual({ env: true, bakedAO: true, ssao: false, contact: true });
     expect(lookPreset('ssao')).toEqual({ env: true, bakedAO: false, ssao: true, contact: true });

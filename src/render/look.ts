@@ -10,8 +10,7 @@ import { bakedAOUniforms } from './palette';
  *  - ssao:     the half-resolution screen-space pass in render/post.ts (HIGH quality + the Bloom path only);
  *  - contact:  a soft contact-shadow patch under the plows and bots (render/contactShadows.ts).
  *
- * Stage 0 is an approval gate: everything is OFF by default (the game renders exactly as before) until a look is
- * chosen. A look is picked from the URL (`?look=env|baked|ssao|all|off`, `&strength=subtle|strong`) or live from the
+ * The shipped default is env + SSAO + contact at 'strong' (see `look`). A look is picked from the URL (`?look=env|baked|ssao|all|off`, `&strength=subtle|strong`) or live from the
  * console (`(await import('/src/render/look.ts')).setLook(...)`: env needs the next arena build, AO strength, SSAO
  * and contact shadows apply at once). */
 
@@ -53,8 +52,10 @@ export interface Look {
   strength: LookStrength;
 }
 
-/** The live look. OFF by default (stage 0 gate; see the header). */
-export const look: Look = { env: false, bakedAO: false, ssao: false, contact: false, strength: LOOK_STRENGTH };
+/** The live look: the approved stage-0 choice, arena reflections + SSAO (HIGH, Bloom path) + contact patches at
+ *  'strong'. Baked AO stays available for comparison (`?look=all|baked`) but is off: it only darkened static
+ *  dressing, hard to see, and cost ~+20 shader programs. `?look=off` restores the old lighting. */
+export const look: Look = { env: true, bakedAO: false, ssao: true, contact: true, strength: LOOK_STRENGTH };
 
 /** Named presets for the URL / console: 'env' = the new lighting alone; 'baked' / 'ssao' = it plus that corner-shadow
  *  candidate and the contact patches; 'all' = env + baked AO + SSAO (where available) + contact patches. */

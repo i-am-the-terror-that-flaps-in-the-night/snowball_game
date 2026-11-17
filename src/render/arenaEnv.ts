@@ -100,7 +100,7 @@ void main() {
 		g = mix( g, uTop, smoothstep( 0.15, 0.85, h ) );
 		vec3 tint = g * ( lum( base ) / max( lum( g ), 1e-4 ) );
 		// (a light touch: the hemisphere colours are the arena's tuned ambient hue)
-		c = mix( base, tint, 0.18 );
+		c = mix( base, tint, 0.1 );
 		// Brightness over the sky: a bright horizon, a deeper zenith (reflections get a horizon line to show; the
 		// cosine-weighted mean stays within a few % of the plain ambient, so diffuse light barely moves).
 		c *= mix( 1.45, 1.0, smoothstep( 0.2, 0.45, h ) ) * mix( 1.0, 0.75, smoothstep( 0.5, 1.0, h ) );
