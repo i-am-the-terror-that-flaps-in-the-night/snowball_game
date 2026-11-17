@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { kitBox } from '../../render/kit/shapes';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ZoneDef } from '../../core/types';
 import { ARENA } from '../../core/types';
@@ -62,7 +63,7 @@ export class ProtocolScenery extends VenueScenery {
     const gold = this.std(GOLD, { roughness: 0.3, metalness: 0.45, emissive: 0x4a3000, emissiveIntensity: 0.35 });
     const navy = this.std(NAVY, { roughness: 0.6 });
     const box = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material, cast = true) =>
-      this.bake(new THREE.BoxGeometry(w, h, d), M.makeTranslation(x, y, z), mat, cast, cast);
+      this.bake(kitBox(w, h, d), M.makeTranslation(x, y, z), mat, cast, cast);
     this.buildBoardroom(box, gold, navy);
     if (zone.stage) this.buildProtocolStage(G, box, gold, navy);
 
@@ -86,7 +87,7 @@ export class ProtocolScenery extends VenueScenery {
     frame.name = 'BoardroomFrame';
     // (no shadow casting: a static shadow proxy would outlive the torn frame)
     const part = (w: number, h: number, d: number, px: number, py: number, pz: number, mat: THREE.Material) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      const m = new THREE.Mesh(kitBox(w, h, d), mat);
       m.position.set(px, py, pz);
       frame.add(m);
     };
@@ -142,12 +143,12 @@ export class ProtocolScenery extends VenueScenery {
     };
     const flush = (parts: Parts, into: THREE.Object3D) => {
       for (const [m, l] of parts) {
-        const g = l.length === 1 ? l[0] : mergeGeometries(l, false);
+        const g = l.length === 1 ? l[0] : mergeGeometries(l.map((x) => (x.index ? x.toNonIndexed() : x)), false);
         if (!g) continue;
         into.add(new THREE.Mesh(g, m));
       }
     };
-    const B = new THREE.BoxGeometry(1, 1, 1);
+    const B = kitBox(1, 1, 1);
     const SPH = new THREE.SphereGeometry(1, 12, 8);
     const box: Parts = new Map();
     // floor / roof slabs, gold frame posts
@@ -219,7 +220,7 @@ export class ProtocolScenery extends VenueScenery {
     const litGroup = new THREE.Group();
     flush(lit, litGroup);
     const monitor = this.emissive(0xff2020, 3, { speed: 7 });
-    const led = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.05), monitor);
+    const led = new THREE.Mesh(kitBox(0.16, 0.12, 0.05), monitor);
     led.position.set(x + 1.0, y0 + 1.5, cz + 2.27);
     litGroup.add(led);
     litGroup.visible = false;
@@ -231,7 +232,7 @@ export class ProtocolScenery extends VenueScenery {
     group.add(glow);
     // glass shell (one transparent draw; no depth write so the room shows through)
     const glass = new THREE.MeshStandardMaterial({ color: 0xa8dcff, roughness: 0.08, metalness: 0.3, transparent: true, opacity: 0.28, depthWrite: false });
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(2 * hw, 2 * hh, 2 * hd), glass);
+    const shell = new THREE.Mesh(kitBox(2 * hw, 2 * hh, 2 * hd), glass);
     shell.position.set(x, y, z);
     shell.renderOrder = 4;
     group.add(shell);

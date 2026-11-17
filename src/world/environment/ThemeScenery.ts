@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { kitBox } from '../../render/kit/shapes';
 import type { ZoneDef } from '../../core/types';
 import { ARENA } from '../../core/types';
 import { getLavaMaterial, scorchMaterial } from '../biomes/GroundDecals';
@@ -33,7 +34,7 @@ export class ThemeScenery extends ArenaShell {
       mounds.push({ x: p.x, y: G - 0.4, z: p.z, ry: rnd() * 6, sx: 4.2 + rnd(), sy: 1.4 + rnd() * 0.8, sz: 4.2 + rnd() });
       for (let i = 0; i < 4; i++) tires.push({ x: p.x + (rnd() - 0.5) * 8, y: G + 0.05, z: p.z + (rnd() - 0.5) * 8, ry: 0, rx: Math.PI / 2 + (rnd() - 0.5) * 0.6, sx: 1, sy: 1, sz: 1 });
     }
-    this.inst(new THREE.BoxGeometry(1, 1, 1), this.std(0xffffff, { roughness: 0.7, metalness: 0.3 }), junk);
+    this.inst(kitBox(1, 1, 1), this.std(0xffffff, { roughness: 0.7, metalness: 0.3 }), junk);
     this.inst(new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), this.std(this.zone.snowTint, { roughness: 0.85 }), mounds);
     this.inst(new THREE.TorusGeometry(0.42, 0.19, 7, 14), this.std(this.style.tire, { roughness: 0.95 }), tires);
 
@@ -55,8 +56,8 @@ export class ThemeScenery extends ArenaShell {
         }
       }
     }
-    this.inst(new THREE.BoxGeometry(2.44, 2.6, 6.1).translate(0, 1.3, 0), this.std(0xffffff, { roughness: 0.6, metalness: 0.25 }), cont);
-    this.inst(new THREE.BoxGeometry(2.5, 0.2, 6.2).translate(0, 0.1, 0), this.std(0xffffff, { roughness: 0.85 }), roofs);
+    this.inst(kitBox(2.44, 2.6, 6.1).translate(0, 1.3, 0), this.std(0xffffff, { roughness: 0.6, metalness: 0.25 }), cont);
+    this.inst(kitBox(2.5, 0.2, 6.2).translate(0, 0.1, 0), this.std(0xffffff, { roughness: 0.85 }), roofs);
 
     // a scrapyard crane, far north-west
     const yellow = this.std(0xf2b632, { metalness: 0.3, roughness: 0.5 });
@@ -64,11 +65,11 @@ export class ThemeScenery extends ArenaShell {
     crane.position.set(-82, 0, -70);
     crane.rotation.y = 0.7;
     // tower + boom share `yellow`; cab, weight and cable differ only in colour -> one vertex-coloured draw
-    const frame = new THREE.Mesh(merge([new THREE.BoxGeometry(1.6, 30, 1.6).translate(0, 15, 0), new THREE.BoxGeometry(28, 1.1, 1.1).translate(9, 30.5, 0)]), yellow);
+    const frame = new THREE.Mesh(merge([kitBox(1.6, 30, 1.6).translate(0, 15, 0), kitBox(28, 1.1, 1.1).translate(9, 30.5, 0)]), yellow);
     const dark = merge([
-      colored(new THREE.BoxGeometry(2.6, 2.2, 2.4).translate(0, 28.6, 1.6), 0x30343c),
-      colored(new THREE.BoxGeometry(3, 2.2, 2).translate(-5, 29.4, 0), 0x4a4f58),
-      colored(new THREE.BoxGeometry(0.08, 14, 0.08).translate(19, 23.5, 0), 0x222222),
+      colored(kitBox(2.6, 2.2, 2.4).translate(0, 28.6, 1.6), 0x30343c),
+      colored(kitBox(3, 2.2, 2).translate(-5, 29.4, 0), 0x4a4f58),
+      colored(kitBox(0.08, 14, 0.08).translate(19, 23.5, 0), 0x222222),
     ]);
     const parts = new THREE.Mesh(dark, this.std(0xffffff, { vertexColors: true }));
     const magnet = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.6, 14).translate(19, 16.3, 0), this.std(0x3a3f48, { metalness: 0.6 }));
@@ -109,9 +110,9 @@ export class ThemeScenery extends ArenaShell {
 
     // wrecked cars (vertex-colored body/glass/wheels, tinted per instance)
     const car = merge([
-      colored(new THREE.BoxGeometry(1.9, 0.8, 4.2).translate(0, 0.62, 0), 0xffffff),
-      colored(new THREE.BoxGeometry(1.7, 0.66, 2.2).translate(0, 1.33, -0.3), 0xffffff),
-      colored(new THREE.BoxGeometry(1.74, 0.4, 2.24).translate(0, 1.36, -0.3), 0x2a3440),
+      colored(kitBox(1.9, 0.8, 4.2).translate(0, 0.62, 0), 0xffffff),
+      colored(kitBox(1.7, 0.66, 2.2).translate(0, 1.33, -0.3), 0xffffff),
+      colored(kitBox(1.74, 0.4, 2.24).translate(0, 1.36, -0.3), 0x2a3440),
       ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => colored(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 10).rotateZ(Math.PI / 2).translate(sx * 0.95, 0.38, sz * 1.35), 0x1e1e22))),
     ]);
     const rust = [0x8a4b2a, 0x6f7a3f, 0x3f5f8a, 0x9a3a2e, 0x7a6a5a, 0xb07a3a];
@@ -126,7 +127,7 @@ export class ThemeScenery extends ArenaShell {
       if (rnd() < 0.25) cars.push({ x: p.x + (rnd() - 0.5), y: G + 1.55, z: p.z + (rnd() - 0.5), ry: ry + (rnd() - 0.5) * 0.8, rz: (rnd() - 0.5) * 0.2, sx: 1, sy: 1, sz: 1, color: rust[(rnd() * rust.length) | 0] });
     }
     this.inst(car, this.std(0xffffff, { vertexColors: true, roughness: 0.7, metalness: 0.2 }), cars);
-    this.inst(new THREE.BoxGeometry(1.6, 0.16, 2.0).translate(0, 0.08, -0.3), this.std(this.zone.snowTint, { roughness: 0.85 }), roofSnow);
+    this.inst(kitBox(1.6, 0.16, 2.0).translate(0, 0.08, -0.3), this.std(this.zone.snowTint, { roughness: 0.85 }), roofSnow);
 
     // stumps & logs
     const wood = this.std(0x6b4428, { roughness: 0.9 });
@@ -140,12 +141,12 @@ export class ThemeScenery extends ArenaShell {
     const shed = new THREE.Group();
     shed.position.set(-70, 0, 34);
     shed.rotation.y = Math.atan2(70, -34);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(16, 7, 11).translate(0, 3.5, 0), this.std(0x7a3a28, { roughness: 0.85 }));
+    const body = new THREE.Mesh(kitBox(16, 7, 11).translate(0, 3.5, 0), this.std(0x7a3a28, { roughness: 0.85 }));
     const roof = new THREE.Mesh(new THREE.CylinderGeometry(6.6, 6.6, 16.4, 3, 1, false, Math.PI / 2).rotateZ(Math.PI / 2), this.std(this.zone.snowTint, { roughness: 0.85 }));
     roof.scale.set(1, 0.5, 1);
     roof.position.y = 7 + 1.5;
-    const door = new THREE.Mesh(new THREE.BoxGeometry(7, 5, 0.2).translate(0, 2.5, 5.55), new THREE.MeshStandardMaterial({ map: getDoorTex(), color: 0x9aa0a8, roughness: 0.6 }));
-    const eye = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.7, 0.1).translate(0, 6, 5.56), this.emissive(0xff2a1a, 2.2, { speed: 1.4 }));
+    const door = new THREE.Mesh(kitBox(7, 5, 0.2).translate(0, 2.5, 5.55), new THREE.MeshStandardMaterial({ map: getDoorTex(), color: 0x9aa0a8, roughness: 0.6 }));
+    const eye = new THREE.Mesh(kitBox(3.2, 0.7, 0.1).translate(0, 6, 5.56), this.emissive(0xff2a1a, 2.2, { speed: 1.4 }));
     body.castShadow = true;
     shed.add(body, roof, door, eye);
     this.add(shed);
@@ -201,10 +202,10 @@ export class ThemeScenery extends ArenaShell {
       const h = 7 + rnd() * 3;
       // body + chimney (iron) and mouth are baked into the zone batch (one draw each for all furnaces)
       f.updateMatrix();
-      this.bake(new THREE.BoxGeometry(w, h, w).translate(0, h / 2, 0), f.matrix, iron);
+      this.bake(kitBox(w, h, w).translate(0, h / 2, 0), f.matrix, iron);
       this.bake(new THREE.CylinderGeometry(1, 1.2, 6, 10).translate(w * 0.25, h + 3, -w * 0.2), f.matrix, iron);
-      this.bake(new THREE.BoxGeometry(w * 0.45, h * 0.35, 0.1).translate(0, h * 0.3, w / 2 + 0.06), f.matrix, mouthMat);
-      const shell = new THREE.Mesh(new THREE.BoxGeometry(w + 1.2, h + 1.0, w + 1.2).translate(0, (h + 1) / 2, 0), shellMat);
+      this.bake(kitBox(w * 0.45, h * 0.35, 0.1).translate(0, h * 0.3, w / 2 + 0.06), f.matrix, mouthMat);
+      const shell = new THREE.Mesh(kitBox(w + 1.2, h + 1.0, w + 1.2).translate(0, (h + 1) / 2, 0), shellMat);
       shell.renderOrder = 3;
       f.add(shell);
       this.add(f);
@@ -235,7 +236,7 @@ export class ThemeScenery extends ArenaShell {
       for (let t = 0.15; t < 0.9; t += 0.25) supports.push({ x: ax + (bx - ax) * t, y: 0, z: az + (bz - az) * t, ry, sx: 1, sy: 1, sz: 1 });
     }
     this.inst(new THREE.CylinderGeometry(0.6, 0.6, 1, 10), this.std(0x9fb8c8, { roughness: 0.5, metalness: 0.5 }), pipes);
-    this.bakeItems(new THREE.BoxGeometry(0.4, 4.2, 0.4).translate(0, 2.1, 0), iron, supports);
+    this.bakeItems(kitBox(0.4, 4.2, 0.4).translate(0, 2.1, 0), iron, supports);
 
     // ice crystals
     const crystals: Item[] = [];
@@ -293,11 +294,11 @@ export class ThemeScenery extends ArenaShell {
       heads.push({ x: x * 0.985, y: yTop + 12.5, z: z * 0.985, ry: Math.atan2(-x, -z), rx: 0.35, sx: 1, sy: 1, sz: 1 });
       this.glowSprite(0xffffff, 0.6, 12, x * 0.97, yTop + 12.5, z * 0.97);
     }
-    this.inst(new THREE.BoxGeometry(0.6, 10, 0.6).translate(0, 5, 0), this.std(0x7a8490, { metalness: 0.5 }), masts);
-    this.inst(new THREE.BoxGeometry(5, 2.4, 0.4), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), heads);
+    this.inst(kitBox(0.6, 10, 0.6).translate(0, 5, 0), this.std(0x7a8490, { metalness: 0.5 }), masts);
+    this.inst(kitBox(5, 2.4, 0.4), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), heads);
     // wind-swept snow fence posts
     const posts: Item[] = this.scatter(30, 48, 56).map((p) => ({ x: p.x, y: 0, z: p.z, ry: rnd() * 6, sx: 1, sy: 1, sz: 1 }));
-    this.inst(new THREE.BoxGeometry(0.12, 1.8, 0.12).translate(0, 0.9, 0), this.emissive(0xff5a2a, 0.8, { speed: 4 }), posts);
+    this.inst(kitBox(0.12, 1.8, 0.12).translate(0, 0.9, 0), this.emissive(0xff5a2a, 0.8, { speed: 4 }), posts);
   }
 
   /* ---------- biome: Coldboot Glacier (frozen relay station, aurora) ---------- */
@@ -336,19 +337,19 @@ export class ThemeScenery extends ArenaShell {
       this.bake(geo, M.makeTranslation(x, y, z).premultiply(st.matrix), mat, cast, cast);
     const white = this.std(0xe6edf3, { roughness: 0.6 });
     const steel = this.std(0x3a4a5c, { metalness: 0.5, roughness: 0.45 });
-    at(new THREE.BoxGeometry(18, 8, 11).translate(0, 4, 0), white, 0, 0, 0);
-    at(new THREE.BoxGeometry(18.2, 0.8, 11.2), this.std(0x2f6fb0, { roughness: 0.5 }), 0, 6.2, 0, false);
-    at(new THREE.BoxGeometry(8, 4, 7).translate(0, 2, 0), white, -4, 8, 0);
-    at(new THREE.BoxGeometry(6, 4.5, 0.2).translate(0, 2.25, 0), steel, 3, 0, 5.6, false);
+    at(kitBox(18, 8, 11).translate(0, 4, 0), white, 0, 0, 0);
+    at(kitBox(18.2, 0.8, 11.2), this.std(0x2f6fb0, { roughness: 0.5 }), 0, 6.2, 0, false);
+    at(kitBox(8, 4, 7).translate(0, 2, 0), white, -4, 8, 0);
+    at(kitBox(6, 4.5, 0.2).translate(0, 2.25, 0), steel, 3, 0, 5.6, false);
     const winMat = this.emissive(0x7fe8ff, 1.6, { speed: 0.8 });
     const winRed = this.emissive(0xff3a4a, 1.8, { speed: 3.3, phase: 1.2 });
-    for (let i = 0; i < 6; i++) at(new THREE.BoxGeometry(1.6, 0.9, 0.1), i % 3 === 1 ? winRed : winMat, -7 + i * 2.4, 4.6, 5.56, false);
+    for (let i = 0; i < 6; i++) at(kitBox(1.6, 0.9, 0.1), i % 3 === 1 ? winRed : winMat, -7 + i * 2.4, 4.6, 5.56, false);
     // roof dish: a shallow bowl tilted at the sky, on a mast
     at(new THREE.CylinderGeometry(0.35, 0.45, 3, 8).translate(0, 1.5, 0), steel, 5, 8, -1);
     const dish = new THREE.SphereGeometry(3.4, 18, 8, 0, Math.PI * 2, 0, 0.9).rotateX(Math.PI).rotateX(-0.7);
     at(dish, this.std(0xf2f6fa, { roughness: 0.4, side: THREE.DoubleSide }), 5, 13.2, -1);
     // ice crust over the station + icicles along the eaves
-    const crust = new THREE.Mesh(new THREE.BoxGeometry(19.2, 9, 12.2).translate(0, 4.5, 0), new THREE.MeshStandardMaterial({ color: 0xbfefff, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.28, depthWrite: false }));
+    const crust = new THREE.Mesh(kitBox(19.2, 9, 12.2).translate(0, 4.5, 0), new THREE.MeshStandardMaterial({ color: 0xbfefff, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.28, depthWrite: false }));
     crust.renderOrder = 3;
     crust.position.copy(st.position);
     crust.rotation.copy(st.rotation);
@@ -392,11 +393,11 @@ export class ThemeScenery extends ArenaShell {
       for (let k = 0; k < 8; k++) icicles.push({ x: cx + c * (rnd() - 0.5) * n, y: G + 2.8, z: cz - s * (rnd() - 0.5) * n, ry: 0, rx: Math.PI, sx: 0.2, sy: 0.6 + rnd(), sz: 0.2 });
       row++;
     }
-    this.inst(new THREE.BoxGeometry(0.95, 2.4, 1.05).translate(0, 1.2, 0), this.std(0xffffff, { roughness: 0.5, metalness: 0.4 }), racks, true);
+    this.inst(kitBox(0.95, 2.4, 1.05).translate(0, 1.2, 0), this.std(0xffffff, { roughness: 0.5, metalness: 0.4 }), racks, true);
     const ledMats = [this.emissive(0x5fe8ff, 2.2, { speed: 1.1 }), this.emissive(0xff3a4a, 2.4, { speed: 4.2, phase: 2 }), this.emissive(0x4dffd0, 2.2, { speed: 2.3, phase: 4 })];
-    for (let k = 0; k < 3; k++) this.inst(new THREE.BoxGeometry(0.7, 0.08, 0.04), ledMats[k], leds[k]);
+    for (let k = 0; k < 3; k++) this.inst(kitBox(0.7, 0.08, 0.04), ledMats[k], leds[k]);
     const shellMat = new THREE.MeshStandardMaterial({ color: 0xc8f2ff, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.32, depthWrite: false });
-    const sh = this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), shellMat, shells);
+    const sh = this.inst(kitBox(1, 1, 1).translate(0, 0.5, 0), shellMat, shells);
     if (sh) sh.renderOrder = 3;
     this.inst(new THREE.ConeGeometry(1, 1, 5).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0xd8f6ff, roughness: 0.15, transparent: true, opacity: 0.85 }), icicles);
     // the big frozen relay dish right behind the north jumbotron, turned to the arena: it frames the spawn view
@@ -506,7 +507,7 @@ export class ThemeScenery extends ArenaShell {
     this.inst(new THREE.CylinderGeometry(1, 1, 1, 6).translate(0, 0.5, 0), this.std(0xffffff, { roughness: 0.85 }), cols, true);
     // glowing cracks on the pit floor between the stands and the terraces
     const cracks: Item[] = this.scatter(26, 48, 55).map((p) => ({ x: p.x, y: 0.07, z: p.z, ry: rnd() * 6, sx: 0.25 + rnd() * 0.2, sy: 1, sz: 3 + rnd() * 5 }));
-    this.inst(new THREE.BoxGeometry(1, 0.05, 1), this.emissive(0xff6a1a, 1.6, { speed: 2.2 }), cracks);
+    this.inst(kitBox(1, 0.05, 1), this.emissive(0xff6a1a, 1.6, { speed: 2.2 }), cracks);
 
     // BULLDOZA's dig site: a rusty excavator + dump truck on a ledge (north-east)
     const yel = this.std(0xd18a1e, { roughness: 0.7, metalness: 0.3 });
@@ -516,19 +517,19 @@ export class ThemeScenery extends ArenaShell {
     ex.rotation.y = 2.3;
     ex.updateMatrix();
     const xb = (geo: THREE.BufferGeometry, mat: THREE.Material) => this.bake(geo, ex.matrix, mat, true);
-    xb(new THREE.BoxGeometry(5, 1.4, 7).translate(0, 0.7, 0), dark);
-    xb(new THREE.BoxGeometry(4.2, 2.6, 4.6).translate(0, 2.7, -0.6), yel);
-    xb(new THREE.BoxGeometry(2, 2, 2).translate(-1, 4.9, 0.6), yel);
-    xb(new THREE.BoxGeometry(1, 1, 9).rotateX(-0.5).translate(1, 6, 5.2), yel);
-    xb(new THREE.BoxGeometry(0.9, 0.9, 6).rotateX(0.7).translate(1, 6.4, 11), yel);
-    xb(new THREE.BoxGeometry(2.4, 2, 1.6).translate(1, 3.4, 13), dark);
+    xb(kitBox(5, 1.4, 7).translate(0, 0.7, 0), dark);
+    xb(kitBox(4.2, 2.6, 4.6).translate(0, 2.7, -0.6), yel);
+    xb(kitBox(2, 2, 2).translate(-1, 4.9, 0.6), yel);
+    xb(kitBox(1, 1, 9).rotateX(-0.5).translate(1, 6, 5.2), yel);
+    xb(kitBox(0.9, 0.9, 6).rotateX(0.7).translate(1, 6.4, 11), yel);
+    xb(kitBox(2.4, 2, 1.6).translate(1, 3.4, 13), dark);
     const tr = new THREE.Object3D();
     tr.position.set(-70, stepY(Math.hypot(-70, -50)), -50);
     tr.rotation.y = -0.6;
     tr.updateMatrix();
     const tb = (geo: THREE.BufferGeometry, mat: THREE.Material) => this.bake(geo, tr.matrix, mat, true);
-    tb(new THREE.BoxGeometry(5.5, 3.2, 8).translate(0, 3.6, -1), yel);
-    tb(new THREE.BoxGeometry(4.6, 2.8, 3).translate(0, 3.2, 4.4), yel);
+    tb(kitBox(5.5, 3.2, 8).translate(0, 3.6, -1), yel);
+    tb(kitBox(4.6, 2.8, 3).translate(0, 3.2, 4.4), yel);
     for (const wx of [-2.6, 2.6]) for (const wz of [-3.5, 0, 4.4]) tb(new THREE.CylinderGeometry(1.1, 1.1, 0.9, 10).rotateZ(Math.PI / 2).translate(wx, 1.1, wz), dark);
 
     // smoke plumes off the rim and the lava pools
@@ -584,7 +585,7 @@ export class ThemeScenery extends ArenaShell {
     const rz = -50;
     const RS = 1.4;
     this.inst(latticeMast(28, 3), this.std(0xd8d2c8, { metalness: 0.4, roughness: 0.5 }), [{ x: rx, y: 0, z: rz, ry: 0.4, sx: RS, sy: RS, sz: RS }], true);
-    this.bake(new THREE.BoxGeometry(9 * RS, 2, 9 * RS).translate(0, 1, 0), M.makeTranslation(rx, 0, rz), this.std(0x4a4f58, { metalness: 0.5 }), true);
+    this.bake(kitBox(9 * RS, 2, 9 * RS).translate(0, 1, 0), M.makeTranslation(rx, 0, rz), this.std(0x4a4f58, { metalness: 0.5 }), true);
     const drill = new THREE.Group();
     drill.position.set(rx, 2, rz);
     drill.rotation.x = -Math.PI / 2;
@@ -615,7 +616,7 @@ export class ThemeScenery extends ArenaShell {
     this.bake(new THREE.CylinderGeometry(1.1, 1.1, 10, 10).rotateZ(Math.PI / 2).rotateY(-0.38), M.makeTranslation(hx + 5, 1.1, hz + 2), hab, true);
     const panels: Item[] = [];
     for (let i = 0; i < 8; i++) panels.push({ x: hx + 16 + (i % 4) * 3.4, y: 1.6, z: hz - 8 + Math.floor(i / 4) * 4, ry: 0.3, rx: -0.6, sx: 1, sy: 1, sz: 1 });
-    this.inst(new THREE.BoxGeometry(3, 0.12, 2.2), this.std(0x1f3d78, { metalness: 0.6, roughness: 0.3, emissive: 0x0a1838, emissiveIntensity: 0.5 }), panels);
+    this.inst(kitBox(3, 0.12, 2.2), this.std(0x1f3d78, { metalness: 0.6, roughness: 0.3, emissive: 0x0a1838, emissiveIntensity: 0.5 }), panels);
     // dust plumes off the drill and the dunes
     const stacks: Puff[] = [{ x: rx, y: 0, z: rz, r: 2.6, rise: 16, drift: 18 }, { x: rx + 2, y: 0, z: rz + 1, r: 1.8, rise: 10, drift: 10 }];
     for (let i = 0; i < 4; i++) {
@@ -698,10 +699,10 @@ export class ThemeScenery extends ArenaShell {
     const hot = this.emissive(0xff4a10, 1.6, { speed: 0.9 });
     const cold = this.emissive(0x4fd8ff, 1.6, { speed: 0.9, phase: 3 });
     hot.fog = cold.fog = false;
-    this.bake(new THREE.BoxGeometry(5, 46, 6).translate(-2.5, 23, 0), M.makeTranslation(0, 0, mz), hot);
-    this.bake(new THREE.BoxGeometry(5, 46, 6).translate(2.5, 23, 0), M.makeTranslation(0, 0, mz), cold);
+    this.bake(kitBox(5, 46, 6).translate(-2.5, 23, 0), M.makeTranslation(0, 0, mz), hot);
+    this.bake(kitBox(5, 46, 6).translate(2.5, 23, 0), M.makeTranslation(0, 0, mz), cold);
     const capMat = this.std(0x1a1620, { roughness: 0.6, fog: false });
-    this.bake(new THREE.BoxGeometry(12, 3, 9).translate(0, 1.5, 0), M.makeTranslation(0, 0, mz), capMat);
+    this.bake(kitBox(12, 3, 9).translate(0, 1.5, 0), M.makeTranslation(0, 0, mz), capMat);
     this.bake(new THREE.ConeGeometry(4.6, 8, 4).rotateY(Math.PI / 4).translate(0, 50, 0), M.makeTranslation(0, 0, mz), capMat);
     this.glowSprite(0xff6a2a, 0.55, 26, -6, 30, mz, 1.1).material.fog = false;
     this.glowSprite(0x5fd8ff, 0.55, 26, 6, 30, mz, 1.3).material.fog = false;

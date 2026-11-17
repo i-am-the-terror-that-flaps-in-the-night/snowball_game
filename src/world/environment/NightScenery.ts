@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { kitBox } from '../../render/kit/shapes';
 import type { ZoneDef } from '../../core/types';
 import { ARENA } from '../../core/types';
 import { currentPreset } from '../../core/settings';
@@ -138,10 +139,10 @@ export class NightScenery extends ProtocolScenery {
         }
       }
     }
-    const unitBox = () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    const unitBox = () => kitBox(1, 1, 1).translate(0, 0.5, 0);
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.85 }), tiers, false, true);
     this.inst(unitBox(), this.std(st.trim === 0x18e8ff ? 0x2b2e3a : st.trim, { metalness: 0.4, roughness: 0.55 }), backs);
-    this.inst(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), fronts);
+    this.inst(kitBox(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), fronts);
     // the gallery crowd bobs (the Works' own bob amplitude is 0 otherwise)
     this.bobAmp.value = 0.2;
     this.addCrowd([], fill);
@@ -166,13 +167,13 @@ export class NightScenery extends ProtocolScenery {
     const lampHex = this.nightDef!.flood;
     const tilt = BANK_TILT;
     const frame = merge([
-      new THREE.BoxGeometry(3.1, 1.35, 0.32).rotateX(tilt),
-      new THREE.BoxGeometry(3.3, 0.14, 0.6).translate(0, -0.85, 0.05),
+      kitBox(3.1, 1.35, 0.32).rotateX(tilt),
+      kitBox(3.3, 0.14, 0.6).translate(0, -0.85, 0.05),
     ]);
-    const post = new THREE.BoxGeometry(0.22, 1, 0.22).translate(0, -0.5, -0.1);
+    const post = kitBox(0.22, 1, 0.22).translate(0, -0.5, -0.1);
     const lamps: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) {
-      lamps.push(new THREE.BoxGeometry(0.62, 0.5, 0.06).translate(-1.1 + i * 0.73, -0.29 + j * 0.58, 0.17).rotateX(tilt));
+      lamps.push(kitBox(0.62, 0.5, 0.06).translate(-1.1 + i * 0.73, -0.29 + j * 0.58, 0.17).rotateX(tilt));
     }
     const frameItems: Item[] = [];
     const postItems: Item[] = [];

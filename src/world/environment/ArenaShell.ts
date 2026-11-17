@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { kitBox } from '../../render/kit/shapes';
 import type { ZoneDef } from '../../core/types';
 import { ARENA, ENEMY_GATES, GATE_WIDTH } from '../../core/types';
 import { StaticBatch } from '../../render/mergeStatic';
@@ -95,17 +96,17 @@ export class ArenaShell extends EnvironmentCore {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) corners.push([sx * (ARENA.maxX + WALL_C / 2), sz * (ARENA.maxZ + WALL_C / 2)]);
     const cornerItems: Item[] = corners.map(([x, z]) => ({ x, y: 0, z, ry: 0, sx: WALL_C, sy: (brawlMode ? BRAWL_WALL_H : z > 0 ? SOUTH_H : WALL_H) + 0.7, sz: WALL_C }));
 
-    const unitBox = () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    const unitBox = () => kitBox(1, 1, 1).translate(0, 0.5, 0);
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.55, metalness: 0.02 }), blocks, true, true);
     // block caps + corner caps: same hemisphere, material and flags -> one draw
     const cornerCaps = cornerItems.map((c) => ({ ...c, y: c.sy - 0.05, sx: WALL_C * 0.55, sy: 0.4, sz: WALL_C * 0.55 }));
     this.inst(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, [...caps, ...cornerCaps]);
     const hazardMat = this.isRally ? this.std(0xe8b423, { roughness: 0.35, metalness: 0.35, emissive: 0x4a3000, emissiveIntensity: 0.35 }) : this.std(0xffffff, { map: getHazardTex(), roughness: 0.6, flatShading: false });
-    this.inst(new THREE.BoxGeometry(1, 0.38, 0.07).translate(0, 0.19, 0), hazardMat, bands);
+    this.inst(kitBox(1, 0.38, 0.07).translate(0, 0.19, 0), hazardMat, bands);
     const trimMat = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
-    this.inst(new THREE.BoxGeometry(0.36, 1, 0.4).translate(0, 0.5, 0), trimMat, posts, true);
+    this.inst(kitBox(0.36, 1, 0.4).translate(0, 0.5, 0), trimMat, posts, true);
     this.inst(unitBox(), this.std(st.trim, { metalness: 0.4, roughness: 0.5 }), cornerItems, true, true);
-    this.inst(new THREE.BoxGeometry(0.26, 0.16, 0.26).translate(0, 0.08, 0), this.emissive(st.gate, 1.2, { speed: 2.6 }), lamps);
+    this.inst(kitBox(0.26, 0.16, 0.26).translate(0, 0.08, 0), this.emissive(st.gate, 1.2, { speed: 2.6 }), lamps);
     const bannerMat = new THREE.MeshStandardMaterial({ map: getBannerTex(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75 });
     this.inst(new THREE.PlaneGeometry(1.0, 1.3), bannerMat, banners);
     // Campaign: the tire stacks behind the south wall share this draw (buildSouthDressing emits it).
@@ -128,7 +129,7 @@ export class ArenaShell extends EnvironmentCore {
   protected buildGates(G: number, snowMat: THREE.Material): void {
     const shared: GateMats = {};
     for (let i = 0; i < ENEMY_GATES.length; i++) this.buildGate(i, G, snowMat, shared);
-    const doorGeo = new THREE.BoxGeometry(GATE_WIDTH - 0.05, 3.5, 0.18).translate(0, -1.75, 0);
+    const doorGeo = kitBox(GATE_WIDTH - 0.05, 3.5, 0.18).translate(0, -1.75, 0);
     const doors = new THREE.InstancedMesh(doorGeo, shared.door!, this.gates.length);
     for (let i = 0; i < this.gates.length; i++) doors.setMatrixAt(i, this.gates[i].doorBase);
     doors.castShadow = true;
@@ -178,16 +179,16 @@ export class ArenaShell extends EnvironmentCore {
     };
 
     // frame
-    const pillarGeo = new THREE.BoxGeometry(PILLAR_W, 4.6, WALL_T);
-    const plateGeo = new THREE.BoxGeometry(PILLAR_W * 0.8, 3.0, 0.06);
+    const pillarGeo = kitBox(PILLAR_W, 4.6, WALL_T);
+    const plateGeo = kitBox(PILLAR_W * 0.8, 3.0, 0.06);
     for (const s of [-1, 1]) {
       solid(pillarGeo, trim, s * px, 2.3, zc);
       mesh(plateGeo, hazard, s * px, 2.0, -WALL_IN + 0.03, false);
       mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.3, 10), trim, s * px, 4.75, zc, false);
       mesh(new THREE.SphereGeometry(0.28, 12, 8), lightMat, s * px, 5.1, zc, false);
     }
-    solid(new THREE.BoxGeometry(GATE_WIDTH + PILLAR_W * 2, 1.0, WALL_T), hazard, 0, 4.1, zc);
-    mesh(new THREE.BoxGeometry(GATE_WIDTH - 0.4, 0.16, 0.08), lightMat, 0, 3.48, -WALL_IN + 0.04, false);
+    solid(kitBox(GATE_WIDTH + PILLAR_W * 2, 1.0, WALL_T), hazard, 0, 4.1, zc);
+    mesh(kitBox(GATE_WIDTH - 0.4, 0.16, 0.08), lightMat, 0, 3.48, -WALL_IN + 0.04, false);
 
     // roll-up garage door (pivot at its top edge so scale.y rolls it up into the header): one instance per gate
     shared.door ??= new THREE.MeshStandardMaterial({ map: getDoorTex(), color: new THREE.Color(st.trim).lerp(new THREE.Color(0xffffff), 0.65), roughness: 0.5, metalness: 0.35 });
@@ -201,12 +202,12 @@ export class ArenaShell extends EnvironmentCore {
     const tz = -(WALL_C + TUNNEL_LEN / 2);
     const capScale = new THREE.Vector3(0.6, 0.35, TUNNEL_LEN * 0.5);
     for (const s of [-1, 1]) {
-      mesh(new THREE.BoxGeometry(0.9, 3.9, TUNNEL_LEN), tunnelMat, s * (GATE_HALF + 0.45), 1.95, tz);
+      mesh(kitBox(0.9, 3.9, TUNNEL_LEN), tunnelMat, s * (GATE_HALF + 0.45), 1.95, tz);
       mesh(new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowMat, s * (GATE_HALF + 0.45), 3.85, tz, false, capScale);
-      for (const y of [0.95, 3.3]) mesh(new THREE.BoxGeometry(0.06, 0.12, TUNNEL_LEN - 0.4), lightMat, s * (GATE_HALF - 0.02), y, tz, false);
+      for (const y of [0.95, 3.3]) mesh(kitBox(0.06, 0.12, TUNNEL_LEN - 0.4), lightMat, s * (GATE_HALF - 0.02), y, tz, false);
     }
-    mesh(new THREE.BoxGeometry(GATE_WIDTH + 1.8, 0.45, TUNNEL_LEN - 1.2), trim, 0, 4.12, tz - 0.6);
-    mesh(new THREE.BoxGeometry(GATE_WIDTH + 1.4, 0.22, TUNNEL_LEN - 1.6), snowMat, 0, 4.42, tz - 0.6, false);
+    mesh(kitBox(GATE_WIDTH + 1.8, 0.45, TUNNEL_LEN - 1.2), trim, 0, 4.12, tz - 0.6);
+    mesh(kitBox(GATE_WIDTH + 1.4, 0.22, TUNNEL_LEN - 1.6), snowMat, 0, 4.42, tz - 0.6, false);
     const backZ = -(WALL_C + TUNNEL_LEN - 0.25);
     mesh(new THREE.PlaneGeometry(GATE_WIDTH, 3.9), (shared.back ??= new THREE.MeshBasicMaterial({ color: 0x05070f })), 0, 1.95, backZ, false);
     lights.flush(grp);
@@ -299,9 +300,9 @@ export class ArenaShell extends EnvironmentCore {
         }
       }
     }
-    const unitBox = () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    const unitBox = () => kitBox(1, 1, 1).translate(0, 0.5, 0);
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.85 }), tiers, true, true);
-    this.inst(new THREE.BoxGeometry(1, 0.1, 0.42).translate(0, 0.05, 0), this.std(0xffffff, { roughness: 0.6 }), seats);
+    this.inst(kitBox(1, 0.1, 0.42).translate(0, 0.05, 0), this.std(0xffffff, { roughness: 0.6 }), seats);
     this.inst(unitBox(), this.std(st.trim, { metalness: 0.4, roughness: 0.55 }), backs, true);
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.5, emissive: 0x222222 }), boards, false, true);
     this.inst(new THREE.CylinderGeometry(0.05, 0.05, 3, 6).translate(0, 1.5, 0), this.std(0xcfd5dc, { metalness: 0.6, roughness: 0.4 }), poles);
@@ -341,20 +342,20 @@ export class ArenaShell extends EnvironmentCore {
     }
     const H = 16;
     const parts: THREE.BufferGeometry[] = [];
-    for (const lx of [-0.6, 0.6]) for (const lz of [-0.6, 0.6]) parts.push(new THREE.BoxGeometry(0.2, H, 0.2).translate(lx, H / 2, lz));
+    for (const lx of [-0.6, 0.6]) for (const lz of [-0.6, 0.6]) parts.push(kitBox(0.2, H, 0.2).translate(lx, H / 2, lz));
     for (let y = 2; y < H; y += 2.6) {
-      parts.push(new THREE.BoxGeometry(1.4, 0.1, 0.1).translate(0, y, 0.6));
-      parts.push(new THREE.BoxGeometry(1.4, 0.1, 0.1).translate(0, y, -0.6));
-      parts.push(new THREE.BoxGeometry(0.1, 0.1, 1.4).translate(0.6, y, 0));
-      parts.push(new THREE.BoxGeometry(0.1, 0.1, 1.4).translate(-0.6, y, 0));
+      parts.push(kitBox(1.4, 0.1, 0.1).translate(0, y, 0.6));
+      parts.push(kitBox(1.4, 0.1, 0.1).translate(0, y, -0.6));
+      parts.push(kitBox(0.1, 0.1, 1.4).translate(0.6, y, 0));
+      parts.push(kitBox(0.1, 0.1, 1.4).translate(-0.6, y, 0));
     }
     const tilt = 0.5;
-    parts.push(new THREE.BoxGeometry(5, 2.6, 0.5).rotateX(tilt).translate(0, H + 0.6, 0.5));
-    parts.push(new THREE.BoxGeometry(5.4, 0.25, 1.2).translate(0, H - 0.9, 0.3));
+    parts.push(kitBox(5, 2.6, 0.5).rotateX(tilt).translate(0, H + 0.6, 0.5));
+    parts.push(kitBox(5.4, 0.25, 1.2).translate(0, H - 0.9, 0.3));
     this.inst(merge(parts), this.std(st.trim, { metalness: 0.6, roughness: 0.4 }), items, true);
     const lamps: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) {
-      lamps.push(new THREE.BoxGeometry(0.95, 0.85, 0.12).translate(-1.65 + i * 1.1, -0.5 + j * 1.0, 0.27).rotateX(tilt).translate(0, H + 0.6, 0.5));
+      lamps.push(kitBox(0.95, 0.85, 0.12).translate(-1.65 + i * 1.1, -0.5 + j * 1.0, 0.27).rotateX(tilt).translate(0, H + 0.6, 0.5));
     }
     this.inst(merge(lamps), new THREE.MeshBasicMaterial({ color: st.lamp, toneMapped: false }), items);
     // lamp heads for the night cones / pools: the head faces the arena, tilted `tilt` below the horizon
@@ -382,9 +383,9 @@ export class ArenaShell extends EnvironmentCore {
     this.add(grp);
     const trim = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
     // legs (casting) + frame baked into one draw
-    const legGeo = new THREE.BoxGeometry(1, 10.4, 1).translate(0, 5.2, 0);
+    const legGeo = kitBox(1, 10.4, 1).translate(0, 5.2, 0);
     for (const x of [-8, 8]) this.bake(legGeo, this.tmpM.makeTranslation(x, 0, -54), trim, true);
-    this.bake(new THREE.BoxGeometry(21, 9.6, 1.2), this.tmpM.makeTranslation(0, 15, -54), trim);
+    this.bake(kitBox(21, 9.6, 1.2), this.tmpM.makeTranslation(0, 15, -54), trim);
 
     // main screen
     const [c, g] = canvas(1024, 340);

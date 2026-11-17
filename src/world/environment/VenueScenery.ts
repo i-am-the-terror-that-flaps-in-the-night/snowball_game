@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { kitBox } from '../../render/kit/shapes';
 import type { ZoneDef } from '../../core/types';
 import { ARENA } from '../../core/types';
 import { StaticBatch } from '../../render/mergeStatic';
@@ -25,7 +26,7 @@ export class VenueScenery extends ThemeScenery {
     const white = this.std(0xf6f3ea, { roughness: 0.6 });
     const M = new THREE.Matrix4();
     const box = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material, cast = true) =>
-      this.bake(new THREE.BoxGeometry(w, h, d), M.makeTranslation(x, y, z), mat, cast, cast);
+      this.bake(kitBox(w, h, d), M.makeTranslation(x, y, z), mat, cast, cast);
     const W = STAGE_HALF * 2;
     const zMid = (STAGE_Z0 + STAGE_Z1) / 2;
     const depth = STAGE_Z0 - STAGE_Z1;
@@ -182,10 +183,10 @@ export class VenueScenery extends ThemeScenery {
     // polished gold (no environment map, so metalness stays moderate or it reads brown), lit from within
     const towerGold = this.std(0xe2a91c, { roughness: 0.28, metalness: 0.4, emissive: 0x5a3a00, emissiveIntensity: 0.8, fog: false });
     const tM = (x: number, y: number, z: number) => M.makeTranslation(GOLD_TOWER_X + x, y, GOLD_TOWER_Z + z);
-    this.bake(new THREE.BoxGeometry(30, 12, 30).translate(0, 6, 0), tM(0, 0, 0), towerGold);
-    this.bake(new THREE.BoxGeometry(18, 80, 18).translate(0, 40, 0), tM(0, 12, 0), towerGold);
-    this.bake(new THREE.BoxGeometry(13, 18, 13).translate(0, 9, 0), tM(0, 92, 0), towerGold);
-    this.bake(new THREE.BoxGeometry(8, 10, 8).translate(0, 5, 0), tM(0, 110, 0), towerGold);
+    this.bake(kitBox(30, 12, 30).translate(0, 6, 0), tM(0, 0, 0), towerGold);
+    this.bake(kitBox(18, 80, 18).translate(0, 40, 0), tM(0, 12, 0), towerGold);
+    this.bake(kitBox(13, 18, 13).translate(0, 9, 0), tM(0, 92, 0), towerGold);
+    this.bake(kitBox(8, 10, 8).translate(0, 5, 0), tM(0, 110, 0), towerGold);
     this.bake(new THREE.ConeGeometry(2.5, 16, 8).translate(0, 8, 0), tM(0, 120, 0), towerGold);
     const winMat = this.emissive(0xffe4a0, 1.3, { speed: 0.7 });
     winMat.fog = false;
@@ -200,7 +201,7 @@ export class VenueScenery extends ThemeScenery {
         bands.push({ x: GOLD_TOWER_X + fx + (ry ? 0 : along), y: 52, z: GOLD_TOWER_Z + fz + (ry ? along : 0), ry, sx: 0.5, sy: 76, sz: 0.3 });
       }
     }
-    this.inst(new THREE.BoxGeometry(1, 1, 1), winMat, bands);
+    this.inst(kitBox(1, 1, 1), winMat, bands);
     this.glowSprite(0xffd257, 0.9, 30, GOLD_TOWER_X, 128, GOLD_TOWER_Z, 1.2).material.fog = false;
     const cream = this.std(new THREE.Color(0xf1e6cf).lerp(new THREE.Color(this.zone.fogColor), 0.35).getHex(), { roughness: 0.7, fog: false });
     const blocks: Item[] = [];
@@ -226,8 +227,8 @@ export class VenueScenery extends ThemeScenery {
       blocks.push({ x, y: 0, z, ry: 0, sx: w, sy: h, sz: d });
       goldBands.push({ x, y: h - 1.2, z, ry: 0, sx: w + 0.2, sy: 0.8, sz: d + 0.2 });
     }
-    this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), cream, blocks);
-    this.inst(new THREE.BoxGeometry(1, 1, 1), this.emissive(0xf2c033, 0.8), goldBands);
+    this.inst(kitBox(1, 1, 1).translate(0, 0.5, 0), cream, blocks);
+    this.inst(kitBox(1, 1, 1), this.emissive(0xf2c033, 0.8), goldBands);
   }
 
   /** The arena's red carpet: a 3 m strip from the south wall to the boss gate, re-draped over the snow. */
@@ -313,8 +314,8 @@ export class VenueScenery extends ThemeScenery {
       blocks.push({ x: p.x, y: 0, z: p.z, ry, sx: w, sy: h, sz: d });
       for (let y = 4; y < h - 1; y += 4.5) bands.push({ x: p.x, y, z: p.z, ry, sx: w + 0.12, sy: 0.4, sz: d + 0.12 });
     }
-    this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), this.std(0x2a2638, { metalness: 0.5, roughness: 0.6 }), blocks);
-    this.inst(new THREE.BoxGeometry(1, 1, 1), this.emissive(st.accents[0], 1.4, { speed: 0.9 }), bands);
+    this.inst(kitBox(1, 1, 1).translate(0, 0.5, 0), this.std(0x2a2638, { metalness: 0.5, roughness: 0.6 }), blocks);
+    this.inst(kitBox(1, 1, 1), this.emissive(st.accents[0], 1.4, { speed: 0.9 }), bands);
 
     // the ominous core tower, due north
     // (fog-free like the mountain ring, so it always looms as a hazy silhouette on the horizon)
@@ -323,7 +324,7 @@ export class VenueScenery extends ThemeScenery {
     const dark = this.std(new THREE.Color(0x1e1a2a).lerp(new THREE.Color(this.zone.fogColor), 0.3).getHex(), { metalness: 0.5, roughness: 0.6, fog: false });
     // base, shaft and crown share `dark`: one baked draw
     const coreM = new THREE.Matrix4().makeTranslation(CORE_X, 0, CORE_Z);
-    this.bake(new THREE.BoxGeometry(22, 8, 22).translate(0, 4, 0), coreM, dark);
+    this.bake(kitBox(22, 8, 22).translate(0, 4, 0), coreM, dark);
     this.bake(new THREE.CylinderGeometry(4, 7, 20, 8).translate(0, 18, 0), coreM, dark);
     const glowMat = this.emissive(st.accents[0], 2.6, { speed: 1.1 });
     glowMat.fog = false;
@@ -425,9 +426,9 @@ export class VenueScenery extends ThemeScenery {
       corners.push({ x: sx * (ARENA.maxX + WALL_C + w / 2), y: 0, z: sz * (ARENA.maxZ + WALL_C + w / 2), ry: 0, sx: w, sy: topH * 0.55, sz: w, color: st.trim });
     }
 
-    const unitBox = () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    const unitBox = () => kitBox(1, 1, 1).translate(0, 0.5, 0);
     this.inst(unitBox(), this.std(0xffffff, { roughness: 0.85 }), tiers, true, true);
-    this.inst(new THREE.BoxGeometry(1, 0.16, 0.5).translate(0, 0.08, 0), this.std(0xffffff, { roughness: 0.6 }), seats);
+    this.inst(kitBox(1, 0.16, 0.5).translate(0, 0.08, 0), this.std(0xffffff, { roughness: 0.6 }), seats);
     this.inst(unitBox(), this.std(st.trim, { metalness: 0.4, roughness: 0.55 }), backs, true);
     this.inst(unitBox(), this.std(0xffffff, { metalness: 0.3, roughness: 0.6 }), corners, true, true);
     this.inst(new THREE.CylinderGeometry(0.05, 0.05, 3, 6).translate(0, 1.5, 0), this.std(0xcfd5dc, { metalness: 0.6, roughness: 0.4 }), poles);
@@ -455,7 +456,7 @@ export class VenueScenery extends ThemeScenery {
     // board frames
     const frames: Item[] = [];
     for (const list of sponsorItems) for (const it of list) frames.push({ ...it, z: it.z, sx: 14.6, sy: 3.8, sz: 0.3 });
-    this.inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0, -0.2), this.std(0x15182a, { metalness: 0.5 }), frames);
+    this.inst(kitBox(1, 1, 1).translate(0, 0, -0.2), this.std(0x15182a, { metalness: 0.5 }), frames);
 
     this.buildTowers(DOME_TOWER_OFF, DOME_TOWER_K);
     this.buildDomeScreens(zone, topH, backN);
@@ -546,9 +547,9 @@ export class VenueScenery extends ThemeScenery {
     const trim = this.std(st.trim, { metalness: 0.55, roughness: 0.45 });
     const glowFrame = this.emissive(st.accents[0], 1.4, { speed: 3 });
     const K = 1.6;
-    const legGeo = new THREE.BoxGeometry(1.2, 14, 1.2).translate(0, 7, 0);
-    const frameGeo = new THREE.BoxGeometry(23, 11, 1.4);
-    const glowGeo = new THREE.BoxGeometry(23.8, 11.8, 0.6);
+    const legGeo = kitBox(1.2, 14, 1.2).translate(0, 7, 0);
+    const frameGeo = kitBox(23, 11, 1.4);
+    const glowGeo = kitBox(23.8, 11.8, 0.6);
     const screenGeo = new THREE.PlaneGeometry(21.4, 8.4);
     const tickGeo = new THREE.PlaneGeometry(21.4, 1.5);
     // static and sharing four materials: baked into the zone batch (4 draws for all four screens)
@@ -588,13 +589,13 @@ export class VenueScenery extends ThemeScenery {
       lights.push({ x: lx, y: G + 5.6, z: lz, ry: side.yaw, sx: 1, sy: 1, sz: 1 });
     }
     const frameGeo = merge([
-      new THREE.BoxGeometry(1.4, 7, 2.6).translate(-5.2, 3.5, 0),
-      new THREE.BoxGeometry(1.4, 7, 2.6).translate(5.2, 3.5, 0),
-      new THREE.BoxGeometry(11.8, 1.6, 2.6).translate(0, 7.3, 0),
+      kitBox(1.4, 7, 2.6).translate(-5.2, 3.5, 0),
+      kitBox(1.4, 7, 2.6).translate(5.2, 3.5, 0),
+      kitBox(11.8, 1.6, 2.6).translate(0, 7.3, 0),
     ]);
     this.inst(frameGeo, this.std(st.trim, { metalness: 0.5, roughness: 0.5 }), frames, true);
     this.inst(new THREE.PlaneGeometry(9, 6.4).translate(0, 3.2, 0), new THREE.MeshBasicMaterial({ color: 0x05070f }), holes);
-    this.inst(new THREE.BoxGeometry(9.4, 0.3, 0.1), this.emissive(st.accents[1], 1.8, { speed: 2.4 }), lights);
+    this.inst(kitBox(9.4, 0.3, 0.1), this.emissive(st.accents[1], 1.8, { speed: 2.4 }), lights);
     for (const h of holes) {
       const fx = Math.sin(h.ry) * 0.6;
       const fz = Math.cos(h.ry) * 0.6;
@@ -634,7 +635,7 @@ export class VenueScenery extends ThemeScenery {
       lamps.push({ x: Math.cos(a) * R, y: Y - 1.3, z: Math.sin(a) * R, ry: -a, sx: 1, sy: 1, sz: 1, color: CONFETTI[i % CONFETTI.length] });
     }
     this.bakeItems(new THREE.CylinderGeometry(0.25, 0.25, 1, 5).translate(0, 0.5, 0), trussMat, cables);
-    this.inst(new THREE.BoxGeometry(1.6, 0.9, 1.6), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), lamps);
+    this.inst(kitBox(1.6, 0.9, 1.6), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), lamps);
   }
 
   /* ------------------------------------------------------------------ Brawl cover obstacles */
@@ -753,9 +754,9 @@ export class VenueScenery extends ThemeScenery {
 
     // containers: corrugated box + snow roof
     const ribs = this.ribTexture();
-    const contGeo = new THREE.BoxGeometry(2.6, 2.8, 6.6).translate(0, 1.4, 0);
+    const contGeo = kitBox(2.6, 2.8, 6.6).translate(0, 1.4, 0);
     this.inst(contGeo, this.std(0xffffff, { map: ribs, roughness: 0.6, metalness: 0.3, flatShading: false }), containers, true, true);
-    this.bakeItems(new THREE.BoxGeometry(2.7, 0.32, 6.7).translate(0, 0.16, 0), snowMat, roofs, true, true);
+    this.bakeItems(kitBox(2.7, 0.32, 6.7).translate(0, 0.16, 0), snowMat, roofs, true, true);
 
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
     this.inst(rockGeo, this.std(this.style.rock, { roughness: 0.95 }), rocks, true, true);

@@ -12,9 +12,71 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000;
 function finish(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const ng = g.index ? g.toNonIndexed() : g;
   ng.computeVertexNormals();
-  if (!ng.getAttribute('uv')) ng.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(ng.getAttribute('position').count * 2), 2));
+  if (!ng.getAttribute('uv')) boxUVs(ng);
   return ng;
 }
+
+/**
+ * Box-projected UVs matching THREE.BoxGeometry's per-face layout (each face 0..1 over the shape's bounds, the same
+ * orientation per side), picked per triangle by its dominant normal; chamfer strips take the nearest side's mapping.
+ * So a textured box (hazard band, banner, crate) can be swapped for a chamfered one without its texture moving.
+ */
+function boxUVs(g: THREE.BufferGeometry): void {
+  const pos = g.getAttribute('position');
+  g.computeBoundingBox();
+  const bb = g.boundingBox!;
+  const W = Math.max(1e-6, bb.max.x - bb.min.x);
+  const H = Math.max(1e-6, bb.max.y - bb.min.y);
+  const D = Math.max(1e-6, bb.max.z - bb.min.z);
+  const uv = new Float32Array(pos.count * 2);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  for (let t = 0; t < pos.count; t += 3) {
+    a.fromBufferAttribute(pos, t);
+    b.fromBufferAttribute(pos, t + 1);
+    c.fromBufferAttribute(pos, t + 2);
+    n.subVectors(b, a).cross(c.clone().sub(a)).normalize();
+    const ax = Math.abs(n.x);
+    const ay = Math.abs(n.y);
+    const az = Math.abs(n.z);
+    for (let k = 0; k < 3; k++) {
+      const v = k === 0 ? a : k === 1 ? b : c;
+      const x = v.x - bb.min.x;
+      const y = v.y - bb.min.y;
+      const z = v.z - bb.min.z;
+      let u: number;
+      let w: number;
+      if (ax >= ay && ax >= az) {
+        u = n.x > 0 ? 1 - z / D : z / D;
+        w = y / H;
+      } else if (ay >= az) {
+        u = x / W;
+        w = n.y > 0 ? 1 - z / D : z / D;
+      } else {
+        u = n.z > 0 ? x / W : 1 - x / W;
+        w = y / H;
+      }
+      uv[(t + k) * 2] = u;
+      uv[(t + k) * 2 + 1] = w;
+    }
+  }
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+}
+
+/**
+ * Drop-in for `new THREE.BoxGeometry(w, h, d)` in scenery: a FRESH chamfered box (callers translate / bake it) when
+ * every side is at least KIT_BOX_MIN, else a plain box; both NON-INDEXED with BoxGeometry-style UVs, so they merge
+ * with each other (mergeAny) and textures stay put.
+ */
+export function kitBox(w: number, h: number, d: number): THREE.BufferGeometry {
+  const m = Math.min(w, h, d);
+  if (m < KIT_BOX_MIN) return new THREE.BoxGeometry(w, h, d).toNonIndexed();
+  return chamferBox(w, h, d, Math.max(0.02, Math.min(0.12, 0.1 * m))).clone();
+}
+/** Scenery boxes thinner than this (m) stay plain. */
+export const KIT_BOX_MIN = 0.3;
 
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();

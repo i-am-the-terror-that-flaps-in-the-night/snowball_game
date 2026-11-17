@@ -162,7 +162,9 @@ export function colored(geo: THREE.BufferGeometry, hex: number): THREE.BufferGeo
 }
 
 export function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const g = mergeGeometries(parts)!;
+  // art pass: kit boxes are non-indexed; mergeGeometries needs one kind, so mixed lists go non-indexed
+  const mixed = parts.some((p) => !p.index) && parts.some((p) => p.index);
+  const g = mergeGeometries(mixed ? parts.map((p) => (p.index ? p.toNonIndexed() : p)) : parts)!;
   parts.forEach((p) => p.dispose());
   return g;
 }
