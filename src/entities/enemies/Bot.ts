@@ -52,6 +52,8 @@ export class Bot implements EnemyHandle {
   readonly vert = makeVert();
   /** Smoothed sink into the snow (m, the old groundY). */
   sink = 0;
+  /** Last frame's sink change (terrainMotion.followRide caps the next one from it). */
+  sinkStep = 0;
   mat: GroundMaterial = 'snow';
   gx = 0;
   gz = 0;

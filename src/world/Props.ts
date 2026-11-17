@@ -3,6 +3,7 @@ import { ARENA, ENEMY_GATES, PLOW_SPAWN, type GameContext, type Obstacle } from 
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mulberry32 } from '../meta/daily';
 import { getPropSkin, PROP_SKIN_KEYS, type PropSkin, type PropSkinKey } from './propSkins';
+import { snowRide } from './terrainMotion';
 
 /**
  * Destructible props: crates and blocks scattered around the arena (dressed per arena by propSkins.ts). Deliberately cheap: exactly two
@@ -26,6 +27,9 @@ interface Prop {
   obs: Obstacle;
   /** Terrain ground height under the prop (0 on flat arenas). */
   y: number;
+  /** Drawn base height above `y` (m): on the snow top under the prop, pressed in a little (smoothed); slightly
+   *  negative on bare ground (SINK). */
+  lift: number;
 }
 
 /** Props never stand on lava or on slopes steeper than this gradient (they would float off the hillside). */
@@ -48,6 +52,11 @@ const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const _c = new THREE.Color();
 /** Props sit this far (in prop half-sizes) into the ground, so none hovers on a gentle slope. */
 const SINK = 0.08;
+/** Snow under a prop is sampled at its centre and this far (in half-sizes) out along four directions. */
+const SEAT_SPREAD = 0.6;
+/** How fast a prop settles to the snow under it (m/s): down when it is ploughed / melted away, up as it piles back. */
+const SEAT_DOWN = 2.5;
+const SEAT_UP = 0.6;
 
 /** Props keep this far (m, beyond their radius) from a deck ramp's footprint. */
 const RAMP_CLEAR = 4;
@@ -57,6 +66,8 @@ export class Props {
   private meshes: Record<Kind, THREE.InstancedMesh>;
   private obstacles: Obstacle[] | null = null;
   private coins = false;
+  /** Seat every prop on the snow at once on the next update (after a reset: the arena's snow is laid by then). */
+  private snap = true;
 
   private skin: PropSkin;
 
@@ -135,12 +146,13 @@ export class Props {
           const y = this.groundSpot(x, z, r);
           if (y === null) continue;
           const obs: Obstacle = { x, z, r, breakable: true };
-          this.props.push({ kind, slot: used[kind]++, x, z, s, yaw: rnd() * Math.PI, alive: true, obs, y });
+          this.props.push({ kind, slot: used[kind]++, x, z, s, yaw: rnd() * Math.PI, alive: true, obs, y, lift: -SINK * s });
           obstacles.push(obs);
           fixed.push(obs);
         }
       }
     }
+    this.snap = true;
     this.meshes.crate.count = used.crate;
     this.meshes.ice.count = used.ice;
     const split = this.skin.split;
@@ -203,8 +215,40 @@ export class Props {
 
   private place(p: Prop): void {
     _q.setFromAxisAngle(_up, p.yaw);
-    _m.compose(_v.set(p.x, p.y - SINK * p.s, p.z), _q, _s.setScalar(p.s));
+    _m.compose(_v.set(p.x, p.y + p.lift, p.z), _q, _s.setScalar(p.s));
     this.meshes[p.kind].setMatrixAt(p.slot, _m);
+  }
+
+  /**
+   * Keep every standing prop resting ON the snow (the snow mesh is drawn at ground + depth): its base at the mean snow
+   * top over its footprint, pressed in a little like a vehicle on packed snow (terrainMotion.snowRide; at least SINK
+   * so it never hovers on a slope). Props are placed once but the snow under them changes (ploughed up to their sides,
+   * melted, eaten, piled back by regen / snowfall), so they re-seat lazily: settling down quickly, rising slowly, and
+   * only touching the instance matrix when a prop actually moved. Cheap: <= 26 props x 5 depth reads per frame.
+   */
+  update(dt: number): void {
+    const snow = this.ctx.snow;
+    if (!snow || this.props.length === 0) return;
+    const snap = this.snap;
+    this.snap = false;
+    let moved = 0;
+    for (const p of this.props) {
+      if (!p.alive) continue;
+      const o = p.s * SEAT_SPREAD;
+      const d = (snow.getDepth(p.x, p.z) + snow.getDepth(p.x + o, p.z) + snow.getDepth(p.x - o, p.z) + snow.getDepth(p.x, p.z + o) + snow.getDepth(p.x, p.z - o)) / 5;
+      const want = d - Math.max(SINK * p.s, d - snowRide(d));
+      let lift = want;
+      if (!snap) {
+        const step = want - p.lift;
+        lift = step < 0 ? p.lift + Math.max(step, -SEAT_DOWN * dt) : p.lift + Math.min(step, SEAT_UP * dt);
+      }
+      if (Math.abs(lift - p.lift) < 1e-4) continue;
+      p.lift = lift;
+      this.place(p);
+      moved |= p.kind === 'crate' ? 1 : 2;
+    }
+    if (moved & 1) this.meshes.crate.instanceMatrix.needsUpdate = true;
+    if (moved & 2) this.meshes.ice.instanceMatrix.needsUpdate = true;
   }
 
   /** Break one prop: hide its instance, drop its collider, debris + sound (+ a couple of coins). */
@@ -220,7 +264,7 @@ export class Props {
       if (i >= 0) obs.splice(i, 1);
     }
     const fx = this.ctx.fx;
-    _v.set(p.x, p.y + p.s, p.z);
+    _v.set(p.x, p.y + p.lift + p.s, p.z);
     const [c0, c1] = p.kind === 'crate' ? this.skin.crateDebris : this.skin.iceDebris;
     if (p.kind === 'crate') {
       fx.burst(_v, { color: c0, count: 16, speed: 8, size: 0.28, gravity: 18, life: 0.8 });
@@ -231,7 +275,7 @@ export class Props {
     }
     fx.smoke(_v, { count: 2, color: 0xe2ecf8, size: 0.8, grow: 2.5, life: 0.7, speed: 1.5, up: 1, rise: -0.5, drag: 2, spread: 0.5, opacity: 0.45 });
     this.ctx.audio?.play('wallHit', { volume: 0.55, pitch: p.kind === 'ice' ? 1.35 : 0.9 });
-    if (coins && this.coins) this.ctx.pickups?.spawnCoins(_v.set(p.x, p.y + 0.5, p.z), PROP_COINS);
+    if (coins && this.coins) this.ctx.pickups?.spawnCoins(_v.set(p.x, p.y + p.lift + 0.5, p.z), PROP_COINS);
   }
 
   /** Break every standing prop overlapping the circle. Returns how many broke. */

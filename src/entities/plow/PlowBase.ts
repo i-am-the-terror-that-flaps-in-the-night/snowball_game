@@ -110,8 +110,16 @@ export abstract class PlowBase {
   protected surf = makeSurface();
   protected conv = { x: 0, z: 0 };
   protected wallOut = { x: 0, z: 0 };
-  /** Snow ride height above the surface (smoothed); position.y = surface + ride while grounded. */
+  /** Snow ride height above the surface (smoothed); position.y = surface + ride while grounded. Rests on the visible
+   *  snow top, pressed in a little (terrainMotion.snowRide). */
   protected ride = 0;
+  /** Snap the ride to the snow under the plow on the next visual update (set on a respawn / arena reset). */
+  protected rideSnap = true;
+  /** Last frame's ride change (terrainMotion.followRide caps the next one from it). */
+  protected rideStep = 0;
+  /** Surface height / deck under the plow at the last visual update (deck hand-over re-base of the ride). */
+  protected rideSurfY = 0;
+  protected rideDeck = -1;
   /** Over-the-cap speed earned rolling downhill (decays); the cap settle leaves it alone. */
   protected slopeBoost = 0;
   /** Actual horizontal velocity (m/s). Equals forward * speed on normal ground; lags the heading on ice / in the air. */

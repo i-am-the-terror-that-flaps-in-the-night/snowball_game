@@ -448,6 +448,7 @@ export class Plow extends PlowMotion implements PlowAPI {
     v.airTime = 0;
     this.position.y = v.y;
     this.ride = 0;
+    this.rideSnap = true;
     this.slopeBoost = 0;
     this.velX = this.velZ = 0;
     this.ice = 0;
