@@ -800,14 +800,14 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
     { face: 'side', at: [0.96, 1.56, -0.45], size: [1.9, 0.3], tags: ['band', 'stripe', 'flame'] }, // upper side armour plate (bolted)
   ],
   classic: [
-    { face: 'top', at: [0, 1.5, 1.52], size: [0.5, 1.15], tags: ['stripe', 'flame'] }, // hood (behind the scoop)
-    { face: 'top', at: [0, 2.3, 0.5], size: [0.9, 1.6], tags: ['stripe', 'emblem'], emblem: 0.85 }, // cab roof
-    { face: 'side', at: [0.97, 1.64, -1.27], size: [1.3, 0.56], tags: ['flame', 'emblem', 'stripe'], emblem: 0.52 }, // hopper flank
-    { face: 'side', at: [0.97, 1.9, -1.27], size: [1.3, 0.12], tags: ['band'] },
-    { face: 'side', at: [0.98, 1.2, 0.5], size: [1.1, 0.5], tags: ['flame', 'band', 'stripe'] }, // cab door
-    { face: 'side', at: [0.78, 1.12, 1.62], size: [0.66, 0.36], tags: ['flame'] }, // hood flank
-    { face: 'rear', at: [0, 1.62, -2.05], size: [0.6, 0.6], tags: ['emblem'], emblem: 0.5 }, // hopper rear
-    { face: 'rear', at: [0, 1.93, -2.05], size: [1.8, 0.1], tags: ['band'] },
+    { face: 'top', at: [0, 1.517, 1.45], size: [0.6, 1.1], tags: ['stripe', 'flame'], tilt: 0.05 }, // crowned hood (behind the scoop)
+    { face: 'top', at: [0, 2.29, 0.2], size: [0.6, 1.6], tags: ['stripe', 'emblem'], emblem: 0.58 }, // flat of the cab roof
+    { face: 'side', at: [0.97, 1.64, -1.25], size: [1.26, 0.56], tags: ['flame', 'emblem', 'stripe'], emblem: 0.52 }, // spreader body flank
+    { face: 'side', at: [0.97, 1.9, -1.25], size: [1.26, 0.12], tags: ['band'] },
+    { face: 'side', at: [0.98, 1.2, 0.47], size: [0.9, 0.5], tags: ['flame', 'band', 'stripe'] }, // cab door
+    { face: 'side', at: [0.78, 1.27, 1.45], size: [0.6, 0.2], tags: ['flame'] }, // hood flank (above the wheel-arch flare)
+    { face: 'rear', at: [0, 1.62, -2.055], size: [0.6, 0.6], tags: ['emblem'], emblem: 0.48 }, // bulged tailgate
+    { face: 'rear', at: [0, 1.93, -2.045], size: [1.7, 0.1], tags: ['band'] },
   ],
   volt: [
     { face: 'top', at: [0, 1.222, 1.5], size: [0.4, 1.3], tags: ['stripe', 'flame', 'band'] }, // front deck, ahead of the head
