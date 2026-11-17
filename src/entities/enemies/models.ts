@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ENEMIES, type EnemyType } from '../../config/enemies';
 import { makeShadowProxy } from '../../render/shadowProxy';
+import { boltHead, chamferBox, chamferWedge } from '../../render/kit/shapes';
 
 /* Procedural toy-robot bot models. Every model faces local +Z, ground at y = 0.
  * Each type is built ONCE as a template (static parts merged per material, animated parts in their own
@@ -165,6 +166,44 @@ export const G = {
     }),
 };
 
+/* Detail kit (render/kit/shapes.ts, docs/art-pass.md): bevelled parts built at their final size (added at scale 1,
+ * so the chamfer never stretches with the part) and merged into the model's existing draws like any other part.
+ * BEVEL is the default chamfer (m); small parts get less (chamferHull caps it at a third of the shortest edge). */
+const BEVEL = 0.045;
+/** Stage-0 comparison: chamfer strength x this ('subtle' 1, 'strong' 1.9; dev override localStorage 'artKit'). */
+const KIT_K = (() => {
+  try {
+    return globalThis.localStorage?.getItem('artKit') === 'strong' ? 1.9 : 1;
+  } catch {
+    return 1;
+  }
+})();
+/** Chamfered box: `s` is its size (m). */
+function kb(b: Part, m: THREE.Material, p: V3, s: V3, r: V3 = ZERO, c = BEVEL): Part {
+  return b.add(chamferBox(s[0], s[1], s[2], c * KIT_K), m, p, ONE, r);
+}
+/** Chamfered wedge (the G.wedge(k) shape at size `s`). */
+function kw(b: Part, m: THREE.Material, p: V3, s: V3, k: number, r: V3 = ZERO, c = BEVEL): Part {
+  return b.add(chamferWedge(s[0], s[1], s[2], k, c * KIT_K), m, p, ONE, r);
+}
+/** A row of `n` hex bolt heads from `a` to `b`, heads along local axis `axis` (+y default; rotate with r). Fine
+ *  detail: bosses only (close-ups). */
+function bolts(b: Part, m: THREE.Material, a: V3, z: V3, n: number, r: V3 = ZERO, size = 0.04): void {
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    b.add(boltHead(size, size * 0.7), m, [a[0] + (z[0] - a[0]) * t, a[1] + (z[1] - a[1]) * t, a[2] + (z[2] - a[2]) * t], ONE, r);
+  }
+}
+/** Vent: `n` dark slats across a w x h patch on a face. Medium detail. */
+function vent(b: Part, m: THREE.Material, p: V3, w: number, h: number, n: number, r: V3 = ZERO): void {
+  for (let i = 0; i < n; i++) {
+    const y = -h / 2 + ((i + 0.5) * h) / n;
+    _e.set(r[0], r[1], r[2]);
+    _p.set(0, y, 0).applyEuler(_e);
+    b.add(G.box(), m, [p[0] + _p.x, p[1] + _p.y, p[2] + _p.z], [w, (h / n) * 0.42, 0.03], r);
+  }
+}
+
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -292,7 +331,9 @@ function writeWheels(attr: THREE.InstancedBufferAttribute, spots: readonly numbe
 /** Two tank treads (static belts + cleats) with rolling road wheels on their outer faces. */
 function treads(base: Part, wheels: Wheels, x: number, len: number, h: number, w: number, nWheels: number, hub: THREE.Material): void {
   for (const sx of [-1, 1]) {
-    base.add(G.box(), M.rubber(), [sx * x, h / 2, 0], [w, h, len]);
+    kb(base, M.rubber(), [sx * x, h / 2, 0], [w, h, len], ZERO, Math.min(0.06, h * 0.12));
+    // track guard: a thin bevelled steel rail along the top outer edge of the belt
+    kb(base, M.dark(), [sx * (x + w * 0.42), h + 0.05, 0], [w * 0.22, 0.07, len * 0.96], ZERO, 0.02);
     base.add(G.cyl(10), M.rubber(), [sx * x, h / 2, len / 2], [h / 2, w, h / 2], [0, 0, PI / 2]);
     base.add(G.cyl(10), M.rubber(), [sx * x, h / 2, -len / 2], [h / 2, w, h / 2], [0, 0, PI / 2]);
     const n = Math.max(3, Math.round(len / 0.34));
@@ -330,10 +371,17 @@ function scrapper(t: EnemyType = 'scrapper'): Tpl {
   treads(base, wheels, 0.56, 1.45, 0.42, 0.34, 3, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  b.add(G.wedge(0.42), paint(t), [0, 0.66, -0.05], [0.86, 0.5, 1.35]);
-  b.add(G.box(), M.dark(), [0, 0.42, -0.05], [0.8, 0.12, 1.3]);
+  kw(b, paint(t), [0, 0.66, -0.05], [0.86, 0.5, 1.35], 0.42);
+  kb(b, M.dark(), [0, 0.42, -0.05], [0.8, 0.12, 1.3], ZERO, 0.03);
   // red ram nose with steel spikes
-  b.add(G.wedge(0.5), accent(t), [0, 0.42, 0.72], [0.98, 0.26, 0.34]);
+  kw(b, accent(t), [0, 0.42, 0.72], [0.98, 0.26, 0.34], 0.5, ZERO, 0.035);
+  // panel seams (a rear shut line + a belt line kept behind the sloped nose), rear deck vent, tail lights
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), M.black(), [sx * 0.432, 0.68, -0.48], [0.012, 0.36, 0.018]);
+    b.add(G.box(), M.black(), [sx * 0.432, 0.5, -0.15], [0.012, 0.018, 1.08]);
+    b.add(G.box(), eyeMat(t, t === 'slushling' ? 0x3fd1a8 : 0xff3b30), [sx * 0.3, 0.62, -0.735], [0.16, 0.05, 0.02]);
+  }
+  vent(b, M.black(), [0, 0.915, -0.62], 0.46, 0.1, 3, [-PI / 2, 0, 0]);
   if (t === 'rallybot') for (const sx of [-1, 1]) b.add(G.box(), M.gold(), [sx * 0.435, 0.8, -0.05], [0.02, 0.06, 1.2]);
   for (const x of [-0.28, 0, 0.28]) b.add(G.cone(6), M.chrome(), [x, 0.43, 0.98], [0.07, 0.26, 0.07], [PI / 2, 0, 0]);
   // hazard cheeks
@@ -376,20 +424,31 @@ function brute(): Tpl {
   treads(base, wheels, 0.98, 2.4, 0.72, 0.52, 4, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  b.add(G.box(), paint(t), [0, 1.05, -0.25], [1.5, 0.75, 1.9]);
-  b.add(G.wedge(0.3), paint(t), [0, 1.52, 0.25], [1.36, 0.36, 0.95]);
-  b.add(G.box(), M.dark(), [0, 0.7, -0.25], [1.4, 0.14, 2.0]);
+  kb(b, paint(t), [0, 1.05, -0.25], [1.5, 0.75, 1.9], ZERO, 0.06);
+  kw(b, paint(t), [0, 1.52, 0.25], [1.36, 0.36, 0.95], 0.3, ZERO, 0.05);
+  kb(b, M.dark(), [0, 0.7, -0.25], [1.4, 0.14, 2.0], ZERO, 0.035);
   // cab with yellow slit eyes
-  b.add(G.box(), paint(t), [0, 1.95, -0.75], [1.2, 0.85, 0.95]);
-  b.add(G.box(), M.black(), [0, 2.42, -0.75], [1.3, 0.1, 1.05]);
+  kb(b, paint(t), [0, 1.95, -0.75], [1.2, 0.85, 0.95], ZERO, 0.06);
+  kb(b, M.black(), [0, 2.42, -0.75], [1.3, 0.1, 1.05], ZERO, 0.03);
+  // seams, body-side vents, cab roof light bar (chrome lenses), tail lights
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), M.black(), [sx * 0.752, 1.05, 0.2], [0.012, 0.6, 0.02]);
+    b.add(G.box(), M.black(), [sx * 0.602, 1.95, -0.4], [0.012, 0.6, 0.018]);
+    vent(b, M.black(), [sx * 0.755, 1.18, -0.75], 0.5, 0.3, 4, [0, sx * PI / 2, 0]);
+    b.add(G.box(), eyeMat(t, 0xffc400), [sx * 0.55, 1.0, -1.205], [0.24, 0.08, 0.02]);
+  }
+  kb(b, M.black(), [0, 2.53, -0.5], [0.8, 0.1, 0.16], ZERO, 0.025);
+  for (const x of [-0.27, -0.09, 0.09, 0.27]) b.add(G.cyl(8), M.chrome(), [x, 2.53, -0.41], [0.05, 0.02, 0.05], [PI / 2, 0, 0]);
   b.add(G.box(), M.glass(), [0, 2.0, -0.27], [1.0, 0.42, 0.04]);
   for (const sx of [-1, 1]) b.add(G.box(), eyeMat(t, 0xffc400), [sx * 0.27, 1.98, -0.24], [0.3, 0.1, 0.04], [0, 0, sx * -0.18]);
   b.add(G.box(), M.black(), [0, 2.18, -0.24], [1.05, 0.09, 0.08]);
   for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.76, 1.05, -0.25], [0.03, 0.34, 1.7], ZERO, [4, 0.7]);
   // the big FRONT PLATE
-  b.add(G.box(), M.steel(), [0, 0.95, 1.45], [2.8, 1.25, 0.2], [-0.14, 0, 0]);
-  for (const sx of [-1, 1]) b.add(G.box(), M.steel(), [sx * 1.5, 0.95, 1.3], [0.4, 1.25, 0.18], [-0.14, sx * -0.55, 0]);
-  b.add(G.box(), M.dark(), [0, 1.62, 1.35], [3.0, 0.16, 0.34]);
+  kb(b, M.steel(), [0, 0.95, 1.45], [2.8, 1.25, 0.2], [-0.14, 0, 0], 0.05);
+  for (const sx of [-1, 1]) kb(b, M.steel(), [sx * 1.5, 0.95, 1.3], [0.4, 1.25, 0.18], [-0.14, sx * -0.55, 0], 0.04);
+  kb(b, M.dark(), [0, 1.62, 1.35], [3.0, 0.16, 0.34], ZERO, 0.04);
+  // vertical stiffener ribs on the plate's face
+  for (const x of [-0.95, 0.95]) kb(b, M.dark(), [x, 0.98, 1.56], [0.12, 1.05, 0.06], [-0.14, 0, 0], 0.02);
   b.add(G.box(), M.hazard(), [0, 1.18, 1.57], [2.5, 0.32, 0.03], [-0.14, 0, 0], [5, 0.65]);
   b.add(G.box(), glowMat(t, 0xffc400, 0.15), [0, 0.36, 1.56], [2.85, 0.13, 0.2]);
   for (const x of [-0.9, 0, 0.9]) b.add(G.sph(0), M.chrome(), [x, 0.8, 1.56], [0.08, 0.08, 0.05]);
@@ -528,12 +587,25 @@ function frostbyte(): Tpl {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 1.15, 0.56, sz * 1.0 - 0.2, 0.56, 0.46, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  b.add(G.box(), P, [0, 1.05, -0.2], [1.75, 0.7, 3.0]);
-  b.add(G.box(), M.dark(), [0, 0.7, -0.2], [1.6, 0.16, 2.9]);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.box(), P, [sx * 1.15, 1.2, sz * 1.0 - 0.2], [0.58, 0.14, 1.25]);
+  kb(b, P, [0, 1.05, -0.2], [1.75, 0.7, 3.0], ZERO, 0.07);
+  kb(b, M.dark(), [0, 0.7, -0.2], [1.6, 0.16, 2.9], ZERO, 0.04);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) kb(b, P, [sx * 1.15, 1.2, sz * 1.0 - 0.2], [0.58, 0.14, 1.25], ZERO, 0.04);
   // cab with the visor-face
-  b.add(G.box(), P, [0, 2.0, -0.55], [1.7, 1.35, 1.55]);
-  b.add(G.box(), M.black(), [0, 2.72, -0.55], [1.85, 0.1, 1.7]);
+  kb(b, P, [0, 2.0, -0.55], [1.7, 1.35, 1.55], ZERO, 0.08);
+  kb(b, M.black(), [0, 2.72, -0.55], [1.85, 0.1, 1.7], ZERO, 0.035);
+  // boss detail: seams, deck vents, steel bolt rows on the fenders and the blade, tail lights, side grab rails
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), M.black(), [sx * 0.877, 1.05, 0.35], [0.012, 0.55, 0.02]);
+    b.add(G.box(), M.black(), [sx * 0.877, 1.05, -0.75], [0.012, 0.55, 0.02]);
+    b.add(G.box(), M.black(), [sx * 0.852, 2.0, -0.95], [0.012, 1.1, 0.02]);
+    vent(b, M.black(), [sx * 0.88, 1.08, -1.25], 0.5, 0.36, 4, [0, sx * PI / 2, 0]);
+    b.add(G.box(), eyeMat(t, 0x40e0ff, 2.8), [sx * 0.62, 1.05, -1.705], [0.3, 0.1, 0.02]);
+    for (const sz of [-1, 1]) bolts(b, M.steel(), [sx * 1.15 - 0.2, 1.275, sz * 1.0 - 0.2 - 0.5], [sx * 1.15 - 0.2, 1.275, sz * 1.0 - 0.2 + 0.5], 4);
+    // grab rail on the cab side, on two standoffs
+    kb(b, M.chrome(), [sx * 0.905, 2.25, -0.55], [0.045, 0.045, 1.0], ZERO, 0.012);
+    for (const z of [-0.95, -0.15]) b.add(G.box(), M.dark(), [sx * 0.88, 2.25, z], [0.06, 0.04, 0.04]);
+  }
+  vent(b, M.black(), [0, 1.405, -1.2], 1.0, 0.5, 5, [-PI / 2, 0, 0]);
   b.add(G.box(), M.black(), [0, 2.08, 0.24], [1.55, 0.9, 0.06]);
   for (const sx of [-1, 1]) b.add(G.box(), eyeMat(t, 0x40e0ff, 2.8), [sx * 0.38, 2.2, 0.28], [0.46, 0.15, 0.04], [0, 0, sx * 0.22]);
   b.add(G.box(), eyeMat(t, 0x40e0ff, 2.8), [0, 1.86, 0.28], [0.75, 0.06, 0.04]);
@@ -541,8 +613,10 @@ function frostbyte(): Tpl {
   b.add(G.box(), accent(t), [0, 2.56, 0.24], [1.6, 0.06, 0.08]);
   b.add(G.box(), glowMat(t, 0x40e0ff, 0.9), [0, 2.82, -0.55], [1.2, 0.12, 0.25]);
   // glowing blade
-  b.add(G.box(), M.steel(), [0, 0.95, 1.62], [3.5, 1.2, 0.22], [-0.2, 0, 0]);
-  for (const sx of [-1, 1]) b.add(G.box(), M.steel(), [sx * 1.85, 0.95, 1.45], [0.3, 1.2, 0.22], [-0.2, sx * -0.6, 0]);
+  kb(b, M.steel(), [0, 0.95, 1.62], [3.5, 1.2, 0.22], [-0.2, 0, 0], 0.05);
+  for (const sx of [-1, 1]) kb(b, M.steel(), [sx * 1.85, 0.95, 1.45], [0.3, 1.2, 0.22], [-0.2, sx * -0.6, 0], 0.04);
+  // a bolt row along the blade's top edge (heads face the blade's front)
+  bolts(b, M.dark(), [-1.5, 1.416, 1.655], [1.5, 1.416, 1.655], 9, [PI / 2 - 0.2, 0, 0], 0.045);
   b.add(G.box(), glowMat(t, 0x40e0ff, 0.9), [0, 0.32, 1.76], [3.5, 0.1, 0.2]);
   b.add(G.box(), glowMat(t, 0x40e0ff, 0.9), [0, 1.58, 1.52], [3.6, 0.08, 0.3]);
   b.add(G.box(), P, [0, 1.25, 1.75], [1.0, 0.3, 0.04], [-0.2, 0, 0]);
