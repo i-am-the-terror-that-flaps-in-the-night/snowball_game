@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { hazardTexture } from '../plowModels';
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
-import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
+import { addMesh, boltRow, kitBox, type VehicleBuild, type VehicleBuildIn } from './types';
 
 /** ISOTOPE / REACTOR HAULER animatable parts. */
 export interface IsotopeVehicleParts {
@@ -62,24 +62,42 @@ export function buildIsotopeVehicle({ mats, chassis }: VehicleBuildIn): VehicleB
 
   addMesh(chassis, mats.dark, 0, 0.62, 0.05, group);
   // Flatbed: a long low deck with a hazard-striped skirt and lead side plates.
-  addMesh(new THREE.BoxGeometry(2.05, 0.26, 3.1), mats.dark, 0, 0.92, -0.55, group);
+  addMesh(kitBox(2.05, 0.26, 3.1, 0.035), mats.dark, 0, 0.92, -0.55, group);
   for (const sx of [-1, 1]) {
     addMesh(new THREE.BoxGeometry(0.08, 0.26, 3.0), hazardMat, sx * 1.04, 0.92, -0.55, group, false);
-    addMesh(new THREE.BoxGeometry(0.12, 0.34, 2.2), lead, sx * 1.02, 1.2, -0.8, group);
+    addMesh(kitBox(0.12, 0.34, 2.2, 0.03), lead, sx * 1.02, 1.2, -0.8, group);
+    // Shield plate lapped over the lead flank, bolted down its middle.
+    addMesh(kitBox(0.05, 0.2, 1.5, 0.02), lead, sx * 1.095, 1.24, -0.85, group);
+    boltRow(group, lead, [sx * 1.122, 1.24, -1.5], [sx * 1.122, 1.24, -0.2], 6, [0, 0, -sx * Math.PI / 2], 0.03, true);
   }
-  // Wheel arches.
-  for (const [x, z] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const) addMesh(new THREE.BoxGeometry(0.5, 0.1, 1.1), mats.dark, x, 1.04, z, group);
+  // Wheel arches, and mud flaps behind the rear wheels.
+  for (const [x, z] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const) addMesh(kitBox(0.5, 0.1, 1.1, 0.03), mats.dark, x, 1.04, z, group);
+  for (const sx of [-1, 1]) addMesh(kitBox(0.44, 0.4, 0.035, 0.012), mats.dark, sx * 0.95, 0.52, -1.86, group);
   // Cab: stubby, armoured, sloped visor, yellow roof bar.
-  addMesh(new THREE.BoxGeometry(1.9, 0.62, 1.15), mats.paint, 0, 1.3, 1.2, group);
-  addMesh(new THREE.BoxGeometry(1.66, 0.62, 0.95), mats.paint, 0, 1.88, 1.05, group);
-  addMesh(new THREE.BoxGeometry(1.74, 0.1, 1.02), mats.trim, 0, 2.23, 1.05, group);
+  addMesh(kitBox(1.9, 0.62, 1.15, 0.06), mats.paint, 0, 1.3, 1.2, group);
+  addMesh(kitBox(1.66, 0.62, 0.95, 0.06), mats.paint, 0, 1.88, 1.05, group);
+  addMesh(kitBox(1.74, 0.1, 1.02, 0.03), mats.trim, 0, 2.23, 1.05, group);
+  // Cab armour: a lead kick plate along each lower flank and across the nose, bolted; roof work lights.
+  for (const sx of [-1, 1]) {
+    addMesh(kitBox(0.05, 0.12, 1.1, 0.02), lead, sx * 0.965, 1.05, 1.2, group);
+    boltRow(group, lead, [sx * 0.992, 1.05, 0.75], [sx * 0.992, 1.05, 1.65], 4, [0, 0, -sx * Math.PI / 2], 0.026, true);
+    addMesh(kitBox(0.22, 0.12, 0.12, 0.02), mats.dark, sx * 0.62, 2.33, 1.42, group);
+    addMesh(new THREE.BoxGeometry(0.17, 0.07, 0.02), mats.head, sx * 0.62, 2.33, 1.485, group, false);
+  }
+  addMesh(kitBox(1.84, 0.12, 0.05, 0.02), lead, 0, 1.05, 1.79, group);
   const visor = addMesh(new THREE.BoxGeometry(1.46, 0.36, 0.06), mats.glass, 0, 1.95, 1.54, group, false);
   visor.rotation.x = -0.35;
   for (const sx of [-1, 1]) addMesh(new THREE.BoxGeometry(0.06, 0.32, 0.6), mats.glass, sx * 0.84, 1.92, 1.05, group, false);
   // Nose: bull bar + headlights.
   addMesh(new THREE.BoxGeometry(1.9, 0.12, 0.12), mats.chrome, 0, 1.0, 1.84, group);
   addMesh(new THREE.BoxGeometry(1.9, 0.12, 0.12), mats.chrome, 0, 1.3, 1.84, group);
-  for (const sx of [-1, 1]) addMesh(new THREE.BoxGeometry(0.3, 0.16, 0.06), mats.head, sx * 0.66, 1.42, 1.79, group, false);
+  for (const sx of [-1, 1]) {
+    addMesh(new THREE.BoxGeometry(0.3, 0.16, 0.06), mats.head, sx * 0.66, 1.42, 1.79, group, false);
+    addMesh(kitBox(0.4, 0.24, 0.07, 0.02), mats.dark, sx * 0.66, 1.42, 1.765, group); // light housing
+  }
+  // Radiator grille between the lights: a dark recess with chrome slats.
+  addMesh(kitBox(0.6, 0.3, 0.04, 0.015), mats.dark, 0, 1.4, 1.79, group);
+  for (let i = 0; i < 4; i++) addMesh(new THREE.BoxGeometry(0.54, 0.03, 0.03), mats.chrome, 0, 1.3 + i * 0.065, 1.81, group);
   // Sprayer boom: a pipe from the reactor over the cab roof down to the nozzle mount over the nose.
   const pipeGeo = new THREE.CylinderGeometry(0.07, 0.07, 1, 8);
   const pipe = (x: number, y: number, z: number, len: number, rx: number) => {
@@ -90,7 +108,7 @@ export function buildIsotopeVehicle({ mats, chassis }: VehicleBuildIn): VehicleB
   pipe(0.62, 2.0, 0.0, 1.3, Math.PI / 2 - 0.25);
   pipe(0.62, 2.35, 1.0, 1.1, Math.PI / 2);
   pipe(0.62, 1.95, 1.75, 0.9, 0.55);
-  addMesh(new THREE.BoxGeometry(0.34, 0.22, 0.3), mats.dark, 0.3, 1.5, 2.05, group);
+  addMesh(kitBox(0.34, 0.22, 0.3, 0.03), mats.dark, 0.3, 1.5, 2.05, group);
   // Reactor capsule on the bed: lead shell, end domes, a glowing window band, heavy hoop ribs, cradle.
   const shell = addMesh(new THREE.CylinderGeometry(TANK_R, TANK_R, TANK_L, 20), lead, 0, TANK_Y, TANK_Z, group);
   shell.rotation.x = Math.PI / 2;
@@ -108,7 +126,14 @@ export function buildIsotopeVehicle({ mats, chassis }: VehicleBuildIn): VehicleB
     const rib = addMesh(ribGeo, mats.trim, 0, TANK_Y, TANK_Z + z * 0.95, group);
     rib.rotation.y = 0;
   }
-  for (const z of [-0.6, 0.3]) addMesh(new THREE.BoxGeometry(1.5, 0.3, 0.22), mats.dark, 0, 1.15, TANK_Z + z, group);
+  for (const z of [-0.6, 0.3]) {
+    addMesh(kitBox(1.5, 0.3, 0.22, 0.035), mats.dark, 0, 1.15, TANK_Z + z, group);
+    // Clamp feet bolted to the deck either side of each cradle.
+    for (const sx of [-1, 1]) {
+      addMesh(kitBox(0.2, 0.06, 0.32, 0.015), lead, sx * 0.66, 1.06, TANK_Z + z, group);
+      boltRow(group, lead, [sx * 0.66, 1.1, TANK_Z + z - 0.11], [sx * 0.66, 1.1, TANK_Z + z + 0.11], 2, [0, 0, 0], 0.026, true);
+    }
+  }
   // Trefoils on the tank flanks and the cab doors.
   const sign = new THREE.PlaneGeometry(0.55, 0.55);
   for (const sx of [-1, 1]) {
@@ -130,6 +155,12 @@ export function buildIsotopeVehicle({ mats, chassis }: VehicleBuildIn): VehicleB
   }
   addMesh(new THREE.CylinderGeometry(0.11, 0.13, 0.6, 10), mats.dark, 0.55, 2.05, 0.12, group);
   addMesh(new THREE.BoxGeometry(2.0, 0.2, 0.06), hazardMat, 0, 1.1, -2.12, group, false);
+  // Rear bumper under the hazard bar, green reactor markers in dark housings either side.
+  addMesh(kitBox(2.0, 0.14, 0.16, 0.025), mats.dark, 0, 0.86, -2.06, group);
+  for (const sx of [-1, 1]) {
+    addMesh(kitBox(0.22, 0.12, 0.06, 0.015), mats.dark, sx * 0.78, 0.86, -2.15, group);
+    addMesh(new THREE.BoxGeometry(0.16, 0.06, 0.02), coreMat, sx * 0.78, 0.86, -2.185, group, false);
+  }
 
   mergeStatic(group);
   group.add(...makeShadowProxy(group, group));

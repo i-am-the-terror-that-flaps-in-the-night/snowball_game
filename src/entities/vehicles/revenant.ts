@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
-import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
+import { addMesh, kitBox, type VehicleBuild, type VehicleBuildIn } from './types';
 import { buildWraithClaws, type ClawRigIn } from './revenantClaws';
 
 /* REVENANT: a spectral reaper-car. A low, sleek void-black core (fixed colour, glowing seams) wears FLOATING armour
@@ -188,12 +188,13 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   // showing in the gap.
   for (const sx of [-1, 1]) {
     // Front fender plate and the long rear quarter plate, canted out a little, with a gap between them.
-    const fr = addMesh(new THREE.BoxGeometry(0.07, 0.4, 1.35), mats.paint, sx * 0.9, 1.0, 1.55, hull);
+    // (Art pass: the plates take the vehicles' strong kit bevel; the spectral parts stay as they are.)
+    const fr = addMesh(kitBox(0.07, 0.4, 1.35), mats.paint, sx * 0.9, 1.0, 1.55, hull);
     fr.rotation.z = sx * 0.14;
-    const rq = addMesh(new THREE.BoxGeometry(0.07, 0.46, 2.2), mats.paint, sx * 0.9, 1.04, -1.2, hull);
+    const rq = addMesh(kitBox(0.07, 0.46, 2.2), mats.paint, sx * 0.9, 1.04, -1.2, hull);
     rq.rotation.z = sx * 0.14;
     // Shoulder plates over the quarters (trim colour), angled up toward the canopy.
-    const sh = addMesh(new THREE.BoxGeometry(0.34, 0.06, 2.0), mats.trim, sx * 0.72, 1.4, -1.15, hull);
+    const sh = addMesh(kitBox(0.34, 0.06, 2.0), mats.trim, sx * 0.72, 1.4, -1.15, hull);
     sh.rotation.z = sx * -0.32;
     // Glowing seams: along the plates' top edges and down the gap between them.
     addMesh(new THREE.BoxGeometry(0.035, 0.035, 1.3), stripMat, sx * 0.94, 1.22, 1.55, hull, false);
@@ -206,7 +207,7 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   }
   // Nose plate (paint) sloping down to the visor, split down the middle by a glowing spine.
   for (const sx of [-1, 1]) {
-    const np = addMesh(new THREE.BoxGeometry(0.66, 0.06, 1.15), mats.paint, sx * 0.38, 1.17, 1.98, hull);
+    const np = addMesh(kitBox(0.66, 0.06, 1.15), mats.paint, sx * 0.38, 1.17, 1.98, hull);
     np.rotation.set(0.24, 0, sx * -0.08);
   }
   const spine = addMesh(new THREE.BoxGeometry(0.04, 0.04, 1.15), stripMat, 0, 1.2, 1.98, hull, false);
@@ -222,7 +223,7 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
     fang.rotation.x = Math.PI;
   }
   // Dorsal ridge along the canopy crown (trim) with a seam.
-  addMesh(new THREE.BoxGeometry(0.06, 0.12, 2.2), mats.trim, 0, 2.0, -0.55, hull);
+  addMesh(kitBox(0.06, 0.12, 2.2), mats.trim, 0, 2.0, -0.55, hull);
   addMesh(new THREE.BoxGeometry(0.025, 0.025, 2.2), stripMat, 0, 2.07, -0.55, hull, false);
   // Wraith fins rising off the tail (trim), canted out, edged in glow.
   const finShape = new THREE.Shape();

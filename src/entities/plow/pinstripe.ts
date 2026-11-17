@@ -39,7 +39,13 @@ export function installPinstripe(mat: THREE.MeshStandardMaterial, body: THREE.Ob
   const color = { value: new THREE.Color(0xd9ad3c) };
   const bodyInv = { value: new THREE.Matrix4() };
   let frame = -1;
-  mat.onBeforeCompile = (sh) => {
+  // Composes with a patch already on the material (the wear layer, render/kit/wear.ts): one onBeforeCompile runs
+  // both, under a combined program key, and the earlier onBeforeRender keeps running.
+  const prevCompile = mat.onBeforeCompile;
+  const prevRender = mat.onBeforeRender;
+  const prevKey = mat.userData.kitWear ? mat.customProgramCacheKey() : '';
+  mat.onBeforeCompile = (sh, r) => {
+    if (prevKey) prevCompile.call(mat, sh, r);
     sh.uniforms.uPinOn = on;
     sh.uniforms.uPinCol = color;
     sh.uniforms.uPinInv = bodyInv;
@@ -79,8 +85,10 @@ export function installPinstripe(mat: THREE.MeshStandardMaterial, body: THREE.Ob
         '#include <emissivemap_fragment>\n  totalEmissiveRadiance += uPinCol * pinLine * 0.22;',
       );
   };
-  mat.customProgramCacheKey = () => 'plow-pinstripe';
-  mat.onBeforeRender = (renderer) => {
+  const key = prevKey ? `${prevKey}|plow-pinstripe` : 'plow-pinstripe';
+  mat.customProgramCacheKey = () => key;
+  mat.onBeforeRender = (renderer, scene, camera, geometry, object, group) => {
+    prevRender.call(mat, renderer, scene, camera, geometry, object, group);
     if (on.value < 0.5) return;
     const f = renderer.info.render.frame;
     if (f === frame) return;

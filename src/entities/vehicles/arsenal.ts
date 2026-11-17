@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
-import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
+import { addMesh, kitBox, type VehicleBuild, type VehicleBuildIn } from './types';
 
 /** What the Plow feeds the ARSENAL rig every frame (ArsenalVehicleParts.update). */
 export interface ArsenalRigState {
@@ -65,6 +65,13 @@ const ARCS = 4;
 const ARC_SEG = 6;
 
 const CYAN = 0x38e8ff;
+
+/** Art-pass kit bevel on a plain box part: plain-coloured (untextured, unlit) parts big enough to show it. */
+function bevelled(w: number, h: number, d: number, mat: THREE.Material): boolean {
+  const m = mat as THREE.MeshStandardMaterial;
+  if (m.map || (m.emissiveIntensity > 0 && m.emissive.getHex() !== 0)) return false;
+  return Math.max(w, h, d) >= 0.25 && Math.min(w, h, d) >= 0.04;
+}
 
 /** Rear deck (engine cover over the gyro bay), tail to front, as loft sections: a low, raked hood with broad
  *  chamfers, its crest just behind the hull roof and its tail dropping toward the back so the chase camera sees over
@@ -183,13 +190,14 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   const _u = new THREE.Vector3();
   /** A box at (x, y, z) under `parent`, rotated (rx, ry, rz). */
   const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, parent: THREE.Object3D = ap, shadow = true) => {
-    const b = addMesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, parent, shadow);
+    const b = addMesh(bevelled(w, h, d, mat) ? kitBox(w, h, d, 0.03) : new THREE.BoxGeometry(w, h, d), mat, x, y, z, parent, shadow);
     b.rotation.set(rx, ry, rz);
     return b;
   };
   /** A box beam (w x h) from a to b, under ap. */
   const beam = (a: THREE.Vector3, b: THREE.Vector3, w: number, h: number, mat: THREE.Material, shadow = true) => {
-    const bm = addMesh(new THREE.BoxGeometry(w, h, a.distanceTo(b)), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, ap, shadow);
+    const len = a.distanceTo(b);
+    const bm = addMesh(bevelled(w, h, len, mat) ? kitBox(w, h, len, 0.025) : new THREE.BoxGeometry(w, h, len), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, ap, shadow);
     bm.lookAt(b.x, b.y, b.z);
     return bm;
   };

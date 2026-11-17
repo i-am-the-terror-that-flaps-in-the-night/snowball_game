@@ -23,6 +23,7 @@ export interface WearProfile {
 }
 
 const KEY = 'kitWear1';
+const KEY_FRAME = 'kitWear1f';
 
 const NOISE = /* glsl */ `
 float kwHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -33,24 +34,45 @@ float kwNoise(vec3 x) {
 }
 `;
 
-/** Install the wear patch on `m` (idempotent). */
-export function applyWear(m: THREE.MeshStandardMaterial, p: WearProfile): THREE.MeshStandardMaterial {
+/** Grime measured in a parent's space instead of the part's own: `value` = the inverse of that parent's world matrix,
+ *  kept current by the caller (vehicles: the plow body, so a turret or an arm high up is not grimed like a wheel
+ *  arch). The noise stays in object space (it sticks to the part). */
+export interface WearFrame {
+  value: THREE.Matrix4;
+}
+
+/** Install the wear patch on `m` (idempotent). With `frame`, the grime height is read in that frame (see WearFrame). */
+export function applyWear(m: THREE.MeshStandardMaterial, p: WearProfile, frame?: WearFrame): THREE.MeshStandardMaterial {
   const u = { kwWear: { value: new THREE.Vector4(p.grime, p.mottle, p.scuff, p.grimeH ?? 0.75) }, kwY0: { value: p.y0 ?? 0 } };
   m.userData.kitWear = u;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.kwWear = u.kwWear;
     sh.uniforms.kwY0 = u.kwY0;
+    if (frame) sh.uniforms.kwFrame = frame;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vKwPos;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvKwPos = position;');
+      .replace('#include <common>', `#include <common>\nvarying vec3 vKwPos;${frame ? '\nvarying float vKwY;\nuniform mat4 kwFrame;' : ''}`)
+      .replace(
+        '#include <begin_vertex>',
+        frame
+          ? `#include <begin_vertex>
+        vKwPos = position;
+        {
+          vec4 kwP = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+          kwP = instanceMatrix * kwP;
+          #endif
+          vKwY = (kwFrame * modelMatrix * kwP).y;
+        }`
+          : '#include <begin_vertex>\nvKwPos = position;',
+      );
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vKwPos;\nuniform vec4 kwWear;\nuniform float kwY0;\n${NOISE}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vKwPos;${frame ? '\nvarying float vKwY;' : '\n#define vKwY vKwPos.y'}\nuniform vec4 kwWear;\nuniform float kwY0;\n${NOISE}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         float kwN = kwNoise(vKwPos * 2.3);
         float kwF = kwNoise(vKwPos * 6.5 + 7.3);
-        float kwG = (1.0 - smoothstep(kwY0, kwY0 + kwWear.w, vKwPos.y)) * kwWear.x;
+        float kwG = (1.0 - smoothstep(kwY0, kwY0 + kwWear.w, vKwY)) * kwWear.x;
         float kwS = smoothstep(0.8, 0.9, kwF) * kwWear.z * smoothstep(0.45, 0.7, kwN);
         diffuseColor.rgb *= (1.0 - kwG * 0.62) * (1.0 + (kwN - 0.5) * 2.0 * kwWear.y);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.52, 0.55), kwS * 0.35);`,
@@ -61,7 +83,7 @@ export function applyWear(m: THREE.MeshStandardMaterial, p: WearProfile): THREE.
         roughnessFactor = clamp(roughnessFactor + kwG * 0.25 + (kwN - 0.5) * kwWear.y * 1.5 - kwS * 0.3, 0.04, 1.0);`,
       );
   };
-  m.customProgramCacheKey = () => KEY;
+  m.customProgramCacheKey = frame ? () => KEY_FRAME : () => KEY;
   return m;
 }
 

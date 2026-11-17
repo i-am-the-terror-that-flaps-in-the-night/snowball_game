@@ -16,6 +16,9 @@ import type { CosmeticSlot } from '../../config/cosmetics';
 import { bakeGeometry, mergeBaked, mergeStatic } from '../../render/mergeStatic';
 import type { EquippedLook } from '../../meta/cosmetics';
 import { GearVisuals } from '../gearVisuals';
+import { installPlowWear, type PlowWear } from './plowWear';
+import { chamferBox } from '../../render/kit/shapes';
+import { PLOW_KIT_K } from '../vehicles/types';
 import { makeSurface } from '../../world/Terrain';
 import type { VehicleBuildIn } from '../vehicles/types';
 import { buildVoltVehicle, type VoltVehicleParts } from '../vehicles/volt';
@@ -205,6 +208,8 @@ export abstract class PlowBase {
   protected arsenalParts!: THREE.Group;
   /** Equipped gear attachments (entities/gearVisuals.ts). */
   protected gearVis!: GearVisuals;
+  /** Wear layer on the vehicle materials (plow/plowWear.ts); the paint's strengths follow the Paint Shop paint. */
+  protected wear!: PlowWear;
   protected turret!: THREE.Group;
   protected minigun!: THREE.Group;
   /** Minigun elevation pivot; follows gunPitch. */
@@ -329,7 +334,7 @@ export abstract class PlowBase {
     // Shared chassis + front bumper. Everything above it is per-plow (classicParts / voltParts / bruteParts), so
     // the three starter plows have different silhouettes, not just different paint. Each kind group gets its own
     // copy of the chassis so it bakes into that group's merged dark bodywork.
-    const chassisGeo = new THREE.BoxGeometry(1.7, 0.35, 4.0);
+    const chassisGeo = chamferBox(1.7, 0.35, 4.0, 0.045 * PLOW_KIT_K);
     const vin: VehicleBuildIn = {
       mats: { paint: this.paintMat, trim: this.bedMat, dark: darkMat, glass: glassMat, chrome: chromeMat, coil: this.coilMat, hub: this.hubMat, head: this.headMat },
       chassis: chassisGeo,
@@ -396,10 +401,27 @@ export abstract class PlowBase {
     this.body.add(this.beaconLight);
 
     // Wheels (Classic + VOLT-9; BRUTUS rides on tracks).
-    const tireGeo = new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, 0.42, 14);
+    // Tyre: a lathed section with chamfered shoulders (art pass; same size as the old cylinder).
+    const tireGeo = new THREE.LatheGeometry(
+      ([[0.2, -0.205], [WHEEL_R - 0.045, -0.21], [WHEEL_R, -0.15], [WHEEL_R, 0.15], [WHEEL_R - 0.045, 0.21], [0.2, 0.205]] as const).map(
+        ([r, y]) => new THREE.Vector2(r, y),
+      ),
+      14,
+    );
     tireGeo.rotateZ(Math.PI / 2);
-    const hubGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.44, 8);
-    hubGeo.rotateZ(Math.PI / 2);
+    // Hub with five lug nuts on each face, one geometry (the wheels stay three instanced draws).
+    const hubCyl = new THREE.CylinderGeometry(0.22, 0.22, 0.44, 8);
+    hubCyl.rotateZ(Math.PI / 2);
+    const hubParts = [bakeGeometry(hubCyl, new THREE.Matrix4(), ['position', 'normal', 'uv'])];
+    const lug = new THREE.ConeGeometry(0.034, 0.035, 6, 1, true); // a domed nut: 6 triangles
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const lm = new THREE.Matrix4().makeRotationZ(-sx * Math.PI / 2).setPosition(sx * 0.23, Math.sin(a) * 0.13, Math.cos(a) * 0.13);
+        hubParts.push(bakeGeometry(lug, lm, ['position', 'normal', 'uv']));
+      }
+    }
+    const hubGeo = mergeBaked(hubParts, hubMat)[0];
     const treadGeo = new THREE.BoxGeometry(0.44, 0.1, 0.16);
     const treads: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 6; i++) {
@@ -476,6 +498,15 @@ export abstract class PlowBase {
     for (const o of [this.bladeCaps, this.bladeArms]) o.traverse((m) => m.castShadow && this.bladeCasters.push(m));
     this.bladeGroup.position.set(0, 0, BLADE_Z - 0.1);
     this.body.add(this.bladeGroup);
+    // Wear layer (art pass): the vehicle bodies (not the instanced wheels or the double-sided blade sheet: plowWear.ts),
+    // before the gear attachments go on. PHANTOM only through the shared paint (its own spectral materials and the
+    // wraith claws stay as they are).
+    this.wear = installPlowWear({
+      body: this.body,
+      roots: [this.body],
+      skip: [this.revParts],
+      painted: [this.paintMat, this.bedMat],
+    });
     this.gearVis = new GearVisuals(this.body, this.bladeGroup);
 
     this.spin.add(this.body);
