@@ -518,6 +518,13 @@ function spinner(): Tpl {
   for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0xff8a00), [sx * 0.17, 1.03, 0.64], [0.09, 0.09, 0.06]);
   b.add(G.cyl(8), M.steel(), [0, 1.42, 0], [0.12, 0.12, 0.12]);
   b.add(G.sph(1), glowMat(t, 0xff3b1a, 0.2), [0, 1.52, 0], [0.16, 0.16, 0.16]);
+  // BOLD PASS: armour skirt plates round the base, a vented crown on the dome, rivets on the band
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * PI * 2 + PI / 8;
+    kb(b, M.dark(), [Math.sin(a) * 0.86, 0.3, Math.cos(a) * 0.86], [0.5, 0.22, 0.1], [0, a, 0]);
+    b.add(G.sph(0), M.steel(), [Math.sin(a) * 0.885, 0.66, Math.cos(a) * 0.885], [0.04, 0.04, 0.04]);
+  }
+  for (let i = 0; i < 3; i++) b.add(G.box(), M.black(), [0, 1.27 - i * 0.06, -0.2 - i * 0.1], [0.4, 0.03, 0.06]);
   for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.6, 0.86, -0.3], [0.04, 0.16, 0.5], [0, sx * 0.5, 0], [1.5, 0.5]);
   b.flush();
   // two counter-rotating saw rings
@@ -559,6 +566,10 @@ function thief(): Tpl {
   // fins
   for (const sx of [-1, 1]) kw(b, accent(t), [sx * 0.5, 0.8, -0.45], [0.05, 0.32, 0.45], 0.4, [0, 0, sx * -0.4]);
   // snow tank (glass) on the back
+  // BOLD PASS: a dorsal spine, side air scoops, a stubby whip antenna
+  kb(b, accent(t), [0, 0.98, 0.05], [0.08, 0.12, 0.5], [0.15, 0, 0]);
+  for (const sx of [-1, 1]) kb(b, M.dark(), [sx * 0.52, 0.56, 0.15], [0.12, 0.14, 0.34], [0, sx * 0.2, 0]);
+  b.add(G.cyl(6), M.black(), [-0.2, 1.05, -0.65], [0.015, 0.4, 0.015]);
   b.add(G.sph(2), M.tankGlass(), [0, 0.98, -0.42], [0.34, 0.34, 0.34]);
   b.add(G.cyl(12), M.dark(), [0, 0.72, -0.42], [0.26, 0.08, 0.26]);
   b.flush();
@@ -614,6 +625,16 @@ function bulldoza(): Tpl {
     b.add(G.cyl(8), M.chrome(), [sx * 0.7, 1.75, 1.45], [0.08, 1.3, 0.08], [PI / 2 - 0.55, 0, 0]);
   }
   // smokestacks
+  // BOLD PASS: layered armour over the body sides, blade ribs + a bolt row, a cab roof rack, body vents
+  for (const sx of [-1, 1]) {
+    kb(b, P, [sx * 1.24, 2.1, 0.2], [0.09, 0.4, 1.3], [0, 0, sx * 0.06]);
+    kb(b, P, [sx * 1.24, 2.1, -1.2], [0.09, 0.4, 1.3], [0, 0, sx * 0.06]);
+    vent(b, M.black(), [sx * 0.97, 3.0, -1.6], 0.6, 0.5, 5, [0, sx * PI / 2, 0]);
+  }
+  for (const x of [-1.0, 0, 1.0]) kb(b, M.black(), [x, 1.05, 2.52], [0.16, 1.4, 0.1], [-0.12, 0, 0]);
+  bolts(b, M.chrome(), [-1.3, 0.62, 2.53], [1.3, 0.62, 2.53], 10, [PI / 2 - 0.12, 0, 0], 0.05);
+  for (const x of [-0.8, 0.8]) kb(b, M.black(), [x, 3.92, -1.05], [0.1, 0.1, 1.5]);
+  kb(b, M.black(), [0, 3.92, -0.4], [1.7, 0.1, 0.1]);
   for (const sx of [-1, 1]) stack(b, stacks, sx * 0.62, 3.2, -1.95, 0.17, 1.35, M.chrome(), M.black());
   b.flush();
   base.flush();
@@ -721,6 +742,15 @@ function grinder(): Tpl {
   // auger housing
   b.add(G.cyl(12), M.dark(), [0, 1.5, 1.35], [1.25, 0.5, 1.25], [PI / 2, 0, 0]);
   b.add(G.torus(), M.steel(), [0, 1.5, 1.6], [1.25, 1.25, 1.3]);
+  // BOLD PASS: riveted rust patch plates on the body, cab side vents, a bolt ring on the drill housing
+  for (const sx of [-1, 1]) {
+    kb(b, M.rustDark(), [sx * 1.37, 1.55, 0.6], [0.06, 0.4, 0.8]);
+    vent(b, M.black(), [sx * 1.07, 3.15, -1.0], 1.2, 0.4, 4, [0, sx * PI / 2, 0]);
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * PI * 2;
+    b.add(G.sph(0), M.steel(), [Math.cos(a) * 1.25, 1.5 + Math.sin(a) * 1.25, 1.75], [0.08, 0.08, 0.06]);
+  }
   for (let i = 0; i < 3; i++) stack(b, stacks, -0.75 + i * 0.75, 3.5, -1.75 - (i === 1 ? 0.15 : 0), i === 1 ? 0.22 : 0.18, i === 1 ? 1.2 : 0.9, M.rustDark(), M.black());
   b.flush();
   // THE AUGER (spins around local Z)
@@ -781,6 +811,13 @@ function twin(t: 'slush' | 'sleet'): Tpl {
     kb(b, M.steel(), [0, 0.8, 1.62], [2.0, 0.7, 0.16], [-0.3, 0, 0]);
     kb(b, glowMat(t, glowC, 0.3), [0, 0.45, 1.72], [2.0, 0.1, 0.16]);
   }
+  // BOLD PASS: body side vents, a roof light rack, fender rails
+  for (const sx of [-1, 1]) {
+    vent(b, M.black(), [sx * 0.69, 1.75, -0.75], 0.8, 0.4, 4, [0, sx * PI / 2, 0]);
+    for (const sz of [-1, 1]) kb(b, M.dark(), [sx * 1.3, 1.46, sz * 0.95], [0.66, 0.06, 1.0]);
+  }
+  kb(b, M.black(), [0, 2.17, -0.45], [1.1, 0.08, 0.14]);
+  for (const x of [-0.35, 0, 0.35]) b.add(G.cyl(10), M.chrome(), [x, 2.17, -0.37], [0.07, 0.02, 0.07], [PI / 2, 0, 0]);
   for (const sx of [-1, 1]) stack(b, stacks, sx * 0.45, 1.3, -1.62, 0.1, 0.35, M.chrome(), M.black());
   b.flush();
   return { root, height: 2.8, stacks, front: 1.7 };
@@ -841,6 +878,13 @@ function omega(): Tpl {
     kb(b, M.black(), o(sx * 1.2, 1.7, 1.9), [0.32, 0.32, 1.6]);
     b.add(G.cyl(8), M.chrome(), o(sx * 0.6, 2.6, 1.9), [0.1, 1.6, 0.1], [PI / 2 - 0.6, 0, 0]);
   }
+  // BOLD PASS: layered armour plates on the hull sides, cab vents, chrome bolt rows on the blade
+  for (const sx of [-1, 1]) {
+    kb(b, P, o(sx * 1.8, 3.0, 0.5), [0.1, 0.55, 1.6], [0, 0, sx * 0.05]);
+    kb(b, P, o(sx * 1.8, 3.0, -1.3), [0.1, 0.55, 1.6], [0, 0, sx * 0.05]);
+    vent(b, M.black(), o(sx * 1.42, 3.55, -1.0), 1.6, 0.45, 5, [0, sx * PI / 2, 0]);
+  }
+  bolts(b, M.chrome(), o(-1.1, 0.75, 2.93), o(1.1, 0.75, 2.93), 9, [PI / 2 - 0.15, 0, 0], 0.06);
   // 4 smokestacks with red tips
   const tip = mat('omegaTip', 0xff1744, { emissive: 0xff1744, emissiveIntensity: 0.6 });
   for (const sx of [-1, 1]) {
@@ -1285,6 +1329,12 @@ function gunner(): Tpl {
   // antenna
   b.add(G.cyl(6), M.black(), [-0.25, 2.0, -0.35], [0.02, 0.5, 0.02]);
   b.add(G.sph(0), accent(t), [-0.25, 2.26, -0.35], [0.05, 0.05, 0.05]);
+  // BOLD PASS: wheel fenders, a side ammo drum feeding the gun, angled gun shields, an elevation ram
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) kb(b, M.dark(), [sx * 0.56, 0.64, sz * 0.5], [0.24, 0.07, 0.5]);
+  b.add(G.cyl(12), M.dark(), [-0.38, GUNNER_MUZZLE_Y - 0.05, -0.15], [0.17, 0.2, 0.17], [0, 0, PI / 2]);
+  b.add(G.cyl(12), M.steel(), [-0.49, GUNNER_MUZZLE_Y - 0.05, -0.15], [0.12, 0.03, 0.12], [0, 0, PI / 2]);
+  for (const sx of [-1, 1]) kb(b, paint(t), [sx * 0.24, GUNNER_MUZZLE_Y + 0.02, 0.35], [0.06, 0.34, 0.3], [0, sx * 0.25, 0]);
+  b.add(G.cyl(8), M.chrome(), [0, 1.0, 0.2], [0.035, 0.42, 0.035], [0.7, 0, 0]);
   stack(b, stacks, 0.24, 0.85, -0.55, 0.05, 0.22, M.steel(), M.dark());
   b.flush();
   base.flush();
@@ -1327,6 +1377,15 @@ function bulwark(): Tpl {
   b.add(G.box(), M.hazard(), [0, 1.2, cz + R + 0.1], [0.56, 0.5, 0.03], [-0.08, 0, 0], [1.2, 1.2]);
   // arms bracing the shield
   for (const sx of [-1, 1]) kb(b, M.black(), [sx * 0.5, 1.0, 0.85], [0.14, 0.14, 1.0]);
+  // BOLD PASS: layered side armour, tread skirts, a roof hatch with a grab handle, shield back struts with bolts
+  for (const sx of [-1, 1]) {
+    kb(b, paint(t), [sx * 0.75, 1.02, -0.05], [0.07, 0.48, 0.7], [0, 0, sx * 0.08]);
+    kb(b, paint(t), [sx * 0.75, 1.02, -0.8], [0.07, 0.48, 0.7], [0, 0, sx * 0.08]);
+    kb(b, accent(t), [sx * 1.2, 0.72, -0.1], [0.08, 0.2, 1.8], [0, 0, sx * 0.1]);
+    kb(b, M.dark(), [sx * 0.62, 1.55, 0.95], [0.12, 0.12, 0.9], [0.35, 0, 0]);
+  }
+  kb(b, M.dark(), [0, 1.9, -0.75], [0.5, 0.06, 0.45]);
+  b.add(G.box(), M.chrome(), [0, 1.96, -0.75], [0.3, 0.03, 0.04]);
   stack(b, stacks, -0.45, 1.3, -1.0, 0.08, 0.5, M.chrome(), M.dark());
   b.flush();
   base.flush();
@@ -1354,6 +1413,16 @@ function slushpile(): Tpl {
   for (const [x, y, z, r] of lumps) b.add(G.sph(1), paint(t), [x, y, z], [r, r * 0.8, r]);
   // teal meltwater streaks (accent)
   for (const [x, y, z] of [[0.6, 1.0, 0.1], [-0.55, 1.05, 0.3], [0.2, 0.98, -0.62]] as const) b.add(G.sph(0), accent(t), [x, y, z], [0.14, 0.2, 0.14]);
+  // BOLD PASS: hopper rim and ribs, tread armour, headlamp housings either side of the scoop
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * PI * 2;
+    kb(b, M.dark(), [Math.sin(a) * 0.9, 1.14, Math.cos(a) * 0.98], [0.42, 0.1, 0.12], [0, a, 0]);
+    if (k % 2 === 0) kb(b, M.steel(), [Math.sin(a) * 0.9, 0.9, Math.cos(a) * 0.98], [0.1, 0.4, 0.1], [0, a, 0]);
+  }
+  for (const sx of [-1, 1]) {
+    kb(b, accent(t), [sx * 0.98, 0.58, 0], [0.08, 0.2, 1.6], [0, 0, sx * 0.1]);
+    kb(b, M.dark(), [sx * 0.5, 0.66, 0.9], [0.18, 0.14, 0.12]);
+  }
   for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0x3fd1a8, 2.6), [sx * 0.22, 1.4, 0.76], [0.1, 0.1, 0.06]);
   b.flush();
   base.flush();
@@ -1443,6 +1512,13 @@ function magnet(): Tpl {
     kb(b, M.black(), [sx * R, MAGNET_TOP_Y - 0.72, 0], [0.38, 0.04, 0.44]);
   }
   // eye: a sensor in the crown
+  // BOLD PASS: mast bracing struts, a power cable up the mast, base side armour with vents
+  for (const sx of [-1, 1]) {
+    kb(b, M.steel(), [sx * 0.32, 1.25, 0], [0.1, 0.8, 0.1], [0, 0, sx * -0.35]);
+    kb(b, M.dark(), [sx * 0.78, 0.7, 0], [0.08, 0.3, 1.5], [0, 0, sx * 0.1]);
+    vent(b, M.black(), [sx * 0.83, 0.72, 0], 0.8, 0.2, 3, [0, sx * PI / 2, 0]);
+  }
+  b.add(G.cyl(6), M.black(), [0.16, 1.6, 0.14], [0.03, 1.5, 0.03]);
   b.add(G.sph(1), eyeMat(t, 0xffe14a, 2.4), [0, MAGNET_TOP_Y + R * 0.9, 0.2], [0.11, 0.11, 0.08]);
   // copper coil drum on the mast (spins while pulling)
   const coil = sub(g, 'spinY', [0, 1.9, 0]);
@@ -1491,6 +1567,12 @@ function twinlink(): Tpl {
   b.add(G.cyl(8), M.dark(), [0, 1.5, -0.4], [0.06, 0.5, 0.06]);
   b.add(G.cyl(10), accent(t), [0, 1.62, -0.4], [0.14, 0.06, 0.14]);
   b.add(G.sph(1), glowMat(t, 0xffd23a, 0.9), [0, TWIN_PYLON_Y, -0.4], [0.2, 0.2, 0.2]);
+  // BOLD PASS: wheel fenders, side cooling fins, a nose bumper rail
+  for (const sx of [-1, 1]) {
+    for (const sz of [-0.55, 0.55]) kb(b, M.dark(), [sx * 0.66, 0.74, sz], [0.3, 0.07, 0.56]);
+    for (let i = 0; i < 3; i++) b.add(G.box(), M.black(), [sx * 0.45, 1.08, -0.15 - i * 0.14], [0.05, 0.28, 0.05]);
+  }
+  kb(b, M.dark(), [0, 0.32, 1.02], [1.2, 0.12, 0.12]);
   stack(b, stacks, 0.3, 0.9, -0.8, 0.05, 0.2, M.steel(), M.dark());
   b.flush();
   base.flush();
