@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE } from '../vehicles/revenant';
 import { currentPreset } from '../../core/settings';
+import { standIns } from '../../render/standIns';
 
 /* REVENANT ability visuals (pooled; nothing allocated per frame). Every effect is a solid, normal-blended violet layer
  * with a dark edge (it has to read on sunlit snow AND at night), with an additive bright line only on top:
- *   - ScytheArcs: the REAP sweep, a crescent ribbon that wipes across the 140 deg arc (big Reap: wider, taller);
+ *   - ClawMarks: the REAP, parallel spectral claw gouges torn across the 140 deg arc (big Reap: two crossing sets);
  *   - Chains: wavy ghost chains (instanced links, drawn immediate-mode each frame): Haunt tethers and SOUL GRASP;
  *   - HauntMarks: the pale overlay shell + floating skull wisp over a Haunted bot (immediate mode);
  *   - PhantomMeshes: the hooded ghost a Haunted wreck rises as;
@@ -22,98 +23,147 @@ const _up = new THREE.Vector3(0, 1, 0);
 /** Quarter turn about the chain axis (alternate links). */
 const _qTurn = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
 
-/** Ring sector (radius 1, flat in XZ, centred on +Z) whose vertex alpha rises along the sweep: the scythe's wake.
- *  `inner`: inner radius share. */
-function sweepGeometry(inner: number, arc: number): THREE.BufferGeometry {
-  const g = new THREE.RingGeometry(inner, 1, 40, 1, Math.PI / 2 - arc / 2, arc);
-  g.rotateX(-Math.PI / 2);
-  // RingGeometry runs counter-clockwise from +X; after the rotation the angle is measured in XZ. Alpha rises toward the
-  // leading edge (the end of the sweep), fading the trail.
-  const pos = g.getAttribute('position');
-  const col = new Float32Array(pos.count * 4);
-  for (let i = 0; i < pos.count; i++) {
-    const ang = Math.atan2(-pos.getZ(i), pos.getX(i)); // the angle RingGeometry built it at
-    const u = (ang - (Math.PI / 2 - arc / 2)) / arc; // 0 = start of the sector, 1 = end
-    col.set([1, 1, 1, Math.max(0, Math.min(1, u)) ** 1.4], i * 4);
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 4));
-  // rotateX(-PI/2) left the sector centred on -Z (behind the plow); turn it to face +Z, the plow's forward. A pure
-  // rotation, so the sweep direction and the alpha ramp are unchanged.
-  g.rotateY(Math.PI);
-  return g;
-}
-
 const vMat = (color: number, opacity: number, additive = false) =>
   new THREE.MeshBasicMaterial({ color, vertexColors: true, transparent: true, opacity, depthWrite: false, toneMapped: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
 
-/* ------------------------------------------------------------------ REAP: scythe arcs */
+/* ------------------------------------------------------------------ REAP: claw marks */
 
-interface Arc { root: THREE.Group; mats: THREE.MeshBasicMaterial[]; t: number; dur: number; big: boolean; side: number; peak: number[] }
+/** Gouges per claw mark: radius share, width share of the reach, and the share of the sweep each runs over (the
+ *  talons bite in and lift out a little apart). */
+const GOUGES = [
+  { r: 0.985, w: 0.03, a: 0.04, b: 0.93 },
+  { r: 0.895, w: 0.036, a: 0.0, b: 1.0 },
+  { r: 0.805, w: 0.033, a: 0.02, b: 0.97 },
+  { r: 0.72, w: 0.026, a: 0.08, b: 0.9 },
+];
+const MARK_SEG = 44;
+/** Claw-mark timing (s): the gouges tear across the arc (with the claw's strike), hold, then fade. */
+const MARK_IN0 = 0.045;
+const MARK_IN1 = 0.19;
+const MARK_HOLD = 0.27;
 
-/** REAP sweeps: a crescent ribbon (dark edge, violet body, bright cutting line) that wipes across the arc ahead. */
-export class ScytheArcs {
-  private arcs: Arc[] = [];
-  /** Sweep half angle (rad) the geometry is built for (the big Reap scales it up a little). */
+/** Parallel claw gouges (radius 1, flat in XZ, centred on +Z, the 140 deg arc) torn from +X across to -X: vertices
+ *  are ordered along the sweep so a draw range reveals them as the claw rakes. `wide`: width multiplier (the dark
+ *  edge is wide, the hot core thin). Vertex alpha fades each gouge in and out at its ends. */
+function gougeGeometry(wide: number, arc: number): THREE.BufferGeometry {
+  const ng = GOUGES.length;
+  const nv = (MARK_SEG + 1) * ng * 2;
+  const pos = new Float32Array(nv * 3);
+  const col = new Float32Array(nv * 4);
+  for (let j = 0; j <= MARK_SEG; j++) {
+    const u = j / MARK_SEG;
+    const phi = arc / 2 - u * arc;
+    const sp = Math.sin(phi);
+    const cp = Math.cos(phi);
+    for (let i = 0; i < ng; i++) {
+      const G = GOUGES[i];
+      const v = (u - G.a) / (G.b - G.a);
+      const env = v <= 0 || v >= 1 ? 0 : Math.sin(Math.PI * v);
+      // a gouge: thin where the talon bites in, deepest just past the middle, tearing out thin
+      const w = G.w * wide * env ** 0.6 * (0.85 + 0.3 * v) * 0.5;
+      const r = G.r + 0.008 * Math.sin(u * 9 + i * 2.3);
+      const q = ((j * ng + i) * 2) | 0;
+      pos.set([sp * (r + w), 0, cp * (r + w), sp * (r - w), 0, cp * (r - w)], q * 3);
+      const a = Math.min(1, env * 1.8);
+      col.set([1, 1, 1, a, 1, 1, 1, a], q * 4);
+    }
+  }
+  const idx: number[] = [];
+  for (let j = 0; j < MARK_SEG; j++)
+    for (let i = 0; i < ng; i++) {
+      const a = (j * ng + i) * 2;
+      const b = ((j + 1) * ng + i) * 2;
+      idx.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  g.setIndex(idx);
+  return g;
+}
+
+interface Mark { root: THREE.Group; geos: THREE.BufferGeometry[]; mats: THREE.MeshBasicMaterial[]; t: number; dur: number; big: boolean }
+
+/** REAP claw marks: four parallel spectral gouges (dark edge, violet body, hot additive core) torn across the arc
+ *  ahead, in the direction the wraith claw rakes; they show the Reap's reach and arc. A big Reap tears two crossing
+ *  sets, one from each side. */
+export class ClawMarks {
+  private marks: Mark[] = [];
+  /** The arc (rad) the geometry spans (combat/revenant.ts REAP_HALF x 2). */
   static readonly ARC = (140 * Math.PI) / 180;
+  private static readonly PEAK = [0.72, 0.9, 1];
 
-  constructor(scene: THREE.Scene, n = 4) {
-    const edgeGeo = sweepGeometry(0.62, ScytheArcs.ARC);
-    const bodyGeo = sweepGeometry(0.7, ScytheArcs.ARC);
-    const lineGeo = sweepGeometry(0.93, ScytheArcs.ARC);
-    for (let i = 0; i < n; i++) {
+  constructor(scene: THREE.Scene, n = 6) {
+    for (let k = 0; k < n; k++) {
       const root = new THREE.Group();
-      const mats = [vMat(REV_EDGE, 0.75), vMat(REV_CORE, 0.85), vMat(REV_BRIGHT, 1, true)];
-      const edge = new THREE.Mesh(edgeGeo, mats[0]);
-      edge.scale.setScalar(1.04);
-      const body = new THREE.Mesh(bodyGeo, mats[1]);
-      body.position.y = 0.04;
-      const line = new THREE.Mesh(lineGeo, mats[2]);
-      line.position.y = 0.08;
-      edge.renderOrder = 2;
-      body.renderOrder = 3;
-      line.renderOrder = 4;
-      root.add(edge, body, line);
-      root.visible = false;
-      for (const c of root.children) c.frustumCulled = false;
-      scene.add(root);
-      this.arcs.push({ root, mats, t: 0, dur: 0.22, big: false, side: 1, peak: [0.75, 0.85, 1] });
-    }
-  }
-
-  /** A sweep centred on `heading` at (x, y, z), out to `range` m, `side` +1 = sweeping right to left, -1 = left to
-   *  right (mirrored), `big` = the third-swing Reap. */
-  spawn(x: number, y: number, z: number, heading: number, range: number, side: number, big: boolean): void {
-    let a = this.arcs.find((v) => !v.root.visible);
-    if (!a) a = this.arcs.reduce((p, q) => (p.t / p.dur > q.t / q.dur ? p : q));
-    a.t = 0;
-    a.dur = big ? 0.32 : 0.22;
-    a.big = big;
-    a.side = side;
-    a.root.position.set(x, y, z);
-    a.root.rotation.set(0, heading, 0);
-    a.root.scale.set(range * side * (big ? 1.06 : 1), big ? 1.6 : 1, range * (big ? 1.06 : 1));
-    a.root.visible = true;
-    this.update(0, a);
-  }
-
-  update(dt: number, only?: Arc): void {
-    for (const a of only ? [only] : this.arcs) {
-      if (!a.root.visible) continue;
-      a.t += dt;
-      const k = a.t / a.dur;
-      if (k >= 1) {
-        a.root.visible = false;
-        continue;
+      const geos = [gougeGeometry(2.3, ClawMarks.ARC), gougeGeometry(1, ClawMarks.ARC), gougeGeometry(0.32, ClawMarks.ARC)];
+      const mats = [vMat(REV_EDGE, 0.72), vMat(REV_CORE, 0.9), vMat(REV_BRIGHT, 1, true)];
+      for (let l = 0; l < 3; l++) {
+        const m = new THREE.Mesh(geos[l], mats[l]);
+        m.position.y = l * 0.03;
+        m.renderOrder = 2 + l;
+        m.frustumCulled = false;
+        root.add(m);
       }
-      // Wipe in fast, then fade; a slight extra turn sells the follow-through.
-      const fade = k < 0.35 ? 1 : (1 - (k - 0.35) / 0.65) ** 1.5;
-      for (let i = 0; i < a.mats.length; i++) a.mats[i].opacity = a.peak[i] * fade * (a.big ? 1 : 0.9);
-      a.root.children[0].rotation.y = a.root.children[1].rotation.y = a.root.children[2].rotation.y = -0.25 * k;
+      root.visible = false;
+      scene.add(root);
+      this.marks.push({ root, geos, mats, t: 0, dur: 0.5, big: false });
     }
+  }
+
+  private take(): Mark {
+    let a = this.marks.find((v) => !v.root.visible);
+    if (!a) a = this.marks.reduce((p, q) => (p.t / p.dur > q.t / q.dur ? p : q));
+    return a;
+  }
+
+  private start(m: Mark, x: number, y: number, z: number, heading: number, range: number, side: number, big: boolean): void {
+    m.t = 0;
+    m.dur = big ? 0.55 : 0.46;
+    m.big = big;
+    m.root.position.set(x, y, z);
+    m.root.rotation.set(0, heading, 0);
+    m.root.scale.set(range * side, 1, range);
+    m.root.visible = true;
+    this.step(m, 0);
+  }
+
+  /** Claw marks centred on `heading` at (x, y, z), out to `range` m, torn from the `side` (+1 = the plow's left, +X)
+   *  across to the other; `big` = the third-sweep Reap (both claws: a second set from the other side). */
+  spawn(x: number, y: number, z: number, heading: number, range: number, side: number, big: boolean): void {
+    this.start(this.take(), x, y, z, heading, range, side, big);
+    if (big) this.start(this.take(), x, y + 0.08, z, heading, range * 0.955, -side, big);
+  }
+
+  private step(m: Mark, dt: number): void {
+    m.t += dt;
+    const k = m.t / m.dur;
+    if (k >= 1) {
+      m.root.visible = false;
+      return;
+    }
+    // Tear across with the claw's strike (fast in, easing out), hold, then fade.
+    const x = Math.max(0, Math.min(1, (m.t - MARK_IN0) / (MARK_IN1 - MARK_IN0)));
+    const rev = 1 - (1 - x) ** 2.4;
+    const segs = Math.ceil(rev * MARK_SEG);
+    const count = segs * GOUGES.length * 6;
+    for (const g of m.geos) g.setDrawRange(0, count);
+    const fade = m.t < MARK_HOLD ? 1 : (1 - (m.t - MARK_HOLD) / (m.dur - MARK_HOLD)) ** 1.3;
+    for (let i = 0; i < m.mats.length; i++) m.mats[i].opacity = ClawMarks.PEAK[i] * fade * (m.big ? 1 : 0.92);
+  }
+
+  update(dt: number): void {
+    for (const m of this.marks) if (m.root.visible) this.step(m, dt);
+  }
+
+  /** Visible off-scene stand-ins of one (hidden) mark for the shader warm-up (render/standIns.ts): every mark shares
+   *  the same three programs. */
+  warmMeshes(): THREE.Object3D[] {
+    return standIns([this.marks[0].root]);
   }
 
   clear(): void {
-    for (const a of this.arcs) a.root.visible = false;
+    for (const m of this.marks) m.root.visible = false;
   }
 }
 

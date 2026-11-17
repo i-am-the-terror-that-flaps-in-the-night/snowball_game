@@ -686,7 +686,7 @@ export function computeStatsFor(levels: Partial<Record<UpgradeId, number>>, plow
     scrapDps: arsenal ? FX.scrapDps(L('armMagnet')) : 0,
     scrapMax: arsenal ? FX.scrapMax(L('armMagnet')) : 0,
     scrapHit: arsenal ? FX.scrapHit(L('armMagnet')) : 0,
-    // REVENANT: Wide Blade lengthens the scythe, Nitro Dash shortens the Phase recharge (as it does the dash's).
+    // REVENANT: Wide Blade lengthens the claws, Nitro Dash shortens the Phase recharge (as it does the dash's).
     reapDamage: rev ? FX.reapDamage(L('revReap')) : 0,
     reapReach: FX.reapReach(L('revReap')) + 0.5 * Math.max(0, FX.bladeWidth(L('blade')) - FX.bladeWidth(0)),
     manifestDamage: FX.manifestDamage(L('revPhase')),

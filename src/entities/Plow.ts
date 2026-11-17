@@ -471,6 +471,8 @@ export class Plow extends PlowMotion implements PlowAPI {
     for (const st of this.streaks) st.active = false;
     this.streakT = 0;
     this.object.rotation.set(0, this.heading, 0);
+    // PHANTOM's wraith claws: the parked display pose (the menu backdrop never updates the rig; a run retracts them).
+    this.revRig.park();
     this.speed = 0;
     this.lastSpeed = 0;
     this.pushVel.set(0, 0, 0);

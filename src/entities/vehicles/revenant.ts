@@ -3,13 +3,15 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
+import { buildWraithClaws, type ClawRigIn } from './revenantClaws';
 
 /* REVENANT: a spectral reaper-car. A low, sleek void-black core (fixed colour, glowing seams) wears FLOATING armour
  * plates (the Paint Shop colour, so any paint reads as armour over the ghost), under a dark bubble canopy with ghost
  * faces drifting inside. Two wraith fins rise off the tail trailing tattered spectral ribbons; a halo hovers over the
  * roof (the toll beacon) and THE RELIQUARY, a soul cell between glowing emitter rings, floats behind it. It rolls on
- * HUBLESS spectral ring wheels, with two SPECTRAL SWORDS floating at its flanks that slash across the nose on every
- * Reap. PHASED: the opaque body fades out for a scanline ghost shell with the bone-white skeletal frame inside. */
+ * HUBLESS spectral ring wheels. Two WRAITH CLAWS (vehicles/revenantClaws.ts) wait in glowing rifts on the hood: on
+ * every Reap a long skeletal arm pours out and rakes the arc ahead with a taloned hand. PHASED: the opaque body fades
+ * out for a scanline ghost shell with the bone-white skeletal frame inside. */
 
 /** Spectral palette (solid colours with a dark edge read on bright snow AND at night; additive is only a top layer). */
 export const REV_CORE = 0xb04dff;
@@ -28,12 +30,23 @@ export interface RevenantRigState {
   souls: number;
   /** Beacon tolls so far (each new one pulses a ring of light). */
   tolls: number;
-  /** 0..1 Reap swing in progress (+1 right, -1 left sweep; 0 idle): the blade sigils flare. */
+  /** 0..1 Reap glow (signed by the sweep's side; decays): the seams flare. */
   reap: number;
   /** Wild Hunt running (spectral strips burn hot). */
   hunt: boolean;
-  /** Reap reach (m, stats.reapReach): the swords are sized so their points reach the end of the Reap arc. */
+  /** Reap reach (m, stats.reapReach): the claws' talons reach the end of the Reap arc. */
   reach?: number;
+  /** Reap sweeps so far (a change starts a rake), the last one's side (+1 = the left / +x claw) and whether it was
+   *  the big Reap (both claws). */
+  reapN?: number;
+  reapSide?: number;
+  reapBig?: boolean;
+  /** SPACE held (Reap running): the claws wait half out of their rifts between rakes. */
+  reaping?: boolean;
+  /** 0..1 through the wait before a big Reap (SPACE held): both claws rear back. */
+  bigWind?: number;
+  /** Garage / Paint Shop display: the claws raised. */
+  display?: boolean;
 }
 
 export interface RevenantVehicleParts {
@@ -45,6 +58,8 @@ export interface RevenantVehicleParts {
   heads: THREE.Object3D[];
   /** Call once per frame while visible. */
   update(dt: number, s: RevenantRigState): void;
+  /** Snap the claws to their parked display pose (the menu backdrop does not update the rig). */
+  park(): void;
 }
 
 /** The Reliquary capsule: centre (model space), radius, length. Souls swirl inside it. */
@@ -58,24 +73,6 @@ export const BEACON_POS = new THREE.Vector3(0, 2.32, 0.15);
 const SOULS_MAX = 10;
 const WHEELS = [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.25], [0.95, -1.25]] as const;
 const WHEEL_R = 0.48;
-/** Scythe pivot (model z) and its Reap whip: the swing time (s) and how far it swings (rad). */
-/** Floating swords: hilt position (model, per side x sign), the Reap slash (s, rad of yaw in across the nose). */
-const SWD_X = 1.45;
-/** Idle splay outward (rad), so the pair reads as two swords, not scissors; per-side stagger (height, depth): none. */
-const SWD_SPLAY = 0.26;
-const SWD_STAGGER_Y = 0;
-const SWD_STAGGER_Z = 0;
-const SWD_Y = 1.15;
-/** Crossguards just ahead of the nose (the grips and pommels sit over the nose tip). */
-const SWD_Z = 3.6;
-/** The Reap's origin ahead of the plow centre (combat/revenant.ts REAP_FWD): blade tips reach REAP_FWD + reach. */
-const REAP_ORIGIN = 1.2;
-/** The blade floats this far ahead of the crossguard (model units at scale 1). */
-const SWD_GAP = 0.24;
-/** Crossguard-to-tip length of a sword at scale 1 (SWD_GAP + BLADE_L). */
-const SWD_LEN = SWD_GAP + 1.75;
-const SWING_TIME = 0.3;
-const SWING_YAW = 1.35;
 /** Hubless wheels sit a touch outboard of the plates. */
 const WHEEL_X = 1.06;
 
@@ -113,69 +110,6 @@ export function revenantHullGeometry(): THREE.BufferGeometry {
 }
 
 /* ---- canvas textures (cached; null without a DOM, e.g. headless tests) */
-let sigilTex: THREE.CanvasTexture | null | undefined;
-/** Sigils etched along the blade: half circuit trace, half occult rune, glowing violet on black. */
-function sigils(): THREE.CanvasTexture | null {
-  if (sigilTex !== undefined) return sigilTex;
-  if (typeof document === 'undefined') return (sigilTex = null);
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 64;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#100418';
-  g.fillRect(0, 0, 512, 64);
-  g.strokeStyle = '#e0a8ff';
-  g.fillStyle = '#e0a8ff';
-  g.lineWidth = 3;
-  g.lineCap = 'round';
-  // Circuit bus along the middle with rune glyphs hanging off it.
-  g.beginPath();
-  g.moveTo(6, 32);
-  g.lineTo(506, 32);
-  g.stroke();
-  let x = 18;
-  let i = 0;
-  while (x < 500) {
-    const k = i++ % 4;
-    g.beginPath();
-    if (k === 0) {
-      // ring rune with a cross
-      g.arc(x + 10, 32, 11, 0, Math.PI * 2);
-      g.moveTo(x + 10, 17);
-      g.lineTo(x + 10, 47);
-    } else if (k === 1) {
-      // circuit trace: right-angle leads to pads
-      g.moveTo(x, 32);
-      g.lineTo(x, 14);
-      g.lineTo(x + 18, 14);
-      g.moveTo(x + 8, 32);
-      g.lineTo(x + 8, 50);
-      g.lineTo(x + 22, 50);
-    } else if (k === 2) {
-      // tri rune
-      g.moveTo(x, 48);
-      g.lineTo(x + 11, 14);
-      g.lineTo(x + 22, 48);
-      g.moveTo(x + 4, 36);
-      g.lineTo(x + 18, 36);
-    } else {
-      // crescent + eye
-      g.arc(x + 11, 32, 12, Math.PI * 0.2, Math.PI * 1.8);
-      g.moveTo(x + 15, 32);
-      g.arc(x + 11, 32, 4, 0, Math.PI * 2);
-    }
-    g.stroke();
-    if (k === 1) {
-      g.fillRect(x + 16, 11, 6, 6);
-      g.fillRect(x + 20, 47, 6, 6);
-    }
-    x += 38;
-  }
-  sigilTex = new THREE.CanvasTexture(c);
-  sigilTex.colorSpace = THREE.SRGBColorSpace;
-  return sigilTex;
-}
-
 let ghostTex: THREE.CanvasTexture | null | undefined;
 /** A faint wailing face for the windows (soft white-violet on transparent). */
 function ghostFace(): THREE.CanvasTexture | null {
@@ -242,12 +176,8 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   // the floating plates reads as armour over the ghost.
   const voidMat = new THREE.MeshStandardMaterial({ color: 0x140a22, roughness: 0.35, metalness: 0.55, emissive: 0x2a0c4a, emissiveIntensity: 0.35 });
   const glass = new THREE.MeshStandardMaterial({ color: 0x15141d, roughness: 0.08, metalness: 0.75, emissive: 0x24103e, emissiveIntensity: 0.3 });
-  const alloy = new THREE.MeshStandardMaterial({ color: 0xe8ebf2, roughness: 0.2, metalness: 0.45, emissive: 0x6a5a88, emissiveIntensity: 0.4 });
   const slitMat = new THREE.MeshStandardMaterial({ color: REV_BRIGHT, emissive: REV_CORE, emissiveIntensity: 2.4 });
   const edgeGlow = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, toneMapped: false });
-  const lampMatSw = new THREE.MeshStandardMaterial({ color: REV_BRIGHT, emissive: REV_CORE, emissiveIntensity: 1.8, roughness: 0.3 });
-  const tex = sigils();
-  const sigilMat = new THREE.MeshStandardMaterial({ color: tex ? 0xffffff : REV_BRIGHT, map: tex, emissive: tex ? 0xffffff : REV_CORE, emissiveMap: tex, emissiveIntensity: 1.2, roughness: 0.4 });
 
   // ---- Void core + bubble canopy.
   const lowerGeo = profileGeo(LOWER, CORE_W);
@@ -392,73 +322,9 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
     runes.push(r);
   }
 
-  // ---- SPECTRAL SWORDS: two big swords floating ahead of the nose (sized to the Reap reach), points forward, blades laid flat (they read from the
-  // chase camera above): silver blade with burning violet edges and fuller, a void crossguard with glowing tips, a
-  // wrapped grip and a glowing pommel. Each slashes across the nose on its side's Reap.
-  const swords: THREE.Group[] = [];
-  /** The rune rings in the gap between guard and blade (spun by the rig). */
-  const swordRunes: THREE.Object3D[] = [];
-  const BLADE_L = 1.75;
-  /** The blade hovers this far ahead of the crossguard (spectral: nothing holds it on). */
-  const GAP = SWD_GAP;
-  // A slim blade: a slight waist, then a long tapering point.
-  const bladeShape = new THREE.Shape();
-  bladeShape.moveTo(-0.055, 0);
-  bladeShape.lineTo(0.055, 0);
-  bladeShape.quadraticCurveTo(0.04, BLADE_L * 0.35, 0.05, BLADE_L - 0.55);
-  bladeShape.lineTo(0, BLADE_L);
-  bladeShape.lineTo(-0.05, BLADE_L - 0.55);
-  bladeShape.quadraticCurveTo(-0.04, BLADE_L * 0.35, -0.055, 0);
-  const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.008, bevelSegments: 1, curveSegments: 6 });
-  bladeGeo.translate(0, 0, -0.01);
-  bladeGeo.rotateX(Math.PI / 2); // shape y (length) -> +z, flat in xz
-  bladeGeo.computeVertexNormals();
-  // The ghost aura: a wider, soft additive copy of the blade's outline that flares on every Reap.
-  const auraShape = new THREE.Shape();
-  auraShape.moveTo(-0.13, -0.05);
-  auraShape.lineTo(0.13, -0.05);
-  auraShape.lineTo(0.11, BLADE_L - 0.5);
-  auraShape.lineTo(0, BLADE_L + 0.18);
-  auraShape.lineTo(-0.11, BLADE_L - 0.5);
-  auraShape.closePath();
-  const auraGeo = new THREE.ShapeGeometry(auraShape).rotateX(Math.PI / 2);
-  const auraMat = new THREE.MeshBasicMaterial({ color: REV_CORE, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
-  const edgeGeo = new THREE.BoxGeometry(0.012, 0.012, BLADE_L - 0.6);
-  const tipGeo = new THREE.ConeGeometry(0.022, 0.5, 4).rotateX(Math.PI / 2);
-  const coreGeo = new THREE.BoxGeometry(0.014, 0.034, BLADE_L * 0.82);
-  const swRuneGeo = new THREE.TorusGeometry(0.075, 0.008, 4, 18);
-  for (const sx of [-1, 1]) {
-    const sw = new THREE.Group();
-    sw.position.set(sx * SWD_X, SWD_Y, SWD_Z);
-    sw.scale.setScalar((REAP_ORIGIN + 7 - SWD_Z) / SWD_LEN);
-    addMesh(bladeGeo, alloy, 0, 0, GAP, sw, false);
-    addMesh(auraGeo, auraMat, 0, 0, GAP, sw, false);
-    for (const ex of [-1, 1]) {
-      const e = addMesh(edgeGeo, edgeGlow, ex * 0.047, 0, GAP + 0.05 + (BLADE_L - 0.6) / 2, sw, false);
-      e.rotation.y = ex * -0.004;
-    }
-    addMesh(tipGeo, edgeGlow, 0, 0, GAP + BLADE_L - 0.25, sw, false);
-    addMesh(coreGeo, stripMat, 0, 0, GAP + BLADE_L * 0.43, sw, false);
-    // Two rune rings spinning in the gap, standing across the blade line.
-    for (const rz of [0.07, 0.15]) {
-      const r = addMesh(swRuneGeo, edgeGlow, 0, 0, rz, sw, false);
-      r.scale.setScalar(rz > 0.1 ? 0.8 : 1);
-      swordRunes.push(r);
-    }
-    // Crossguard: two thin crescent wings swept back toward the grip, glowing tips.
-    for (const gx of [-1, 1]) {
-      const arm = addMesh(new THREE.BoxGeometry(0.3, 0.035, 0.05), voidMat, gx * 0.15, 0, -0.02, sw, false);
-      arm.rotation.y = gx * 0.42;
-      const tip = addMesh(new THREE.ConeGeometry(0.03, 0.16, 4).rotateZ(-gx * Math.PI / 2), edgeGlow, gx * 0.32, 0, -0.1, sw, false);
-      tip.rotation.y = gx * 0.42;
-    }
-    addMesh(new THREE.OctahedronGeometry(0.05, 0), lampMatSw, 0, 0, 0, sw, false);
-    addMesh(new THREE.CylinderGeometry(0.032, 0.038, 0.36, 8).rotateX(Math.PI / 2), voidMat, 0, 0, -0.2, sw, false);
-    for (const z of [-0.1, -0.2, -0.3]) addMesh(new THREE.TorusGeometry(0.038, 0.009, 4, 10), stripMat, 0, 0, z, sw, false);
-    addMesh(new THREE.OctahedronGeometry(0.06, 0), lampMatSw, 0, 0, -0.43, sw, false);
-    group.add(sw);
-    swords.push(sw);
-  }
+  // ---- WRAITH CLAWS: the Reap's two spectral arms in their hood rifts.
+  const claws = buildWraithClaws();
+  group.add(claws.group);
 
   // Slit headlight anchors (the Plow spills ghostfire from them).
   const heads = [-1, 1].map((sx) => {
@@ -589,57 +455,30 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   mist.position.y = 0.06;
   mist.renderOrder = 1;
   group.add(mist);
-  for (const o of [...spokes, ...runes, ...swords, ...ribbons, beacon, tollRing, reliquary, ...ghosts, mist, shell]) o.traverse((m) => (m.frustumCulled = false));
+  for (const o of [...spokes, ...runes, ...ribbons, beacon, tollRing, reliquary, ...ghosts, mist, shell]) o.traverse((m) => (m.frustumCulled = false));
 
   let t = 0;
   let spin = 0;
   let tolls = 0;
   let tollT = -1;
   let glitchT = 0;
-  let swingK = 1;
-  let swingSide = 1;
-  let prevReap = 0;
-  let sweep = 0;
-  let swdScale = 0;
+  const clawIn: ClawRigIn = { reach: 7, reapN: 0, reapSide: 1, reapBig: false, held: false, bigWind: 0, phase: 0, display: false };
   const update = (dt: number, s: RevenantRigState): void => {
-    // the swords grow with the Reap's reach (upgrades): uniform scale, so the width stays in proportion
-    const want = (REAP_ORIGIN + (s.reach || 7) - SWD_Z) / SWD_LEN;
-    if (Math.abs(want - swdScale) > 1e-3) {
-      swdScale = want;
-      for (const sw of swords) sw.scale.setScalar(want);
-    }
     t += dt;
     const spd = Math.min(1, Math.abs(s.speed) / 14);
-    // Swords: a new Reap (the glow jumps back up) slashes the sword on that side in across the nose and back (the
-    // other one rears back a touch); idle, they hover, bob and sway out of step; at speed they tuck in a little.
-    const reapNow = Math.abs(s.reap);
-    if (reapNow > prevReap + 0.15) {
-      swingK = 0;
-      swingSide = s.reap < 0 ? -1 : 1;
-    }
-    prevReap = reapNow;
-    swingK = Math.min(1, swingK + dt / SWING_TIME);
-    const whip = swingK < 1 ? (swingK < 0.3 ? -0.2 + 1.2 * (swingK / 0.3) : (1 - (swingK - 0.3) / 0.7) ** 2) : 0;
-    sweep += (spd * 0.12 - sweep) * Math.min(1, dt * 4);
-    for (let i = 0; i < swordRunes.length; i++) swordRunes[i].rotation.z = t * (i % 2 ? -2.4 : 3.1);
-    auraMat.opacity = 0.16 + 0.06 * flick(t, 5.3) + Math.abs(s.reap) * 0.35;
-    for (let i = 0; i < 2; i++) {
-      const sx = i === 0 ? -1 : 1;
-      const mine = sx === swingSide;
-      const inward = whip * (mine ? SWING_YAW : -0.3);
-      const sw = swords[i];
-      sw.rotation.y = sx * (SWD_SPLAY + sweep * -0.5 - inward + 0.035 * Math.sin(t * 1.9 + i * 2.1));
-      sw.rotation.z = sx * (0.18 + 0.05 * Math.sin(t * 2.6 + i) + (mine ? whip * 0.6 : 0));
-      sw.rotation.x = -0.06 + 0.04 * Math.sin(t * 1.4 + i * 1.3) + (mine ? whip * 0.12 : 0);
-      sw.position.y = SWD_Y + (i === 0 ? SWD_STAGGER_Y : 0) + 0.09 * Math.sin(t * 2.2 + i * Math.PI);
-      sw.position.z = SWD_Z - (i === 0 ? SWD_STAGGER_Z : 0);
-      sw.position.x = sx * (SWD_X - sweep);
-    }
+    clawIn.reach = s.reach || 7;
+    clawIn.reapN = s.reapN ?? 0;
+    clawIn.reapSide = s.reapSide ?? 1;
+    clawIn.reapBig = !!s.reapBig;
+    clawIn.held = !!s.reaping;
+    clawIn.bigWind = s.bigWind ?? 0;
+    clawIn.phase = s.phase;
+    clawIn.display = !!s.display;
+    claws.update(dt, t, clawIn);
     spin += (s.speed * dt) / WHEEL_R;
     // Seams flicker like flame (hotter in the Hunt); wheels turn; rune rings drift.
     const fl = flick(t, 0);
     stripMat.emissiveIntensity = (s.hunt ? 2.4 : 1.25) + fl * (s.hunt ? 1.4 : 0.9) + Math.abs(s.reap) * 0.8;
-    sigilMat.emissiveIntensity = 0.9 + 0.5 * flick(t, 1.7) + Math.abs(s.reap) * 1.8;
     slitMat.emissiveIntensity = 2 + flick(t, 3.1) * 1.2;
     voidMat.emissiveIntensity = 0.3 + 0.15 * fl + (s.hunt ? 0.4 : 0);
     for (let i = 0; i < spokes.length; i++) spokes[i].rotation.x = spin;
@@ -733,6 +572,7 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
       }
     }
     skel.visible = ph > 0.01 || hull.visible;
+    claws.rifts.visible = hull.visible;
   };
-  return { group, parts: { stripMat, reliquary, beacon, heads, update } };
+  return { group, parts: { stripMat, reliquary, beacon, heads, update, park: claws.park } };
 }

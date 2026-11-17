@@ -107,6 +107,11 @@ export class Combat implements CombatAPI {
     this.volt.prewarm();
   }
 
+  /** Visible off-scene stand-ins of hidden kit effects for every warm-up (Game.warmExtras). */
+  warmMeshes(): THREE.Object3D[] {
+    return this.revenant.warmMeshes();
+  }
+
   /** Shader warm-up: the Inferno light as if burning (see FlameCone.flipLightForWarmup); returns the undo. */
   flipFlameLightForWarmup(): () => void {
     return this.classic.flameCone.flipLightForWarmup();
@@ -381,16 +386,23 @@ export class Combat implements CombatAPI {
     return this.b.stats.plowKind === 'revenant' && this.b.stats.reapDamage > 0 ? this.revenant.souls : -1;
   }
 
-  /** REVENANT rig state for the hearse model (vehicles/revenant.ts): beacon tolls, Reap glow (signed by side), Hunt. */
-  get revenantRig(): { tolls: number; reap: number; hunt: boolean; reach: number } {
+  /** REVENANT rig state for the hearse model (vehicles/revenant.ts): beacon tolls, Reap glow (signed by side), Hunt,
+   *  and what drives the wraith claws: the sweep counter, its side, big or not, SPACE held, the big Reap's wind-up. */
+  get revenantRig(): { tolls: number; reap: number; hunt: boolean; reach: number; reapN: number; reapSide: number; reapBig: boolean; reaping: boolean; bigWind: number } {
     const r = this.revRig;
+    const k = this.revenant;
     r.reach = this.b.stats.reapReach || 7;
-    r.tolls = this.revenant.tolls;
-    r.reap = this.revenant.reapGlow * this.revenant.reapSide;
-    r.hunt = this.revenant.huntT >= 0;
+    r.tolls = k.tolls;
+    r.reap = k.reapGlow * k.reapSide;
+    r.hunt = k.huntT >= 0;
+    r.reapN = k.reapN;
+    r.reapSide = k.reapSide;
+    r.reapBig = k.reapBig;
+    r.reaping = k.reapHeld && this.b.stats.plowKind === 'revenant';
+    r.bigWind = r.reaping ? k.bigWind : 0;
     return r;
   }
-  private revRig = { tolls: 0, reap: 0, hunt: false, reach: 7 };
+  private revRig = { tolls: 0, reap: 0, hunt: false, reach: 7, reapN: 0, reapSide: 1, reapBig: false, reaping: false, bigWind: 0 };
 
   /** Last Stand (pilot perk): 1 + bonus while the plow is under LAST_STAND_HP, else 1. */
   private lastStandMult(): number {

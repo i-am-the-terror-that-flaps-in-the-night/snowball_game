@@ -256,7 +256,7 @@ export class Game {
       this.whiteout.ball.prewarm(scene);
       whiteoutEnding.prewarm(scene);
       // (+ visible stand-ins of THE WHITEOUT's hidden visuals: a warm-up compiles only what is visible)
-      this.warmExtras = [...this.campaignEnemies.warmSet(), ...brawl.warmSet(), ...whiteoutGiant.warmMeshes(), ...whiteoutProps.warmMeshes(), ...this.whiteout.ball.warmMeshes(), ...whiteoutEnding.warmMeshes()];
+      this.warmExtras = [...combat.warmMeshes(), ...this.campaignEnemies.warmSet(), ...brawl.warmSet(), ...whiteoutGiant.warmMeshes(), ...whiteoutProps.warmMeshes(), ...this.whiteout.ball.warmMeshes(), ...whiteoutEnding.warmMeshes()];
     }
 
     const handlers: UIHandlers = {

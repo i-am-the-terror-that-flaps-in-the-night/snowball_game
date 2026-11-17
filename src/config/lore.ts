@@ -339,7 +339,7 @@ export const PLOW_LORE: Record<PlowKind, string> = {
     'The engineer works at the Works again, now that it belongs to the Road Crew, and services ARSENAL personally.',
   revenant:
     'Nobody at the Road Crew remembers building PHANTOM. It was just parked in bay 13 one morning, the winter FROSTBYTE\'s ' +
-    'bots robbed the old cemetery for scrap: a black car in floating armour, two swords hanging in the air beside it and a ' +
+    'bots robbed the old cemetery for scrap: a black car in floating armour, two clawed hands waiting in the cracks of its bonnet and a ' +
     'glass jar of something glowing on its roof. That night it drove through the locked garage door without opening it ' +
     'and came back at dawn with more in the jar. The Road Crew insist it is on their side. It has never been seen to ' +
     'refuel, and nobody has been brave enough to ask who is driving.',

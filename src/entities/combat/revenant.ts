@@ -3,7 +3,7 @@ import type { EnemyHandle, PlowAPI } from '../../core/types';
 import { Focus, Kit, Reach, _p, _q, castOrigin, waveFloor, type AbilityDesc, type CastOrigin, type CombatHost, type VehicleKit } from './shared';
 import { ultBlast, type UltScript } from './ultimates';
 import { Shockwaves, type ShockPalette } from './arsenalFx';
-import { Chains, GhostTrail, HauntMarks, HuntDome, PhantomMeshes, ScytheArcs } from './revenantFx';
+import { Chains, GhostTrail, HauntMarks, HuntDome, PhantomMeshes, ClawMarks } from './revenantFx';
 import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE } from '../vehicles/revenant';
 
 /* REVENANT: the possessed hearse. SOULS (0-10, the Reliquary) come from wrecks and from bots it PHASES through; they
@@ -11,8 +11,8 @@ import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE } from '../vehicles/revenant';
  *   - HAUNT (passive): a bot phased through is Haunted for hauntSeconds: chained to the hearse, it takes +hauntVuln
  *     damage from it (Combat.hitMult), and wrecked while Haunted it drops a soul and rises as a PHANTOM that charges
  *     the nearest bot and bursts in ghostfire (kills chain through a pack);
- *   - SPACE (hold) REAP: scythe sweeps alternating sides, REAP_RATE a second across a REAP_ARC arc out to reapReach;
- *     every BIG_EVERY-th is the big Reap (wider, x2, Haunted bots hit twice);
+ *   - SPACE (hold) REAP: wraith-claw rakes alternating sides, REAP_RATE a second across a REAP_ARC arc out to reapReach;
+ *     every BIG_EVERY-th is the big Reap (a longer wind-up before it; wider, x3, Haunted bots hit twice);
  *   - E PHASE: PHASE_SECONDS spectral (Plow.phased: +30% speed, untouchable, no pulls / knockback, through bots and
  *     props); every bot passed through is Haunted (+1 soul, PHASE_SOULS a Phase at most); on exit MANIFEST, a
  *     ghostfire shockwave that grows with the souls taken in the Phase;
@@ -44,19 +44,23 @@ const GRASP_STOP = 3.6;
 /** Duel: SOUL GRASP holds the other pilot this long (DamageOpts.hold), and souls come from damage dealt instead of
  *  wrecks: one per DUEL_SOUL_FRAC of the foe's max HP. */
 export const DUEL_GRASP_HOLD = 0.6;
-/** Duel: REAP sweeps hit the other pilot this hard (the scythe is a blade hit: no area diminishing returns, and the
+/** Duel: REAP sweeps hit the other pilot this hard (the claw rake is a melee hit: no area diminishing returns, and the
  *  foe it Haunts takes +25% on top, so at full strength it won nearly every high-tier trade in scripts/balance/duel2). */
 export const DUEL_REAP = 0.8;
 export const DUEL_SOUL_FRAC = 0.1;
 /** REAP: sweeps a second (Overclock speeds it up), half arc (rad), every BIG_EVERY-th is a big Reap (BIG_WIDTH x the
- *  reach and arc, BIG_MULT x damage, Haunted bots hit twice); knockback (m/s). */
+ *  reach and arc, BIG_MULT x damage, Haunted bots hit twice); knockback (m/s). The gap BEFORE a big Reap is BIG_WIND
+ *  x the normal one (both wraith claws rear back for it), and BIG_MULT pays for exactly that wait: a cycle of
+ *  (BIG_EVERY - 1) normal sweeps and a big one deals (BIG_EVERY - 1 + BIG_MULT) units over (BIG_EVERY - 1 + BIG_WIND)
+ *  gaps, 5 over 2.75, the same damage a second as the old even rhythm's 4 over 2.2 (BIG_MULT 2, no wait). */
 export const REAP_RATE = 2.5;
 export const REAP_HALF = (70 * Math.PI) / 180;
 export const BIG_EVERY = 3;
 const BIG_WIDTH = 1.2;
-export const BIG_MULT = 2;
+export const BIG_MULT = 3;
+export const BIG_WIND = 1.75;
 const REAP_KNOCK = 3;
-/** Scythe origin: ahead of the hearse's centre (the blade), and its height above the floor. */
+/** Reap origin: ahead of the hearse's centre (between the claws' rifts), and its height above the floor. */
 const REAP_FWD = 1.2;
 const REAP_Y = 1.0;
 /** PHANTOMS: pool, rise / fade seconds, dash speed (m/s) and longest dash (s), seek and burst radius (m). */
@@ -172,9 +176,14 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
   /** REAP: next-sweep timer, sweeps so far (every BIG_EVERY-th is big), last sweep's side and its glow 0..1 (rig). */
   private reapT = 0;
   reapN = 0;
-  /** +1 / -1: which way the last Reap swung (the hearse's blade whips that way). */
+  /** +1 / -1: the last Reap's side (that side's wraith claw rakes; vehicles/revenantClaws.ts), whether it was the big
+   *  Reap (both claws), and SPACE held (the claws wait half out between rakes). */
   reapSide = 1;
   reapGlow = 0;
+  reapBig = false;
+  reapHeld = false;
+  /** The gap (s) the running Reap timer counts down (the next sweep's wait; BIG_WIND x before a big Reap). */
+  private reapGap = 0;
   /** Duel: damage dealt toward the next soul. */
   private duelAcc = 0;
   /** WILD HUNT: elapsed (-1 = none), riders, souls banked at the start, beacon tolls rung, finale done. */
@@ -198,7 +207,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
   private clock = 0;
   private fogT = 0;
   // Visuals (lazily built on first use so non-REVENANT pilots never pay for them).
-  private fx: { arcs: ScytheArcs; chains: Chains; marks: HauntMarks; ph: PhantomMeshes; trail: GhostTrail; dome: HuntDome; shock: Shockwaves } | null = null;
+  private fx: { arcs: ClawMarks; chains: Chains; marks: HauntMarks; ph: PhantomMeshes; trail: GhostTrail; dome: HuntDome; shock: Shockwaves } | null = null;
 
   constructor(h: CombatHost) {
     super(h);
@@ -213,7 +222,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     if (!this.fx) {
       const scene = this.ctx.scene;
       this.fx = {
-        arcs: new ScytheArcs(scene),
+        arcs: new ClawMarks(scene),
         chains: new Chains(scene),
         marks: new HauntMarks(scene),
         ph: new PhantomMeshes(scene, MAX_PHANTOMS),
@@ -228,6 +237,11 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
   /** Build the effects now (hidden) so the load-time warm-up compiles them (render/warmup.ts). */
   prewarm(): void {
     void this.vis;
+  }
+
+  /** Visible off-scene stand-ins of the hidden REAP claw marks (Game's warm set). */
+  warmMeshes(): THREE.Object3D[] {
+    return this.vis.arcs.warmMeshes();
   }
 
   private get live(): boolean {
@@ -273,21 +287,35 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
   primary(dt: number, held: boolean, _pressed: boolean): void {
     this.reapT -= dt;
     this.reapGlow = Math.max(0, this.reapGlow - dt * 4);
+    this.reapHeld = held;
     if (!held || this.reapT > 0) {
       if (!held && this.reapT < 0) this.reapT = 0;
       return;
     }
     const st = this.b.stats;
-    this.reapT = Math.max(0, this.reapT + 1 / (REAP_RATE / Math.max(0.5, st.cooldownMult || 1)));
+    const gap = 1 / (REAP_RATE / Math.max(0.5, st.cooldownMult || 1));
     const plow = this.b.plow;
-    if (!plow || plow.dead) return;
+    if (!plow || plow.dead) {
+      this.reapT = Math.max(0, this.reapT + gap);
+      return;
+    }
     this.reapN++;
     this.reapSide = -this.reapSide;
     const big = this.reapN % BIG_EVERY === 0;
+    // The wait before the next sweep: BIG_WIND x when that one is the big Reap (the claws rear back).
+    this.reapGap = gap * ((this.reapN + 1) % BIG_EVERY === 0 ? BIG_WIND : 1);
+    this.reapT = Math.max(0, this.reapT + this.reapGap);
     this.reap(plow, big);
   }
 
-  /** One scythe sweep from the blade: every bot in the arc ahead (Body reach). */
+  /** 0..1 through the wait before the coming big Reap while SPACE is held (0 otherwise): the wraith claws' rear-back. */
+  get bigWind(): number {
+    if (!this.reapHeld || this.reapGap <= 0 || (this.reapN + 1) % BIG_EVERY !== 0) return 0;
+    const w = 1 - this.reapT / this.reapGap;
+    return w < 0 ? 0 : w > 1 ? 1 : w;
+  }
+
+  /** One claw rake: every bot in the arc ahead (Body reach). */
   private reap(plow: PlowAPI, big: boolean): void {
     const ctx = this.ctx;
     const st = this.b.stats;
@@ -299,6 +327,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const half = Math.min(Math.PI * 0.95, REAP_HALF * (big ? BIG_WIDTH : 1));
     const cosHalf = Math.cos(half);
     this.reapGlow = big ? 1 : 0.6;
+    this.reapBig = big;
     this.vis.arcs.spawn(ox, floor + REAP_Y, oz, plow.heading, reach, this.reapSide, big);
     this.b.audio.play(big ? 'slam' : 'whirlTick', { volume: big ? 0.45 : 0.3, pitch: big ? 0.7 : 0.9 + Math.random() * 0.15 });
     if (big) {
@@ -351,7 +380,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const d = Math.hypot(dx, dz) || 1;
     const hp0 = e.hp;
     const killed = this.b.enemies.damage(e, dmg * this.b.stats.damageMult * this.focus(opts?.ult ? Focus.Ult : opts?.kind ?? Focus.Neutral) * this.hitMult(e), {
-      // The scythe is a blade hit (melee, like BRUTUS's fists: no Duel area-ability diminishing returns).
+      // The claw rake is a melee hit (like BRUTUS's fists: no Duel area-ability diminishing returns).
       source: opts?.blade ? 'ram' : 'other',
       crackArmor: opts?.blade || undefined,
       knockback: knock > 0 ? _kb.set((dx / d) * knock, 0, (dz / d) * knock) : undefined,
@@ -914,7 +943,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     this.souls = Math.max(0, this.souls - souls);
   }
 
-  /** Immediate-mode visuals: Haunt tethers + marks, Grasp chains, phantoms, scythe arcs. */
+  /** Immediate-mode visuals: Haunt tethers + marks, Grasp chains, phantoms, claw marks. */
   private draw(plow: PlowAPI, dt: number): void {
     if (!this.fx && this.haunts.size === 0 && this.grasped.length === 0) return;
     const v = this.vis;
@@ -963,6 +992,9 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     this.reapT = 0;
     this.reapN = 0;
     this.reapGlow = 0;
+    this.reapBig = false;
+    this.reapHeld = false;
+    this.reapGap = 0;
     this.duelAcc = 0;
     this.graspCd = 0;
     this.huntT = -1;

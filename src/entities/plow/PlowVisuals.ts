@@ -39,7 +39,7 @@ export abstract class PlowVisuals extends PlowBase {
   /** Paint pattern shader patch (entities/plow/pinstripe.ts), installed the first time a patterned paint is worn. */
   private pin: Pinstripe | null = null;
   /** REVENANT rig input (filled per frame, never reallocated) and the headlight ghostfire timer. */
-  private revState: RevenantRigState = { speed: 0, phase: 0, souls: 0, tolls: 0, reap: 0, hunt: false };
+  private revState: RevenantRigState = { speed: 0, phase: 0, souls: 0, tolls: 0, reap: 0, hunt: false, reapN: 0, reapSide: 1, reapBig: false, reaping: false, bigWind: 0, display: false };
   private revSpillT = 0;
   private revSpill = 0;
 
@@ -253,6 +253,14 @@ export abstract class PlowVisuals extends PlowBase {
     this.object.rotation.set(0, this.heading + yaw, 0);
     this.time += dt;
     if (trail) this.emitTrail(dt, false);
+    if (this.kind === 'revenant') {
+      // PHANTOM on the turntable: the rig breathes, its wraith claws raised.
+      const st = this.revState;
+      st.speed = st.phase = st.reap = st.bigWind = 0;
+      st.reaping = st.hunt = st.reapBig = false;
+      st.display = true;
+      this.revRig.update(dt, st);
+    }
   }
 
   /** Back to the parked pose after the Paint Shop closes. */
@@ -697,6 +705,12 @@ export abstract class PlowVisuals extends PlowBase {
       st.reap = rig ? rig.reap : 0;
       st.hunt = rig ? rig.hunt : false;
       st.reach = rig ? rig.reach : 7;
+      st.reapN = rig ? rig.reapN : 0;
+      st.reapSide = rig ? rig.reapSide : 1;
+      st.reapBig = rig ? rig.reapBig : false;
+      st.reaping = rig ? rig.reaping : false;
+      st.bigWind = rig ? rig.bigWind : 0;
+      st.display = false;
       this.revRig.update(dt, st);
       this.beaconLight.intensity = 2 + pf * 2 + (st.hunt ? 6 : 0);
       this.revSpillT -= dt;
