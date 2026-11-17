@@ -64,7 +64,7 @@ export const MSAA_MAX_PIXELS = 4.2e6;
 /** SSAO tuning (read every frame): radius (m), bias (cosine below which a tap does not occlude, plus 0.002 per metre
  *  of distance), the screen radius cap (half-res px), the distance band (m) over which it fades out (fogged distance
  *  gets none), and the gain on the occlusion. Final strength: look.ts (ssao). */
-export const SSAO = { radius: 1.5, bias: 0.06, maxPx: 48, fadeNear: 50, fadeFar: 110, intensity: 3 };
+export const SSAO = { radius: 1.0, bias: 0.06, maxPx: 40, fadeNear: 50, fadeFar: 110, intensity: 2.6 };
 export const SSAO_SAMPLES = 12;
 
 /** MSAA samples for the scene target: 4 like the canvas, unless the buffer is large enough to rely on pixel density. */
