@@ -1,6 +1,6 @@
 # Art pass plan: "polished realistic-lite"
 
-Status: planned, not started. Starts after the cleanup / balance pass. Stage 0 is an approval gate: nothing rolls out
+Status: stage 0 (sample + tools) built, awaiting the gate (see "Stage 0 lighting sample" below). Stage 0 is an approval gate: nothing rolls out
 to the whole game until the sample is approved.
 
 Goal: the game keeps today's lighting model (PBR, no outlines) but everything looks finished: beveled shapes instead
@@ -87,6 +87,27 @@ gameplay change: hitboxes, sizes, speeds, silhouettes and effects stay as they a
   draw per bot per part type. Instancing is only for repeats in the static arena dressing.
 - **Shared material library:** painted metal, bare steel, rubber, plastic, glass, chrome, concrete as named presets
   (plain colour / roughness / metalness, so they stay palette-eligible), replacing per-file hand-picked values.
+
+## Stage 0 lighting sample: what is built (all OFF by default until the gate)
+
+- `src/render/look.ts`: the switches. URL `?look=off|env|baked|ssao|all&strength=subtle|strong`, or live from the
+  console (`setLook`). `LOOK_STRENGTHS` holds every number of "subtle" and "strong"; `LOOK_STRENGTH` is the one a chosen
+  look ships with.
+- Arena reflections (`src/render/arenaEnv.ts`, built in `Environment.setZone` → `buildEnvMap`): a procedural sky from
+  the arena's own light / sky / palette numbers, PMREM'd into one persistent 128 px cube-UV target, set as
+  `scene.environment`; the hemisphere light hands its `envShare` of the ambient to it (irradiance-matched, see
+  `hemiRadiance`); a specular-only gain lifts reflections without lifting diffuse; lamps capped at `LUM_CAP` (under
+  the bloom threshold). Plow paints take it through `getPaintEnvMap` (returns null → `scene.environment`).
+- Baked corner occlusion (`src/render/bakedAO.ts`, `palette.ts applyBakedAO`, `StaticBatch.flush(parent, ao)`): an
+  occupancy grid + short hemisphere rays per vertex (merged static parts) and per instance vertex (static instanced
+  dressing, via one small texture), multiplied in by the destination materials. The snow floor gets none (it is not
+  static geometry).
+- Screen-space AO (`src/render/post.ts` `AOPass`, `SSAO`): HIGH (`QualityPreset.ssao`) + Bloom path only; depth texture
+  on the scene target, half-res AO + 2 blur passes, applied in the bright and output passes (before the glow).
+- Contact patches (`src/render/contactShadows.ts`): one instanced draw under the plow, bots and Brawl rivals.
+- `QualityPreset.detail` (`'high' | 'medium' | 'low'`) for the model work; `QualityPreset.ssao` (HIGH only).
+- Performance readout (`src/ui/perfHud.ts`): Settings › Performance readout, or `?debug`.
+- Probe: `PROBE_QUERY=look=baked` appends URL flags; a scene named `<scene>@night` runs it at night.
 
 ## Stages
 

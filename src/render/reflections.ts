@@ -1,13 +1,20 @@
 import * as THREE from 'three';
+import { look } from './look';
 
 /* Reflection map for the mirror paints (Ice Chrome, Champion Gold). Metals have almost no diffuse colour, so
  * without something to reflect they render flat and dark. This is a tiny procedural "snow world": deep blue sky
  * overhead, a bright snow horizon over dark mountains and ground, a hot sun spot and two light strips for
- * highlights. It is pre-filtered once with PMREM and only the player's plow paint uses it. */
+ * highlights. It is pre-filtered once with PMREM and only the player's plow paint uses it.
+ *
+ * With the arena reflections on (render/look.ts env; render/arenaEnv.ts) the paints reflect the ARENA instead: this
+ * returns null, so they take scene.environment (the arena map) like every other standard material. Not the arena
+ * texture itself: a material's own envMap carries its envMapIntensity into the ambient light too (gloss paints use
+ * 0.3), and with the arena map the env IS the ambient, so a paint holding it would go dark. */
 
 let envTex: THREE.Texture | null = null;
 
-export function getPaintEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
+export function getPaintEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture | null {
+  if (look.env) return null;
   if (envTex) return envTex;
   const scene = new THREE.Scene();
   const sky = new THREE.SphereGeometry(10, 32, 16);

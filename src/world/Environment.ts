@@ -17,6 +17,9 @@ import { NightScenery } from './environment/NightScenery';
 import { GlowPoints, NIGHT_BOOST, NIGHT_CROWD_LIFT, NIGHT_SPOT_BOOST, NIGHT_SPOT_BOOST_BIG, nightLook, nightZone } from './environment/night';
 import { isNight } from '../core/timeOfDay';
 import { propSkinKey } from './propSkins';
+import { look as artLook, strength as lookStrength } from '../render/look';
+import { buildArenaEnv, installSpecularGain, type EnvLamp } from '../render/arenaEnv';
+import { ContactShadows } from '../render/contactShadows';
 
 /** Survival's Blizzard wave (setStorm): fog pulled in to this (or the zone's own, if nearer), tinted toward white. */
 const STORM_FOG_NEAR = 12;
@@ -48,6 +51,11 @@ export class Environment extends NightScenery implements WorldAPI {
   private look: ZoneDef | null = null;
   /** Decks of a non-Omega arena (PROTOCOL C waves 6-7), drawn with the Omega Works' deck builder in gold. */
   private deckWorks: OmegaWorks | null = null;
+  /** Share of the zone's ambient the hemisphere light keeps (the rest is in the arena environment map, see
+   *  buildEnvMap); 1 without the arena reflections. */
+  private ambientKeep = 1;
+  /** Soft contact patches under plows and bots (render/look.ts contact; built at the first arena build that wants it). */
+  private contact: ContactShadows | null = null;
 
   get obstacles(): readonly Obstacle[] {
     return this.obstacleList;
@@ -145,7 +153,55 @@ export class Environment extends NightScenery implements WorldAPI {
 
     this.buildDecor(zone);
     this.buildWeather(zone);
+    this.buildEnvMap(look);
+    if (artLook.contact && !this.contact) this.contact = new ContactShadows(this.ctx);
     this.ctx.audio?.setAmbience(zone.biome?.ambience ?? (brawl || zone.theme === 'blizzard' ? 'wind' : zone.theme === 'protocol' ? 'crowd' : 'none'));
+  }
+
+  /** Art pass (render/look.ts env): the arena's environment map (render/arenaEnv.ts) from this look's lights, sky and
+   *  palette, set as scene.environment; the hemisphere light hands its share of the ambient over to it and the sun
+   *  takes the strength's trim. Built after the decor (the night lamp banks are known then) and before the arena's
+   *  shader warm-up (Game runs it after setZone). Off: no environment, the lights exactly as set above. */
+  private buildEnvMap(look: ZoneDef): void {
+    const scene = this.ctx.scene;
+    if (!artLook.env) {
+      scene.environment = null;
+      this.ambientKeep = 1;
+      return;
+    }
+    const k = lookStrength();
+    installSpecularGain(k.specular);
+    const C = (hex: number) => new THREE.Color(hex);
+    const lamps: EnvLamp[] = [];
+    const centre = new THREE.Vector3(0, 3, 0);
+    const lampColor = (i: number) => this.spots[i].color.clone();
+    for (let i = 0; i < this.spots.length; i++) {
+      lamps.push({ dir: this.spots[i].position.clone().sub(centre), color: lampColor(i), size: 0.07, power: this.night ? 1 : 0.4 });
+    }
+    if (this.night && this.floodHeads.length) {
+      // a spread of the lamp banks (every n-th head)
+      const n = Math.min(6, this.floodHeads.length);
+      const step = this.floodHeads.length / n;
+      const flood = C(this.nightDef?.flood ?? this.style.lamp);
+      for (let i = 0; i < n; i++) {
+        const h = this.floodHeads[Math.floor(i * step)];
+        lamps.push({ dir: new THREE.Vector3(h.x, h.y, h.z).sub(centre), color: flood, size: 0.045, power: 0.75 });
+      }
+    }
+    const sun = this.sun.color.clone().multiplyScalar(look.sunIntensity);
+    const band = this.night ? 0.3 : (look.sunIntensity * 0.45 + look.ambientIntensity) / Math.PI;
+    const tex = buildArenaEnv(this.ctx.renderer, {
+      hemiSky: this.hemi.color, hemiGround: this.hemi.groundColor, hemiIntensity: look.ambientIntensity,
+      share: k.envShare, detail: k.detail,
+      skyTop: C(look.skyTop), skyBottom: C(look.skyBottom), horizon: C(look.fogColor),
+      accents: this.style.accents.map(C), band,
+      sunDir: this.sunD, sun, lamps,
+    });
+    scene.environment = tex;
+    scene.environmentIntensity = 1;
+    this.ambientKeep = 1 - k.envShare;
+    this.hemi.intensity = look.ambientIntensity * this.ambientKeep;
+    this.sun.intensity = look.sunIntensity * k.sun;
   }
 
   syncTimeOfDay(): void {
@@ -191,7 +247,7 @@ export class Environment extends NightScenery implements WorldAPI {
     su.horizon.value.copy(_wc.setHex(look.fogColor).lerp(WO_HORIZON, u));
     su.uStars.value = (this.nightDef?.sky?.stars ?? 0) * (1 - u);
     su.uSunSize.value = (this.nightDef?.sky?.sun?.size ?? 0) * Math.max(0, 1 - u * 2);
-    this.hemi.intensity = look.ambientIntensity * (1 - (1 - WO_AMBIENT) * u);
+    this.hemi.intensity = look.ambientIntensity * this.ambientKeep * (1 - (1 - WO_AMBIENT) * u);
     const flood = this.style.spot * (this.night ? (this.style.spot > 2000 ? NIGHT_SPOT_BOOST_BIG : NIGHT_SPOT_BOOST) : 1) * (1 - (1 - WO_FLOODS) * u);
     for (const sp of this.spots) sp.intensity = flood;
     // the mountains vanish into the storm; the fascia under the boardroom is torn away with its roof
@@ -385,7 +441,22 @@ export class Environment extends NightScenery implements WorldAPI {
     const decor = this.decor!;
     this.flushCrowd();
     this.emitGlow();
-    this.batch!.flush(decor);
+    const G = this.zone.snowDepth;
+    const terrain = this.ctx.terrain;
+    // Art pass (render/look.ts bakedAO): corner occlusion baked into the static batch; rays stop at the resting snow
+    // inside the arena and at the bare ground outside.
+    // Static instanced dressing bakes too (everything but what moves: gate doors, spinners, smoke puffs).
+    let ao: Parameters<StaticBatch['flush']>[1];
+    if (artLook.bakedAO) {
+      const moving = new Set<THREE.Object3D>([...this.spinners.map((sp) => sp.obj), ...(this.doors ? [this.doors] : []), ...(this.puffs ? [this.puffs.mesh] : [])]);
+      const instanced: THREE.InstancedMesh[] = [];
+      for (const o of decor.children) if ((o as THREE.InstancedMesh).isInstancedMesh && !moving.has(o)) instanced.push(o as THREE.InstancedMesh);
+      ao = {
+        ground: (x: number, z: number) => terrain.ground(x, z) + (x > ARENA.minX && x < ARENA.maxX && z > ARENA.minZ && z < ARENA.maxZ ? G : 0),
+        instanced,
+      };
+    }
+    this.batch!.flush(decor, ao);
     this.batch = null;
     const keep: THREE.Object3D[] = this.spinners.map((s) => s.obj);
     if (this.doors) keep.push(this.doors);
@@ -533,6 +604,7 @@ export class Environment extends NightScenery implements WorldAPI {
     }
 
     this.weather.update(t, this.ctx.camera, this.ctx.renderer);
+    this.contact?.update();
     lavaTime.value = t;
     this.decals?.update(dt);
   }

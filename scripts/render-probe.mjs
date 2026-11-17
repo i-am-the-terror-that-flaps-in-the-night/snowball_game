@@ -11,6 +11,9 @@
 //   /opt/pw-browsers/chromium in cloud containers), PROBE_LOOPS=N -> N renders per timing loop instead of 60 / 30 / 60
 //   (images and fingerprints don't depend on it; on SwiftShader at DPR 2 the full loops take ~30 min per scene, so
 //   use e.g. PROBE_LOOPS=3 PROBE_DPR=1 PROBE_GPU=0 for a pixel-diff-only run).
+//   PROBE_QUERY=k=v&... is appended to the page URL (e.g. PROBE_QUERY=look=baked for an art-pass look, src/render/look.ts).
+//   A scene named '<scene>@night' is <scene> with Settings › Time of day = NIGHT (seeded into the fresh context's
+//   saved settings before the page loads), e.g. --scenes=a5-plaza@night.
 //
 // Vite serves process.cwd(), so run it from the worktree you want to measure. Headless Chrome at 1920x1080 @ DPR 2
 // (canvas 3840x2160), shadows on (fresh save = HIGH quality), ?debug save (all arenas unlocked).
@@ -310,7 +313,8 @@ function probeInit(opts = {}) {
 
   window.__probe = {
     realNow,
-    scenes: Object.keys(SCENES),
+    // Every scene also exists at night ('<name>@night'; the node side seeds the setting before the page loads).
+    scenes: [...Object.keys(SCENES), ...Object.keys(SCENES).map((n) => `${n}@night`)],
     gpu() {
       const gl = g().renderer.getContext();
       const ext = gl.getExtension('WEBGL_debug_renderer_info');
@@ -323,7 +327,7 @@ function probeInit(opts = {}) {
       s = 0x2f6b1d3a;
       us = 0x1b873593;
       calls = 0;
-      SCENES[name]();
+      SCENES[name.replace(/@night$/, '')]();
       return fingerprint();
     },
     measure({ debug, loops }) {
@@ -527,6 +531,8 @@ function printProfile(name, prof) {
 async function runScene(name) {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: Number(process.env.PROBE_DPR) || 2 });
   await context.addInitScript(probeInit, { uuidRng });
+  // '<scene>@night': Settings › Time of day = NIGHT (the settings key of src/core/settings.ts; the rest stays default).
+  if (name.endsWith('@night')) await context.addInitScript(() => localStorage.setItem('snowplow-showdown-settings-v1', JSON.stringify({ timeOfDay: 'night' })));
   const page = await context.newPage();
   const errors = [];
   page.on('console', (m) => {
@@ -540,7 +546,7 @@ async function runScene(name) {
     });
   }
   try {
-    await page.goto(`http://localhost:${port}/?debug`, { waitUntil: 'load' });
+    await page.goto(`http://localhost:${port}/?debug${process.env.PROBE_QUERY ? `&${process.env.PROBE_QUERY}` : ''}`, { waitUntil: 'load' });
     await page.waitForFunction(() => window.__game && window.__probe, null, { polling: 100, timeout: 60000 });
     if (!rendererName) rendererName = await page.evaluate(() => window.__probe.gpu());
     if (!allScenes) allScenes = await page.evaluate(() => window.__probe.scenes);
@@ -570,7 +576,7 @@ async function runScene(name) {
 // Probe the scene list once (a scene name typo should fail loudly, not silently skip).
 {
   const r = await runScene('menu');
-  const names = (allScenes || ['menu']).filter((n) => !sceneFilter || sceneFilter.includes(n));
+  const names = (allScenes || ['menu']).filter((n) => (sceneFilter ? sceneFilter.includes(n) : !n.endsWith('@night')));
   const unknown = (sceneFilter || []).filter((n) => !(allScenes || []).includes(n));
   if (unknown.length) {
     console.error(`unknown scene(s): ${unknown.join(', ')} (have: ${(allScenes || []).join(', ')})`);
