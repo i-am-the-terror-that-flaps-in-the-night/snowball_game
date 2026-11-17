@@ -107,6 +107,11 @@ export class Combat implements CombatAPI {
     this.volt.prewarm();
   }
 
+  /** Visible off-scene stand-ins of hidden kit effects for every warm-up (Game.warmExtras). */
+  warmMeshes(): THREE.Object3D[] {
+    return this.revenant.warmMeshes();
+  }
+
   /** Shader warm-up: the Inferno light as if burning (see FlameCone.flipLightForWarmup); returns the undo. */
   flipFlameLightForWarmup(): () => void {
     return this.classic.flameCone.flipLightForWarmup();

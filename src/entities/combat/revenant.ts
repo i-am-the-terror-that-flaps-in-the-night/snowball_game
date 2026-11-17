@@ -11,7 +11,7 @@ import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE } from '../vehicles/revenant';
  *   - HAUNT (passive): a bot phased through is Haunted for hauntSeconds: chained to the hearse, it takes +hauntVuln
  *     damage from it (Combat.hitMult), and wrecked while Haunted it drops a soul and rises as a PHANTOM that charges
  *     the nearest bot and bursts in ghostfire (kills chain through a pack);
- *   - SPACE (hold) REAP: scythe sweeps alternating sides, REAP_RATE a second across a REAP_ARC arc out to reapReach;
+ *   - SPACE (hold) REAP: wraith-claw rakes alternating sides, REAP_RATE a second across a REAP_ARC arc out to reapReach;
  *     every BIG_EVERY-th is the big Reap (a longer wind-up before it; wider, x3, Haunted bots hit twice);
  *   - E PHASE: PHASE_SECONDS spectral (Plow.phased: +30% speed, untouchable, no pulls / knockback, through bots and
  *     props); every bot passed through is Haunted (+1 soul, PHASE_SOULS a Phase at most); on exit MANIFEST, a
@@ -44,7 +44,7 @@ const GRASP_STOP = 3.6;
 /** Duel: SOUL GRASP holds the other pilot this long (DamageOpts.hold), and souls come from damage dealt instead of
  *  wrecks: one per DUEL_SOUL_FRAC of the foe's max HP. */
 export const DUEL_GRASP_HOLD = 0.6;
-/** Duel: REAP sweeps hit the other pilot this hard (the scythe is a blade hit: no area diminishing returns, and the
+/** Duel: REAP sweeps hit the other pilot this hard (the claw rake is a melee hit: no area diminishing returns, and the
  *  foe it Haunts takes +25% on top, so at full strength it won nearly every high-tier trade in scripts/balance/duel2). */
 export const DUEL_REAP = 0.8;
 export const DUEL_SOUL_FRAC = 0.1;
@@ -60,7 +60,7 @@ const BIG_WIDTH = 1.2;
 export const BIG_MULT = 3;
 export const BIG_WIND = 1.75;
 const REAP_KNOCK = 3;
-/** Scythe origin: ahead of the hearse's centre (the blade), and its height above the floor. */
+/** Reap origin: ahead of the hearse's centre (between the claws' rifts), and its height above the floor. */
 const REAP_FWD = 1.2;
 const REAP_Y = 1.0;
 /** PHANTOMS: pool, rise / fade seconds, dash speed (m/s) and longest dash (s), seek and burst radius (m). */
@@ -239,6 +239,11 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     void this.vis;
   }
 
+  /** Visible off-scene stand-ins of the hidden REAP claw marks (Game's warm set). */
+  warmMeshes(): THREE.Object3D[] {
+    return this.vis.arcs.warmMeshes();
+  }
+
   private get live(): boolean {
     return this.b.stats.plowKind === 'revenant';
   }
@@ -310,7 +315,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     return w < 0 ? 0 : w > 1 ? 1 : w;
   }
 
-  /** One scythe sweep from the blade: every bot in the arc ahead (Body reach). */
+  /** One claw rake: every bot in the arc ahead (Body reach). */
   private reap(plow: PlowAPI, big: boolean): void {
     const ctx = this.ctx;
     const st = this.b.stats;
@@ -375,7 +380,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     const d = Math.hypot(dx, dz) || 1;
     const hp0 = e.hp;
     const killed = this.b.enemies.damage(e, dmg * this.b.stats.damageMult * this.focus(opts?.ult ? Focus.Ult : opts?.kind ?? Focus.Neutral) * this.hitMult(e), {
-      // The scythe is a blade hit (melee, like BRUTUS's fists: no Duel area-ability diminishing returns).
+      // The claw rake is a melee hit (like BRUTUS's fists: no Duel area-ability diminishing returns).
       source: opts?.blade ? 'ram' : 'other',
       crackArmor: opts?.blade || undefined,
       knockback: knock > 0 ? _kb.set((dx / d) * knock, 0, (dz / d) * knock) : undefined,
@@ -938,7 +943,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     this.souls = Math.max(0, this.souls - souls);
   }
 
-  /** Immediate-mode visuals: Haunt tethers + marks, Grasp chains, phantoms, scythe arcs. */
+  /** Immediate-mode visuals: Haunt tethers + marks, Grasp chains, phantoms, claw marks. */
   private draw(plow: PlowAPI, dt: number): void {
     if (!this.fx && this.haunts.size === 0 && this.grasped.length === 0) return;
     const v = this.vis;

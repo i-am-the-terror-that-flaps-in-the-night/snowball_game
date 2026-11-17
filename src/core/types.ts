@@ -173,7 +173,7 @@ export interface PlayerStats {
   scrapDps: number;
   scrapMax: number;
   scrapHit: number;
-  /** REVENANT line (reapDamage 0 on other plows; combat/revenant.ts): REAP damage per scythe sweep and reach (m),
+  /** REVENANT line (reapDamage 0 on other plows; combat/revenant.ts): REAP damage per claw rake and reach (m),
    *  MANIFEST damage and base radius (m), PHASE recharge (s, Nitro Dash and Overclock in), SOUL GRASP damage / stun (s) /
    *  reach (m; THE WILD HUNT scales off graspDamage), HAUNT extra damage taken (0.25 = +25%) / seconds, PHANTOM burst. */
   reapDamage: number;

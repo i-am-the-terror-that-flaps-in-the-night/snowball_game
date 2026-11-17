@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { REV_BRIGHT, REV_CORE, REV_DEEP, REV_EDGE } from '../vehicles/revenant';
 import { currentPreset } from '../../core/settings';
+import { standIns } from '../../render/standIns';
 
 /* REVENANT ability visuals (pooled; nothing allocated per frame). Every effect is a solid, normal-blended violet layer
  * with a dark edge (it has to read on sunlit snow AND at night), with an additive bright line only on top:
@@ -153,6 +154,12 @@ export class ClawMarks {
 
   update(dt: number): void {
     for (const m of this.marks) if (m.root.visible) this.step(m, dt);
+  }
+
+  /** Visible off-scene stand-ins of one (hidden) mark for the shader warm-up (render/standIns.ts): every mark shares
+   *  the same three programs. */
+  warmMeshes(): THREE.Object3D[] {
+    return standIns([this.marks[0].root]);
   }
 
   clear(): void {

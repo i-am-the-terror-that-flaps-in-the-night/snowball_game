@@ -42,10 +42,10 @@ const BASE_REACH = 7;
 export const CLAW_SOCKET = new THREE.Vector3(0.78, 1.24, 1.5);
 const SURGE_TO = new THREE.Vector3(0.62, 1.5, 2.55);
 /** Lengths at scale 1 (m): the upper arm (ectoplasm: the IK's first bone, never drawn as bone) and the forearm. */
-const UPPER_L = 1.75;
-const FORE_L = 1.9;
-/** Elbow pole (canonical): out, a little up and back. A low elbow: no tall mantis arch. */
-const POLE = new THREE.Vector3(0.92, 0.22, -0.32).normalize();
+const UPPER_L = 2.0;
+const FORE_L = 1.55;
+/** Elbow pole (canonical): out, a touch down and back. A low elbow: no tall mantis arch. */
+const POLE = new THREE.Vector3(0.95, -0.12, -0.3).normalize();
 /** Longest IK stretch (spectral arms give a little) before the wrist falls short. */
 const MAX_STRETCH = 1.22;
 
@@ -60,8 +60,11 @@ const RAKE_SHARE = 0.92;
 const PHI_COCK = 1.62;
 const PHI_END = -0.86;
 const PHI_GRAB = -1.05;
-/** Big Reap wind-up: where the reared claws wait (angle, share of the reach, height). */
-const PHI_REAR = 1.85;
+/** Big Reap wind-up: where the reared claws' wrists wait (x scales with the reach) and the hand's yaw / pitch / roll. */
+const REAR_W = new THREE.Vector3(2.85, 2.1, 0.8);
+const REAR_YAW = 0.3;
+const REAR_PITCH = -1.05;
+const REAR_ROLL = -1.15;
 
 /* ---- the hand (hand-local: +z along the fingers, +y the back of the hand, palm down; canonical LEFT hand, so the
  * thumb is on -x). Units: m at scale 1. */
@@ -85,11 +88,11 @@ interface Digit {
 }
 const FINGERS: Digit[] = [
   // inner (thumb side), middle, outer
-  { root: new THREE.Vector3(-0.29, 0.0, 0.8), yaw: -0.16, pitch: 0, roll: 0.12, splay: -0.46, len: [0.56, 0.44], talon: 1.05, rest: [0.04, 0.16, 0.12], curl: [0.95, 1.15, 0.55], lag: 0.25 },
-  { root: new THREE.Vector3(0.0, 0.03, 0.9), yaw: 0, pitch: 0, roll: 0, splay: 0, len: [0.62, 0.5], talon: 1.18, rest: [0.04, 0.16, 0.12], curl: [0.95, 1.15, 0.55], lag: 0.12 },
-  { root: new THREE.Vector3(0.29, 0.0, 0.8), yaw: 0.16, pitch: 0, roll: -0.12, splay: 0.46, len: [0.56, 0.44], talon: 1.05, rest: [0.04, 0.16, 0.12], curl: [0.95, 1.15, 0.55], lag: 0 },
+  { root: new THREE.Vector3(-0.46, 0.0, 0.9), yaw: -0.2, pitch: 0, roll: 0.14, splay: -0.55, len: [0.64, 0.5], talon: 1.45, rest: [0.04, 0.16, 0.1], curl: [0.95, 1.1, 0.5], lag: 0.25 },
+  { root: new THREE.Vector3(0.0, 0.04, 1.02), yaw: 0, pitch: 0, roll: 0, splay: 0, len: [0.7, 0.55], talon: 1.6, rest: [0.04, 0.16, 0.1], curl: [0.95, 1.1, 0.5], lag: 0.12 },
+  { root: new THREE.Vector3(0.46, 0.0, 0.9), yaw: 0.2, pitch: 0, roll: -0.14, splay: 0.55, len: [0.64, 0.5], talon: 1.45, rest: [0.04, 0.16, 0.1], curl: [0.95, 1.1, 0.5], lag: 0 },
 ];
-const THUMB: Digit = { root: new THREE.Vector3(-0.34, -0.05, 0.22), yaw: -1.0, pitch: 0.2, roll: -0.55, splay: -0.32, len: [0.46, 0.36], talon: 0.92, rest: [0.1, 0.18, 0.15], curl: [0.65, 0.95, 0.5], lag: 0.35 };
+const THUMB: Digit = { root: new THREE.Vector3(-0.52, -0.05, 0.3), yaw: -1.0, pitch: 0.2, roll: -0.55, splay: -0.45, len: [0.5, 0.4], talon: 1.25, rest: [0.1, 0.18, 0.12], curl: [0.65, 0.95, 0.45], lag: 0.35 };
 const DIGITS = [...FINGERS, THUMB];
 const N_DIG = DIGITS.length;
 const N_PHAL = DIGITS.reduce((n, d) => n + d.len.length, 0);
@@ -295,9 +298,9 @@ const BONE_PROF = [
  *  spur on the knuckle (back of the finger, +y). */
 function phalanxGeometry(): THREE.BufferGeometry {
   const L = PHAL_NOM;
-  const parts = [boneBetween(BONE_PROF, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, L), 0.12, 7)];
-  parts.push(place(spike(0.26, 0.055), new THREE.Vector3(0, 0.07, 0.07), new THREE.Vector3(0, 1, -0.75)));
-  parts.push(place(spike(0.12, 0.03), new THREE.Vector3(0.05, 0.05, L * 0.55), new THREE.Vector3(0.5, 1, -0.6)));
+  const parts = [boneBetween(BONE_PROF, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, L), 0.2, 7)];
+  parts.push(place(spike(0.36, 0.08), new THREE.Vector3(0, 0.11, 0.08), new THREE.Vector3(0, 1, -0.75)));
+  parts.push(place(spike(0.18, 0.045), new THREE.Vector3(0.08, 0.08, L * 0.55), new THREE.Vector3(0.5, 1, -0.6)));
   const g = merge(parts);
   g.scale(1, 1, 1 / L);
   return g;
@@ -307,16 +310,16 @@ function phalanxGeometry(): THREE.BufferGeometry {
  *  spurs on the knuckles and the back, and a crown of spikes round the wrist. m at scale 1. */
 function handGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
-  // The palm slab: a tapered, arched box, wrist (0.44 wide) to knuckles (0.84).
+  // The palm slab: a broad, tapered, arched box, wrist (0.62 wide) to knuckles (1.3).
   const box = new THREE.BoxGeometry(1, 1, 1, 4, 1, 4);
   const p = box.getAttribute('position');
   for (let i = 0; i < p.count; i++) {
     const z = p.getZ(i) + 0.5; // 0..1
-    const w = 0.44 + 0.4 * z;
+    const w = 0.62 + 0.68 * z;
     const x = p.getX(i) * w;
-    const arch = 0.07 * (1 - (2 * x / w) ** 2);
-    const y = p.getY(i) * (0.2 - 0.06 * z) + arch;
-    p.setXYZ(i, x, y, z * 0.86);
+    const arch = 0.1 * (1 - (2 * x / w) ** 2);
+    const y = p.getY(i) * (0.28 - 0.08 * z) + arch;
+    p.setXYZ(i, x, y, z * 0.98);
   }
   box.computeVertexNormals();
   parts.push(box.toNonIndexed());
@@ -324,22 +327,23 @@ function handGeometry(): THREE.BufferGeometry {
   for (const f of FINGERS) {
     const a = new THREE.Vector3(f.root.x * 0.35, 0.1, 0.02);
     const b = new THREE.Vector3(f.root.x, 0.08, f.root.z - 0.02);
-    parts.push(boneBetween(BONE_PROF, a, b, 0.075));
-    const kn = new THREE.IcosahedronGeometry(0.11, 0);
-    kn.translate(f.root.x, 0.04, f.root.z - 0.02);
+    parts.push(boneBetween(BONE_PROF, a, b, 0.11));
+    const kn = new THREE.IcosahedronGeometry(0.17, 0);
+    kn.translate(f.root.x, 0.05, f.root.z - 0.02);
     parts.push(kn);
-    parts.push(place(spike(0.34, 0.065), new THREE.Vector3(f.root.x, 0.12, f.root.z - 0.06), new THREE.Vector3(f.root.x * 0.6, 1, -0.7)));
+    parts.push(place(spike(0.46, 0.09), new THREE.Vector3(f.root.x, 0.16, f.root.z - 0.08), new THREE.Vector3(f.root.x * 0.6, 1, -0.7)));
   }
   // Jagged spikes on the back of the hand.
   const backs: [number, number, number, number, number][] = [
-    [-0.16, 0.42, 0.46, -0.35, 0.08],
-    [0.13, 0.52, 0.56, 0.3, 0.085],
-    [0.0, 0.2, 0.4, 0.0, 0.075],
-    [0.28, 0.24, 0.3, 0.8, 0.06],
+    [-0.24, 0.5, 0.62, -0.35, 0.11],
+    [0.2, 0.62, 0.72, 0.3, 0.12],
+    [0.0, 0.26, 0.55, 0.0, 0.1],
+    [0.42, 0.3, 0.42, 0.8, 0.08],
+    [-0.44, 0.24, 0.36, -0.8, 0.07],
   ];
-  for (const [x, z, h, cant, r] of backs) parts.push(place(spike(h, r), new THREE.Vector3(x, 0.1, z), new THREE.Vector3(cant, 1, -0.85)));
+  for (const [x, z, h, cant, r] of backs) parts.push(place(spike(h, r), new THREE.Vector3(x, 0.14, z), new THREE.Vector3(cant, 1, -0.85)));
   // The spiked wrist: a knob and a crown of spikes raking back.
-  const knob = new THREE.IcosahedronGeometry(0.2, 1);
+  const knob = new THREE.IcosahedronGeometry(0.28, 1);
   knob.scale(1.2, 0.85, 1);
   parts.push(knob);
   for (let i = 0; i < 7; i++) {
@@ -347,7 +351,7 @@ function handGeometry(): THREE.BufferGeometry {
     const cx = Math.cos(a);
     const cy = Math.sin(a);
     const up = cy > 0 ? 1 : 0.6;
-    parts.push(place(spike(0.36 * up, 0.06), new THREE.Vector3(cx * 0.2, cy * 0.15, -0.04), new THREE.Vector3(cx, cy, -1.1)));
+    parts.push(place(spike(0.5 * up, 0.085), new THREE.Vector3(cx * 0.28, cy * 0.2, -0.04), new THREE.Vector3(cx, cy, -1.1)));
   }
   return merge(parts);
 }
@@ -372,21 +376,21 @@ function forearmGeometry(): THREE.BufferGeometry {
     [0.01, 1],
   ].map(([r, y]) => [r, y]);
   const shaft = lathe(prof, 6);
-  shaft.scale(1, L, 0.82);
+  shaft.scale(1.45, L, 1.25);
   const parts = [place(shaft, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 1))];
   // The elbow spike, and a smaller one under it.
-  parts.push(place(spike(0.85, 0.13), new THREE.Vector3(0, 0.08, 0.06), new THREE.Vector3(0, 0.55, -1)));
-  parts.push(place(spike(0.42, 0.08), new THREE.Vector3(0.1, -0.06, 0.1), new THREE.Vector3(0.6, -0.4, -1)));
+  parts.push(place(spike(0.95, 0.17), new THREE.Vector3(0, 0.12, 0.06), new THREE.Vector3(0, 0.55, -1)));
+  parts.push(place(spike(0.5, 0.1), new THREE.Vector3(0.14, -0.08, 0.1), new THREE.Vector3(0.6, -0.4, -1)));
   // Spurs along the outside, raking back toward the elbow.
   const spurs: [number, number, number, number][] = [
-    [0.36, 0.42, 0.08, 0],
-    [0.78, 0.36, 0.07, 0.35],
-    [1.18, 0.3, 0.06, -0.3],
-    [1.5, 0.24, 0.05, 0.2],
+    [0.32, 0.5, 0.1, 0],
+    [0.66, 0.42, 0.09, 0.4],
+    [0.98, 0.36, 0.08, -0.35],
+    [1.26, 0.3, 0.07, 0.25],
   ];
-  for (const [z, h, r, side] of spurs) parts.push(place(spike(h, r), new THREE.Vector3(side * 0.1, 0.13, z), new THREE.Vector3(side, 1, -0.75)));
+  for (const [z, h, r, side] of spurs) parts.push(place(spike(h, r), new THREE.Vector3(side * 0.14, 0.19, z), new THREE.Vector3(side, 1, -0.75)));
   // A ridge of small teeth along the inside.
-  for (const z of [0.55, 0.95, 1.35]) parts.push(place(spike(0.16, 0.04), new THREE.Vector3(0, -0.13, z), new THREE.Vector3(0, -1, -0.6)));
+  for (const z of [0.5, 0.85, 1.2]) parts.push(place(spike(0.2, 0.05), new THREE.Vector3(0, -0.19, z), new THREE.Vector3(0, -1, -0.6)));
   const g = merge(parts);
   g.scale(1, 1, 1 / L);
   return g;
@@ -412,7 +416,7 @@ function talonGeometry(r: number): THREE.BufferGeometry {
       const th = (k / rad) * Math.PI * 2;
       const sn = Math.sin(th);
       // blade: narrow side to side, the inner (-y) side drawn to a keel
-      const ox = Math.cos(th) * rr * 0.5 * (sn < 0 ? 1 + sn * 0.6 : 1);
+      const ox = Math.cos(th) * rr * 0.72 * (sn < 0 ? 1 + sn * 0.6 : 1);
       const oy = sn * rr * (sn < 0 ? 1.25 : 1);
       pts.push(ox, cy + oy * ny, cz + oy * nz);
     }
@@ -456,14 +460,14 @@ function textures() {
   if (texCache) return texCache;
   const bone = matcapFrom(
     [
-      [0, '#1a0830'],
-      [0.5, '#22093e'],
-      [0.7, '#3e1470'],
-      [0.83, '#8a3ee8'],
-      [0.93, '#e2b4ff'],
-      [0.99, '#fbeaff'],
+      [0, '#120520'],
+      [0.55, '#1a0630'],
+      [0.74, '#2e0c58'],
+      [0.86, '#7a30dc'],
+      [0.95, '#d8a4ff'],
+      [0.995, '#f6e2ff'],
     ],
-    '#fbeaff',
+    '#f6e2ff',
   );
   const talon = matcapFrom(
     [
@@ -585,8 +589,8 @@ const TRAIL_N_LOW = 6;
 const TRAIL_SPAN = 0.12;
 const TRAIL_SPAN_LOW = 0.08;
 /** Ectoplasm tatters per arm (LOW: fewer) and points along each. */
-const TAT_N = 7;
-const TAT_N_LOW = 4;
+const TAT_N = 9;
+const TAT_N_LOW = 5;
 const TAT_SEG = 10;
 
 export interface ClawRigIn {
@@ -622,8 +626,8 @@ export function buildWraithClaws(): WraithClaws {
   const foreGeo = forearmGeometry();
   const handGeo = handGeometry();
   const phalGeo = phalanxGeometry();
-  const talonGeo = talonGeometry(0.13);
-  const glowGeo = talonGeometry(0.2);
+  const talonGeo = talonGeometry(0.22);
+  const glowGeo = talonGeometry(0.32);
   const low = () => currentPreset().fxScale < 1;
 
   const arms: ArmMeshes[] = [];
@@ -774,9 +778,16 @@ export function buildWraithClaws(): WraithClaws {
 
   /** The big Reap's reared wind-up pose (scale 1 at `R` m): high, wide and back, talons raised and splayed, trembling. */
   const rearPose = (out: Pose, R: number, t: number, arm: number, lift: number): Pose => {
-    const r = R * 0.62;
+    const k = (R / BASE_REACH) * 1.06;
     const tr = Math.sin(t * 31 + arm * 2) * 0.5 + Math.sin(t * 47 + arm) * 0.5;
-    return setPose(out, Math.sin(PHI_REAR) * r, 3.0 + lift * 0.5 + 0.05 * tr, REAP_ORIGIN + Math.cos(PHI_REAR) * r, PHI_REAR - 0.25 + 0.04 * tr, -0.55, 0.55, 0.02 + 0.05 * tr, 1, 1, 1, 0.1);
+    // Wrist pulled back beside the cab, the hand raised (fingers up and forward, palm turned in), talons splayed.
+    setPose(out, 0, 0, 0, REAR_YAW + 0.04 * tr, REAR_PITCH, REAR_ROLL, 0.02 + 0.05 * tr, 1, 1, 1, 0.1);
+    handQuat(out, _qh);
+    _a.copy(REF_TIP).multiplyScalar(k).applyQuaternion(_qh);
+    out.x = REAR_W.x * k + _a.x;
+    out.y = REAR_W.y + lift * 0.3 + 0.05 * tr + _a.y;
+    out.z = REAR_W.z + _a.z;
+    return out;
   };
 
   /** Rake key pose at share `u` (canonical; positions at `R` m reach), from `from` (the rest or the reared pose).
@@ -923,8 +934,8 @@ export function buildWraithClaws(): WraithClaws {
       const ct = Math.cos(th);
       const sn = Math.sin(th);
       // start ring round the forearm, 10-35% down it from the elbow
-      const f0 = 0.1 + 0.25 * ((f * 0.618) % 1);
-      _s.copy(_E).addScaledVector(_c, fl * f0).addScaledVector(_n1, ct * 0.24 * k).addScaledVector(_n2, sn * 0.24 * k);
+      const f0 = 0.12 + 0.4 * ((f * 0.618) % 1);
+      _s.copy(_E).addScaledVector(_c, fl * f0).addScaledVector(_n1, ct * 0.3 * k).addScaledVector(_n2, sn * 0.3 * k);
       // control: the elbow, billowed out round the axis and toward the bend's outside, a little up
       _d.copy(_E).addScaledVector(_n1, ct * 0.55 * k).addScaledVector(_n2, sn * 0.45 * k + 0.35 * k);
       _d.y += 0.15 * k;
@@ -940,7 +951,7 @@ export function buildWraithClaws(): WraithClaws {
         _a.addScaledVector(_n1, wv * -sn).addScaledVector(_n2, wv * ct);
         _a.y += Math.sin(ph * 0.7 - s * 5) * 0.08 * k * env;
         // width: ragged, widest mid-way, a thin thread into the rift
-        const w = k * (0.1 + 0.3 * Math.sin(Math.PI * Math.min(1, 0.15 + s)) * (0.75 + 0.25 * Math.sin(f * 3.1 + s * 11 + clock * 3)));
+        const w = k * (0.14 + 0.4 * Math.sin(Math.PI * Math.min(1, 0.15 + s)) * (0.75 + 0.25 * Math.sin(f * 3.1 + s * 11 + clock * 3)));
         _b.copy(_n1).multiplyScalar(-sn).addScaledVector(_n2, ct); // tangent round the axis
         const v = (f * TAT_SEG + j) * 2;
         P[v * 3] = _a.x + _b.x * w;
@@ -953,14 +964,14 @@ export function buildWraithClaws(): WraithClaws {
         const hot = Math.max(0, 1 - s * 3) * 0.6 + Math.max(0, s - 0.75) * 2.4;
         const al = alpha * Math.min(1, s * 6 + 0.25) * (0.7 + 0.3 * Math.sin(ph * 0.5 + s * 4)) * (s > 0.92 ? (1 - s) / 0.08 : 1);
         const c4 = v * 4;
-        C[c4] = 0.42 + 0.55 * hot;
-        C[c4 + 1] = 0.14 + 0.5 * hot;
-        C[c4 + 2] = 0.78 + 0.3 * hot;
-        C[c4 + 3] = al * 0.85;
-        C[c4 + 4] = 0.25 + 0.4 * hot;
-        C[c4 + 5] = 0.06 + 0.3 * hot;
-        C[c4 + 6] = 0.5 + 0.3 * hot;
-        C[c4 + 7] = al * 0.35;
+        C[c4] = 0.3 + 0.6 * hot;
+        C[c4 + 1] = 0.08 + 0.5 * hot;
+        C[c4 + 2] = 0.62 + 0.45 * hot;
+        C[c4 + 3] = al * 0.92;
+        C[c4 + 4] = 0.16 + 0.4 * hot;
+        C[c4 + 5] = 0.03 + 0.3 * hot;
+        C[c4 + 6] = 0.36 + 0.35 * hot;
+        C[c4 + 7] = al * 0.4;
       }
     }
     (g.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
@@ -1008,7 +1019,7 @@ export function buildWraithClaws(): WraithClaws {
         toModel(_a, J[n + 1], _T, _qh, k); // tip
         toModel(_b, J[n], _T, _qh, k); // talon base
         // narrow toward the tail; wider on a big Reap
-        _b.lerp(_a, 1 - (0.2 + 0.6 * head) * width * 0.75);
+        _b.lerp(_a, 1 - (0.07 + 0.17 * head) * width);
         const v = ((d * TRAIL_N + j) * 2) | 0;
         P[v * 3] = _a.x;
         P[v * 3 + 1] = _a.y;
@@ -1018,9 +1029,9 @@ export function buildWraithClaws(): WraithClaws {
         P[v * 3 + 5] = _b.z;
         // hot lilac at the head cooling to violet; the tip edge brighter than the inner edge
         const hot = head * head;
-        const r = 0.6 + 1.1 * hot;
-        const gg = 0.22 + 0.95 * hot;
-        const bb = 0.95 + 0.9 * hot;
+        const r = 0.55 + 0.75 * hot;
+        const gg = 0.16 + 0.6 * hot;
+        const bb = 0.95 + 0.55 * hot;
         const c4 = v * 4;
         Cl[c4] = r;
         Cl[c4 + 1] = gg;
@@ -1098,7 +1109,7 @@ export function buildWraithClaws(): WraithClaws {
       m.bone.opacity = al;
       const rim = 1 + 0.12 * fl + 0.15 * strike;
       m.bone.color.setRGB(rim, rim, rim);
-      const cg = 0.55 + 0.6 * fl + 0.9 * strike + 0.5 * wind;
+      const cg = 0.4 + 0.45 * fl + 0.45 * strike + 0.45 * wind;
       m.crack.value.setRGB(0.75 * cg, 0.3 * cg, 1.15 * cg);
       const tb = 1.05 + 0.25 * fl + 0.45 * strike + 0.3 * wind;
       m.talon.color.setRGB(tb, tb, tb);

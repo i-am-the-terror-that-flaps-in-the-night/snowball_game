@@ -90,7 +90,7 @@ describe('REVENANT', () => {
     expect(fresh.phaseCooldown).toBeLessThanOrEqual(6.01);
     const geared = computeStatsFor({ revPhase: 30, nitro: 30, overclock: 30 }, 'revenant');
     expect(geared.phaseCooldown).toBe(PHASE_MIN_COOLDOWN);
-    // Wide Blade lengthens the scythe; the kit stats stay off other plows' damage.
+    // Wide Blade lengthens the claws; the kit stats stay off other plows' damage.
     expect(computeStatsFor({ blade: 5 }, 'revenant').reapReach).toBeGreaterThan(fresh.reapReach);
     expect(computeStatsFor({}, 'volt').reapDamage).toBe(0);
   });
@@ -170,7 +170,7 @@ describe('REVENANT', () => {
       // Measured over the whole cycles the hold contains (sweeps 1 .. 3m, timed from sweep 1 to sweep 3m + 1): at 2.5
       // a second a cycle is 1.5 s, four of them in 6 s (the old rhythm's 1.2 s cycle: five).
       const m = Math.floor((at.length - 1) / BIG_EVERY);
-      expect(m).toBeGreaterThanOrEqual(levels === undefined || !('overclock' in levels) ? 3 : 5);
+      expect(m).toBeGreaterThanOrEqual('overclock' in levels ? 5 : 3);
       const units = dmg.slice(0, m * BIG_EVERY).reduce((x, y) => x + y, 0);
       const span = at[m * BIG_EVERY] - at[0];
       const dps = units / span;

@@ -263,9 +263,12 @@ A spectral reaper-car: a low, sleek void-black core (a fixed colour, never repai
 through it, wearing **floating armour plates** that take the Paint Shop colours (so any paint reads as armour over
 the ghost), under a gloss-black bubble canopy with faint ghost faces drifting inside. Two wraith fins rise off the
 tail trailing tattered violet ribbons that ripple harder at speed. It rolls on **hubless spectral ring wheels** with
-floating rune rings, with two **spectral swords** floating at its flanks, points forward: silver blades with burning
-violet edges, void crossguards and glowing pommels; on every Reap the sword on that side slashes across the nose (the
-side alternates).
+floating rune rings. Two **wraith claws** wait in glowing rifts on the front corners of the hood (`vehicles/revenantClaws.ts`):
+monstrous skeletal hands, a broad bony palm with spurs on its back and a spiked wrist, three long knuckled fingers and a
+thumb, each ending in a hooked, scythe-curved glowing talon; behind the hand one thick ridged forearm bone with an
+elbow spike, and no upper arm, only torn ectoplasm streaming back into the rift. Bones are near-black violet with a
+bright rim and glowing cracks, the talons glow. Idle only the rifts glow (wisps lick out of them); SPACE held keeps the
+claws half out, hooked and twitching, between rakes; the Paint Shop shows them raised.
 A halo hovers over the canopy (the toll beacon: a ring of light on every toll) and **the Reliquary**, a soul cell
 between two glowing emitter rings, floats behind it with the souls swirling inside (one wisp per soul). Slit
 headlights spill purple ghostfire over a fanged grille; purple mist underglow. PHASED, the body dissolves translucent
@@ -284,10 +287,15 @@ of the other pilot's max HP you deal. SOUL GRASP spends them; banked souls power
   overlay and a skull wisp float over it, and it takes +25% damage from you. Wrecked while Haunted it drops a soul and
   rises as a **PHANTOM**: a short-lived translucent ghost copy that charges the nearest bot (14 m) once and bursts in
   ghostfire (3.5 m, 40 damage x your damage mult), so kills chain through a group (4 phantoms at a time at most).
-- **SPACE (hold): REAP.** Scythe sweeps alternating left and right, 2.5 a second (Overclock speeds them up), across a
-  140° arc out to 7 m ahead. Every third sweep is a big Reap: 20% wider, double damage, and it hits Haunted bots twice.
-  8.6 damage a sweep fresh (x your damage mult). Violet scythe ribbons with a dark edge. In the Duel it hits the other
-  pilot at 80% (one hit even on the big Reap).
+- **SPACE (hold): REAP.** The wraith claws rake alternating left and right, 2.5 a second (Overclock speeds them up),
+  across a 140° arc out to 7 m ahead: the claw on that side surges out, cocks back, rakes across low with its talons
+  fanned wide (talon trails behind them) and snaps shut into a grab at the end of the stroke; its talon tips reach the
+  end of the arc and the claws grow with the reach. Every third rake is a big Reap: the gap before it is 1.75x the
+  normal one (`BIG_WIND`) while both claws rear back high beside the cab, then they crash across together, crossing in
+  front of the nose; 20% wider, triple damage (`BIG_MULT`; the longer wait makes it exactly the old damage a second:
+  1 + 1 + 3 over 0.4 + 0.4 + 0.7 s, against 1 + 1 + 2 over 1.2 s), and it hits Haunted bots twice. 8.6 damage a rake
+  fresh (x your damage mult). Spectral claw gouges (a dark edge, a violet body, a hot core) tear across the arc ahead,
+  two crossing sets on the big Reap. In the Duel it hits the other pilot at 80% (one hit even on the big Reap).
 - **E: PHASE.** 1.2 s spectral: +30% top speed, through bots, props and attacks (no damage taken, no pulls, tows or
   knockback). Every bot passed through is Haunted. On exit, **MANIFEST**: a ghostfire shockwave (5 m, 30 damage),
   +25% damage and +0.8 m for every soul taken in that Phase. Recharges in 6 s (Ectoplasm and Nitro Dash shorten it,
@@ -297,11 +305,11 @@ of the other pilot's max HP you deal. SOUL GRASP spends them; banked souls power
   1.5 s recharge stops wreck-fed souls chain-casting it in a crowd. In the Duel the chains hold the other pilot 0.6 s.
 - DASH (L-SHIFT) as everyone.
 
-Line: Reaper's Scythe (REAP damage and reach), Ectoplasm (MANIFEST damage and radius, PHASE recharge), Soul Chains
+Line: Reaper's Claws (REAP damage and reach), Ectoplasm (MANIFEST damage and radius, PHASE recharge), Soul Chains
 (SOUL GRASP damage, stun and reach; THE WILD HUNT scales with it, and it grows the ultimate meter like every plow's F
 upgrade), Haunting (Haunt damage bonus and length, PHANTOM burst). Every ability is free at level 0.
 
-Upgrade mapping: Packed Ice = all damage; Wide Blade = a longer scythe (+0.5 m per extra metre of blade); Nitro Dash =
+Upgrade mapping: Packed Ice = all damage; Wide Blade = longer claws (+0.5 m per extra metre of blade); Nitro Dash =
 a faster PHASE recharge; Whirlwind Turbine = a harder MANIFEST; Overclock = faster sweeps and recharges.
 
 **Ultimate: THE WILD HUNT.** Any damage fills the ⚰️ meter (MANIFEST, phantom and Grasp bursts count at 34%, Reap hits
@@ -325,7 +333,7 @@ in its kit (`Focus` in `src/entities/combat/shared.ts`) and multiplied on top of
 | BRUTUS | Wrecking Fist jabs and finisher shockwave; Spiked Hull | EARTHQUAKE | E Saw Charge; F Ground Pound (also the air pound) | rams, dash strikes, stomps, air slam |
 | ISOTOPE | RAD SPRAYER and its RAD DOSE; Rad Aura; Chain Reaction blasts | NUKE blast and its giant pool | E FALLOUT TRAIL puddles; F Meltdown blast and fallout pool | the base radiation burn and tank-buster slice, rams, dash strikes, stomps, air slam |
 | ARSENAL | Mag Laser; Scrap Magnet field and shard ring | SINGULARITY | E Mag Repulsor; F Polarity Burst | rams, dash strikes, stomps |
-| PHANTOM | Reaper's Scythe; Haunting SHADE bursts | THE WILD HUNT riders and finale | E PHASE's MANIFEST; F SOUL GRASP | rams, dash strikes, stomps, air slam |
+| PHANTOM | Reaper's Claws; Haunting SHADE bursts | THE WILD HUNT riders and finale | E PHASE's MANIFEST; F SOUL GRASP | rams, dash strikes, stomps, air slam |
 
 Cooldowns: Ability Focus shortens every time-based E / F recharge (Weapon Focus leaves them alone): the whirl / E charge
 (Static Field, Saw Charge, Fallout Trail, Mag Repulsor), PHASE, Inferno, Thunderclap, Ground Pound, Meltdown,
