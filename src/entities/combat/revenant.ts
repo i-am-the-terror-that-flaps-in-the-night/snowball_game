@@ -523,7 +523,7 @@ export class RevenantKit extends Kit implements VehicleKit, UltScript {
     this.b.audio.play('steal', { volume: 0.5, pitch: 0.5 });
     this.shake(0.4);
     const pvp = !!this.b.pvp;
-    // Overclock x Focus (Ability Focus shortens it, Weapon Focus lengthens it), never under 0.4 x the base.
+    // Overclock x Ability Focus (shorter), never under 0.4 x the base.
     this.graspCd = GRASP_CD * Math.max(0.4, (st.cooldownMult || 1) * (st.abilityCdMult || 1));
     this.h.ultFeedShare = BURST_ULT_SHARE;
     for (let i = 0; i < n; i++) {

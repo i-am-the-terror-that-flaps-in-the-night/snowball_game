@@ -356,7 +356,7 @@ class DonaldProps {
     // ---- GOLD PLATED: reflect queued damage back in small batches (whichever Donald is plated, owner or not)
     this.reflectT -= dt;
     let plated: Bot | null = null;
-    for (const b of ctx.enemies.bosses) if (b.alive && (b.type === 'donald' || b.type === 'chairman') && (b as Bot).reflectPool >= 1) plated = b as Bot;
+    for (const b of ctx.enemies.bosses) if (b.alive && (b.type === 'donald' || b.type === 'chairman') && (b as Bot).state !== 'defeat' && (b as Bot).reflectPool >= 1) plated = b as Bot;
     if (plated && this.reflectT <= 0) {
       // Capped at REFLECT_CAP of the plow's max HP per batch and NOT scaled by the enemy damage multipliers (Hard,
       // PROTOCOL spend), so a big burst on him costs a bounded, predictable bite instead of a share of the burst.

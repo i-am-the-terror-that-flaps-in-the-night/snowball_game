@@ -352,12 +352,28 @@ describe('phase 2 and the end', () => {
     run(0.1);
     expect(c.reflect).toBeGreaterThan(0);
     hits.length = 0;
-    mgr.damage(c, 30000);
+    mgr.damage(c, c.maxHp * 0.3);
     run(REFLECT_EVERY * 2 + 0.05, () => park());
     const total = hits.reduce((a, b) => a + b, 0);
     expect(total).toBeGreaterThan(0);
     expect(total).toBeLessThanOrEqual(REFLECT_CAP * 100 * 3 * 1.0001);
     for (const h of hits) expect(h).toBeLessThanOrEqual(REFLECT_CAP * 100 * 1.0001);
+  });
+
+  it('no reflection after the killing blow (the defeat scene)', async () => {
+    const { c, s, mgr, run, hits, park } = await onFloor();
+    c.hp = c.maxHp * 0.49;
+    run(0.2);
+    park();
+    s.plate = 1;
+    s.plateT = 0;
+    run(0.1);
+    expect(c.reflect).toBeGreaterThan(0);
+    hits.length = 0;
+    mgr.damage(c, c.maxHp);
+    run(1.5, () => park());
+    expect(c.state).toBe('defeat');
+    expect(hits).toEqual([]);
   });
 
   it('ultimates hurt him like any boss (and his echoes)', async () => {

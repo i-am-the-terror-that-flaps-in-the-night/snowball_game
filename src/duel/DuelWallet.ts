@@ -91,6 +91,9 @@ export class DuelWallet implements ShopWallet {
 
   /** True if the next purchase of `id` would come out of the bonus. */
   paysWithBonus(id: UpgradeId): boolean {
+    // FOCUS is bought with the pilot's own coins only: a Garage RESPEC refunds every level as real coins, so a
+    // catch-up-paid level would turn the duel bonus into spendable coins.
+    if (UPGRADE_BY_ID[id].exclusiveWith) return false;
     return !this.isMaxed(id) && this.bonus >= this.bonusCost(id);
   }
 

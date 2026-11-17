@@ -95,6 +95,11 @@ describe('Focus: shop rules', () => {
     const p = new Progression();
     p.data.coins = 0;
     const w = new DuelWallet(p, 1e6);
+    // Focus never comes out of the catch-up bonus (a RESPEC would refund it as real coins)...
+    expect(w.paysWithBonus('focusWeapon')).toBe(false);
+    expect(w.buy('focusWeapon')).toBe(false);
+    // ...only out of the pilot's own coins.
+    p.data.coins = 1e6;
     expect(w.buy('focusWeapon')).toBe(true);
     expect(w.focusLock('focusAbility')).toBe('focusWeapon');
     expect(w.canBuy('focusAbility')).toBe(false);
@@ -102,7 +107,7 @@ describe('Focus: shop rules', () => {
     const w2 = new DuelWallet(p, 1e6);
     w2.autoSpend({ focusAbility: 5 });
     expect(w2.level('focusAbility')).toBe(0);
-    expect(w2.level('focusWeapon')).toBe(0);
+    expect(w2.level('focusWeapon')).toBe(1); // the level bought above with own coins (saved)
   });
 });
 

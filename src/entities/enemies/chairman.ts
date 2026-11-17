@@ -535,6 +535,7 @@ export function chairmanDown(h: Host, e: Bot): boolean {
   h.clearTele(e);
   e.scripted = true;
   e.reflect = 0;
+  e.reflectPool = 0;
   e.windup = 0;
   e.glow = 0;
   e.jitter = 0;

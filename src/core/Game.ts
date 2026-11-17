@@ -123,6 +123,8 @@ export class Game {
    *  with (a retry restores earlier kills, already counted in totalKills). */
   private protocol = false;
   private protocolBase: ZoneDef = PROTOCOL_ZONE;
+  /** Coins spent (upgrades + gear) the current PROTOCOL scaling is built from: only ever goes up within a run. */
+  private protocolSpend = 0;
   private protocolCk: ProtocolCheckpoint | null = null;
   private protocolUses = 0;
   private protocolNavGraph: NavGraph | null = null;
@@ -577,7 +579,8 @@ export class Game {
     this.run = this.newRun();
     this.combo = 0;
     // Enemy HP / damage follow the coins spent on upgrades + gear (config/protocol.ts spendScale).
-    this.protocolBase = protocolZone(spendScale(protocolSpent(p)));
+    this.protocolSpend = protocolSpent(p);
+    this.protocolBase = protocolZone(spendScale(this.protocolSpend));
     ctx.zone = protocolWaveZone(this.protocolBase, round);
     this.refreshStats();
     this.clearArena();
@@ -629,6 +632,13 @@ export class Game {
    *  its spawn with its HP (Survival's switchBiome precedent). Runs while the shop is up. */
   private protocolRestructure(wave: number): void {
     const { ctx } = this;
+    // Re-read the spend each wave (never lower): coins held back or a Focus RESPEC'd before the run and bought back in
+    // the wave shop still count from the next wave on.
+    const spend = protocolSpent(ctx.progression);
+    if (spend > this.protocolSpend) {
+      this.protocolSpend = spend;
+      this.protocolBase = protocolZone(spendScale(spend));
+    }
     ctx.zone = protocolWaveZone(this.protocolBase, wave);
     this.protocolNav(wave);
     ctx.fx.clear();
