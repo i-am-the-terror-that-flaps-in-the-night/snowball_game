@@ -47,11 +47,12 @@ export const SPEND_DMG_MAX = 1.3;
 export const PROTOCOL_HP_CAP: Readonly<Record<ProtocolBoss, number>> = {
   frostbyte: 40000,
   bulldoza: 50000,
-  grinder: 55000,
+  grinder: 62000,
   twins: 70000,
-  donald: 65000,
+  donald: 75000,
   omega: 80000,
-  chairman: 90000,
+  // only a little above Ω: his moves, rallies and echoes make the same HP last longer (wave 7 ~60 s on the autopilot)
+  chairman: 82000,
 };
 export const WHITEOUT_HP_CAP = 100000;
 export const PROTOCOL_HP: Readonly<Record<ProtocolBoss, number>> = Object.fromEntries(

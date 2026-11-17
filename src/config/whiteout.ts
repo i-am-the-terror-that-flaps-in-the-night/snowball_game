@@ -48,9 +48,9 @@ export const WO = {
   /** Between staggers the eye opens for EYE_OPEN_T s after every EYE_CLOSED_T s closed (and during a glare). */
   EYE_CLOSED_T: 7,
   EYE_OPEN_T: 3.6,
-  /** The EYE's HP x THE CHAIRMAN's (same spend scaling): config/protocol.ts WHITEOUT_HP_CAP / PROTOCOL_HP_CAP.chairman,
+  /** The EYE's HP x THE CHAIRMAN's (same spend scaling): config/protocol.ts WHITEOUT_HP_CAP / PROTOCOL_HP_CAP.chairman (100k / 82k),
    *  so 100k at the spend cap, the run's biggest HP pool. */
-  EYE_HP_K: 100 / 90,
+  EYE_HP_K: 100 / 82,
   /** At this share of its max HP: THE AVALANCHE. The eye never goes lower: only the giant snowball finishes it. */
   AVALANCHE_AT: 0.25,
 
