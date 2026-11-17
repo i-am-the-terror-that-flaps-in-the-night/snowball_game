@@ -1,6 +1,9 @@
 // PROTOCOL C probe (stage-5 balance pass): an autopilot plays the seven-wave rush and THE WHITEOUT finale headless.
 //   node scripts/protocol-probe.mjs [--waves 1-8] [--plows classic,arsenal] [--tiers mid,unlock,high] [--runs 1]
 //                                   [--par 2] [--cap 400] [--out DIR] [--report-only]
+//                                   [--focus none|ability:5|weapon:5|main:5]  (Garage FOCUS level; several: comma list)
+//   Plows: classic, volt, brute, isotope, arsenal, revenant (PHANTOM). --focus main:N picks the Focus matching the
+//   plow's main damage (MAIN_FOCUS below); each focus setting is its own run.
 // Built on scripts/omega-probe.mjs (same autopilot, garage tiers read out of scripts/balance/sim.ts, deaths revived in
 // place and counted). It starts PROTOCOL C at the first wave of --waves (__game.startProtocol; 8 = the finale) and
 // plays on to the last (the shop is skipped, no purchases). In THE WHITEOUT the autopilot goes for the Storm Hearts,
@@ -25,6 +28,18 @@ const TIERS = opt('tiers', 'mid,unlock,high').split(',');
 const RUNS = Number(opt('runs', '1'));
 const PAR = Number(opt('par', '2'));
 const CAP = Number(opt('cap', '400'));
+/** The Focus upgrade matching each plow's main damage source (from the no-Focus probe's damage split: SPACE / passive /
+ *  ultimate -> Weapon Focus, E / F -> Ability Focus). */
+const MAIN_FOCUS = { classic: 'ability', volt: 'weapon', brute: 'weapon', isotope: 'weapon', arsenal: 'weapon', revenant: 'weapon' };
+const FOCI = opt('focus', 'none').split(',');
+/** 'none' | 'ability:5' | 'weapon:5' | 'main:5' -> { id: upgrade id or null, level, label } for a plow. */
+const focusFor = (spec, plow) => {
+  if (!spec || spec === 'none') return { id: null, level: 0, label: '-' };
+  const [kind0, lv] = spec.split(':');
+  const kind = kind0 === 'main' ? MAIN_FOCUS[plow] : kind0;
+  const level = Number(lv ?? 5);
+  return { id: kind === 'ability' ? 'focusAbility' : 'focusWeapon', level, label: `${kind} ${level}` };
+};
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = opt('out', resolve(root, 'protocol-probe-out'));
 mkdirSync(OUT, { recursive: true });
@@ -55,12 +70,12 @@ function loadRuns() {
 }
 function report() {
   const runs = loadRuns();
-  const lines = ['| tier | plow | spent | k.hp | max HP | waves: s (HP lost, deaths) | total s | echo sweep s | CHAIRMAN s | finale: hearts / staggers / avalanche s (bursts) | finale HP lost, deaths |', '|---|---|---|---|---|---|---|---|---|---|---|'];
+  const lines = ['| tier | plow | focus | spent | k.hp | max HP | waves: s (HP lost, deaths) | total s | echo sweep s | CHAIRMAN s | finale: hearts / staggers / avalanche s (bursts) | finale HP lost, deaths |', '|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of runs) {
     const w = r.rounds.map((x) => `w${x.wave} ${x.t}${x.timeout ? '!' : ''} (${x.hpLost}, ${x.deaths})`).join(' · ');
     const f = r.finale;
     const fin = f ? `${f.hearts ?? '-'} / ${f.staggers ?? '-'} / ${f.avalanche ?? '-'} (${f.bursts ?? '-'})${f.won ? '' : ' unfinished'}` : '-';
-    lines.push(`| ${r.tier} | ${r.plow} | ${r.spent} | ${r.k?.toFixed?.(2)} | ${r.stats?.maxHp} | ${w} | ${r.total} | ${r1(r.echoSweep)} | ${r1(r.chairman)} | ${fin} | ${f ? `${f.hpLost}, ${f.deaths}` : '-'} |`);
+    lines.push(`| ${r.tier} | ${r.plow} | ${r.focus ?? '-'} | ${r.spent} | ${r.k?.toFixed?.(2)} | ${r.stats?.maxHp} | ${w} | ${r.total} | ${r1(r.echoSweep)} | ${r1(r.chairman)} | ${fin} | ${f ? `${f.hpLost}, ${f.deaths}` : '-'} |`);
   }
   writeFileSync(`${OUT}/summary.md`, lines.join('\n') + '\n');
   console.log(lines.join('\n'));
@@ -72,7 +87,7 @@ if (flag('report-only')) {
 
 /* ------------------------------------------------------------------ page-side code */
 // Runs in the page: set the garage for (plow, tier), start the arena, wire the counters and the autopilot.
-async function pageSetup({ w0, w1, plow, tier, tiers, cap }) {
+async function pageSetup({ w0, w1, plow, tier, tiers, cap, focus }) {
   const g = window.__game, c = g.ctx, pr = c.progression;
   g.setLoop(false);
   g.impact.enabled = false;
@@ -83,6 +98,7 @@ async function pageSetup({ w0, w1, plow, tier, tiers, cap }) {
   const ups = {};
   for (const id of tiers.CORE) if (t.core) ups[id] = t.core;
   for (const id of tiers.LINE[plow]) if (t.line) ups[id] = t.line;
+  if (focus?.id) ups[focus.id] = focus.level;
   const { GEAR_BY_ID } = await import('/src/config/gear.ts');
   let detour = null;
   try { ({ detour } = await import('/src/world/omega/nav.ts')); } catch { /* no detour helper */ }
@@ -95,7 +111,7 @@ async function pageSetup({ w0, w1, plow, tier, tiers, cap }) {
   let levelsMatch = null;
   try {
     const sim = await import('/scripts/balance/sim.ts');
-    const want = sim.levelsFor(plow, tier);
+    const want = { ...sim.levelsFor(plow, tier), ...(focus?.id ? { [focus.id]: focus.level } : {}) };
     const have = pr.effectiveLevels();
     const keys = new Set([...Object.keys(want), ...Object.keys(have)].filter((k) => (want[k] ?? 0) || (have[k] ?? 0)));
     levelsMatch = [...keys].every((k) => (want[k] ?? 0) === (have[k] ?? 0));
@@ -137,6 +153,8 @@ async function pageSetup({ w0, w1, plow, tier, tiers, cap }) {
     if (plow === 'volt') return 14 + 2.5 * hopR();
     if (plow === 'brute') return 1.6 + 4 * Math.max(1, s.maxBallRadius / 1.2) + (s.fistReach || 0);
     if (plow === 'isotope') return 8.5 + 2 * hopR() + (s.sprayReach || 0);
+    // PHANTOM's REAP: a 140-degree sweep out to reapReach from 1.2 m ahead of the hull (combat/revenant.ts REAP_FWD).
+    if (plow === 'revenant') return (s.reapReach || 7) + 1.2;
     return 0;
   };
   const KIT_REACH = kitReach() > 0;
@@ -163,6 +181,9 @@ async function pageSetup({ w0, w1, plow, tier, tiers, cap }) {
   wrap(cb.isotope, 'armNuke', 'ult');
   wrap(cb.isotope, 'updateAura', 'passive');
   wrap(cb.isotope, 'updateRads', 'passive');
+  wrap(cb.revenant, 'updateGrasp', 'F');
+  wrap(cb.revenant, 'secondary', 'E');
+  wrap(cb.revenant, 'update', 'passive');
   wrap(cb.arsenal, 'updateGuns', 'laser');
   wrap(cb.arsenal, 'updateLaser', 'lance');
   wrap(cb.arsenal, 'updateBurst', 'burst');
@@ -250,7 +271,7 @@ async function pageSetup({ w0, w1, plow, tier, tiers, cap }) {
     const dReach = isArs ? laserReach() : 0;
     const fx = Math.sin(p.heading), fz = Math.cos(p.heading), halfW = isArs ? laserHalfW() : 0;
     let best = null, bScore = 1e9, bd = 1e9, near = 0, inF = 0, anyIn = 0, gunIn = 0, laserIn = 0, bossNear = 0;
-    const fR = plow === 'volt' ? s.clapRadius * 0.8 : plow === 'brute' ? s.poundRadius * 0.7 : plow === 'isotope' ? s.meltRadius * 0.7 : plow === 'arsenal' ? 14 : s.flameRange * 0.9;
+    const fR = plow === 'volt' ? s.clapRadius * 0.8 : plow === 'brute' ? s.poundRadius * 0.7 : plow === 'isotope' ? s.meltRadius * 0.7 : plow === 'arsenal' ? 14 : plow === 'revenant' ? (s.graspRange || 20) * 0.7 : s.flameRange * 0.9;
     const ranged = plow === 'arsenal' || plow === 'volt' || plow === 'isotope';
     for (const e of en.list) {
       if (!e.alive) continue;
@@ -410,6 +431,12 @@ async function pageSetup({ w0, w1, plow, tier, tiers, cap }) {
       return;
     }
     if (usedF) return;
+    // PHANTOM: PHASE straight through the target ahead (Haunts it, souls for SOUL GRASP; MANIFEST bursts after).
+    if (plow === 'revenant') {
+      if (p.whirlReady >= 1 && sameT && !routed && bd < 9 && Math.abs(bdiff) < 0.35) tap('KeyE');
+      else if (p.dashReady >= 1 && !routed && sameT && bd > 9 && bd < 16 && Math.abs(diffA) < 0.15) tap('ShiftLeft');
+      return;
+    }
     if (p.heldBallRadius >= 0.5 && sameT && bd < 5.5 && Math.abs(bdiff) < 0.45) tap('Space');
     else if (p.dashReady >= 1 && !routed && sameT && bd > 6 && bd < 14 && Math.abs(diffA) < 0.15) tap('ShiftLeft');
     else if (p.whirlReady >= 1 && near >= 1 && bd < 5) tap('KeyE');
@@ -565,9 +592,12 @@ const jobs = [];
 for (let run = 0; run < RUNS; run++)
   for (const tier of TIERS)
     for (const plow of PLOWS) {
-      const have = done.filter((r) => r.tier === tier && r.plow === plow && r.w0 === W0).length;
-      if (have > run) continue;
-      jobs.push({ tier, plow, run });
+      for (const spec of FOCI) {
+        const focus = focusFor(spec, plow);
+        const have = done.filter((r) => r.tier === tier && r.plow === plow && r.w0 === W0 && (r.focus ?? '-') === focus.label).length;
+        if (have > run) continue;
+        jobs.push({ tier, plow, run, focus });
+      }
     }
 console.log(`protocol-probe: waves ${W0}-${W1}, ${jobs.length} runs, par ${PAR}, cap ${CAP}s, out ${OUT}`);
 
@@ -582,7 +612,7 @@ async function runOne(job) {
   try {
     await page.goto(`http://localhost:${port}/`, { waitUntil: 'load', timeout: 120000 });
     await page.waitForFunction(() => !!window.__game, null, { timeout: 120000 });
-    const setup = await page.evaluate(pageSetup, { w0: W0, w1: W1, plow: job.plow, tier: job.tier, tiers: TIER_SRC, cap: CAP });
+    const setup = await page.evaluate(pageSetup, { w0: W0, w1: W1, plow: job.plow, tier: job.tier, tiers: TIER_SRC, cap: CAP, focus: job.focus });
     if (setup.levelsMatch !== true) console.log(`  WARN levels ${job.plow}/${job.tier}: ${setup.levelsMatch}`);
     let st;
     const maxChunks = Math.ceil((CAP * 10 * 60 + 4000) / 1200);
@@ -591,10 +621,10 @@ async function runOne(job) {
       if (st.done) break;
     }
     const res = await page.evaluate(() => window.__result());
-    const rec = { w0: W0, w1: W1, tier: job.tier, plow: job.plow, run: job.run, zone: setup.zone, stats: setup.stats, levelsMatch: setup.levelsMatch, finished: !!st?.done, wall: Math.round((Date.now() - t0) / 1000), ...res, errors: [...res.errors, ...errors.slice(0, 10)] };
+    const rec = { w0: W0, w1: W1, tier: job.tier, plow: job.plow, focus: job.focus.label, run: job.run, zone: setup.zone, stats: setup.stats, levelsMatch: setup.levelsMatch, finished: !!st?.done, wall: Math.round((Date.now() - t0) / 1000), ...res, errors: [...res.errors, ...errors.slice(0, 10)] };
     appendFileSync(RUNS_FILE, JSON.stringify(rec) + '\n');
     const fin = rec.finale ? ` finale ${rec.finale.won ? 'WON' : 'unfinished'} hearts ${rec.finale.hearts}s staggers ${rec.finale.staggers} (${rec.finale.staggerT}s) avalanche ${rec.finale.avalanche}s bursts ${rec.finale.bursts}` : '';
-    console.log(`RUN w${W0}-${W1} ${job.tier} ${job.plow} #${job.run + 1} (spent ${rec.spent}, k ${rec.k.toFixed(2)}, ${rec.stats.maxHp} HP): total ${rec.total}s [${rec.rounds.map((r) => `w${r.wave} ${r.t}${r.timeout ? '!' : ''}/-${r.hpLost}${r.deaths ? '/x' + r.deaths : ''}`).join(' ')}] sweep ${rec.echoSweep} chair ${rec.chairman}${fin} wall ${rec.wall}s${rec.errors.length ? ' ERR ' + rec.errors[0].slice(0, 120) : ''}`);
+    console.log(`RUN w${W0}-${W1} ${job.tier} ${job.plow} [focus ${job.focus.label}] #${job.run + 1} (spent ${rec.spent}, k ${rec.k.toFixed(2)}, ${rec.stats.maxHp} HP): total ${rec.total}s [${rec.rounds.map((r) => `w${r.wave} ${r.t}${r.timeout ? '!' : ''}/-${r.hpLost}${r.deaths ? '/x' + r.deaths : ''}`).join(' ')}] sweep ${rec.echoSweep} chair ${rec.chairman}${fin} wall ${rec.wall}s${rec.errors.length ? ' ERR ' + rec.errors[0].slice(0, 120) : ''}`);
     return true;
   } finally {
     await ctx.close().catch(() => {});
