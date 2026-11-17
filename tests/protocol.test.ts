@@ -732,3 +732,19 @@ describe('PROTOCOL C scales with coins spent', () => {
     expect(eye).toBeCloseTo(WHITEOUT_HP_CAP, -1);
   });
 });
+
+describe('PROTOCOL C spend: Focus counts double', () => {
+  it('protocolSpent weighs Focus coins by FOCUS_SPEND_WEIGHT, other upgrades once', async () => {
+    const { Progression } = await import('../src/core/Progression');
+    const { protocolSpent, FOCUS_SPEND_WEIGHT } = await import('../src/meta/protocol');
+    const { UPGRADE_BY_ID, upgradeCost } = await import('../src/config/upgrades');
+    const p = new Progression();
+    const base = protocolSpent(p);
+    p.data.upgrades.focusWeapon = 2;
+    const fw = UPGRADE_BY_ID.focusWeapon;
+    expect(protocolSpent(p) - base).toBe(Math.round((upgradeCost(fw, 0) + upgradeCost(fw, 1)) * FOCUS_SPEND_WEIGHT));
+    p.data.upgrades.armor = (p.data.upgrades.armor ?? 0) + 1;
+    const ar = UPGRADE_BY_ID.armor;
+    expect(protocolSpent(p) - base).toBeCloseTo((upgradeCost(fw, 0) + upgradeCost(fw, 1)) * FOCUS_SPEND_WEIGHT + upgradeCost(ar, (p.data.upgrades.armor as number) - 1), -1);
+  });
+});

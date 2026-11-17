@@ -36,7 +36,7 @@ const _r = new THREE.Vector3();
  *   passive SCRAP MAGNET wreck scrap orbits the vehicle as blades. */
 
 /** Every ARSENAL weapon hits bots this many times harder outside the Duel (the vehicle's duel balance is unchanged). */
-export const PVE_MULT = 1.5;
+export const PVE_MULT = 1.4;
 /** SCRAP MAGNET (passive): field tick (s); wrecks within SCRAP_PULL m shed a shard that flies in over SCRAP_FLY s and
  *  orbits SCRAP_ORBIT m out (SCRAP_SPIN rad/s) for SCRAP_LIFE s; a shard hits bots within SCRAP_HIT_R m of it, each
  *  bot at most every SCRAP_HIT_CD s. SCRAP_POOL = the most shards any level holds (FX.scrapMax cap). */

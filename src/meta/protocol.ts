@@ -145,11 +145,16 @@ export function formatRunTime(t: number): string {
 
 /** Coins the pilot has spent getting stronger: every upgrade level bought and every gear item level (PROTOCOL C's
  *  enemy scaling, config/protocol.ts spendScale). Cosmetics and plow unlocks don't count. */
+/** PROTOCOL C spend scaling counts coins put into a Focus upgrade this many times. */
+export const FOCUS_SPEND_WEIGHT = 2;
+
 export function protocolSpent(p: Progression): number {
   let t = 0;
   for (const u of UPGRADES) {
     const n = Math.min(p.level(u.id), u.maxLevel, 999);
-    for (let l = 0; l < n; l++) t += upgradeCost(u, l);
+    // FOCUS counts double: it is cheap for how much it speeds a run up (protocol probe: -10..35% run time at level 5).
+    const w = u.exclusiveWith ? FOCUS_SPEND_WEIGHT : 1;
+    for (let l = 0; l < n; l++) t += upgradeCost(u, l) * w;
   }
   for (const [id, lvl] of Object.entries(p.data.gear?.owned ?? {})) {
     const def = GEAR_BY_ID[id];
