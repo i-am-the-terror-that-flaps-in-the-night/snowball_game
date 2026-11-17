@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ENEMIES, type EnemyType } from '../../config/enemies';
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { boltHead, chamferBox, chamferWedge } from '../../render/kit/shapes';
+import { lathe, moldboard, profileSolid, roundBlock, stadiumBelt } from '../../render/kit/curves';
 import { applyWear, copyWear, type WearProfile } from '../../render/kit/wear';
 
 /* Procedural toy-robot bot models. Every model faces local +Z, ground at y = 0.
@@ -25,7 +26,7 @@ let uncached = false;
 function mat(key: string, color: number, o: THREE.MeshStandardMaterialParameters = {}, inst?: InstRole): THREE.MeshStandardMaterial {
   let m = uncached ? undefined : MATS.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1, flatShading: true, ...o });
+    m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1, flatShading: false, ...o });
     if (inst) m.userData.inst = inst;
     const w = wearFor(key, m, inst);
     if (w) applyWear(m, w);
@@ -364,6 +365,26 @@ function treads(base: Part, wheels: Wheels, x: number, len: number, h: number, w
   }
 }
 
+/** RESHAPE: two track units with ROUND ends (stadium belts), a raised guard rail and rolling road wheels. */
+function roundTreads(base: Part, wheels: Wheels, x: number, len: number, h: number, w: number, nWheels: number, hub: THREE.Material): void {
+  for (const sx of [-1, 1]) {
+    base.add(stadiumBelt(len, h, w), M.rubber(), [sx * x, 0, 0]);
+    // cleats along the top run only (the round ends stay clean)
+    const n = Math.max(3, Math.round((len - h) / 0.2));
+    for (let i = 0; i < n; i++) base.add(G.box(), M.cleat(), [sx * x, h + 0.02, -(len - h) / 2 + ((i + 0.5) * (len - h)) / n], [w * 1.02, 0.05, ((len - h) / n) * 0.5]);
+    const wr = h * 0.34;
+    for (let j = 0; j < nWheels; j++) {
+      const z = -len / 2 + h * 0.5 + ((len - h) * (j + 0.5)) / nWheels;
+      wheels.add(sx * (x + w / 2 + 0.04), h * 0.48, z, wr, 0.1, hub, M.steel());
+    }
+    // drive sprocket + idler hubs at the round ends
+    for (const z of [-(len - h) / 2, (len - h) / 2]) b2(base, sx * (x + w / 2 + 0.02), h / 2, z, h * 0.3);
+  }
+}
+function b2(base: Part, x: number, y: number, z: number, r: number): void {
+  base.add(G.cyl(12), M.cleat(), [x, y, z], [r, 0.06, r], [0, 0, PI / 2]);
+}
+
 function stack(b: Part, stacks: number[], x: number, y0: number, z: number, r: number, h: number, body: THREE.Material, cap: THREE.Material): void {
   b.add(G.cyl(10), body, [x, y0 + h / 2, z], [r, h, r]);
   b.add(G.cyl(10), cap, [x, y0 + h + 0.06, z], [r * 1.3, 0.14, r * 1.3]);
@@ -386,43 +407,46 @@ function scrapper(t: EnemyType = 'scrapper'): Tpl {
   const base = new Part(root);
   const stacks: number[] = [];
   const wheels = new Wheels();
-  treads(base, wheels, 0.56, 1.45, 0.42, 0.34, 3, accent(t));
+  roundTreads(base, wheels, 0.56, 1.5, 0.44, 0.34, 3, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  kw(b, paint(t), [0, 0.66, -0.05], [0.86, 0.5, 1.35], 0.42);
-  kb(b, M.dark(), [0, 0.42, -0.05], [0.8, 0.12, 1.3], ZERO, 0.03);
-  // red ram nose with steel spikes
-  kw(b, accent(t), [0, 0.42, 0.72], [0.98, 0.26, 0.34], 0.5, ZERO, 0.035);
-  // panel seams (a rear shut line + a belt line kept behind the sloped nose), rear deck vent, tail lights
+  const P = paint(t);
+  const A = accent(t);
+  // RESHAPE: one rounded shell (side profile: a rounded tail, a domed back deck, a long curved slope to the nose)
+  b.add(profileSolid('scrapperShell', [
+    [-0.66, 0.4], [0.5, 0.4], { p: [0.62, 0.58], q: [0.66, 0.42] }, { p: [-0.05, 0.92], q: [0.35, 0.92] },
+    [-0.42, 0.92], { p: [-0.66, 0.66], q: [-0.66, 0.92] },
+  ], 0.86, 0.13), P, [0, 0, -0.05]);
+  // dark under-belly skirt between the tracks
+  b.add(roundBlock(0.78, 0.12, 1.3, 0.05), M.dark(), [0, 0.38, -0.05]);
+  // the ram: a curved red scoop, three chrome spikes through it
+  b.add(moldboard(1.02, 0.34, 0.14, 0.07), A, [0, 0.26, 0.7]);
+  for (const x of [-0.28, 0, 0.28]) b.add(G.cone(8), M.chrome(), [x, 0.4, 0.98], [0.07, 0.28, 0.07], [PI / 2, 0, 0]);
+  // curved track fenders (accent), hydraulic rams body -> scoop
   for (const sx of [-1, 1]) {
-    kb(b, M.black(), [sx * 0.432, 0.68, -0.48], [0.012, 0.36, 0.018]);
-    kb(b, eyeMat(t, t === 'slushling' ? 0x3fd1a8 : 0xff3b30), [sx * 0.3, 0.62, -0.735], [0.16, 0.05, 0.02]);
-  }
-  vent(b, M.black(), [0, 0.915, -0.62], 0.46, 0.1, 3, [-PI / 2, 0, 0]);
-  // BOLD PASS: armour skirts over the upper treads (two overlapping plates a side), hydraulic rams from the body to
-  // the ram nose, a battery pack on the rear deck and a steel turret ring
-  for (const sx of [-1, 1]) {
-    kb(b, accent(t), [sx * 0.6, 0.5, 0.18], [0.07, 0.2, 0.62], [0, 0, sx * 0.12], 0.025);
-    kb(b, accent(t), [sx * 0.62, 0.53, -0.38], [0.07, 0.22, 0.6], [0, 0, sx * 0.12], 0.025);
+    b.add(profileSolid('scrapperFender', [
+      [-0.74, 0.5], { p: [-0.5, 0.64], q: [-0.7, 0.64] }, [0.45, 0.64], { p: [0.74, 0.46], q: [0.7, 0.64] }, [0.7, 0.44],
+      { p: [0.42, 0.58], q: [0.66, 0.58] }, [-0.48, 0.58], { p: [-0.7, 0.46], q: [-0.66, 0.58] },
+    ], 0.36, 0.04), A, [sx * 0.56, 0, 0]);
     b.add(G.cyl(8), M.dark(), [sx * 0.3, 0.5, 0.45], [0.05, 0.3, 0.05], [PI / 2 + 0.15, 0, 0]);
     b.add(G.cyl(8), M.chrome(), [sx * 0.3, 0.47, 0.62], [0.03, 0.2, 0.03], [PI / 2 + 0.15, 0, 0]);
+    b.add(roundBlock(0.16, 0.05, 0.03, 0.012), eyeMat(t, t === 'slushling' ? 0x3fd1a8 : 0xff3b30), [sx * 0.28, 0.64, -0.72]);
   }
-  kb(b, M.dark(), [0.17, 0.98, -0.6], [0.3, 0.12, 0.22], ZERO, 0.02);
-  b.add(G.cyl(14), M.steel(), [0, 0.87, -0.22], [0.36, 0.04, 0.36]);
-  if (t === 'rallybot') for (const sx of [-1, 1]) kb(b, M.gold(), [sx * 0.435, 0.8, -0.05], [0.02, 0.06, 1.2]);
-  for (const x of [-0.28, 0, 0.28]) b.add(G.cone(6), M.chrome(), [x, 0.43, 0.98], [0.07, 0.26, 0.07], [PI / 2, 0, 0]);
-  // hazard cheeks
-  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.44, 0.66, -0.2], [0.03, 0.24, 0.7], ZERO, [2, 0.6]);
-  // single eye turret
-  b.add(G.cyl(10), paint(t), [0, 0.97, -0.22], [0.3, 0.22, 0.3]);
-  b.add(G.cyl(12), M.black(), [0, 0.98, 0.04], [0.19, 0.12, 0.19], [PI / 2, 0, 0]);
+  // hazard cheeks on the shell flanks
+  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.436, 0.62, -0.25], [0.02, 0.18, 0.5], ZERO, [1.6, 0.5]);
+  vent(b, M.black(), [0, 0.925, -0.3], 0.4, 0.14, 3, [-PI / 2, 0, 0]);
+  if (t === 'rallybot') for (const sx of [-1, 1]) kb(b, M.gold(), [sx * 0.432, 0.74, -0.3], [0.02, 0.05, 0.62]);
+  // domed eye turret on a steel ring (lathe), the eye in a hooded socket
+  b.add(lathe('scrapperTurretRing', [[0.36, 0], [0.36, 0.04], [0.3, 0.06]], 20), M.steel(), [0, 0.9, -0.22]);
+  b.add(lathe('scrapperTurret', [[0.3, 0], [0.3, 0.08], [0.27, 0.2], [0.17, 0.3], [0, 0.33]], 20), P, [0, 0.92, -0.22]);
+  b.add(G.cyl(14), M.black(), [0, 1.0, 0.03], [0.19, 0.14, 0.19], [PI / 2, 0, 0]);
   const eye = t === 'slushling' ? 0x3fd1a8 : 0xff3b30;
-  b.add(G.sph(1), eyeMat(t, eye), [0, 0.98, 0.1], [0.13, 0.13, 0.08]);
+  b.add(G.sph(2), eyeMat(t, eye), [0, 1.0, 0.1], [0.13, 0.13, 0.08]);
   if (t === 'rallybot') {
     // red rally cap on the eye turret (MAGA front panel + brim)
-    b.add(G.taper(0.82, 12), M.capRed(), [0, 1.2, -0.25], [0.36, 0.26, 0.36]);
-    b.add(G.box(), M.maga(), [0, 1.22, 0.1], [0.5, 0.22, 0.03], [-0.3, 0, 0]);
-    kb(b, M.capRed(), [0, 1.08, 0.22], [0.52, 0.04, 0.34], [0.1, 0, 0]);
+    b.add(G.taper(0.82, 12), M.capRed(), [0, 1.27, -0.25], [0.36, 0.26, 0.36]);
+    b.add(G.box(), M.maga(), [0, 1.29, 0.1], [0.5, 0.22, 0.03], [-0.3, 0, 0]);
+    kb(b, M.capRed(), [0, 1.15, 0.22], [0.52, 0.04, 0.34], [0.1, 0, 0]);
     // a little flag on the antenna
     b.add(G.cyl(6), M.black(), [0.26, 1.2, -0.5], [0.02, 0.6, 0.02]);
     kb(b, M.white(), [0.38, 1.42, -0.5], [0.24, 0.16, 0.01]);
@@ -430,10 +454,10 @@ function scrapper(t: EnemyType = 'scrapper'): Tpl {
     kb(b, M.capRed(), [0.38, 1.39, -0.5], [0.24, 0.04, 0.015]);
     kb(b, M.flagBlue(), [0.31, 1.46, -0.5], [0.1, 0.08, 0.02]);
   } else {
-    kb(b, M.black(), [0, 1.12, 0.02], [0.36, 0.06, 0.12], [0.25, 0, 0]);
-    // antenna
+    // a brow over the eye, antenna with a beacon
+    b.add(profileSolid('scrapperBrow', [[-0.05, 0], [0.12, 0], { p: [0.16, 0.06], q: [0.16, 0] }, [-0.05, 0.06]], 0.36, 0.02), M.black(), [0, 1.12, -0.02]);
     b.add(G.cyl(6), M.black(), [0.26, 1.2, -0.5], [0.02, 0.5, 0.02]);
-    b.add(G.sph(0), eyeMat(t, eye), [0.26, 1.46, -0.5], [0.05, 0.05, 0.05]);
+    b.add(G.sph(1), eyeMat(t, eye), [0.26, 1.46, -0.5], [0.05, 0.05, 0.05]);
   }
   // exhaust
   stack(b, stacks, -0.24, 0.85, -0.55, 0.06, 0.24, M.steel(), M.dark());
