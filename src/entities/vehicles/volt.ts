@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
-import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
+import { addMesh, boltRow, kitBox, PLOW_KIT_K, type VehicleBuild, type VehicleBuildIn } from './types';
 
 /** What the Plow feeds the TESLA ROVER rig every frame (VoltVehicleParts.update). */
 export interface VoltRigState {
@@ -150,8 +150,24 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
 
   /* ---- Platform: graphite tub over the chassis, the pale composite deck on top (overhanging the wheels). */
   add(chassis, mats.dark, 0, 0.62, 0.05);
-  add(slab(1.5, 0.34, 3.85, 0.26), mats.trim, 0, 0.84, -0.05);
-  add(slab(1.9, 0.22, 3.6, 0.36), mats.paint, 0, 1.11, -0.07);
+  // (Art pass: the big slabs take the vehicles' strong edge bevel.)
+  add(slab(1.5, 0.34, 3.85, 0.26, 0.03 * PLOW_KIT_K), mats.trim, 0, 0.84, -0.05);
+  add(slab(1.9, 0.22, 3.6, 0.36, 0.03 * PLOW_KIT_K), mats.paint, 0, 1.11, -0.07);
+  // Graphite wheel spats over the outer half of each wheel (a light line on the lip), and a battery pod on each
+  // tub flank between the wheels, under the deck lip, with a lit seam and bolted end caps.
+  for (const sx of [-1, 1]) {
+    for (const z of [1.45, -1.25]) {
+      const spat = new THREE.Group();
+      spat.position.set(sx * 1.05, 1.02, z);
+      spat.rotation.z = -sx * 0.32; // falls away over the tyre's shoulder
+      group.add(spat);
+      addMesh(kitBox(0.3, 0.06, 1.02, 0.02), graphite, 0, 0, 0, spat);
+      addMesh(new THREE.BoxGeometry(0.012, 0.02, 0.9), mats.coil, sx * 0.153, 0, 0, spat, false);
+    }
+    add(kitBox(0.14, 0.22, 1.2, 0.03), graphite, sx * 0.8, 0.8, 0.1);
+    add(new THREE.BoxGeometry(0.012, 0.025, 1.04), mats.coil, sx * 0.872, 0.82, 0.1, false);
+    for (const z of [-0.47, 0.67]) boltRow(group, satin, [sx * 0.874, 0.74, z], [sx * 0.874, 0.86, z], 2, [0, 0, -sx * Math.PI / 2], 0.022, true);
+  }
   // Graphite inlay down the deck spine (front half) with a light line in it.
   add(slab(0.5, 0.02, 0.5, 0.12, 0.006), graphite, 0, 1.226, 1.55);
   add(new THREE.BoxGeometry(0.03, 0.012, 0.42), mats.coil, 0, 1.24, 1.55, false);
@@ -183,7 +199,7 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
   }
 
   /* ---- Sensor head (the rover's face): a chamfered pod with a dark visor band and a scanner light. */
-  add(slab(0.84, 0.3, 0.55, 0.14), mats.paint, 0, 1.35, 1.0);
+  add(slab(0.84, 0.3, 0.55, 0.14, 0.03 * PLOW_KIT_K), mats.paint, 0, 1.35, 1.0);
   add(slab(0.74, 0.11, 0.06, 0.03, 0.012), visorMat, 0, 1.37, 1.262);
   add(new THREE.BoxGeometry(0.5, 0.018, 0.02), mats.coil, 0, 1.37, 1.296, false);
   for (const x of [-0.27, 0.27]) add(new THREE.BoxGeometry(0.08, 0.04, 0.02), mats.head, x, 1.37, 1.296, false);
@@ -224,7 +240,7 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
   }
 
   /* ---- Rear: the HV core module (light-slatted top, side pods), feeding the tower through two lit conduits. */
-  add(slab(1.2, 0.3, 0.38, 0.1), mats.trim, 0, 1.37, -1.64);
+  add(slab(1.2, 0.3, 0.38, 0.1, 0.03 * PLOW_KIT_K), mats.trim, 0, 1.37, -1.64);
   for (let i = 0; i < 5; i++) add(new THREE.BoxGeometry(0.035, 0.012, 0.26), mats.coil, -0.32 + i * 0.16, 1.526, -1.64, false);
   add(atlasUV(new THREE.PlaneGeometry(0.44, 0.11), LBL.core), labelMat, 0, 1.37, -1.833, false).rotation.y = Math.PI;
   for (const sx of [-1, 1]) {
@@ -248,6 +264,7 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
   /* ---- Emitter prongs on the deck corners: a graphite pad, two satin posts with tapered prongs facing each other. */
   for (const [x, z] of GAPS) {
     add(slab(0.18, 0.03, 0.32, 0.05, 0.01), graphite, x, 1.235, z);
+    boltRow(group, satin, [x - 0.066, 1.252, z], [x + 0.066, 1.252, z], 2, [0, 0, 0], 0.018, true);
     add(new THREE.BoxGeometry(0.1, 0.008, 0.02), mats.coil, x, 1.252, z, false);
     for (const s of [-1, 1]) {
       add(facet(new THREE.CylinderGeometry(0.025, 0.04, 0.2, 6)), satin, x, 1.34, z + s * 0.12);

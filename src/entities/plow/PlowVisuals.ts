@@ -120,6 +120,8 @@ export abstract class PlowVisuals extends PlowBase {
     // Paint pattern (Hostile Takeover's gold pinstripes): the shader patch goes in the first time a patterned paint is
     // worn, then a uniform switches it on / off.
     if (p.pattern || this.pin) (this.pin ??= installPinstripe(this.paintMat, this.body)).set(p.pattern === 'pinstripe' ? (p.patternColor ?? 0xd9ad3c) : null);
+    // Wear layer strengths (plow/plowWear.ts): a mirror finish keeps almost clean.
+    this.wear.setPaint(!!p.mirror);
     this.paintBase.setHex(p.body ?? f.body);
     this.bedBase.setHex(p.trim ?? f.trim);
     // ARSENAL's factory finish is gunmetal: semi-metallic panels that pick up the sky (env map) instead of going black.
