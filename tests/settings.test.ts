@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('settings', () => {
   it('defaults when nothing is stored', async () => {
-    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true, timeOfDay: 'day' });
+    expect(await loadWith(null)).toEqual({ master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true, timeOfDay: 'day', perfHud: false });
   });
 
   it('keeps a valid speed limiter and the driving toggles, rejects odd limiter values', async () => {
@@ -98,6 +98,7 @@ describe('quality presets', () => {
     expect(preset('high')).toEqual({
       pixelRatioCap: 2, brawlPixelRatioCap: 1.5, shadows: true, shadowMapSize: 2048, brawlShadowMapSize: 1024, bloom: true,
       hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1, holoBackfaces: true,
+      detail: 'high', ssao: true,
     });
     // Old formula: min(dpr, brawl ? 1.5 : 2).
     for (const dpr of [0.75, 1, 1.25, 1.5, 2, 3]) for (const b of [false, true]) expect(pixelRatioFor(preset('high'), dpr, b)).toBe(Math.min(dpr, b ? 1.5 : 2));
@@ -105,7 +106,7 @@ describe('quality presets', () => {
 
   it("preset('medium') is HIGH with 1024 shadows, no bloom and a 1.5x cap", async () => {
     const { preset } = await import('../src/core/settings');
-    expect(preset('medium')).toEqual({ ...preset('high'), pixelRatioCap: 1.5, shadowMapSize: 1024, bloom: false });
+    expect(preset('medium')).toEqual({ ...preset('high'), pixelRatioCap: 1.5, shadowMapSize: 1024, bloom: false, detail: 'medium', ssao: false });
   });
 
   it("preset('low') cuts every lever", async () => {
@@ -123,6 +124,22 @@ describe('quality presets', () => {
     expect(lo.dropHaze).toBe(true);
     expect(lo.crowdFraction).toBeLessThan(hi.crowdFraction);
     expect(lo.holoBackfaces).toBe(false);
+    expect(lo.detail).toBe('low');
+    expect(lo.ssao).toBe(false);
+  });
+
+  it('FrameWindow keeps a rolling median / percentile of the last frames', async () => {
+    const { FrameWindow } = await import('../src/core/settings');
+    const w = new FrameWindow(5);
+    const out = { median: 0, high: 0 };
+    expect(Number.isNaN(w.stats(out).median)).toBe(true);
+    for (const ms of [16, 17, 15, 40, 16]) w.push(ms);
+    expect(w.stats(out, 0.8)).toEqual({ median: 16, high: 40 });
+    for (const ms of [10, 10, 10]) w.push(ms); // oldest three (16, 17, 15) roll out
+    expect(w.count).toBe(5);
+    expect(w.stats(out).median).toBe(10);
+    w.reset();
+    expect(w.count).toBe(0);
   });
 
   it('scales particle counts exactly at 1 and never to zero', async () => {

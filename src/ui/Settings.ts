@@ -37,6 +37,7 @@ export class SettingsMenu {
   private qualityBtns = new Map<Quality, HTMLButtonElement>();
   private flashBtns = new Map<boolean, HTMLButtonElement>();
   private bloomBtns = new Map<boolean, HTMLButtonElement>();
+  private perfBtns = new Map<boolean, HTMLButtonElement>();
   private ultCamBtns = new Map<boolean, HTMLButtonElement>();
   private todBtns = new Map<TimeOfDay, HTMLButtonElement>();
   private limitBtns = new Map<number, HTMLButtonElement>();
@@ -193,6 +194,17 @@ export class SettingsMenu {
       }, bSeg));
     }
 
+    const pRow = el('div', 'ss-set-row', undefined, vid);
+    el('span', 'ss-set-label', 'Performance readout', pRow);
+    const pSeg = el('div', 'ss-set-seg', undefined, pRow);
+    for (const [on, label] of [[false, 'OFF'], [true, 'ON · FPS / draws']] as [boolean, string][]) {
+      this.perfBtns.set(on, this.btn(label, 'ss-ice ss-small', () => {
+        settings.perfHud = on;
+        saveSettings();
+        this.refresh();
+      }, pSeg));
+    }
+
     const fRow = el('div', 'ss-set-row', undefined, vid);
     el('span', 'ss-set-label', 'Flashes', fRow);
     const fSeg = el('div', 'ss-set-seg', undefined, fRow);
@@ -311,6 +323,7 @@ export class SettingsMenu {
     this.qualityBtns.get('auto')!.textContent = settings.quality === 'auto' ? qualityLabel() : 'AUTO';
     for (const [on, b] of this.flashBtns) b.classList.toggle('ss-set-on', settings.reduceFlash === on);
     for (const [on, b] of this.bloomBtns) b.classList.toggle('ss-set-on', settings.bloom === on);
+    for (const [on, b] of this.perfBtns) b.classList.toggle('ss-set-on', settings.perfHud === on);
     for (const [t, b] of this.todBtns) b.classList.toggle('ss-set-on', settings.timeOfDay === t);
     for (const [on, b] of this.ultCamBtns) b.classList.toggle('ss-set-on', settings.ultCam === on);
     for (const [v, b] of this.limitBtns) b.classList.toggle('ss-set-on', settings.speedLimit === v);

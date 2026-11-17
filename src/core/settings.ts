@@ -12,6 +12,11 @@ export type Quality = 'low' | 'medium' | 'high' | 'auto';
 export type QualityTier = Exclude<Quality, 'auto'>;
 export const QUALITY_TIERS: readonly QualityTier[] = ['low', 'medium', 'high'];
 
+/** Model detail a tier asks for (art pass, docs/art-pass.md): 'high' = everything, 'medium' = no fine detail on bots
+ *  (bolts, small decals, seams), 'low' = medium detail only (bevels, panel breaks, light housings). Read by the model
+ *  builders when they build. */
+export type DetailLevel = 'high' | 'medium' | 'low';
+
 /** Every render lever a quality tier sets. Live levers apply on a settings change (applyQuality); the arena-build
  *  ones (weather, crowd) apply from the next arena build. */
 export interface QualityPreset {
@@ -38,6 +43,10 @@ export interface QualityPreset {
   /** PROTOCOL C echo holograms draw their back faces too (two transparent passes per part); off = front faces only,
    *  one pass (entities/enemies/hologram.ts; from the next echo spawned). */
   holoBackfaces: boolean;
+  /** Art pass: model detail level (DetailLevel; read when models are built). */
+  detail: DetailLevel;
+  /** Art pass: the screen-space AO pass may run (render/post.ts; it also needs the Bloom path and render/look.ts ssao). */
+  ssao: boolean;
 }
 
 const PRESETS: Record<QualityTier, Readonly<QualityPreset>> = {
@@ -45,14 +54,17 @@ const PRESETS: Record<QualityTier, Readonly<QualityPreset>> = {
   high: {
     pixelRatioCap: 2, brawlPixelRatioCap: 1.5, shadows: true, shadowMapSize: 2048, brawlShadowMapSize: 1024, bloom: true,
     hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1, holoBackfaces: true,
+    detail: 'high', ssao: true,
   },
   medium: {
     pixelRatioCap: 1.5, brawlPixelRatioCap: 1.5, shadows: true, shadowMapSize: 1024, brawlShadowMapSize: 1024, bloom: false,
     hideFlashLights: false, fxScale: 1, lensGrab: true, weatherScale: 1, dropHaze: false, crowdFraction: 1, holoBackfaces: true,
+    detail: 'medium', ssao: false,
   },
   low: {
     pixelRatioCap: 1, brawlPixelRatioCap: 1, shadows: false, shadowMapSize: 1024, brawlShadowMapSize: 1024, bloom: false,
     hideFlashLights: true, fxScale: 0.5, lensGrab: false, weatherScale: 0.5, dropHaze: true, crowdFraction: 0.5, holoBackfaces: false,
+    detail: 'low', ssao: false,
   },
 };
 
@@ -102,12 +114,14 @@ export interface Settings {
   /** Arena lighting: bright DAY (default), NIGHT under floodlights, or AUTO (alternates per arena start; core/timeOfDay.ts).
    *  Purely local and visual; applies from the next arena start. */
   timeOfDay: TimeOfDay;
+  /** Debug: the performance readout (FPS, draw calls, triangles, shader programs; ui/perfHud.ts). Also on with ?debug. */
+  perfHud: boolean;
 }
 
 export type TimeOfDay = 'day' | 'night' | 'auto';
 
 function defaults(): Settings {
-  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true, timeOfDay: 'day' };
+  return { master: 1, music: 1, sfx: 1, shake: 1, reduceShake: false, quality: 'high', reduceFlash: false, bloom: true, ultCam: true, snowKit: {}, keys: {}, speedLimit: 1, steerAssist: true, speedFov: true, timeOfDay: 'day', perfHud: false };
 }
 
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
@@ -141,6 +155,7 @@ function load(): Settings {
       steerAssist: p.steerAssist !== false,
       speedFov: p.speedFov !== false,
       timeOfDay: p.timeOfDay === 'night' || p.timeOfDay === 'auto' ? p.timeOfDay : 'day',
+      perfHud: p.perfHud === true,
     };
   } catch {
     return d;
@@ -249,8 +264,56 @@ export class AutoSampler {
     if (this.samples.length < AUTO_SAMPLE_FRAMES) return null;
     this.done = true;
     const a = this.samples.slice().sort((x, y) => x - y);
-    const m = a.length >> 1;
-    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+    return sortedMedian(a, a.length);
+  }
+}
+
+/** Median of the first `n` values of an ascending-sorted array. */
+function sortedMedian(a: ArrayLike<number>, n: number): number {
+  const m = n >> 1;
+  return n % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+/** A rolling window of the last `size` frame times (the same measure AutoSampler decides on, kept continuously for
+ *  the performance readout, ui/perfHud.ts). No allocation after construction: a ring buffer plus a sort scratch. */
+export class FrameWindow {
+  private readonly ring: Float32Array;
+  private readonly scratch: Float32Array;
+  private n = 0;
+  private i = 0;
+
+  constructor(readonly size = 120) {
+    this.ring = new Float32Array(size);
+    this.scratch = new Float32Array(size);
+  }
+
+  push(ms: number): void {
+    this.ring[this.i] = ms;
+    this.i = (this.i + 1) % this.size;
+    if (this.n < this.size) this.n++;
+  }
+
+  get count(): number {
+    return this.n;
+  }
+
+  /** Median and the given upper percentile (ms) of the window; NaN while empty. Sorts in place (no allocation). */
+  stats(out: { median: number; high: number }, percentile = 0.95): { median: number; high: number } {
+    const n = this.n;
+    if (n === 0) {
+      out.median = out.high = NaN;
+      return out;
+    }
+    const a = this.scratch.subarray(0, n);
+    a.set(this.ring.subarray(0, n));
+    a.sort();
+    out.median = sortedMedian(a, n);
+    out.high = a[Math.min(n - 1, Math.floor(n * percentile))];
+    return out;
+  }
+
+  reset(): void {
+    this.n = this.i = 0;
   }
 }
 
@@ -326,7 +389,8 @@ export function setBrawlPerf(ctx: GameContext, on: boolean): void {
 
 /** Bloom runs where the preset allows it (HIGH) with the Bloom setting on; Brawl gets the cheaper bloom chain. */
 function syncBloom(ctx: GameContext): void {
-  configureBloom(ctx.renderer, currentPreset().bloom && settings.bloom, brawlPerf);
+  const p = currentPreset();
+  configureBloom(ctx.renderer, p.bloom && settings.bloom, brawlPerf, p.ssao);
 }
 
 /** Apply the quality preset's live levers: pixel ratio, shadow map (on/off and size), bloom, the impact flash

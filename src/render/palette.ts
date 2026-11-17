@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { AO_TEX_WIDTH, bakedAOTexture } from './bakedAO';
 
 /* Shared "palette" material: many static, untextured, opaque MeshStandardMaterials collapsed into ONE material so
  * their parts can merge into one draw. Each source material becomes a texel in three small DataTextures:
@@ -16,12 +17,80 @@ import * as THREE from 'three';
  * toneMapped / wireframe as the palette, and NOT changed at runtime (hit flashes, pulses and per-entity paint need
  * their own material). One Palette per (side, flatShading) variant. */
 
+/** Baked corner occlusion (render/bakedAO.ts), shared by every patched material: darkening at full occlusion, and the
+ *  share of it applied to direct light (0 = ambient / reflections only, like an aoMap). 0 strength = off, same program. */
+export const bakedAOUniforms = { uBakedAO: { value: 0 }, uBakedAODirect: { value: 0 } };
+
+const BAKED_AO = Symbol('bakedAO');
+
+/** Multiply the baked occlusion (bakedAO.ts: the per-vertex AO_ATTRIBUTE of merged geometry, or for instanced meshes
+ *  the shared occlusion texture indexed by AO_INSTANCE_ATTRIBUTE + gl_VertexID) into a standard material's lighting. For the
+ *  DESTINATION material of merged static geometry (a palette's material, or a static batch's bucket material): a
+ *  material with this patch is no longer a palette source (paletteEligible rejects custom onBeforeCompile), which is
+ *  why it goes on the material the parts are merged INTO. Indirect light (ambient, environment) takes the full
+ *  occlusion, direct light uBakedAODirect of it. Meshes without the attribute are untouched (see bakedAO.ts). One
+ *  program variant per patched material kind (customProgramCacheKey). False (no patch) for materials that already
+ *  customise their shader. */
+export function applyBakedAO(m: THREE.Material): boolean {
+  const s = m as THREE.MeshStandardMaterial & { [BAKED_AO]?: true };
+  if (s[BAKED_AO]) return true;
+  if (!s.isMeshStandardMaterial || s.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) return false;
+  if (s.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey) return false;
+  s[BAKED_AO] = true;
+  s.onBeforeCompile = (shader) => {
+    shader.uniforms.uBakedAO = bakedAOUniforms.uBakedAO;
+    shader.uniforms.uBakedAODirect = bakedAOUniforms.uBakedAODirect;
+    shader.uniforms.uBakedAOTex = bakedAOTexture;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+attribute vec2 aoDark;
+varying float vBakedAO;
+#ifdef USE_INSTANCING
+attribute vec2 aoInst;
+uniform sampler2D uBakedAOTex;
+#endif`,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+vBakedAO = abs( aoDark.x - 0.5 ) < 0.01 ? aoDark.y : 0.0;
+#ifdef USE_INSTANCING
+if ( abs( aoInst.x - 0.5 ) < 0.01 ) {
+	int aoK = int( aoInst.y + 0.5 ) + gl_VertexID;
+	vBakedAO = texelFetch( uBakedAOTex, ivec2( aoK % ${AO_TEX_WIDTH}, aoK / ${AO_TEX_WIDTH} ), 0 ).r;
+}
+#endif`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uBakedAO;\nuniform float uBakedAODirect;\nvarying float vBakedAO;')
+      .replace(
+        '#include <aomap_fragment>',
+        `#include <aomap_fragment>
+	{
+		float bao = 1.0 - uBakedAO * vBakedAO;
+		float bad = mix( 1.0, bao, uBakedAODirect );
+		reflectedLight.indirectDiffuse *= bao;
+		reflectedLight.indirectSpecular *= bao;
+		reflectedLight.directDiffuse *= bad;
+		reflectedLight.directSpecular *= bad;
+	}`,
+      );
+  };
+  s.customProgramCacheKey = () => 'bakedAO';
+  s.needsUpdate = true;
+  return true;
+}
+
 export interface PaletteOptions {
   /** Entries per texture side (size * size entries). Default 16. */
   size?: number;
   side?: THREE.Side;
   flatShading?: boolean;
   type?: THREE.TextureDataType;
+  /** Patch the palette material for baked occlusion (applyBakedAO; the merged geometry carries the attribute). */
+  bakedAO?: boolean;
 }
 
 type Source = THREE.MeshStandardMaterial;
@@ -67,6 +136,7 @@ export class Palette {
       side: opts.side ?? THREE.FrontSide, flatShading: opts.flatShading ?? false,
     });
     this.material.name = 'palette';
+    if (opts.bakedAO) applyBakedAO(this.material);
   }
 
   get count(): number {

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { bakeOcclusion, type AOBakeOptions } from './bakedAO';
+import { applyBakedAO } from './palette';
 
 /* Static-geometry baking: collapse meshes that never move relative to a root into one mesh per draw state.
  * A bucket is keyed by everything the renderer sorts / switches on per object: material, castShadow,
@@ -190,9 +192,23 @@ export class StaticBatch {
     return n;
   }
 
-  /** One mesh per bucket (more only if a bucket holds incompatible attribute sets), added to `parent` if given. */
-  flush(parent?: THREE.Object3D): THREE.Mesh[] {
+  /** One mesh per bucket (more only if a bucket holds incompatible attribute sets), added to `parent` if given.
+   *  `ao`: bake corner occlusion (render/bakedAO.ts) into the parts of every lit standard-material bucket, against
+   *  everything in the batch + the ground, and patch those buckets' materials to apply it (palette.ts applyBakedAO;
+   *  a bucket whose material already customises its shader is left without). `ao.instanced`: static instanced meshes
+   *  of the same space (placed by their own matrix, not moved later) that occlude and get occlusion too. */
+  flush(parent?: THREE.Object3D, ao?: AOBakeOptions & { instanced?: readonly THREE.InstancedMesh[] }): THREE.Mesh[] {
     const out: THREE.Mesh[] = [];
+    if (ao) {
+      const all: THREE.BufferGeometry[] = [];
+      const lit: THREE.BufferGeometry[] = [];
+      for (const b of this.buckets.values()) {
+        all.push(...b.parts);
+        if (applyBakedAO(b.material)) lit.push(...b.parts);
+      }
+      const inst = (ao.instanced ?? []).filter((im) => !Array.isArray(im.material) && !im.material.transparent && applyBakedAO(im.material));
+      bakeOcclusion(lit, ao, all, inst);
+    }
     for (const b of this.buckets.values()) {
       for (const g of mergeBaked(b.parts, b.material)) {
         const m = makeMesh(g, b.material, b.flags, `batch:${b.material.name || b.material.type}`);

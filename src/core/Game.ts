@@ -32,6 +32,7 @@ import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
 import { renderFrame } from '../render/post';
 import { Warmup, webglBackend } from '../render/warmup';
+import { PerfHud } from '../ui/perfHud';
 import { donaldProps } from '../entities/enemies/donaldProps';
 import { chairmanProps } from '../entities/enemies/chairmanProps';
 import { ChairmanDirector } from './chairmanDirector';
@@ -179,6 +180,8 @@ export class Game {
   private autoSampler = new AutoSampler();
   /** AUTO: the browser's frame cap, sampled once in the menu (never reset). */
   private capSampler = new AutoSampler();
+  /** Debug performance readout (Settings › Performance readout, ?debug). */
+  private perfHud: PerfHud;
 
   constructor(container: HTMLElement, uiRoot: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -196,6 +199,7 @@ export class Game {
     this.renderer = renderer;
     this.warmup = new Warmup(webglBackend(renderer));
     this.warmup.enabled = !new URLSearchParams(location.search).has('nowarm');
+    this.perfHud = new PerfHud(uiRoot, renderer);
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -1240,7 +1244,11 @@ export class Game {
     // While a fresh warm-up's programs finish compiling (at most WARM_GATE_MS), keep the last frame on screen instead
     // of blocking on them; the simulation and countdowns above never wait.
     const held = this.warmup.holdRender(performance.now());
+    const hud = this.perfHud.on;
+    if (hud) this.perfHud.begin();
     if (!held) renderFrame(this.renderer, this.ctx.scene, this.ctx.camera);
+    if (hud) this.perfHud.end(rawDt * 1000, performance.now(), !held);
+    else this.perfHud.hide();
     // AUTO quality: sample real frame times of live play (after the countdown, never while paused or warming up).
     if (settings.quality === 'auto' && !held && (this.state === 'playing' || this.state === 'brawl') && !document.hidden) {
       const median = this.autoSampler.push(rawDt * 1000);
