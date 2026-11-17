@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ENEMIES, type EnemyType } from '../../config/enemies';
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { boltHead, chamferBox, chamferWedge } from '../../render/kit/shapes';
+import { applyWear, copyWear, type WearProfile } from '../../render/kit/wear';
 
 /* Procedural toy-robot bot models. Every model faces local +Z, ground at y = 0.
  * Each type is built ONCE as a template (static parts merged per material, animated parts in their own
@@ -26,10 +27,24 @@ function mat(key: string, color: number, o: THREE.MeshStandardMaterialParameters
   if (!m) {
     m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1, flatShading: true, ...o });
     if (inst) m.userData.inst = inst;
+    const w = wearFor(key, m, inst);
+    if (w) applyWear(m, w);
     if (uncached) return m;
     MATS.set(key, m);
   }
   return m;
+}
+
+/** Wear profile per material kind (render/kit/wear.ts); none for lit-up / see-through parts (eyes, glows, glass,
+ *  the snowball). */
+function wearFor(key: string, m: THREE.MeshStandardMaterial, inst?: InstRole): WearProfile | null {
+  if (inst === 'eye' || inst === 'glow' || inst === 'ball' || m.transparent || m.emissiveIntensity > 1) return null;
+  if (key.startsWith('paint_') || key.startsWith('accent_')) return { grime: 0.55, mottle: 0.1, scuff: 0.45 };
+  if (key === 'steel' || key === 'dark' || key === 'cleat' || key === 'rustDark') return { grime: 0.45, mottle: 0.12, scuff: 0.3 };
+  if (key === 'rubber' || key === 'black') return { grime: 0.35, mottle: 0.08, scuff: 0 };
+  if (key === 'chrome' || key === 'gold') return { grime: 0.25, mottle: 0.05, scuff: 0 };
+  if (key === 'glass' || key === 'star' || key === 'hazLight') return null;
+  return { grime: 0.4, mottle: 0.08, scuff: 0.2 };
 }
 
 let _hazardTex: THREE.Texture | null = null;
@@ -378,10 +393,19 @@ function scrapper(t: EnemyType = 'scrapper'): Tpl {
   // panel seams (a rear shut line + a belt line kept behind the sloped nose), rear deck vent, tail lights
   for (const sx of [-1, 1]) {
     b.add(G.box(), M.black(), [sx * 0.432, 0.68, -0.48], [0.012, 0.36, 0.018]);
-    b.add(G.box(), M.black(), [sx * 0.432, 0.5, -0.15], [0.012, 0.018, 1.08]);
     b.add(G.box(), eyeMat(t, t === 'slushling' ? 0x3fd1a8 : 0xff3b30), [sx * 0.3, 0.62, -0.735], [0.16, 0.05, 0.02]);
   }
   vent(b, M.black(), [0, 0.915, -0.62], 0.46, 0.1, 3, [-PI / 2, 0, 0]);
+  // BOLD PASS: armour skirts over the upper treads (two overlapping plates a side), hydraulic rams from the body to
+  // the ram nose, a battery pack on the rear deck and a steel turret ring
+  for (const sx of [-1, 1]) {
+    kb(b, accent(t), [sx * 0.6, 0.5, 0.18], [0.07, 0.2, 0.62], [0, 0, sx * 0.12], 0.025);
+    kb(b, accent(t), [sx * 0.62, 0.53, -0.38], [0.07, 0.22, 0.6], [0, 0, sx * 0.12], 0.025);
+    b.add(G.cyl(8), M.dark(), [sx * 0.3, 0.5, 0.45], [0.05, 0.3, 0.05], [PI / 2 + 0.15, 0, 0]);
+    b.add(G.cyl(8), M.chrome(), [sx * 0.3, 0.47, 0.62], [0.03, 0.2, 0.03], [PI / 2 + 0.15, 0, 0]);
+  }
+  kb(b, M.dark(), [0.17, 0.98, -0.6], [0.3, 0.12, 0.22], ZERO, 0.02);
+  b.add(G.cyl(14), M.steel(), [0, 0.87, -0.22], [0.36, 0.04, 0.36]);
   if (t === 'rallybot') for (const sx of [-1, 1]) b.add(G.box(), M.gold(), [sx * 0.435, 0.8, -0.05], [0.02, 0.06, 1.2]);
   for (const x of [-0.28, 0, 0.28]) b.add(G.cone(6), M.chrome(), [x, 0.43, 0.98], [0.07, 0.26, 0.07], [PI / 2, 0, 0]);
   // hazard cheeks
@@ -438,6 +462,21 @@ function brute(): Tpl {
     b.add(G.box(), eyeMat(t, 0xffc400), [sx * 0.55, 1.0, -1.205], [0.24, 0.08, 0.02]);
   }
   kb(b, M.black(), [0, 2.53, -0.5], [0.8, 0.1, 0.16], ZERO, 0.025);
+  // BOLD PASS: layered side armour (two plates a side, a gap between), a twin exhaust with a heat shield, a roof
+  // cage, cab mirrors, and teeth along the bottom of the front plate
+  for (const sx of [-1, 1]) {
+    kb(b, paint(t), [sx * 0.8, 1.12, 0.3], [0.07, 0.5, 0.75], [0, 0, sx * 0.06], 0.025);
+    kb(b, paint(t), [sx * 0.8, 1.12, -0.62], [0.07, 0.5, 0.95], [0, 0, sx * 0.06], 0.025);
+    b.add(G.cyl(6), M.black(), [sx * 0.5, 2.62, -0.75], [0.025, 0.36, 0.025]);
+    kb(b, M.black(), [sx * 0.72, 2.05, -0.3], [0.05, 0.16, 0.1], ZERO, 0.012);
+    kb(b, M.chrome(), [sx * 0.78, 2.05, -0.28], [0.02, 0.14, 0.09], ZERO, 0.006);
+  }
+  b.add(G.box(), M.black(), [0, 2.8, -0.75], [1.04, 0.025, 0.025]);
+  b.add(G.box(), M.black(), [0, 2.8, -0.45], [1.04, 0.025, 0.025]);
+  b.add(G.box(), M.black(), [0, 2.8, -1.05], [1.04, 0.025, 0.025]);
+  stack(b, stacks, -0.5, 2.1, -1.0, 0.09, 0.7, M.chrome(), M.dark());
+  kb(b, M.steel(), [-0.5, 2.5, -0.87], [0.22, 0.42, 0.03], ZERO, 0.01);
+  for (let i = 0; i < 7; i++) b.add(G.wedge(0.5), M.steel(), [-1.2 + i * 0.4, 0.27, 1.62], [0.16, 0.16, 0.14], [-0.14, 0, 0]);
   for (const x of [-0.27, -0.09, 0.09, 0.27]) b.add(G.cyl(8), M.chrome(), [x, 2.53, -0.41], [0.05, 0.02, 0.05], [PI / 2, 0, 0]);
   b.add(G.box(), M.glass(), [0, 2.0, -0.27], [1.0, 0.42, 0.04]);
   for (const sx of [-1, 1]) b.add(G.box(), eyeMat(t, 0xffc400), [sx * 0.27, 1.98, -0.24], [0.3, 0.1, 0.04], [0, 0, sx * -0.18]);
@@ -606,6 +645,20 @@ function frostbyte(): Tpl {
     for (const z of [-0.95, -0.15]) b.add(G.box(), M.dark(), [sx * 0.88, 2.25, z], [0.06, 0.04, 0.04]);
   }
   vent(b, M.black(), [0, 1.405, -1.2], 1.0, 0.5, 5, [-PI / 2, 0, 0]);
+  // BOLD PASS: hydraulic rams to the blade, a roof light rack (chrome lenses), cab side armour, a rear radiator
+  // grille, and ice-blue accent stripes
+  for (const sx of [-1, 1]) {
+    b.add(G.cyl(8), M.dark(), [sx * 0.55, 1.15, 0.85], [0.08, 0.6, 0.08], [PI / 2 - 0.25, 0, 0]);
+    b.add(G.cyl(8), M.chrome(), [sx * 0.55, 1.05, 1.25], [0.05, 0.45, 0.05], [PI / 2 - 0.25, 0, 0]);
+    kb(b, P, [sx * 0.9, 1.75, -0.35], [0.08, 0.7, 1.0], [0, 0, sx * 0.05], 0.03);
+    b.add(G.box(), accent(t), [sx * 0.94, 1.75, -0.35], [0.02, 0.07, 0.9]);
+  }
+  kb(b, M.black(), [0, 2.86, -0.1], [1.5, 0.08, 0.18], ZERO, 0.025);
+  for (const x of [-0.55, -0.2, 0.2, 0.55]) {
+    kb(b, M.black(), [x, 2.95, -0.06], [0.2, 0.14, 0.12], ZERO, 0.02);
+    b.add(G.cyl(10), M.chrome(), [x, 2.95, 0.005], [0.06, 0.02, 0.06], [PI / 2, 0, 0]);
+  }
+  vent(b, M.black(), [0, 1.05, -1.71], 1.3, 0.45, 6);
   b.add(G.box(), M.black(), [0, 2.08, 0.24], [1.55, 0.9, 0.06]);
   for (const sx of [-1, 1]) b.add(G.box(), eyeMat(t, 0x40e0ff, 2.8), [sx * 0.38, 2.2, 0.28], [0.46, 0.15, 0.04], [0, 0, sx * 0.22]);
   b.add(G.box(), eyeMat(t, 0x40e0ff, 2.8), [0, 1.86, 0.28], [0.75, 0.06, 0.04]);
@@ -1705,6 +1758,7 @@ export function createRig(type: EnemyType): Rig {
         let c = map.get(m);
         if (!c) {
           c = m.clone();
+          copyWear(m, c);
           map.set(m, c);
           rig.owned.push(c);
           if (role === 'paint') {
