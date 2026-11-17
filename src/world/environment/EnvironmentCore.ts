@@ -323,22 +323,41 @@ export class EnvironmentCore {
     const u = this.bobTime;
     const amp = this.bobAmp;
     const lift = this.crowdLift;
+    // art pass: per-spectator build (width / height from the bob phase) and, outside the rally (whose arms are already
+    // up), about half the house waving its arms. Same draws: the arms are tagged per vertex (aPart: 1 left, 2 right;
+    // 0 / absent = rigid), so eyes and caps follow the head through the same scale.
+    const wave = { value: this.isRally && !brawlMode ? 0 : 1 };
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uBobTime = u;
       shader.uniforms.uBobAmp = amp;
       shader.uniforms.uCrowdLift = lift;
+      shader.uniforms.uArmWave = wave;
       // Night floodlight wash (lit materials only; adds 0 by day): the spectators keep their colours in the dark.
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform float uCrowdLift;')
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * uCrowdLift;');
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uBobTime;\nuniform float uBobAmp;\nattribute float aPhase;')
+        .replace('#include <common>', '#include <common>\nuniform float uBobTime;\nuniform float uBobAmp;\nuniform float uArmWave;\nattribute float aPhase;\nattribute float aPart;')
         .replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\ntransformed.y += abs(sin(uBobTime * (3.2 + fract(aPhase) * 2.6) + aPhase)) * uBobAmp;',
+          `#include <begin_vertex>
+          float cH1 = fract(sin(aPhase * 12.9898) * 43758.5453);
+          float cH2 = fract(sin(aPhase * 78.233) * 43758.5453);
+          if (aPart > 0.5) {
+            float cSide = aPart < 1.5 ? 1.0 : -1.0;
+            vec2 cPiv = vec2(cSide * 0.24, 0.7);
+            float cUp = uArmWave * step(0.5, cH2) * (0.55 + 0.45 * sin(uBobTime * (2.2 + cH1 * 3.0) + aPhase));
+            float cA = cSide * cUp * 2.1;
+            vec2 cD = transformed.xy - cPiv;
+            transformed.xy = cPiv + vec2(cD.x * cos(cA) - cD.y * sin(cA), cD.x * sin(cA) + cD.y * cos(cA));
+          }
+          transformed.x *= 0.86 + 0.28 * cH1;
+          transformed.z *= 0.9 + 0.2 * cH1;
+          transformed.y *= 0.9 + 0.2 * cH2;
+          transformed.y += abs(sin(uBobTime * (3.2 + fract(aPhase) * 2.6) + aPhase)) * uBobAmp;`,
         );
     };
-    mat.customProgramCacheKey = () => 'crowd-bob';
+    mat.customProgramCacheKey = () => 'crowd-bob2';
     return mat;
   }
 
@@ -376,6 +395,11 @@ export class EnvironmentCore {
   }
 
   protected flushCrowd(): void {
+    /** Tag a crowd body piece for the arm wave (bobify): 0 rigid, 1 left arm, 2 right arm. */
+    const part = (g: THREE.BufferGeometry, v: number): THREE.BufferGeometry => {
+      g.setAttribute('aPart', new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute('position').count).fill(v), 1));
+      return g;
+    };
     const crowd = this.crowd;
     this.crowd = null;
     if (!crowd) return;
@@ -391,9 +415,9 @@ export class EnvironmentCore {
         ? []
         : [colored(new THREE.BoxGeometry(0.04, 0.16, 0.04).translate(0, 0.84, 0), 0x50555e), colored(new THREE.BoxGeometry(0.1, 0.1, 0.1).translate(0, 0.95, 0), white)]),
       // rally crowd: both arms up, cheering
-      colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(rally ? 2.6 : 0.4).translate(0.31, rally ? 0.86 : 0.56, 0), white),
-      colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(rally ? -2.6 : -0.4).translate(-0.31, rally ? 0.86 : 0.56, 0), white),
-    ]);
+      part(colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(rally ? 2.6 : 0.4).translate(0.31, rally ? 0.86 : 0.56, 0), white), 1),
+      part(colored(new THREE.BoxGeometry(0.09, 0.32, 0.09).rotateZ(rally ? -2.6 : -0.4).translate(-0.31, rally ? 0.86 : 0.56, 0), white), 2),
+    ].map((g) => (g.getAttribute('aPart') ? g : part(g, 0))));
     const eyes = merge([
       new THREE.BoxGeometry(0.08, 0.06, 0.02).translate(0.08, 0.625, 0.19),
       new THREE.BoxGeometry(0.08, 0.06, 0.02).translate(-0.08, 0.625, 0.19),
