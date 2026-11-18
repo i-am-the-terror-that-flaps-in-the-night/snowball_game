@@ -15,7 +15,7 @@ import type { PlowKind } from '../config/plows';
 type BladeStyle = 'edge' | 'steel' | 'spikes' | 'frost' | 'molten';
 type ChassisStyle = 'stripe' | 'rivets' | 'ice' | 'ember' | 'patches';
 type BoosterStyle = 'pod' | 'tank' | 'fan' | 'jet';
-type CharmStyle = 'orb' | 'magnet' | 'globe' | 'drone';
+type CharmStyle = 'orb' | 'magnet' | 'globe';
 
 export interface GearLook {
   blade?: BladeStyle;
@@ -45,7 +45,9 @@ export const GEAR_LOOKS: Record<string, GearLook> = {
   overclockChip: { core: 0xffb020 },
   luckyMagnet: { charm: 'magnet' },
   snowGlobe: { charm: 'globe' },
-  repairDrone: { charm: 'drone' },
+  // (the Repair Drone used to float a little quad-rotor beside the plow: it read as stray debris, so it wears the
+  // standard charm, an antenna orb on the deck)
+  repairDrone: { charm: 'orb' },
 };
 
 const SLOT_DEFAULT: Record<GearSlot, GearLook> = {
@@ -158,8 +160,6 @@ function buildAssets() {
       orb: new THREE.SphereGeometry(0.09, 10, 8),
       globe: new THREE.SphereGeometry(0.12, 12, 8),
       magnet,
-      drone: new THREE.BoxGeometry(0.2, 0.08, 0.2),
-      rotor: new THREE.CylinderGeometry(0.09, 0.09, 0.01, 10),
     },
   };
 }
@@ -193,7 +193,6 @@ export class GearVisuals {
   private inst: THREE.InstancedMesh | null = null;
   private bar: THREE.Mesh | null = null;
   private fan: THREE.Object3D | null = null;
-  private drone: THREE.Object3D | null = null;
   /** Dash-flame colour from the booster, or null for the plow's own. */
   flame: number | null = null;
 
@@ -262,12 +261,10 @@ export class GearVisuals {
     inst.instanceMatrix.needsUpdate = true;
   }
 
-  /** Spin the fan / bob the drone (cheap; only when those are worn). */
+  /** Spin the fan (cheap; only when it is worn). */
   update(t: number): void {
     if (this.fan) this.fan.rotation.z = t * 9;
-    if (this.drone) this.drone.position.y = this.droneY + Math.sin(t * 3) * 0.06;
   }
-  private droneY = 0;
 
   private clear(): void {
     for (const layer of [this.bladeLayer, this.bodyLayer]) {
@@ -277,7 +274,7 @@ export class GearVisuals {
         if (c instanceof THREE.InstancedMesh) c.dispose();
       }
     }
-    this.inst = this.bar = this.fan = this.drone = null;
+    this.inst = this.bar = this.fan = null;
     this.bladeStyle = null;
     this.flame = null;
   }
@@ -371,16 +368,6 @@ export class GearVisuals {
   private buildCharm(style: CharmStyle, color: number, an: Anchors): void {
     const { geo, mats } = assets();
     const [x, y, z] = an.charm;
-    if (style === 'drone') {
-      const d = new THREE.Group();
-      this.mesh(geo.drone, mats.plate, d);
-      for (const [dx, dz] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]] as const) this.mesh(geo.rotor, mats.dark, d, dx, 0.05, dz);
-      this.droneY = y + 0.55;
-      d.position.set(x + Math.sign(x || 1) * 0.35, this.droneY, z - 0.4);
-      this.drone = d;
-      this.bodyLayer.add(d);
-      return;
-    }
     this.mesh(geo.antenna, mats.dark, this.bodyLayer, x, y + 0.27, z);
     const top = y + 0.58;
     if (style === 'magnet') {
