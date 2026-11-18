@@ -5,6 +5,8 @@ import { makeShadowProxy } from '../../render/shadowProxy';
 import { boltHead, chamferBox, chamferWedge } from '../../render/kit/shapes';
 import { lathe, moldboard, profileSolid, roundBlock, stadiumBelt } from '../../render/kit/curves';
 import { applyWear, copyWear, type WearProfile } from '../../render/kit/wear';
+import { arcShell, archFender, debrisShape, fuselage, horseshoe, latheArc, moldAt, trackFender, trackGuard } from './botShapes';
+import { roundProfile } from '../vehicles/classicShapes';
 
 /* Procedural toy-robot bot models. Every model faces local +Z, ground at y = 0.
  * Each type is built ONCE as a template (static parts merged per material, animated parts in their own
@@ -347,21 +349,20 @@ function writeWheels(attr: THREE.InstancedBufferAttribute, spots: readonly numbe
   attr.needsUpdate = true;
 }
 
-/** Two tank treads (static belts + cleats) with rolling road wheels on their outer faces. */
+/** Two tank track units (RESHAPE): round-ended stadium belts with a guard hoop over the top run and ends, cleats on
+ *  the top run, sprocket / idler hubs at the round ends and rolling road wheels on the outer faces. */
 function treads(base: Part, wheels: Wheels, x: number, len: number, h: number, w: number, nWheels: number, hub: THREE.Material): void {
   for (const sx of [-1, 1]) {
-    kb(base, M.rubber(), [sx * x, h / 2, 0], [w, h, len], ZERO, Math.min(0.06, h * 0.12));
-    // track guard: a thin bevelled rail along the top outer edge of the belt (cleat material: no extra draw)
-    kb(base, M.cleat(), [sx * (x + w * 0.42), h + 0.05, 0], [w * 0.22, 0.07, len * 0.96], ZERO, 0.02);
-    base.add(G.cyl(10), M.rubber(), [sx * x, h / 2, len / 2], [h / 2, w, h / 2], [0, 0, PI / 2]);
-    base.add(G.cyl(10), M.rubber(), [sx * x, h / 2, -len / 2], [h / 2, w, h / 2], [0, 0, PI / 2]);
-    const n = Math.max(3, Math.round(len / 0.34));
-    for (let i = 0; i < n; i++) base.add(G.box(), M.cleat(), [sx * x, h + 0.03, -len / 2 + ((i + 0.5) * len) / n], [w * 1.04, 0.07, (len / n) * 0.45]);
+    base.add(stadiumBelt(len, h, w), M.rubber(), [sx * x, 0, 0]);
+    base.add(trackGuard(len, h, w * 0.26, Math.max(0.04, h * 0.07), Math.max(0.04, h * 0.07)), M.cleat(), [sx * (x + w * 0.38), 0, 0]);
+    const n = Math.max(3, Math.round((len - h) / 0.22));
+    for (let i = 0; i < n; i++) base.add(G.box(), M.cleat(), [sx * (x - w * 0.12), h + 0.02, -(len - h) / 2 + ((i + 0.5) * (len - h)) / n], [w * 0.76, 0.05, ((len - h) / n) * 0.5]);
     const wr = h * 0.34;
     for (let j = 0; j < nWheels; j++) {
-      const z = -len / 2 + h * 0.3 + ((len - h * 0.6) * (j + 0.5)) / nWheels;
-      wheels.add(sx * (x + w / 2 + 0.05), h * 0.48, z, wr, 0.1, hub, M.steel());
+      const z = -len / 2 + h * 0.5 + ((len - h) * (j + 0.5)) / nWheels;
+      wheels.add(sx * (x + w / 2 + 0.04), h * 0.48, z, wr, 0.1, hub, M.steel());
     }
+    for (const z of [-(len - h) / 2, (len - h) / 2]) b2(base, sx * (x + w / 2 + 0.02), h / 2, z, h * 0.3);
   }
 }
 
@@ -475,55 +476,68 @@ function brute(): Tpl {
   treads(base, wheels, 0.98, 2.4, 0.72, 0.52, 4, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  kb(b, paint(t), [0, 1.05, -0.25], [1.5, 0.75, 1.9], ZERO, 0.06);
-  kw(b, paint(t), [0, 1.52, 0.25], [1.36, 0.36, 0.95], 0.3, ZERO, 0.05);
-  kb(b, M.dark(), [0, 0.7, -0.25], [1.4, 0.14, 2.0], ZERO, 0.035);
-  // cab with yellow slit eyes
-  kb(b, paint(t), [0, 1.95, -0.75], [1.2, 0.85, 0.95], ZERO, 0.06);
-  kb(b, M.black(), [0, 2.42, -0.75], [1.3, 0.1, 1.05], ZERO, 0.03);
-  // seams, body-side vents, cab roof light bar (chrome lenses), tail lights
+  const P = paint(t);
+  const EYE = eyeMat(t, 0xffc400);
+  // RESHAPE: one hull (side profile: a flat rear face, a deck under the cab, a long curved hood down to a round nose)
+  b.add(roundProfile('bruteHull', [
+    [-1.22, 0.64], [0.6, 0.64], { p: [0.82, 0.86], q: [0.82, 0.64] }, [0.82, 1.1], { p: [0.55, 1.46], q: [0.8, 1.42] },
+    { p: [-0.3, 1.72], q: [0.12, 1.72] }, [-0.32, 1.5], [-1.04, 1.5], { p: [-1.22, 1.32], q: [-1.22, 1.5] },
+  ], 1.5, 0.14, 3, 6), P, [0, 0, 0]);
+  kb(b, M.dark(), [0, 0.64, -0.2], [1.4, 0.14, 1.95], ZERO, 0.03);
+  // long rolled track fenders (paint), a yellow edge line
   for (const sx of [-1, 1]) {
-    kb(b, M.black(), [sx * 0.752, 1.05, 0.2], [0.012, 0.6, 0.02]);
-    kb(b, M.black(), [sx * 0.602, 1.95, -0.4], [0.012, 0.6, 0.018]);
-    vent(b, M.black(), [sx * 0.755, 1.18, -0.75], 0.5, 0.3, 4, [0, sx * PI / 2, 0]);
-    kb(b, eyeMat(t, 0xffc400), [sx * 0.55, 1.0, -1.205], [0.24, 0.08, 0.02]);
+    b.add(trackFender('brute', 2.5, 0.84, 0.09, 0.62), P, [sx * 0.98, 0, 0]);
   }
-  kb(b, M.black(), [0, 2.53, -0.5], [0.8, 0.1, 0.16], ZERO, 0.025);
-  // BOLD PASS: layered side armour (two plates a side, a gap between), a twin exhaust with a heat shield, a roof
-  // cage, cab mirrors, and teeth along the bottom of the front plate
-  for (const sx of [-1, 1]) {
-    kb(b, paint(t), [sx * 0.8, 1.12, 0.3], [0.07, 0.5, 0.75], [0, 0, sx * 0.06], 0.025);
-    kb(b, paint(t), [sx * 0.8, 1.12, -0.62], [0.07, 0.5, 0.95], [0, 0, sx * 0.06], 0.025);
-    b.add(G.cyl(6), M.black(), [sx * 0.5, 2.62, -0.75], [0.025, 0.36, 0.025]);
-    kb(b, M.black(), [sx * 0.72, 2.05, -0.3], [0.05, 0.16, 0.1], ZERO, 0.012);
-    kb(b, M.chrome(), [sx * 0.78, 2.05, -0.28], [0.02, 0.14, 0.09], ZERO, 0.006);
-  }
-  kb(b, M.black(), [0, 2.8, -0.75], [1.04, 0.025, 0.025]);
-  kb(b, M.black(), [0, 2.8, -0.45], [1.04, 0.025, 0.025]);
-  kb(b, M.black(), [0, 2.8, -1.05], [1.04, 0.025, 0.025]);
-  stack(b, stacks, -0.5, 2.1, -1.0, 0.09, 0.7, M.chrome(), M.dark());
-  kb(b, M.steel(), [-0.5, 2.5, -0.87], [0.22, 0.42, 0.03], ZERO, 0.01);
-  for (let i = 0; i < 7; i++) kw(b, M.steel(), [-1.2 + i * 0.4, 0.27, 1.62], [0.16, 0.16, 0.14], 0.5, [-0.14, 0, 0]);
-  for (const x of [-0.27, -0.09, 0.09, 0.27]) b.add(G.cyl(8), M.chrome(), [x, 2.53, -0.41], [0.05, 0.02, 0.05], [PI / 2, 0, 0]);
+  // cab: an upright face (glass + slit eyes), a rounded roof rolling down to the back
+  b.add(roundProfile('bruteCab', [
+    [-1.22, 1.45], [-0.27, 1.45], [-0.27, 2.2], { p: [-0.47, 2.42], q: [-0.27, 2.42] }, [-0.9, 2.42],
+    { p: [-1.12, 2.16], q: [-1.1, 2.42] }, [-1.22, 1.7],
+  ], 1.2, 0.13, 3, 6), P, [0, 0, 0]);
+  // sun visor peak over the windscreen
+  b.add(profileSolid('bruteVisor', [[-0.36, 2.38], [-0.22, 2.38], { p: [-0.1, 2.3], q: [-0.14, 2.38] }, { p: [-0.36, 2.44], q: [-0.16, 2.44] }], 1.26, 0.025, 4), M.black(), [0, 0, 0]);
   kb(b, M.glass(), [0, 2.0, -0.27], [1.0, 0.42, 0.04]);
-  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0xffc400), [sx * 0.27, 1.98, -0.24], [0.3, 0.1, 0.04], [0, 0, sx * -0.18]);
+  for (const sx of [-1, 1]) kb(b, EYE, [sx * 0.27, 1.98, -0.24], [0.3, 0.1, 0.04], [0, 0, sx * -0.18]);
   kb(b, M.black(), [0, 2.18, -0.24], [1.05, 0.09, 0.08]);
-  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.76, 1.05, -0.25], [0.03, 0.34, 1.7], ZERO, [4, 0.7]);
-  // the big FRONT PLATE
-  kb(b, M.steel(), [0, 0.95, 1.45], [2.8, 1.25, 0.2], [-0.14, 0, 0], 0.05);
-  for (const sx of [-1, 1]) kb(b, M.steel(), [sx * 1.5, 0.95, 1.3], [0.4, 1.25, 0.18], [-0.14, sx * -0.55, 0], 0.04);
-  kb(b, M.dark(), [0, 1.62, 1.35], [3.0, 0.16, 0.34], ZERO, 0.04);
-  // vertical stiffener ribs on the plate's face
-  for (const x of [-0.95, 0.95]) kb(b, M.dark(), [x, 0.98, 1.56], [0.12, 1.05, 0.06], [-0.14, 0, 0], 0.02);
-  b.add(G.box(), M.hazard(), [0, 1.18, 1.57], [2.5, 0.32, 0.03], [-0.14, 0, 0], [5, 0.65]);
-  kb(b, glowMat(t, 0xffc400, 0.15), [0, 0.36, 1.56], [2.85, 0.13, 0.2]);
-  for (const x of [-0.9, 0, 0.9]) b.add(G.sph(0), M.chrome(), [x, 0.8, 1.56], [0.08, 0.08, 0.05]);
+  // hood vents, tail lights, hazard flanks, cab mirrors + whip antennas
+  vent(b, M.black(), [0, 1.62, 0.25], 0.7, 0.36, 4, [-PI / 2 + 0.33, 0, 0]);
+  for (const sx of [-1, 1]) {
+    b.add(G.box(), EYE, [sx * 0.52, 1.1, -1.225], [0.26, 0.09, 0.03]);
+    b.add(G.box(), M.hazard(), [sx * 0.755, 1.02, -0.3], [0.02, 0.28, 1.5], ZERO, [3.6, 0.6]);
+    b.add(G.cyl(6), M.black(), [sx * 0.5, 2.62, -0.75], [0.025, 0.36, 0.025]);
+    b.add(G.cyl(6), M.black(), [sx * 0.66, 2.05, -0.3], [0.025, 0.2, 0.025], [0, 0, PI / 2]);
+    kb(b, M.black(), [sx * 0.78, 2.05, -0.3], [0.06, 0.18, 0.12]);
+    b.add(G.box(), M.chrome(), [sx * 0.812, 2.05, -0.3], [0.01, 0.15, 0.1]);
+  }
+  // roof light bar (chrome lenses) and a tube roof cage
+  kb(b, M.black(), [0, 2.48, -0.45], [0.8, 0.1, 0.16], ZERO, 0.025);
+  for (const x of [-0.27, -0.09, 0.09, 0.27]) b.add(G.cyl(8), M.chrome(), [x, 2.48, -0.365], [0.04, 0.02, 0.04], [PI / 2, 0, 0]);
+  for (const z of [-1.05, -0.75]) b.add(G.cyl(6), M.black(), [0, 2.74, z], [0.025, 1.04, 0.025], [0, 0, PI / 2]);
+  for (const sx of [-1, 1]) b.add(G.cyl(6), M.black(), [sx * 0.52, 2.74, -0.9], [0.025, 0.4, 0.025], [PI / 2, 0, 0]);
+  stack(b, stacks, -0.5, 2.1, -1.0, 0.09, 0.7, M.chrome(), M.dark());
+  b.add(profileSolid('bruteHeatShield', [[-0.02, 0], [0.02, 0], [0.02, 0.36], { p: [-0.02, 0.42], q: [0.02, 0.42] }], 0.24, 0, 3), M.steel(), [-0.5, 2.28, -0.89]);
+  stack(b, stacks, 0.5, 2.1, -1.0, 0.09, 0.7, M.chrome(), M.dark());
+  // the FRONT BLADE: a curved moldboard with swept wings, a rolled top edge, a glowing cutting edge and teeth
+  const BH = 1.32;
+  const BC = 0.3;
+  b.add(moldboard(2.78, BH, BC, 0.18), M.steel(), [0, 0.3, 1.36]);
+  for (const sx of [-1, 1]) b.add(moldboard(0.52, BH, BC, 0.16), M.steel(), [sx * 1.6, 0.3, 1.5], ONE, [0, sx * -0.55, 0]);
+  b.add(G.cyl(12), M.dark(), [0, 0.3 + BH + 0.02, 1.36 + BC - 0.07], [0.1, 2.86, 0.1], [0, 0, PI / 2]);
+  {
+    const [z, y, a] = moldAt(BH, BC, 0.62);
+    b.add(G.box(), M.hazard(), [0, 0.3 + y - Math.sin(a) * 0.0, 1.36 + z + Math.cos(a) * 0.012], [2.5, 0.3, 0.02], [a, 0, 0], [5, 0.65]);
+    for (const s of [0.28]) {
+      const [rz, ry, ra] = moldAt(BH, BC, s);
+      for (const x of [-0.9, 0, 0.9]) b.add(G.sph(1), M.chrome(), [x, 0.3 + ry, 1.36 + rz + 0.02], [0.08, 0.08, 0.05], [ra, 0, 0]);
+    }
+  }
+  kb(b, glowMat(t, 0xffc400, 0.15), [0, 0.36, 1.4], [2.84, 0.12, 0.2]);
+  for (let i = 0; i < 7; i++) kw(b, M.steel(), [-1.2 + i * 0.4, 0.27, 1.5], [0.16, 0.16, 0.14], 0.5, [-0.14, 0, 0]);
   // push arms + pistons
   for (const sx of [-1, 1]) {
-    kb(b, M.black(), [sx * 0.62, 0.85, 0.85], [0.16, 0.16, 1.1]);
-    b.add(G.cyl(8), M.chrome(), [sx * 0.42, 1.25, 0.95], [0.06, 0.9, 0.06], [PI / 2 - 0.5, 0, 0]);
+    kb(b, M.black(), [sx * 0.62, 0.85, 0.95], [0.16, 0.16, 1.0]);
+    b.add(G.cyl(8), M.dark(), [sx * 0.42, 1.38, 0.78], [0.08, 0.6, 0.08], [PI / 2 - 0.5, 0, 0]);
+    b.add(G.cyl(8), M.chrome(), [sx * 0.42, 1.18, 1.15], [0.05, 0.5, 0.05], [PI / 2 - 0.5, 0, 0]);
   }
-  stack(b, stacks, 0.5, 2.1, -1.0, 0.09, 0.7, M.chrome(), M.dark());
   b.flush();
   base.flush();
   return { root, height: 2.6, stacks, front: 1.6 };
@@ -534,34 +548,65 @@ function spinner(): Tpl {
   const root = new THREE.Group();
   const stacks: number[] = [];
   const { g: body, b } = sub(root, 'body', [0, 0, 0]);
-  b.add(G.cyl(16), M.dark(), [0, 0.26, 0], [0.92, 0.32, 0.92]);
-  b.add(G.cyl(16), M.black(), [0, 0.08, 0], [0.7, 0.12, 0.7]);
-  b.add(G.hemi(), paint(t), [0, 0.62, 0], [0.84, 0.72, 0.84]);
-  b.add(G.cyl(18), M.black(), [0, 0.66, 0], [0.87, 0.08, 0.87]);
-  kb(b, M.black(), [0, 1.0, 0.56], [0.72, 0.24, 0.24], [-0.6, 0, 0]);
-  for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0xff8a00), [sx * 0.17, 1.03, 0.64], [0.09, 0.09, 0.06]);
-  b.add(G.cyl(8), M.steel(), [0, 1.42, 0], [0.12, 0.12, 0.12]);
-  b.add(G.sph(1), glowMat(t, 0xff3b1a, 0.2), [0, 1.52, 0], [0.16, 0.16, 0.16]);
-  // BOLD PASS: armour skirt plates round the base, a vented crown on the dome, rivets on the band
+  // RESHAPE: a flared skirt base, a dome with a rounded shoulder (lathe), a wrap-around visor band, a domed crown
+  b.add(lathe('spinBase', [[0, 0.03], [0.62, 0.03], [0.8, 0.07], [0.9, 0.16], [0.94, 0.28], [0.92, 0.38], [0.86, 0.45], [0, 0.47]], 28), M.dark(), [0, 0, 0]);
+  // dome profile (r, y): also used to seat the visor, rivets and slats on its surface
+  const DOME: [number, number][] = [[0.86, 0.6], [0.87, 0.7], [0.85, 0.82], [0.79, 0.96], [0.69, 1.09], [0.55, 1.2], [0.37, 1.29], [0.18, 1.34], [0, 1.355]];
+  b.add(lathe('spinDome', [[0, 0.6], ...DOME], 28), paint(t), [0, 0, 0]);
+  const domeR = (y: number): number => {
+    for (let i = 1; i < DOME.length; i++)
+      if (y <= DOME[i][1]) {
+        const [r0, y0] = DOME[i - 1];
+        const [r1, y1] = DOME[i];
+        return r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+      }
+    return 0;
+  };
+  // black band under the dome's shoulder
+  b.add(lathe('spinBand', [[0.84, 0.6], [0.9, 0.61], [0.92, 0.66], [0.9, 0.71], [0.84, 0.72]], 28), M.black(), [0, 0, 0]);
+  // visor: a band wrapping the front of the dome (about 120 degrees), the two eyes set into it
+  const V0 = 0.93;
+  const V1 = 1.13;
+  b.add(latheArc('spinVisor', [[domeR(V0) - 0.04, V0], [domeR(V0) + 0.035, V0 - 0.01], [domeR((V0 + V1) / 2) + 0.05, (V0 + V1) / 2], [domeR(V1) + 0.035, V1 + 0.01], [domeR(V1) - 0.04, V1]], -1.05, 2.1, 14), M.black(), [0, 0, 0]);
+  for (const sx of [-1, 1]) {
+    const a = sx * 0.3;
+    const y = 1.03;
+    const r = domeR(y) + 0.06;
+    b.add(G.sph(2), eyeMat(t, 0xff8a00), [Math.sin(a) * r, y, Math.cos(a) * r], [0.09, 0.075, 0.05], [0, a, 0]);
+  }
+  // crown: a steel collar and the glowing cap
+  b.add(lathe('spinCrown', [[0, 1.3], [0.22, 1.3], [0.22, 1.36], [0.15, 1.42], [0.13, 1.48], [0, 1.49]], 16), M.steel(), [0, 0, 0]);
+  b.add(G.sph(2), glowMat(t, 0xff3b1a, 0.2), [0, 1.55, 0], [0.16, 0.16, 0.16]);
+  // rivets round the band, cooling slats on the back of the dome, hazard patches on the flanks
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * PI * 2 + PI / 8;
-    kb(b, M.dark(), [Math.sin(a) * 0.86, 0.3, Math.cos(a) * 0.86], [0.5, 0.22, 0.1], [0, a, 0]);
-    b.add(G.sph(0), M.steel(), [Math.sin(a) * 0.885, 0.66, Math.cos(a) * 0.885], [0.04, 0.04, 0.04]);
+    b.add(G.sph(0), M.steel(), [Math.sin(a) * 0.915, 0.66, Math.cos(a) * 0.915], [0.04, 0.04, 0.04]);
   }
-  for (let i = 0; i < 3; i++) b.add(G.box(), M.black(), [0, 1.27 - i * 0.06, -0.2 - i * 0.1], [0.4, 0.03, 0.06]);
-  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.6, 0.86, -0.3], [0.04, 0.16, 0.5], [0, sx * 0.5, 0], [1.5, 0.5]);
+  for (let i = 0; i < 3; i++) {
+    const y = 1.1 + i * 0.07;
+    const r = domeR(y) + 0.005;
+    b.add(G.box(), M.black(), [0, y, -r], [0.4, 0.03, 0.06], [-0.9, 0, 0]);
+  }
+  for (const sx of [-1, 1]) {
+    const a = sx * PI * 0.62;
+    const r = domeR(0.8) + 0.012;
+    b.add(G.box(), M.hazard(), [Math.sin(a) * r, 0.8, Math.cos(a) * r], [0.36, 0.13, 0.02], [0, a, 0], [1.1, 0.4]);
+  }
   b.flush();
-  // two counter-rotating saw rings
+  // two counter-rotating saw rings: a bevelled disc, a hub and hooked chrome teeth
   const saw = (y: number, r: number, dir: number) => {
     const { b: s } = sub(body, 'spinY', [0, y, 0], { dir });
-    s.add(G.cyl(20), accent(t), [0, 0, 0], [r, 0.07, r]);
-    s.add(G.cyl(12), M.dark(), [0, 0.02, 0], [r * 0.6, 0.08, r * 0.6]);
+    s.add(lathe('sawDisc' + r, [[0, -0.035], [r * 0.93, -0.035], [r, -0.008], [r, 0.008], [r * 0.93, 0.035], [0, 0.035]], 28), accent(t), [0, 0, 0]);
+    s.add(lathe('sawHub' + r, [[0, -0.02], [r * 0.6, -0.02], [r * 0.6, 0.03], [r * 0.52, 0.06], [0, 0.06]], 20), M.dark(), [0, 0, 0]);
+    // hooked tooth (side profile: tangential, radial), hooked the way its ring turns
+    const k = dir;
+    const tooth = profileSolid('sawTooth' + k, [[-0.1 * k, -0.02], [0.08 * k, -0.02], { p: [0.1 * k, 0.2], q: [0.14 * k, 0.06] }, { p: [-0.1 * k, -0.02], q: [-0.02 * k, 0.08] }], 0.06, 0, 3);
     const n = 12;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * PI * 2;
-      kw(s, M.chrome(), [Math.sin(a) * (r + 0.06), 0, Math.cos(a) * (r + 0.06)], [0.06, 0.07, 0.24], 0.5, [0, a + PI / 2, 0]);
+      s.add(tooth, M.chrome(), [Math.sin(a) * (r - 0.02), 0, Math.cos(a) * (r - 0.02)], ONE, [0, a + PI / 2, PI / 2]);
     }
-    for (let i = 0; i < 3; i++) kb(s, M.black(), [0, 0.045, 0], [r * 1.5, 0.02, 0.07], [0, (i / 3) * PI, 0]);
+    for (let i = 0; i < 3; i++) s.add(G.box(), M.black(), [0, 0.065, 0], [r * 1.16, 0.02, 0.07], [0, (i / 3) * PI, 0]);
     s.flush();
   };
   saw(0.48, 1.1, 1);
@@ -574,28 +619,62 @@ function thief(): Tpl {
   const root = new THREE.Group();
   const stacks: number[] = [];
   const { g: body, b } = sub(root, 'body', [0, 0, 0]);
-  b.add(G.sph(1), paint(t), [0, 0.62, -0.05], [0.58, 0.36, 0.72]);
-  b.add(G.cyl(14), M.dark(), [0, 0.38, -0.05], [0.56, 0.12, 0.62]);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    b.add(G.cyl(10), M.black(), [sx * 0.42, 0.28, sz * 0.36], [0.2, 0.08, 0.2]);
-    b.add(G.cyl(10), glowMat(t, 0x40e0ff, 1.2), [sx * 0.42, 0.23, sz * 0.36], [0.15, 0.03, 0.15]);
+  const GLOW = glowMat(t, 0x40e0ff, 1.2);
+  // RESHAPE: a teardrop hover fuselage (a solid of revolution along z, squashed to an oval section)
+  const FUS: [number, number][] = [[0, -0.8], [0.3, -0.76], [0.62, -0.62], [0.86, -0.38], [0.98, -0.1], [0.99, 0.14], [0.9, 0.36], [0.7, 0.53], [0.4, 0.63], [0, 0.67]];
+  const rAt = (z: number): number => {
+    for (let i = 1; i < FUS.length; i++)
+      if (z <= FUS[i][1]) {
+        const [r0, z0] = FUS[i - 1];
+        const [r1, z1] = FUS[i];
+        return r0 + ((r1 - r0) * (z - z0)) / (z1 - z0);
+      }
+    return 0;
+  };
+  const SX = 0.58;
+  const SY = 0.36;
+  const CY = 0.62;
+  b.add(fuselage('thiefBody', FUS, 18), paint(t), [0, CY, 0], [SX, SY, 1]);
+  // a world point on the fuselage at axial z, angle phi round the axis (0 = top, + toward +x), `out` (unit radii) proud
+  const on = (z: number, phi: number, out: number): V3 => {
+    const r = rAt(z) + out;
+    return [Math.sin(phi) * r * SX, CY + Math.cos(phi) * r * SY, z];
+  };
+  // belly ring: a dark keel band round the lower hull
+  kb(b, M.dark(), [0, 0.33, -0.08], [0.98, 0.1, 1.05], ZERO, 0.03);
+  // bandit mask: a black band wrapped over the nose (lathe arc in the fuselage's frame), the eyes set into it
+  {
+    const z0 = 0.26;
+    const z1 = 0.56;
+    const zs = [z0, (z0 * 2 + z1) / 3, (z0 + z1 * 2) / 3, z1];
+    const sec: [number, number][] = [...zs.map((z) => [rAt(z) + 0.075, z] as [number, number]), ...zs.reverse().map((z) => [rAt(z) - 0.03, z] as [number, number])];
+    // lathe axis y -> body z (rotation x + 90 deg); its phi = 0 (lathe +z) points down, so the top is phi = PI
+    b.add(latheArc('thiefMask', sec, PI - 1.75, 3.5, 12), M.black(), [0, CY, 0], [SX, 1, SY], [PI / 2, 0, 0]);
+    for (const sx of [-1, 1]) {
+      const phi = sx * 0.62;
+      b.add(G.sph(1), eyeMat(t, 0x40e0ff, 2.6), on(0.47, phi, 0.08), [0.085, 0.045, 0.06], [-0.5, sx * 0.45, sx * 0.3]);
+    }
   }
-  // bandit mask + eyes
-  kb(b, M.black(), [0, 0.74, 0.42], [0.78, 0.18, 0.32], [-0.3, 0, 0]);
-  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0x40e0ff, 2.6), [sx * 0.17, 0.76, 0.6], [0.16, 0.07, 0.04], [-0.3, 0, sx * 0.25]);
-  // vacuum nozzle
+  // hover pods (glowing undersides)
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    b.add(lathe('thiefPod', [[0, 0], [0.17, 0], [0.205, 0.04], [0.15, 0.11], [0, 0.125]], 10), M.black(), [sx * 0.42, 0.22, sz * 0.36]);
+    b.add(G.cyl(10), GLOW, [sx * 0.42, 0.22, sz * 0.36], [0.15, 0.03, 0.15]);
+  }
+  // vacuum nozzle: a steel tube and a flared bell with the glowing intake
   b.add(G.cyl(10), M.steel(), [0, 0.46, 0.78], [0.11, 0.45, 0.11], [PI / 2, 0, 0]);
-  b.add(G.taper(0.45, 10), M.dark(), [0, 0.46, 1.05], [0.24, 0.22, 0.24], [-PI / 2, 0, 0]);
-  b.add(G.cyl(10), glowMat(t, 0x40e0ff, 1.2), [0, 0.46, 1.16], [0.2, 0.02, 0.2], [PI / 2, 0, 0]);
-  // fins
-  for (const sx of [-1, 1]) kw(b, accent(t), [sx * 0.5, 0.8, -0.45], [0.05, 0.32, 0.45], 0.4, [0, 0, sx * -0.4]);
-  // snow tank (glass) on the back
-  // BOLD PASS: a dorsal spine, side air scoops, a stubby whip antenna
-  kb(b, accent(t), [0, 0.98, 0.05], [0.08, 0.12, 0.5], [0.15, 0, 0]);
+  b.add(G.cyl(10), M.dark(), [0, 0.46, 0.66], [0.14, 0.08, 0.14], [PI / 2, 0, 0]);
+  b.add(fuselage('thiefBell', [[0, 0.9], [0.12, 0.9], [0.13, 0.97], [0.17, 1.05], [0.245, 1.13], [0.25, 1.165], [0.2, 1.17], [0, 1.16]], 12), M.dark(), [0, 0.46, 0]);
+  b.add(G.cyl(14), GLOW, [0, 0.46, 1.168], [0.2, 0.01, 0.2], [PI / 2, 0, 0]);
+  // swept tail fins and a dorsal spine (accent)
+  const fin = profileSolid('thiefFin', [[-0.3, 0], [0.12, 0], { p: [-0.24, 0.36], q: [-0.08, 0.12] }, [-0.38, 0.36], { p: [-0.3, 0], q: [-0.36, 0.14] }], 0.05, 0, 5);
+  for (const sx of [-1, 1]) b.add(fin, accent(t), on(-0.42, sx * 0.85, -0.1), ONE, [0, 0, sx * -0.55]);
+  b.add(profileSolid('thiefSpine', [[-0.06, 0], [0.4, 0], { p: [0.02, 0.14], q: [0.22, 0.12] }, [-0.06, 0.14]], 0.06, 0, 5), accent(t), on(0, 0, -0.04));
+  // side air scoops, a stubby whip antenna
   for (const sx of [-1, 1]) kb(b, M.dark(), [sx * 0.52, 0.56, 0.15], [0.12, 0.14, 0.34], [0, sx * 0.2, 0]);
   b.add(G.cyl(6), M.black(), [-0.2, 1.05, -0.65], [0.015, 0.4, 0.015]);
+  // the snow tank: a glass globe on a collar
   b.add(G.sph(2), M.tankGlass(), [0, 0.98, -0.42], [0.34, 0.34, 0.34]);
-  b.add(G.cyl(12), M.dark(), [0, 0.72, -0.42], [0.26, 0.08, 0.26]);
+  b.add(lathe('thiefCollar', [[0, 0.68], [0.27, 0.68], [0.29, 0.72], [0.26, 0.77], [0, 0.77]], 14), M.dark(), [0, 0, -0.42]);
   b.flush();
   const { b: tank } = sub(body, 'tank', [0, 0.95, -0.42]);
   tank.add(G.sph(2), ballMat(), [0, 0, 0], [1, 1, 1]);
@@ -1339,31 +1418,44 @@ function gunner(): Tpl {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 0.56, 0.3, sz * 0.5, 0.3, 0.18, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  kw(b, paint(t), [0, 0.7, -0.05], [0.8, 0.4, 1.25], 0.35);
-  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.41, 0.7, -0.2], [0.03, 0.18, 0.7], ZERO, [2, 0.5]);
-  // tall mast + turret block
-  b.add(G.cyl(8), M.steel(), [0, 1.12, -0.15], [0.11, 0.6, 0.11]);
-  kb(b, paint(t), [0, GUNNER_MUZZLE_Y, -0.12], [0.58, 0.42, 0.72]);
-  kb(b, M.black(), [0, GUNNER_MUZZLE_Y + 0.23, -0.12], [0.62, 0.06, 0.76]);
+  const P = paint(t);
+  const Y = GUNNER_MUZZLE_Y;
+  // RESHAPE: a rounded hull (side profile: a round tail, a short deck, a long curved glacis down to the nose)
+  b.add(roundProfile('gunnerHull', [
+    [-0.7, 0.46], [0.48, 0.46], { p: [0.62, 0.6], q: [0.62, 0.46] }, { p: [-0.12, 0.93], q: [0.28, 0.92] }, [-0.5, 0.93],
+    { p: [-0.7, 0.74], q: [-0.7, 0.93] },
+  ], 0.8, 0.11, 3, 6), P, [0, 0, 0]);
+  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 0.405, 0.66, -0.22], [0.02, 0.15, 0.6], ZERO, [1.7, 0.42]);
+  // arched fenders over the four wheels
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(archFender(0.3, 0.3, 0.26, 0.42, 0.05, 0.055), M.dark(), [sx * 0.56, 0, sz * 0.5]);
+  // mast on a collar
+  b.add(lathe('gunnerCollar', [[0, 0], [0.2, 0], [0.2, 0.05], [0.13, 0.12], [0, 0.12]], 14), M.dark(), [0, 0.86, -0.15]);
+  b.add(G.cyl(10), M.steel(), [0, 1.12, -0.15], [0.11, 0.6, 0.11]);
+  // turret: a rounded helmet (side profile: a rounded mantlet front, a sloped back), a cupola hatch on top
+  b.add(roundProfile('gunnerTurret', [
+    [-0.46, Y - 0.22], [0.14, Y - 0.22], { p: [0.27, Y - 0.04], q: [0.27, Y - 0.22] }, { p: [0.08, Y + 0.21], q: [0.24, Y + 0.2] },
+    [-0.3, Y + 0.22], { p: [-0.48, Y + 0.02], q: [-0.48, Y + 0.22] },
+  ], 0.6, 0.12, 3, 6), P, [0, 0, 0]);
+  b.add(lathe('gunnerCupola', [[0, 0], [0.17, 0], [0.17, 0.04], [0.12, 0.08], [0, 0.085]], 14), M.black(), [0, Y + 0.2, -0.18]);
   // the long barrel (breech collar, cooling rings) and its glowing muzzle
-  b.add(G.cyl(10), M.dark(), [0, GUNNER_MUZZLE_Y, 0.66], [0.12, 1.1, 0.12], [PI / 2, 0, 0]);
-  b.add(G.cyl(10), M.black(), [0, GUNNER_MUZZLE_Y, 0.28], [0.18, 0.2, 0.18], [PI / 2, 0, 0]);
-  for (const z of [0.55, 0.8]) b.add(G.cyl(10), M.steel(), [0, GUNNER_MUZZLE_Y, z], [0.15, 0.06, 0.15], [PI / 2, 0, 0]);
-  b.add(G.cyl(12), glowMat(t, 0x7fe6ff, 0.35), [0, GUNNER_MUZZLE_Y, 1.2], [0.18, 0.12, 0.18], [PI / 2, 0, 0]);
+  b.add(G.cyl(10), M.dark(), [0, Y, 0.66], [0.12, 1.1, 0.12], [PI / 2, 0, 0]);
+  b.add(lathe('gunnerMantlet', [[0, 0], [0.2, 0], [0.2, 0.06], [0.15, 0.2], [0, 0.2]], 14), M.black(), [0, Y, 0.16], ONE, [PI / 2, 0, 0]);
+  for (const z of [0.55, 0.8]) b.add(G.cyl(10), M.steel(), [0, Y, z], [0.15, 0.06, 0.15], [PI / 2, 0, 0]);
+  b.add(lathe('gunnerMuzzle', [[0, 0], [0.15, 0], [0.18, 0.04], [0.18, 0.12], [0.15, 0.16], [0, 0.16]], 14), M.dark(), [0, Y, 1.04], ONE, [PI / 2, 0, 0]);
+  b.add(G.cyl(12), glowMat(t, 0x7fe6ff, 0.35), [0, Y, 1.21], [0.14, 0.03, 0.14], [PI / 2, 0, 0]);
   // side scope = the eye
-  b.add(G.cyl(8), M.black(), [0.36, GUNNER_MUZZLE_Y + 0.12, 0.06], [0.08, 0.32, 0.08], [PI / 2, 0, 0]);
-  b.add(G.sph(1), eyeMat(t, 0x7fe6ff, 2.6), [0.36, GUNNER_MUZZLE_Y + 0.12, 0.23], [0.07, 0.07, 0.04]);
-  // snowball hopper on the back
-  b.add(G.taper(1.3, 10), M.steel(), [0, 1.05, -0.58], [0.24, 0.34, 0.24]);
+  b.add(G.cyl(8), M.black(), [0.36, Y + 0.12, 0.06], [0.08, 0.32, 0.08], [PI / 2, 0, 0]);
+  b.add(G.sph(1), eyeMat(t, 0x7fe6ff, 2.6), [0.36, Y + 0.12, 0.23], [0.07, 0.07, 0.04]);
+  // snowball hopper on the back (a bowl of balls)
+  b.add(lathe('gunnerHopper', [[0, 0], [0.18, 0], [0.24, 0.06], [0.3, 0.3], [0.34, 0.34], [0.31, 0.37], [0, 0.31]], 16), M.steel(), [0, 0.88, -0.58]);
   for (const [x, y, z] of [[0, 1.3, -0.58], [0.12, 1.42, -0.5], [-0.1, 1.44, -0.66]] as const) b.add(G.sph(1), M.white(), [x, y, z], [0.13, 0.13, 0.13]);
   // antenna
   b.add(G.cyl(6), M.black(), [-0.25, 2.0, -0.35], [0.02, 0.5, 0.02]);
   b.add(G.sph(0), accent(t), [-0.25, 2.26, -0.35], [0.05, 0.05, 0.05]);
-  // BOLD PASS: wheel fenders, a side ammo drum feeding the gun, angled gun shields, an elevation ram
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) kb(b, M.dark(), [sx * 0.56, 0.64, sz * 0.5], [0.24, 0.07, 0.5]);
-  b.add(G.cyl(12), M.dark(), [-0.38, GUNNER_MUZZLE_Y - 0.05, -0.15], [0.17, 0.2, 0.17], [0, 0, PI / 2]);
-  b.add(G.cyl(12), M.steel(), [-0.49, GUNNER_MUZZLE_Y - 0.05, -0.15], [0.12, 0.03, 0.12], [0, 0, PI / 2]);
-  for (const sx of [-1, 1]) kb(b, paint(t), [sx * 0.24, GUNNER_MUZZLE_Y + 0.02, 0.35], [0.06, 0.34, 0.3], [0, sx * 0.25, 0]);
+  // side ammo drum feeding the gun, curved gun shields, an elevation ram
+  b.add(lathe('gunnerDrum', [[0, -0.1], [0.15, -0.1], [0.17, -0.07], [0.17, 0.07], [0.15, 0.1], [0, 0.1]], 14), M.dark(), [-0.4, Y - 0.05, -0.15], ONE, [0, 0, PI / 2]);
+  b.add(G.cyl(12), M.steel(), [-0.51, Y - 0.05, -0.15], [0.11, 0.02, 0.11], [0, 0, PI / 2]);
+  for (const sx of [-1, 1]) kb(b, P, [sx * 0.24, Y + 0.02, 0.32], [0.06, 0.32, 0.3], [0, sx * 0.25, 0]);
   b.add(G.cyl(8), M.steel(), [0, 1.0, 0.2], [0.035, 0.42, 0.035], [0.7, 0, 0]);
   stack(b, stacks, 0.24, 0.85, -0.55, 0.05, 0.22, M.steel(), M.dark());
   b.flush();
@@ -1382,40 +1474,51 @@ function bulwark(): Tpl {
   treads(base, wheels, 0.92, 2.1, 0.64, 0.48, 4, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  kb(b, paint(t), [0, 0.98, -0.4], [1.42, 0.66, 1.6]);
-  kb(b, M.dark(), [0, 0.64, -0.4], [1.34, 0.12, 1.7]);
-  // squat cab with a visor slit
-  kb(b, paint(t), [0, 1.56, -0.62], [0.96, 0.52, 0.86]);
-  kb(b, M.black(), [0, 1.85, -0.62], [1.04, 0.08, 0.94]);
-  kb(b, M.black(), [0, 1.6, -0.18], [0.8, 0.14, 0.04]);
-  kb(b, eyeMat(t, 0x6fd8ff), [0, 1.6, -0.16], [0.58, 0.06, 0.03]);
+  const P = paint(t);
+  // RESHAPE: a squat hull (side profile: a flat rear face for the vent, a rounded front shoulder under the shield)
+  b.add(roundProfile('bulwarkHull', [
+    [-1.22, 0.6], [0.32, 0.6], { p: [0.48, 0.78], q: [0.48, 0.6] }, [0.48, 0.98], { p: [0.12, 1.34], q: [0.46, 1.32] },
+    [-1.06, 1.34], { p: [-1.22, 1.2], q: [-1.22, 1.34] },
+  ], 1.42, 0.13, 3, 6), P, [0, 0, 0]);
+  kb(b, M.dark(), [0, 0.62, -0.4], [1.34, 0.12, 1.7], ZERO, 0.03);
+  // rolled track fenders (accent)
+  for (const sx of [-1, 1]) b.add(trackFender('bulwark', 2.2, 0.76, 0.08, 0.56), accent(t), [sx * 0.92, 0, 0]);
+  // a squat domed turret (lathe, a little narrower front to back) with a visor slit across its face
+  b.add(lathe('bulwarkTurret', [[0, 1.26], [0.5, 1.26], [0.5, 1.36], [0.48, 1.52], [0.42, 1.66], [0.31, 1.77], [0.16, 1.84], [0, 1.86]], 22), P, [0, 0, -0.62], [1, 1, 0.92]);
+  b.add(G.box(), M.black(), [0, 1.5, -0.18], [0.66, 0.14, 0.06], [-0.12, 0, 0]);
+  b.add(G.box(), eyeMat(t, 0x6fd8ff), [0, 1.5, -0.15], [0.5, 0.06, 0.03], [-0.12, 0, 0]);
   // rear vent: the weak spot (BULWARK_REAR_MULT)
-  kb(b, M.black(), [0, 1.0, -1.21], [0.92, 0.5, 0.05]);
-  for (let i = 0; i < 3; i++) kb(b, M.hazLight(), [0, 0.86 + i * 0.14, -1.24], [0.76, 0.05, 0.03]);
-  // THE SHIELD: five tall panels on an arc, leaning back a touch
-  const R = 1.9;
+  b.add(G.box(), M.black(), [0, 0.98, -1.23], [0.92, 0.5, 0.05]);
+  for (let i = 0; i < 3; i++) kb(b, M.hazLight(), [0, 0.84 + i * 0.14, -1.255], [0.76, 0.05, 0.03]);
+  // THE SHIELD: one curved plate on an arc (five panels marked by seams), leaning back a touch, an accent rim on
+  // top, a cyan glow strip along the bottom, chrome rivets
+  const R0 = 1.82;
+  const R1 = 1.98;
   const cz = -0.28;
-  for (let k = -2; k <= 2; k++) {
-    const a = k * 0.3;
-    const x = Math.sin(a) * R;
-    const z = cz + Math.cos(a) * R;
-    kb(b, M.steel(), [x, 1.12, z], [0.62, 2.0, 0.16], [-0.08, a, 0]);
-    kb(b, accent(t), [x, 2.16, z - 0.08], [0.64, 0.12, 0.22], [-0.08, a, 0]);
-    kb(b, glowMat(t, 0x6fd8ff, 0.3), [x, 0.16, z + 0.02], [0.64, 0.08, 0.2], [-0.08, a, 0]);
-    for (const y of [0.55, 1.7]) b.add(G.sph(0), M.chrome(), [x * 1.04, y, z + 0.1], [0.05, 0.05, 0.04]);
-  }
-  b.add(G.box(), M.hazard(), [0, 1.2, cz + R + 0.1], [0.56, 0.5, 0.03], [-0.08, 0, 0], [1.2, 1.2]);
-  // arms bracing the shield
-  for (const sx of [-1, 1]) kb(b, M.black(), [sx * 0.5, 1.0, 0.85], [0.14, 0.14, 1.0]);
-  // BOLD PASS: layered side armour, tread skirts, a roof hatch with a grab handle, shield back struts with bolts
+  const SPAN = 1.56;
+  const LEAN = -0.08;
+  const PY = 1.12;
+  // the plate leans back about the arc's centre line; dropping it by OFF keeps its front bottom edge at the ground
+  const OFF = 1.9 * Math.sin(-LEAN);
+  // a point dy above the shield's pivot and r out along angle a, with the lean applied: [x, y, z]
+  const sh = (a: number, r: number, dy: number): V3 => {
+    const z = Math.cos(a) * r;
+    return [Math.sin(a) * r, PY - OFF + dy * Math.cos(LEAN) - z * Math.sin(LEAN), cz + dy * Math.sin(LEAN) + z * Math.cos(LEAN)];
+  };
+  b.add(arcShell(R0, R1, SPAN, 2.0, 0.05, 20, 2), M.steel(), [0, PY - OFF, cz], ONE, [LEAN, 0, 0]);
+  b.add(arcShell(R0 - 0.06, R1 + 0.04, SPAN + 0.02, 0.12, 0.035, 16, 1), accent(t), sh(0, 0, 1.04), ONE, [LEAN, 0, 0]);
+  b.add(arcShell(R0 - 0.02, R1 + 0.03, SPAN + 0.02, 0.08, 0, 16, 1), glowMat(t, 0x6fd8ff, 0.3), sh(0, 0, -0.96), ONE, [LEAN, 0, 0]);
+  for (const a of [-0.45, -0.15, 0.15, 0.45]) b.add(G.box(), M.black(), sh(a, R1 + 0.004, 0), [0.03, 1.84, 0.02], [LEAN, a, 0]);
+  for (let k = -2; k <= 2; k++) for (const dy of [-0.57, 0.58]) b.add(G.sph(0), M.chrome(), sh(k * 0.3, R1 + 0.01, dy), [0.05, 0.05, 0.04]);
+  b.add(G.box(), M.hazard(), sh(0, R1 + 0.012, 0.08), [0.5, 0.48, 0.02], [LEAN, 0, 0], [1.2, 1.2]);
+  // arms bracing the shield, back struts
   for (const sx of [-1, 1]) {
-    kb(b, paint(t), [sx * 0.75, 1.02, -0.05], [0.07, 0.48, 0.7], [0, 0, sx * 0.08]);
-    kb(b, paint(t), [sx * 0.75, 1.02, -0.8], [0.07, 0.48, 0.7], [0, 0, sx * 0.08]);
-    kb(b, accent(t), [sx * 1.2, 0.72, -0.1], [0.08, 0.2, 1.8], [0, 0, sx * 0.1]);
+    kb(b, M.black(), [sx * 0.5, 1.0, 0.95], [0.14, 0.14, 1.0]);
     kb(b, M.dark(), [sx * 0.62, 1.55, 0.95], [0.12, 0.12, 0.9], [0.35, 0, 0]);
   }
-  kb(b, M.dark(), [0, 1.9, -0.75], [0.5, 0.06, 0.45]);
-  b.add(G.box(), M.chrome(), [0, 1.96, -0.75], [0.3, 0.03, 0.04]);
+  // roof hatch with a grab handle
+  b.add(lathe('bulwarkHatch', [[0, 0], [0.22, 0], [0.22, 0.03], [0.18, 0.06], [0, 0.065]], 16), M.dark(), [0, 1.82, -0.66]);
+  b.add(G.box(), M.chrome(), [0, 1.9, -0.66], [0.26, 0.03, 0.04]);
   stack(b, stacks, -0.45, 1.3, -1.0, 0.08, 0.5, M.chrome(), M.dark());
   b.flush();
   base.flush();
@@ -1433,25 +1536,27 @@ function slushpile(): Tpl {
   treads(base, wheels, 0.74, 1.8, 0.5, 0.38, 3, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
+  const P = paint(t);
   kb(b, M.dark(), [0, 0.6, 0], [1.24, 0.22, 1.7]);
-  b.add(G.taper(1.4, 10), M.steel(), [0, 0.92, 0], [0.72, 0.46, 0.8]);
-  kw(b, M.steel(), [0, 0.42, 0.98], [1.26, 0.28, 0.34], 0.5);
+  // RESHAPE: a round hopper bowl (lathe, a little longer than wide) with a rolled rim and a hoop band
+  b.add(lathe('slushHopper', [[0, 0.68], [0.64, 0.68], [0.72, 0.72], [0.84, 0.9], [0.95, 1.08], [0.99, 1.14], [0.9, 1.15], [0, 1.1]], 22), M.steel(), [0, 0, 0], [1, 1, 1.1]);
+  b.add(lathe('slushRim', [[0.9, 1.1], [1.02, 1.1], [1.07, 1.15], [1.02, 1.21], [0.9, 1.21]], 22), M.dark(), [0, 0, 0], [1, 1, 1.1]);
+  b.add(lathe('slushHoop', [[0.79, 0.8], [0.83, 0.8], [0.85, 0.84], [0.83, 0.88], [0.79, 0.88]], 22), M.dark(), [0, 0, 0], [1, 1, 1.1]);
+  // the stubby scoop: a curved blade
+  b.add(moldboard(1.28, 0.34, 0.12, 0.07), M.steel(), [0, 0.26, 0.9]);
+  // the heap: rounder lumps
   const lumps: readonly (readonly [number, number, number, number])[] = [
     [0, 1.38, 0, 0.82], [0.48, 1.26, 0.3, 0.5], [-0.44, 1.3, -0.24, 0.55], [0.08, 1.8, -0.12, 0.52],
     [-0.32, 1.22, 0.46, 0.42], [0.36, 1.3, -0.5, 0.45], [-0.1, 2.12, 0.05, 0.3],
   ];
-  for (const [x, y, z, r] of lumps) b.add(G.sph(1), paint(t), [x, y, z], [r, r * 0.8, r]);
+  for (const [x, y, z, r] of lumps) b.add(G.sph(2), P, [x, y, z], [r, r * 0.8, r]);
   // teal meltwater streaks (accent)
   for (const [x, y, z] of [[0.6, 1.0, 0.1], [-0.55, 1.05, 0.3], [0.2, 0.98, -0.62]] as const) b.add(G.sph(0), accent(t), [x, y, z], [0.14, 0.2, 0.14]);
-  // BOLD PASS: hopper rim and ribs, tread armour, headlamp housings either side of the scoop
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * PI * 2;
-    kb(b, M.dark(), [Math.sin(a) * 0.9, 1.14, Math.cos(a) * 0.98], [0.42, 0.1, 0.12], [0, a, 0]);
-    if (k % 2 === 0) kb(b, M.steel(), [Math.sin(a) * 0.9, 0.9, Math.cos(a) * 0.98], [0.1, 0.4, 0.1], [0, a, 0]);
-  }
+  // rolled track fenders (accent), headlamp pods either side of the scoop
   for (const sx of [-1, 1]) {
-    kb(b, accent(t), [sx * 0.98, 0.58, 0], [0.08, 0.2, 1.6], [0, 0, sx * 0.1]);
-    kb(b, M.dark(), [sx * 0.5, 0.66, 0.9], [0.18, 0.14, 0.12]);
+    b.add(trackFender('slushpile', 1.9, 0.6, 0.07, 0.44), accent(t), [sx * 0.74, 0, 0]);
+    b.add(lathe('slushLamp', [[0, 0], [0.09, 0], [0.1, 0.06], [0.08, 0.12], [0, 0.12]], 12), M.dark(), [sx * 0.5, 0.66, 0.82], ONE, [PI / 2, 0, 0]);
+    b.add(G.cyl(10), M.steel(), [sx * 0.5, 0.66, 0.945], [0.065, 0.01, 0.065], [PI / 2, 0, 0]);
   }
   for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0x3fd1a8, 2.6), [sx * 0.22, 1.4, 0.76], [0.1, 0.1, 0.06]);
   b.flush();
@@ -1469,35 +1574,55 @@ function mirror(): Tpl {
   const base = new Part(root);
   const stacks: number[] = [];
   const wheels = new Wheels();
-  kb(base, M.black(), [0, 0.42, 0], [1.6, 0.22, 2.7]);
+  kb(base, M.black(), [0, 0.42, 0], [1.5, 0.2, 2.6]);
   for (const sx of [-1, 1]) for (const sz of [-0.85, 0.85]) wheels.add(sx * 0.95, 0.42, sz, 0.42, 0.3, M.chrome());
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
   const CHROME = mat('paint_mirror', ENEMIES[t].color, { roughness: 0.12, metalness: 0.75 }, 'paint');
-  // chassis + sculpted hood: chrome panels with dark seams
-  kw(b, CHROME, [0, 0.85, 0.25], [1.7, 0.52, 2.2], 0.32);
-  kb(b, M.dark(), [0, 0.6, -0.2], [1.74, 0.1, 2.9]);
-  for (const sx of [-1, 1]) {
-    kb(b, CHROME, [sx * 0.86, 0.82, -0.25], [0.12, 0.34, 2.3]);
-    kb(b, accent(t), [sx * 0.93, 0.76, 0.1], [0.04, 0.05, 1.7]);
+  const A = accent(t);
+  // RESHAPE: a low sports-car body (side profile: wheel arches cut round both wheels, a long sloping hood, a
+  // rounded tail), chrome, with a magenta beltline
+  const arch = (cz: number): [number, number][] => {
+    const out: [number, number][] = [];
+    for (let i = 0; i <= 8; i++) {
+      const a = ((165 - (150 * i) / 8) * PI) / 180;
+      out.push([cz + Math.cos(a) * 0.52, 0.42 + Math.sin(a) * 0.52]);
+    }
+    return out;
+  };
+  b.add(roundProfile('mirrorBody', [
+    [-1.44, 0.56], ...arch(-0.85), ...arch(0.85), [1.42, 0.56], { p: [1.44, 0.74], q: [1.48, 0.6] },
+    { p: [0.3, 1.06], q: [0.9, 1.02] }, [-1.12, 1.06], { p: [-1.44, 0.8], q: [-1.44, 1.06] },
+  ], 1.76, 0.13, 3, 6), CHROME, [0, 0, 0]);
+  b.add(G.box(), M.dark(), [0, 0.6, -0.05], [1.66, 0.08, 2.7]);
+  for (const sx of [-1, 1]) b.add(G.box(), A, [sx * 0.884, 0.84, 0], [0.02, 0.05, 1.1]);
+  // cab: a chrome shell (raked windscreen, rounded roof, fastback), glass windscreen and side windows proud of it
+  const WA: [number, number] = [0.3, 1.0];
+  const WB: [number, number] = [-0.16, 1.64];
+  b.add(roundProfile('mirrorCab', [
+    [-1.1, 1.0], WA, WB, { p: [-0.36, 1.72], q: [-0.21, 1.72] }, [-0.72, 1.72], { p: [-1.12, 1.1], q: [-1.04, 1.62] },
+  ], 1.24, 0.12, 3, 6), CHROME, [0, 0, 0]);
+  {
+    const L = Math.hypot(WB[0] - WA[0], WB[1] - WA[1]);
+    const u: [number, number] = [(WB[0] - WA[0]) / L, (WB[1] - WA[1]) / L];
+    const nn: [number, number] = [u[1], -u[0]];
+    const p = (s: number, o: number): [number, number] => [WA[0] + u[0] * s + nn[0] * o, WA[1] + u[1] * s + nn[1] * o];
+    b.add(profileSolid('mirrorScreen', [p(0.08, -0.02), p(L - 0.06, -0.02), p(L - 0.06, 0.012), p(0.08, 0.012)], 1.04, 0.01), M.glass(), [0, 0, 0]);
+    b.add(profileSolid('mirrorSideGlass', [[0.14, 1.12], [-0.17, 1.56], [-0.7, 1.62], { p: [-0.98, 1.16], q: [-0.94, 1.52] }], 1.26, 0.015, 6), M.glass(), [0, 0, 0]);
+    // visor eye strip behind the windscreen
+    const e = p(L * 0.62, 0.02);
+    b.add(G.box(), eyeMat(t, 0xff3bd0, 2.4), [0, e[1], e[0]], [0.9, 0.05, 0.02], [Math.atan2(u[0], u[1]), 0, 0]);
   }
-  // cab with a raked dark windshield and a mirrored roof
-  kb(b, CHROME, [0, 1.38, -0.55], [1.3, 0.62, 1.1]);
-  kb(b, M.glass(), [0, 1.4, 0.03], [1.2, 0.5, 0.08], [-0.5, 0, 0]);
-  kb(b, M.glass(), [0, 1.42, -0.55], [1.34, 0.36, 0.9]);
-  kb(b, CHROME, [0, 1.74, -0.6], [1.36, 0.1, 1.16]);
-  // visor eye strip behind the windshield
-  kb(b, eyeMat(t, 0xff3bd0, 2.4), [0, 1.48, -0.02], [0.9, 0.06, 0.05], [-0.5, 0, 0]);
-  // broad chrome blade with a magenta edge + side wings
-  kb(b, M.chrome(), [0, 0.62, 1.5], [2.3, 0.8, 0.14], [-0.15, 0, 0]);
-  for (const sx of [-1, 1]) kb(b, M.chrome(), [sx * 1.32, 0.62, 1.32], [0.6, 0.8, 0.14], [-0.15, sx * -0.5, 0]);
-  kb(b, accent(t), [0, 0.24, 1.56], [2.3, 0.07, 0.16]);
-  kb(b, M.black(), [0, 1.04, 1.44], [2.36, 0.07, 0.2]);
+  // broad chrome blade (a curved moldboard) with swept side wings, a magenta cutting edge, a rolled top edge
+  b.add(moldboard(2.3, 0.86, 0.2, 0.12), M.chrome(), [0, 0.2, 1.44]);
+  for (const sx of [-1, 1]) b.add(moldboard(0.6, 0.86, 0.2, 0.12), M.chrome(), [sx * 1.4, 0.2, 1.56], ONE, [0, sx * -0.5, 0]);
+  kb(b, A, [0, 0.24, 1.47], [2.3, 0.07, 0.14]);
+  b.add(G.cyl(12), M.black(), [0, 1.08, 1.59], [0.055, 2.36, 0.055], [0, 0, PI / 2]);
   for (const sx of [-1, 1]) b.add(G.cyl(8), M.dark(), [sx * 0.55, 0.78, 1.0], [0.08, 0.7, 0.08], [PI / 2 - 0.35, 0, 0]);
-  // twin exhausts + rear spoiler
+  // twin exhausts + a rear wing on two struts
   for (const sx of [-1, 1]) stack(b, stacks, sx * 0.52, 0.9, -1.25, 0.08, 0.32, M.chrome(), M.dark());
-  kb(b, CHROME, [0, 1.3, -1.35], [1.5, 0.06, 0.34]);
-  for (const sx of [-1, 1]) kb(b, M.dark(), [sx * 0.55, 1.12, -1.35], [0.06, 0.34, 0.2]);
+  b.add(profileSolid('mirrorWing', [[0.17, 0.035], { p: [-0.18, 0.07], q: [0.0, 0.11] }, [-0.18, 0.0], { p: [0.17, 0.035], q: [0.0, 0.0] }], 1.5, 0.02, 5), CHROME, [0, 1.26, -1.36]);
+  for (const sx of [-1, 1]) b.add(G.box(), M.dark(), [sx * 0.55, 1.1, -1.36], [0.05, 0.32, 0.18]);
   // RECORDING HALO (glow): a ring with four fins, on a thin mast
   b.add(G.cyl(6), M.dark(), [0, 2.05, -0.6], [0.04, 0.62, 0.04]);
   const HALO = glowMat(t, 0xff3bd0, 0.6);
@@ -1524,46 +1649,43 @@ function magnet(): Tpl {
   treads(base, wheels, 0.8, 1.9, 0.5, 0.42, 3, M.dark());
   wheels.flush(root);
   const { b, g } = sub(root, 'body', [0, 0, 0]);
-  kb(b, M.dark(), [0, 0.68, 0], [1.5, 0.3, 1.7]);
-  b.add(G.box(), M.hazard(), [0, 0.84, 0.86], [1.3, 0.12, 0.03], ZERO, [3, 0.4]);
-  // mast + collar
-  b.add(G.cyl(10), M.steel(), [0, 1.6, 0], [0.22, 1.6, 0.22]);
-  b.add(G.cyl(12), M.black(), [0, 1.0, 0], [0.42, 0.24, 0.42]);
-  b.add(G.cyl(12), paint(t), [0, 2.35, 0], [0.34, 0.18, 0.34]);
-  // horseshoe: two red arms + a curved crown of boxes, silver pole tips (glow) facing forward-up
+  const P = paint(t);
+  // RESHAPE: a rounded base deck (side profile: upright front / rear faces, rounded shoulders), red track fenders
+  b.add(roundProfile('magnetBase', [
+    [-0.86, 0.52], [0.86, 0.52], [0.86, 0.68], { p: [0.62, 0.92], q: [0.86, 0.92] }, [-0.62, 0.92], { p: [-0.86, 0.68], q: [-0.86, 0.92] },
+  ], 1.4, 0.1, 3, 5), M.dark(), [0, 0, 0]);
+  b.add(G.box(), M.hazard(), [0, 0.6, 0.868], [1.1, 0.12, 0.02], ZERO, [3, 0.4]);
+  for (const sx of [-1, 1]) b.add(trackFender('magnet', 2.0, 0.6, 0.07, 0.48), P, [sx * 0.8, 0, 0]);
+  // mast on a rounded collar, a red cap ring under the magnet
+  b.add(lathe('magnetCollar', [[0, 0.86], [0.44, 0.86], [0.44, 0.96], [0.36, 1.1], [0.24, 1.14], [0, 1.14]], 20), M.black(), [0, 0, 0]);
+  b.add(G.cyl(12), M.steel(), [0, 1.6, 0], [0.22, 1.6, 0.22]);
+  b.add(lathe('magnetCap', [[0, 2.26], [0.3, 2.26], [0.36, 2.3], [0.36, 2.4], [0.3, 2.44], [0, 2.44]], 20), P, [0, 0, 0]);
+  // the horseshoe: one rounded U (an elliptic arch on two legs), silver pole tips (glow) under black bands
   const R = 0.62;
-  for (let k = 0; k <= 6; k++) {
-    const a = PI * (k / 6);
-    kb(b, paint(t), [Math.cos(a) * R, MAGNET_TOP_Y + Math.sin(a) * R * 0.9, 0], [0.34, 0.34, 0.4], [0, 0, a]);
-  }
+  b.add(horseshoe(R, 0.17, 0.9, 0.76, 0.4, 0.08, 14), P, [0, MAGNET_TOP_Y, 0]);
   for (const sx of [-1, 1]) {
-    kb(b, paint(t), [sx * R, MAGNET_TOP_Y - 0.4, 0], [0.34, 0.7, 0.4]);
     kb(b, glowMat(t, 0xcfd8ff, 0.5), [sx * R, MAGNET_TOP_Y - 0.86, 0], [0.36, 0.24, 0.42]);
-    kb(b, M.black(), [sx * R, MAGNET_TOP_Y - 0.72, 0], [0.38, 0.04, 0.44]);
+    b.add(G.box(), M.black(), [sx * R, MAGNET_TOP_Y - 0.73, 0], [0.37, 0.04, 0.43]);
   }
-  // eye: a sensor in the crown
-  // BOLD PASS: mast bracing struts, a power cable up the mast, base side armour with vents
-  for (const sx of [-1, 1]) {
-    kb(b, M.steel(), [sx * 0.32, 1.25, 0], [0.1, 0.8, 0.1], [0, 0, sx * -0.35]);
-    kb(b, M.dark(), [sx * 0.78, 0.7, 0], [0.08, 0.3, 1.5], [0, 0, sx * 0.1]);
-    vent(b, M.black(), [sx * 0.83, 0.72, 0], 0.8, 0.2, 3, [0, sx * PI / 2, 0]);
-  }
+  // mast bracing struts, a power cable up the mast
+  for (const sx of [-1, 1]) b.add(G.cyl(8), M.steel(), [sx * 0.32, 1.25, 0], [0.05, 0.8, 0.05], [0, 0, sx * -0.35]);
   b.add(G.cyl(6), M.black(), [0.16, 1.6, 0.14], [0.03, 1.5, 0.03]);
-  b.add(G.sph(1), eyeMat(t, 0xffe14a, 2.4), [0, MAGNET_TOP_Y + R * 0.9, 0.2], [0.11, 0.11, 0.08]);
-  // copper coil drum on the mast (spins while pulling)
+  // eye: a sensor in the crown
+  b.add(G.sph(2), eyeMat(t, 0xffe14a, 2.4), [0, MAGNET_TOP_Y + R * 0.9, 0.2], [0.11, 0.11, 0.08]);
+  // copper coil drum on the mast (spins while pulling): a flanged spool, black windings
   const coil = sub(g, 'spinY', [0, 1.9, 0]);
-  coil.b.add(G.cyl(14), mat('copper', 0xc8742e, { roughness: 0.35, metalness: 0.6 }), [0, 0, 0], [0.4, 0.42, 0.4]);
-  for (let k = 0; k < 3; k++) coil.b.add(G.torus(), M.black(), [0, -0.14 + k * 0.14, 0], [0.42, 0.42, 0.42], [PI / 2, 0, 0]);
-  kb(coil.b, accent(t), [0.42, 0, 0], [0.06, 0.4, 0.12]);
+  coil.b.add(lathe('magnetSpool', [[0, -0.22], [0.45, -0.22], [0.45, -0.17], [0.39, -0.15], [0.39, 0.15], [0.45, 0.17], [0.45, 0.22], [0, 0.22]], 22), mat('copper', 0xc8742e, { roughness: 0.35, metalness: 0.6 }), [0, 0, 0]);
+  for (let k = 0; k < 3; k++) coil.b.add(G.torus(), M.black(), [0, -0.1 + k * 0.1, 0], [0.4, 0.4, 0.4], [PI / 2, 0, 0]);
+  kb(coil.b, accent(t), [0.44, 0, 0], [0.06, 0.4, 0.12]);
   coil.b.flush();
-  // three anchor legs on the lift (fold down when anchored)
+  // three anchor legs on the lift (fold down when anchored): steel struts, round feet
   const lift = sub(root, 'lift', [0, 0.9, 0]);
   for (let k = 0; k < 3; k++) {
     const a = (k / 3) * PI * 2 + PI / 3;
     const x = Math.sin(a) * 0.7;
     const z = Math.cos(a) * 0.7;
-    kb(lift.b, M.steel(), [x * 1.3, -0.3, z * 1.3], [0.14, 0.9, 0.14], [Math.cos(a) * 0.6, 0, -Math.sin(a) * 0.6]);
-    lift.b.add(G.cyl(8), M.black(), [x * 1.75, -0.78, z * 1.75], [0.2, 0.08, 0.2]);
+    lift.b.add(G.cyl(8), M.steel(), [x * 1.3, -0.3, z * 1.3], [0.07, 0.9, 0.07], [Math.cos(a) * 0.6, 0, -Math.sin(a) * 0.6]);
+    lift.b.add(lathe('magnetFoot', [[0, -0.05], [0.2, -0.05], [0.21, -0.01], [0.15, 0.04], [0, 0.05]], 12), M.black(), [x * 1.75, -0.78, z * 1.75]);
   }
   lift.b.flush();
   stack(b, stacks, -0.5, 0.84, -0.6, 0.07, 0.3, M.steel(), M.dark());
@@ -1581,28 +1703,37 @@ function twinlink(): Tpl {
   const base = new Part(root);
   const stacks: number[] = [];
   const wheels = new Wheels();
-  kb(base, M.black(), [0, 0.36, 0], [1.1, 0.16, 1.7]);
+  kb(base, M.black(), [0, 0.36, 0], [1.0, 0.14, 1.7]);
   for (const sx of [-1, 1]) for (const sz of [-0.55, 0.55]) wheels.add(sx * 0.66, 0.34, sz, 0.34, 0.24, accent(t));
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  kw(b, paint(t), [0, 0.72, 0.1], [1.14, 0.5, 1.5], 0.4);
-  kb(b, paint(t), [0, 1.08, -0.35], [0.86, 0.36, 0.7]);
-  kb(b, M.black(), [0, 1.27, -0.35], [0.9, 0.05, 0.74]);
-  // twin eyes
-  for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0xffd23a, 2.6), [sx * 0.22, 1.1, 0.02], [0.09, 0.09, 0.05]);
-  // ram prow + gold fins
-  kb(b, M.steel(), [0, 0.5, 0.92], [1.1, 0.34, 0.12], [-0.2, 0, 0]);
-  for (const sx of [-1, 1]) kb(b, accent(t), [sx * 0.6, 0.98, -0.5], [0.05, 0.36, 0.6], [0, 0, sx * 0.3]);
+  const P = paint(t);
+  const A = accent(t);
+  // RESHAPE: a rounded buggy tub (side profile: a round tail, a long curved nose) and a bubble cockpit
+  b.add(roundProfile('twinBody', [
+    [-0.72, 0.44], [0.72, 0.44], { p: [0.92, 0.6], q: [0.94, 0.44] }, { p: [0.3, 0.92], q: [0.72, 0.9] }, [-0.46, 0.95],
+    { p: [-0.72, 0.72], q: [-0.72, 0.95] },
+  ], 1.04, 0.15, 3, 6), P, [0, 0, 0]);
+  b.add(roundProfile('twinCab', [
+    [-0.74, 0.88], [0.06, 0.88], { p: [-0.2, 1.27], q: [0.02, 1.25] }, [-0.5, 1.29], { p: [-0.74, 1.04], q: [-0.74, 1.28] },
+  ], 0.86, 0.2, 3, 6), P, [0, 0, 0]);
+  // twin eyes in a black visor band across the cockpit's face
+  b.add(profileSolid('twinVisor', [[0.0, 0.99], [0.07, 1.0], [0.03, 1.17], [-0.06, 1.16]], 0.7, 0.02, 1), M.black(), [0, 0, 0]);
+  for (const sx of [-1, 1]) b.add(G.sph(1), eyeMat(t, 0xffd23a, 2.6), [sx * 0.17, 1.085, 0.06], [0.09, 0.07, 0.05], [-0.25, 0, 0]);
+  // ram prow (a small curved blade), swept gold fins
+  b.add(moldboard(1.1, 0.36, 0.1, 0.08), M.steel(), [0, 0.28, 0.9]);
+  const fin = profileSolid('twinFin', [[-0.3, 0], [0.12, 0], { p: [-0.22, 0.4], q: [-0.06, 0.14] }, [-0.36, 0.4], { p: [-0.3, 0], q: [-0.34, 0.16] }], 0.05, 0, 5);
+  for (const sx of [-1, 1]) b.add(fin, A, [sx * 0.42, 0.9, -0.45], ONE, [0, 0, sx * -0.3]);
   // tether pylon: mast, collar and the glowing orb
   b.add(G.cyl(8), M.dark(), [0, 1.5, -0.4], [0.06, 0.5, 0.06]);
-  b.add(G.cyl(10), accent(t), [0, 1.62, -0.4], [0.14, 0.06, 0.14]);
-  b.add(G.sph(1), glowMat(t, 0xffd23a, 0.9), [0, TWIN_PYLON_Y, -0.4], [0.2, 0.2, 0.2]);
-  // BOLD PASS: wheel fenders, side cooling fins, a nose bumper rail
+  b.add(lathe('twinCollar', [[0, 0], [0.15, 0], [0.15, 0.04], [0.1, 0.08], [0, 0.08]], 14), A, [0, 1.58, -0.4]);
+  b.add(G.sph(2), glowMat(t, 0xffd23a, 0.9), [0, TWIN_PYLON_Y, -0.4], [0.2, 0.2, 0.2]);
+  // arched wheel fenders, side cooling fins on the cockpit, a nose bumper rail
   for (const sx of [-1, 1]) {
-    for (const sz of [-0.55, 0.55]) kb(b, M.dark(), [sx * 0.66, 0.74, sz], [0.3, 0.07, 0.56]);
-    for (let i = 0; i < 3; i++) b.add(G.box(), M.black(), [sx * 0.45, 1.08, -0.15 - i * 0.14], [0.05, 0.28, 0.05]);
+    for (const sz of [-0.55, 0.55]) b.add(archFender(0.34, 0.34, 0.3, 0.5, 0.05, 0.05), M.dark(), [sx * 0.66, 0, sz]);
+    for (let i = 0; i < 3; i++) b.add(G.box(), M.black(), [sx * 0.43, 1.06, -0.25 - i * 0.14], [0.04, 0.22, 0.05]);
   }
-  kb(b, M.dark(), [0, 0.32, 1.02], [1.2, 0.12, 0.12]);
+  b.add(G.cyl(10), M.dark(), [0, 0.3, 1.04], [0.06, 1.1, 0.06], [0, 0, PI / 2]);
   stack(b, stacks, 0.3, 0.9, -0.8, 0.05, 0.2, M.steel(), M.dark());
   b.flush();
   base.flush();
@@ -1957,5 +2088,5 @@ export function disposeRig(rig: Rig): void {
 
 /** Shared geometry for debris chunks. */
 export function debrisGeometry(i: number): THREE.BufferGeometry {
-  return i % 3 === 0 ? G.wedge(0.4) : i % 3 === 1 ? G.box() : G.cyl(8);
+  return debrisShape(i);
 }
