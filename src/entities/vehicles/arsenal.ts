@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { addMesh, kitBox, type VehicleBuild, type VehicleBuildIn } from './types';
+import { archFender, keepFaceted, octLoft, rblock, roundEnd, roundLoft, roundProfile, sweep, turnedX } from './vehicleShapes';
 
 /** What the Plow feeds the ARSENAL rig every frame (ArsenalVehicleParts.update). */
 export interface ArsenalRigState {
@@ -95,39 +96,6 @@ interface LoftSection {
   w: readonly [number, number, number];
 }
 
-/** A faceted armour body lofted through octagonal sections (front to back order does not matter, z must increase),
- *  capped at both ends. Non-indexed with one normal per face, so it reads flat-shaded with any material. */
-function loft(secs: readonly LoftSection[]): THREE.BufferGeometry {
-  const rings = secs.map(({ z, y: [y0, y1, y2, y3], w: [wb, ws, wt] }) =>
-    ([[wb, y0], [ws, y1], [ws, y2], [wt, y3], [-wt, y3], [-ws, y2], [-ws, y1], [-wb, y0]] as const).map(([x, y]) => new THREE.Vector3(x, y, z)),
-  );
-  const pos: number[] = [];
-  const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-  for (let i = 0; i + 1 < rings.length; i++) {
-    const r0 = rings[i];
-    const r1 = rings[i + 1];
-    for (let k = 0; k < 8; k++) {
-      const k1 = (k + 1) % 8;
-      tri(r0[k], r0[k1], r1[k1]);
-      tri(r0[k], r1[k1], r1[k]);
-    }
-  }
-  const cap = (r: THREE.Vector3[], front: boolean) => {
-    const c = r.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / r.length);
-    for (let k = 0; k < 8; k++) {
-      const k1 = (k + 1) % 8;
-      if (front) tri(c, r[k], r[k1]);
-      else tri(c, r[k1], r[k]);
-    }
-  };
-  cap(rings[0], false);
-  cap(rings[rings.length - 1], true);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.computeVertexNormals();
-  return g;
-}
-
 /** A faceted armour band in the XY plane (axis Z): an n-gon annulus from rIn to rOut (vertex radii), spanning
  *  z0..z1, first vertex at angle a0. Non-indexed, one normal per face (flat-shaded with any material). */
 function band(n: number, rIn: number, rOut: number, z0: number, z1: number, a0 = 0): THREE.BufferGeometry {
@@ -172,14 +140,24 @@ function fresnelMat(color: number, power: number, strength: number): THREE.Shade
  * pods on the rear quarters and nose greebles (ram bar, tow hooks, caged headlights, the Mag Repulsor lens); an angled
  * turret with armour cheeks, optics, hatch and antenna carries the finned Mag Laser emitter. Static parts merge into
  * one mesh per material. Rides on the shared chassis slot (the shared wheels are hidden for this kind).
+ *
+ * Reshape (art pass): the hull, rear deck and turret keep their octagonal sections but their chamfers are round
+ * shoulders (vehicleShapes.ts octLoft); the wheel arches are round shells with rolled flanges, the coil pods
+ * capsules, the cheek skirts and tyres round-edged. The armour / trim / rubber materials shade smooth; their angular
+ * parts keep baked face normals (keepFaceted).
  */
 export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<ArsenalVehicleParts> {
   const ap = new THREE.Group();
   const glowMat = new THREE.MeshStandardMaterial({ color: CYAN, emissive: CYAN, emissiveIntensity: 1.4, roughness: 0.25 });
-  const armorMat = new THREE.MeshStandardMaterial({ color: 0x505b67, roughness: 0.38, metalness: 0.5, flatShading: true, envMapIntensity: 0.8 });
+  // (Reshape: the armour, trim and rubber no longer flat-shade; their angular parts get face normals baked in
+  // (keepFaceted, before the merge), the curved hull, deck, turret, arches, pods and tyres keep their smooth ones.)
+  const armorMat = new THREE.MeshStandardMaterial({ color: 0x505b67, roughness: 0.38, metalness: 0.5, envMapIntensity: 0.8 });
   // Darker gunmetal trim (bearing blocks, axle housings).
-  const trimMat = new THREE.MeshStandardMaterial({ color: 0x323a44, roughness: 0.45, metalness: 0.45, flatShading: true });
-  const rubberMat = new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.95, flatShading: true });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x323a44, roughness: 0.45, metalness: 0.45 });
+  const rubberMat = new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.95 });
+  const curved = new Set<THREE.BufferGeometry>();
+  /** A curved part (keeps its own smooth normals). */
+  const C = (g: THREE.BufferGeometry) => (curved.add(g), g);
   const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 1.6 });
   const add = (color: number, opacity: number) =>
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
@@ -226,13 +204,13 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
 
   // Main hull: rear wall (the front of the gyro bay), roof run, upper glacis, lower glacis / nose.
   addMesh(
-    loft([
+    C(octLoft('arsHull', [
       { z: -1.5, y: [0.64, 0.82, 1.72, 2.07], w: [0.55, 0.78, 0.6] },
       { z: -1.25, y: [0.55, 0.72, 1.72, 2.07], w: [0.62, 0.84, 0.66] },
       { z: 0.8, y: [0.55, 0.72, 1.72, 2.07], w: [0.62, 0.84, 0.66] },
       { z: 1.3, y: [0.55, 0.72, 1.62, 1.86], w: [0.62, 0.84, 0.66] },
       { z: 1.95, y: [0.7, 0.85, 1.2, 1.5], w: [0.5, 0.78, 0.6] },
-    ]),
+    ])),
     m.paint,
     0, 0, 0, ap,
   );
@@ -259,8 +237,8 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     box(0.06, 0.1, 2.0, armorMat, sx * 0.9, 1.75, -0.45, 0, 0, sx * 0.75);
     bolts(6, sx * 0.965, 1.69, -1.35, sx * 0.965, 1.69, 0.45);
     bolts(6, sx * 0.965, 1.42, -1.35, sx * 0.965, 1.42, 0.45);
-    box(0.05, 0.4, 1.1, armorMat, sx * 0.77, 1.91, 0.2, 0, 0, sx * 0.4636);
-    bolts(4, sx * 0.8, 1.9, -0.25, sx * 0.8, 1.9, 0.65);
+    box(0.05, 0.3, 1.1, armorMat, sx * 0.79, 1.94, 0.2, 0, 0, sx * 0.62);
+    bolts(4, sx * 0.815, 1.935, -0.25, sx * 0.815, 1.935, 0.65);
     for (const z of [-0.95, 0.0]) {
       box(0.07, 0.36, 0.9, armorMat, sx * 0.89, 1.17, z, 0, 0, -sx * 0.22);
       bolts(3, sx * 0.94, 1.27, z - 0.34, sx * 0.94, 1.27, z + 0.34);
@@ -275,21 +253,19 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     const fx = sx * (WHEEL_X + 0.02);
     const FW = WHEEL_W + 0.16;
     const RF = WHEEL_R + 0.18;
+    // (Reshape: one round arch shell with a rolled trim flange on its outer edge, bolted along its crown.)
     const N = 5;
     const t0 = 0.5;
     const t1 = 2.7;
     const dT = (t1 - t0) / N;
-    for (let i = 0; i < N; i++) {
+    const deg = 180 / Math.PI;
+    addMesh(C(archFender('arsArch', WHEEL_R, RF - 0.03, RF + 0.04, t0 * deg, t1 * deg, FW, 0.045, 14)), armorMat, fx, 0, WHEEL_Z, ap);
+    addMesh(C(archFender('arsFlange', WHEEL_R, RF - 0.1, RF + 0.05, t0 * deg - 2, t1 * deg + 2, 0.06, 0.022, 14)), trimMat, fx + sx * (FW / 2 + 0.02), 0, WHEEL_Z, ap);
+    for (let i = 0; i < N; i += 2) {
       const th = t0 + (i + 0.5) * dT;
-      const r = RF + (i % 2) * 0.02;
-      const len = 2 * r * Math.sin(dT / 2) + 0.05;
-      const y = WHEEL_R + Math.sin(th) * r;
-      const z = WHEEL_Z + Math.cos(th) * r;
-      box(FW, 0.06, len, armorMat, fx, y, z, Math.PI / 2 - th);
-      box(0.05, 0.14, len, trimMat, fx + sx * (FW / 2 + 0.02), WHEEL_R + Math.sin(th) * (r - 0.02), WHEEL_Z + Math.cos(th) * (r - 0.02), Math.PI / 2 - th);
-      const yb = WHEEL_R + Math.sin(th) * (r + 0.04);
-      const zb = WHEEL_Z + Math.cos(th) * (r + 0.04);
-      if (i % 2 === 0) bolts(2, fx + sx * (FW / 2 - 0.08), yb, zb, fx - sx * (FW / 2 - 0.08), yb, zb);
+      const yb = WHEEL_R + Math.sin(th) * (RF + 0.05);
+      const zb = WHEEL_Z + Math.cos(th) * (RF + 0.05);
+      bolts(2, fx + sx * (FW / 2 - 0.08), yb, zb, fx - sx * (FW / 2 - 0.08), yb, zb);
     }
     box(0.16, 0.14, 0.6, trimMat, sx * 0.86, 1.5, 1.2);
     box(0.1, 0.05, 0.05, glowMat, fx + sx * 0.26, WHEEL_R + Math.sin(t0) * RF + 0.02, WHEEL_Z + Math.cos(t0) * RF + 0.04, 0, 0, 0, ap, false);
@@ -310,14 +286,18 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     const px = sx * 0.99;
     const PY = 2.0;
     const PZ = -0.98;
-    box(0.36, 0.3, 0.86, armorMat, px, PY, PZ);
+    // (Reshape: a rounded capsule pod, its nose rolled under to the emitter face.)
+    addMesh(C(roundLoft('arsPod', sweep(-0.43, 0.5, 8, (z) => {
+      const e = roundEnd(0.5 - z, 0.22, 0.55);
+      const b = roundEnd(z + 0.43, 0.08, 0.85);
+      return { hw: 0.18 * Math.min(e, b) + 0.0, yb: -0.15 * b + (1 - e) * 0.02, yt: 0.15 - (1 - e) * 0.08, rb: 0.06, rt: 0.11 };
+    }))), armorMat, px, PY, PZ, ap);
     box(0.3, 0.14, 0.6, trimMat, sx * 0.86, 1.83, PZ);
-    box(0.36, 0.06, 0.24, armorMat, px, PY + 0.1, PZ + 0.48, 0.65);
-    box(0.36, 0.2, 0.06, trimMat, px, PY - 0.04, PZ + 0.45);
+    addMesh(rblock(0.3, 0.18, 0.06, 0.03), trimMat, px, PY - 0.04, PZ + 0.47, ap);
     for (const dx of [-0.08, 0.08]) {
-      const coil = addMesh(new THREE.CylinderGeometry(0.06, 0.07, 0.18, 6), trimMat, px + dx, PY - 0.04, PZ + 0.52, ap);
+      const coil = addMesh(new THREE.CylinderGeometry(0.06, 0.07, 0.18, 6), trimMat, px + dx, PY - 0.04, PZ + 0.56, ap);
       coil.rotation.x = Math.PI / 2;
-      const ring = addMesh(new THREE.TorusGeometry(0.065, 0.016, 4, 8), glowMat, px + dx, PY - 0.04, PZ + 0.6, ap, false);
+      const ring = addMesh(new THREE.TorusGeometry(0.065, 0.016, 4, 8), glowMat, px + dx, PY - 0.04, PZ + 0.64, ap, false);
       void ring;
     }
     for (const dz of [-0.24, 0, 0.24]) box(0.02, 0.18, 0.06, glowMat, px + sx * 0.185, PY, PZ + dz, 0, 0, 0, ap, false);
@@ -329,7 +309,7 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   }
 
   // Nose: a faceted ram bar on brackets, tow hooks, headlight clusters in cages, a cyan LED strip.
-  box(1.56, 0.2, 0.2, armorMat, 0, 1.05, 2.03);
+  addMesh(C(rblock(1.56, 0.2, 0.2, 0.07)), armorMat, 0, 1.05, 2.03, ap);
   box(1.4, 0.07, 0.16, trimMat, 0, 0.92, 2.0, -0.6);
   for (const sx of [-1, 1]) {
     box(0.12, 0.14, 0.18, trimMat, sx * 0.42, 1.05, 1.94);
@@ -360,7 +340,7 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
    * overhangs the GYRO BAY. The gyro sits under it in a cradle: the hull's rear wall is the bay's back frame (an
    * octagonal socket facing the core), the deck is its roof, armour skirts hang from the deck edges as cheek plates
    * and carry the bearing caps the outer ring pivots in; swept struts, pistons and cables tie the caps to the hull ---- */
-  addMesh(loft(DECK), m.paint, 0, 0, 0, ap);
+  addMesh(C(octLoft('arsDeck', DECK)), m.paint, 0, 0, 0, ap);
   /** Vertex k (loft order) of deck section i. */
   const dv = (i: number, k: number) => {
     const { z, y, w } = DECK[i];
@@ -422,12 +402,9 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     for (let j = 0; j < 5; j++) onRoof(0.48, 0.02, 0.06, armorMat, sx * 0.4, -2.56 - j * 0.11, 0.006, -0.3, false);
     for (const z of [-2.5, -3.0]) onRoof(0.56, 0.035, 0.035, trimMat, sx * 0.4, z, 0.0);
     // Chamfer plates (crest and rear facet) and the flank line.
-    const [ka, kb] = sx > 0 ? [2, 3] : [5, 4];
     const [fa, fb] = sx > 0 ? [1, 2] : [6, 5];
-    for (const i of [1, 2]) {
-      facetPlate(i, ka, kb, 0.08, 0.9, 0.04, 0.96, 0.03, armorMat);
-      facetPlate(i, fa, fb, 0.45, 0.6, 0.02, i === 1 ? 0.98 : 1, 0.012, glowMat, false);
-    }
+    // (The chamfers are round shoulders now: no plates on them, only the flank line.)
+    for (const i of [1, 2]) facetPlate(i, fa, fb, 0.45, 0.6, 0.02, i === 1 ? 0.98 : 1, 0.012, glowMat, false);
     // Tail light cluster and a cyan marker on the deck's rear face.
     box(0.26, 0.05, 0.03, tailMat, sx * 0.62, 1.89, -3.31, 0, 0, 0, ap, false);
     box(0.06, 0.05, 0.03, glowMat, sx * 0.4, 1.89, -3.31, 0, 0, 0, ap, false);
@@ -467,23 +444,12 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     const dx = CRADLE_X - x0;
     const dz = GYRO_Z - z0;
     const len = Math.hypot(dx, dz);
-    const skirtGeo = (() => {
-      const sh = new THREE.Shape();
-      // Top edge tucked into the deck's side foot (it falls with the raked tail).
-      sh.moveTo(-3.12, 1.88);
-      sh.lineTo(-3.05, 1.9);
-      sh.lineTo(-2.45, 2.0);
-      sh.lineTo(-1.9, 2.02);
-      sh.lineTo(-1.9, 1.86);
-      sh.lineTo(-2.08, 1.68);
-      sh.lineTo(-2.98, 1.68);
-      sh.lineTo(-3.12, 1.78);
-      sh.closePath();
-      const g = new THREE.ExtrudeGeometry(sh, { depth: 0.07, bevelEnabled: false });
-      g.translate(0, 0, -0.035);
-      g.rotateY(-Math.PI / 2);
-      return g;
-    })();
+    // Top edge tucked into the deck's side foot (it falls with the raked tail); round edges, the lower corners
+    // rolled.
+    const skirtGeo = C(roundProfile('arsSkirt', [
+      [-3.12, 1.88], [-3.05, 1.9], [-2.45, 2.0], [-1.9, 2.02], [-1.9, 1.86], { p: [-2.12, 1.68], q: [-1.94, 1.68] }, [-2.94, 1.68],
+      { p: [-3.12, 1.8], q: [-3.12, 1.68] },
+    ], 0.07, 0.022, 2, 5));
     for (const sx of [-1, 1]) {
       // Cheek skirt: an armour plate hanging from the deck edge, a trim strip on its lower edge, three cyan slots,
       // bolts; a hanger block carries the bearing cap under it.
@@ -544,12 +510,12 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     addMesh(boltGeo, m.chrome, Math.sin(a) * 0.61, 0.07, Math.cos(a) * 0.61, turret, false);
   }
   addMesh(
-    loft([
+    C(octLoft('arsTurret', [
       { z: -0.64, y: [0.08, 0.12, 0.3, 0.36], w: [0.3, 0.36, 0.26] },
       { z: -0.36, y: [0.06, 0.1, 0.36, 0.46], w: [0.44, 0.54, 0.38] },
       { z: 0.18, y: [0.06, 0.1, 0.36, 0.46], w: [0.44, 0.54, 0.38] },
       { z: 0.5, y: [0.08, 0.14, 0.3, 0.36], w: [0.3, 0.4, 0.26] },
-    ]),
+    ])),
     m.paint,
     0, 0, 0, turret,
   );
@@ -620,8 +586,11 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
   gun.add(mz);
 
   /* ---- front wheels: huge rugged tyres with chunky lugs, armoured hubs, glowing cyan rims ---- */
-  const tyreGeo = new THREE.CylinderGeometry(WHEEL_R - 0.04, WHEEL_R - 0.04, WHEEL_W, 22);
-  tyreGeo.rotateZ(Math.PI / 2);
+  const RT = WHEEL_R - 0.04;
+  const HW = WHEEL_W / 2;
+  const tyreGeo = C(turnedX('arsTyre', [
+    [0.36, -HW + 0.01], [RT - 0.12, -HW], [RT - 0.04, -HW + 0.03], [RT, -HW + 0.1], [RT, HW - 0.1], [RT - 0.04, HW - 0.03], [RT - 0.12, HW], [0.36, HW - 0.01],
+  ], 24));
   const lugGeo = new THREE.BoxGeometry(WHEEL_W + 0.02, 0.1, 0.2);
   const hubGeo = new THREE.CylinderGeometry(0.34, 0.37, WHEEL_W + 0.06, 8);
   hubGeo.rotateZ(Math.PI / 2);
@@ -743,6 +712,8 @@ export function buildArsenalVehicle({ mats: m }: VehicleBuildIn): VehicleBuild<A
     const nd = addMesh(new THREE.OctahedronGeometry(0.04, 0), glowMat, v.x, v.y, v.z, pivots[2], false);
     nd.scale.set(1, 1.6, 1);
   }
+  // Everything angular on the (now smooth-shaded) armour, trim and rubber keeps its flat-shaded look.
+  keepFaceted(ap, [armorMat, trimMat, rubberMat], curved);
   mergeStatic(pivots[0], { keep: [pivots[1]] });
   mergeStatic(pivots[1], { keep: [pivots[2]] });
   mergeStatic(pivots[2]);
