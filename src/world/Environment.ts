@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { DAY_MOODS, NEUTRAL_GRADE, NIGHT_GRADE, moodKey, type Grade } from '../config/arenaLooks';
+import { GRADE } from '../render/post';
 import type { Obstacle, WorldAPI, ZoneDef } from '../core/types';
 import { ARENA } from '../core/types';
 import { StaticBatch } from '../render/mergeStatic';
@@ -20,6 +22,11 @@ import { propSkinKey } from './propSkins';
 import { look as artLook, strength as lookStrength } from '../render/look';
 import { buildArenaEnv, installSpecularGain, type EnvLamp } from '../render/arenaEnv';
 import { ContactShadows } from '../render/contactShadows';
+
+/** The old fixed sun (45, 80, 55): ~48 deg up, from +x +z; arenas without a mood keep it. */
+const DEFAULT_SUN_ELEV = (Math.atan2(80, Math.hypot(45, 55)) * 180) / Math.PI;
+const DEFAULT_SUN_AZIM = (Math.atan2(45, 55) * 180) / Math.PI;
+const _up = new THREE.Vector3(0, 1, 0);
 
 /** Survival's Blizzard wave (setStorm): fog pulled in to this (or the zone's own, if nearer), tinted toward white. */
 const STORM_FOG_NEAR = 12;
@@ -79,6 +86,25 @@ export class Environment extends NightScenery implements WorldAPI {
 
   /* ------------------------------------------------------------------ zone */
 
+  /** Point the sun (and its shadow camera frame) from elevation / azimuth in degrees (arenaLooks.ts). */
+  private setSunDir(elevDeg: number, azimDeg: number): void {
+    const e = (elevDeg * Math.PI) / 180;
+    const a = (azimDeg * Math.PI) / 180;
+    this.sunOffset.set(Math.cos(e) * Math.sin(a), Math.sin(e), Math.cos(e) * Math.cos(a)).multiplyScalar(100);
+    this.sunD.copy(this.sunOffset).normalize();
+    this.sunR.crossVectors(_up, this.sunD).normalize();
+    this.sunU.crossVectors(this.sunD, this.sunR).normalize();
+  }
+
+  /** Push an arena grade to the output pass (render/post.ts GRADE). */
+  private applyGrade(g: Grade): void {
+    GRADE.uContrast.value = g.contrast;
+    GRADE.uSaturation.value = g.saturation;
+    GRADE.uShadowTint.value.set(...g.shadow);
+    GRADE.uHighTint.value.set(...g.highlight);
+    GRADE.uVignette.value = g.vignette;
+  }
+
   setZone(zone: ZoneDef): void {
     this.zone = zone;
     this.storm = false;
@@ -92,15 +118,23 @@ export class Environment extends NightScenery implements WorldAPI {
     // Time of day (core/timeOfDay.ts): at night the same zone is relit (night.ts) and dressed with the stadium extras.
     this.night = isNight();
     this.nightDef = this.night ? nightLook(zone) : null;
-    const look = this.night ? nightZone(zone) : zone;
+    const look0 = this.night ? nightZone(zone) : zone;
+    // Visual identity (config/arenaLooks.ts): by day each arena gets its mood: a low sun with long shadows, a warm key
+    // against a cool sky fill, haze and a colour grade. At night only the grade (night.ts relights the arena).
+    const mood = this.night ? null : (DAY_MOODS[moodKey(this.biome, zone.theme)] ?? null);
+    const look = mood
+      ? { ...look0, sunColor: mood.sunColor, sunIntensity: mood.sunIntensity, ambientColor: mood.sky, ambientIntensity: mood.ambient, fogColor: mood.fogColor }
+      : look0;
     this.look = look;
+    this.applyGrade(this.night ? NIGHT_GRADE : (mood?.grade ?? NEUTRAL_GRADE));
+    this.setSunDir(mood ? mood.sunElev : DEFAULT_SUN_ELEV, mood ? mood.sunAzim : DEFAULT_SUN_AZIM);
     this.crowdLift.value = this.night ? NIGHT_CROWD_LIFT : 0;
     this.lightGain = this.night ? NIGHT_BOOST : 1;
     const bs = this.nightDef?.sky ?? ((this.biome && BIOME_SKY[this.biome]) || {});
     const scene = this.ctx.scene;
     this.fog.color.setHex(look.fogColor);
-    this.fog.near = zone.fogNear;
-    this.fog.far = zone.fogFar;
+    this.fog.near = mood ? mood.fogNear : zone.fogNear;
+    this.fog.far = mood ? mood.fogFar : zone.fogFar;
     (scene.background as THREE.Color).setHex(look.fogColor);
 
     this.skyMat.uniforms.top.value.setHex(look.skyTop);
@@ -121,10 +155,17 @@ export class Environment extends NightScenery implements WorldAPI {
       (su.uSunDir.value as THREE.Vector3).set(...bs.sun.dir).normalize();
       su.uSunColor.value.setHex(bs.sun.color);
     }
+    if (mood) {
+      // the sky's sun disc sits where the light comes from
+      (su.uSunDir.value as THREE.Vector3).copy(this.sunD);
+      su.uSunColor.value.setHex(mood.sunColor);
+      su.uSunSize.value = Math.max(su.uSunSize.value, 0.04);
+    }
 
     this.hemi.color.setHex(look.ambientColor);
     this.hemi.groundColor.setHex(look.snowTint).lerp(new THREE.Color(look.ambientColor), this.night ? 0.75 : 0.3);
     if (bs.bounce !== undefined) this.hemi.groundColor.setHex(bs.bounce);
+    if (mood) this.hemi.groundColor.setHex(mood.bounce);
     this.auroraBase = bs.aurora ? new THREE.Color(look.ambientColor) : null;
     this.hemi.intensity = look.ambientIntensity;
     this.sun.color.setHex(look.sunColor);

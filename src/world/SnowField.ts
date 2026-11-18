@@ -160,23 +160,67 @@ export class SnowField implements SnowFieldAPI {
   constructor(ctx: GameContext) {
     this.ctx = ctx;
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.0 });
-    // Subtle glitter: view-dependent sparkle on snowy (bright) surfaces.
+    // Visual identity pass: WIND RIPPLES (sastrugi: two crossing ripple trains with noise-bent crests, a normal tilt only,
+    // so the low sun rakes across them; fading with distance against aliasing and on bare / trodden ground) and a
+    // sun-aware SPARKLE (tiny facets in a world-space cell grid that flash when they mirror the sun at the eye).
     this.material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vSnowWorld;')
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvSnowWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vSnowWorld;')
+        .replace(
+          '#include <common>',
+          `#include <common>
+          varying vec3 vSnowWorld;
+          float snHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          float snNoise(vec2 p) {
+            vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(snHash(i), snHash(i + vec2(1, 0)), f.x), mix(snHash(i + vec2(0, 1)), snHash(i + vec2(1, 1)), f.x), f.y);
+          }`,
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+          {
+            vec2 wp = vSnowWorld.xz;
+            float dist = length(cameraPosition - vSnowWorld);
+            // snowy (bright vertex colour) surfaces ripple; bare ground and far snow stay smooth
+            float snowy = smoothstep(0.35, 0.8, max(vColor.r, max(vColor.g, vColor.b)));
+            float amp = 0.22 * snowy * (1.0 - smoothstep(18.0, 55.0, dist));
+            if (amp > 0.001) {
+              float bend = snNoise(wp * 0.18) * 6.0;
+              vec2 d1 = normalize(vec2(1.0, 0.35));
+              vec2 d2 = normalize(vec2(-0.45, 1.0));
+              float p1 = dot(wp, d1) * 2.6 + bend;
+              float p2 = dot(wp, d2) * 4.1 + bend * 0.6;
+              float m = 0.55 + 0.45 * snNoise(wp * 0.5 + 3.1);
+              // asymmetric crests (steep lee side): derivative of a skewed sine
+              vec2 g = d1 * 2.6 * cos(p1 + 0.5 * sin(p1)) * (1.0 + 0.5 * cos(p1)) * m + d2 * 4.1 * cos(p2) * 0.35 * m;
+              vec3 tiltW = vec3(-g.x, 0.0, -g.y) * amp * 0.12;
+              normal = normalize(normal + (viewMatrix * vec4(tiltW, 0.0)).xyz);
+            }
+          }`,
+        )
         .replace(
           '#include <dithering_fragment>',
           `#include <dithering_fragment>
           {
-            vec3 cellP = floor(vSnowWorld * 9.0);
+            vec3 cellP = floor(vSnowWorld * 11.0);
             float rnd = fract(sin(dot(cellP, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
             vec3 vdir = normalize(cameraPosition - vSnowWorld);
+            float dist = length(cameraPosition - vSnowWorld);
+            float snowy = smoothstep(0.75, 0.95, vColor.r);
+            // each facet's own tilt; it flashes when it reflects the sun (first directional light) toward the eye
+            vec3 fn = normalize(vec3(rnd - 0.5, 1.6, fract(rnd * 31.7) - 0.5));
+            float glint = 0.0;
+            #if NUM_DIR_LIGHTS > 0
+              vec3 sunW = normalize((vec4(directionalLights[0].direction, 0.0) * viewMatrix).xyz);
+              vec3 h = normalize(sunW + vdir);
+              glint = pow(max(dot(fn, h), 0.0), 220.0);
+            #endif
             float tw = fract(rnd * 17.0 + dot(vdir, vec3(3.1, 1.7, 2.3)) * 2.0);
-            float s = step(0.985, rnd) * smoothstep(0.75, 1.0, tw) * smoothstep(0.75, 0.95, vColor.r);
-            gl_FragColor.rgb += vec3(s * 0.6);
+            float s = step(0.965, rnd) * snowy * (glint * 2.2 + smoothstep(0.85, 1.0, tw) * 0.35) * (1.0 - smoothstep(30.0, 70.0, dist));
+            gl_FragColor.rgb += vec3(s);
           }`,
         );
     };

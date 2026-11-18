@@ -205,11 +205,21 @@ class Bloom extends UnrealBloomPass {
   }
 }
 
+/** Arena colour grade (config/arenaLooks.ts), applied in the canvas output pass (Bloom path): contrast, saturation,
+ *  a warm/cool split toning and a vignette. Set by Environment.setZone; neutral = no change. */
+export const GRADE = {
+  uContrast: { value: 1 },
+  uSaturation: { value: 1 },
+  uShadowTint: { value: new THREE.Vector3() },
+  uHighTint: { value: new THREE.Vector3() },
+  uVignette: { value: 0 },
+};
+
 /** Canvas output: the scene clamped to display white plus the glow (both already display-encoded). */
 function outputMaterial(): THREE.RawShaderMaterial {
   return new THREE.RawShaderMaterial({
     name: 'BloomOutput',
-    uniforms: { tScene: { value: null }, tBloom: { value: null }, sceneMix: { value: 1 }, tAO: { value: null }, aoMix: { value: 0 } },
+    uniforms: { tScene: { value: null }, tBloom: { value: null }, sceneMix: { value: 1 }, tAO: { value: null }, aoMix: { value: 0 }, ...GRADE },
     vertexShader: /* glsl */ `
 precision highp float;
 uniform mat4 modelViewMatrix;
@@ -228,9 +238,25 @@ uniform sampler2D tBloom;
 uniform float sceneMix;
 uniform sampler2D tAO;
 uniform float aoMix;
+uniform float uContrast;
+uniform float uSaturation;
+uniform vec3 uShadowTint;
+uniform vec3 uHighTint;
+uniform float uVignette;
 varying vec2 vUv;
+vec3 grade( vec3 c ) {
+	float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+	c = mix( vec3( l ), c, uSaturation );
+	c = ( c - 0.5 ) * uContrast + 0.5;
+	float l2 = clamp( dot( c, vec3( 0.2126, 0.7152, 0.0722 ) ), 0.0, 1.0 );
+	c += uShadowTint * ( 1.0 - smoothstep( 0.0, 0.55, l2 ) ) + uHighTint * smoothstep( 0.45, 1.0, l2 );
+	vec2 d = vUv - 0.5;
+	c *= 1.0 - uVignette * smoothstep( 0.18, 0.75, dot( d, d ) * 2.0 );
+	return clamp( c, 0.0, 1.0 );
+}
 void main() {
 	vec3 s = min( texture2D( tScene, vUv ).rgb, vec3( 1.0 ) );
+	s = grade( s );
 	if ( aoMix > 0.0 ) s *= mix( 1.0, texture2D( tAO, vUv ).r, aoMix );
 	vec3 b = texture2D( tBloom, vUv ).rgb;
 	// Belt and braces (see bright()): never let a bad value through to the canvas.
