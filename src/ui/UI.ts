@@ -1,4 +1,5 @@
 import './fonts.css';
+import { announceOnce, freshGarage, garageUnlocks } from './unlocks';
 import './ui.css';
 import './brawl.css';
 import './challenges.css';
@@ -667,8 +668,9 @@ export class UI implements UIAPI {
 
   /** Q / E (gamepad LB / RB): previous / next Garage tab. */
   private cycleShopTab(dir: number): void {
-    const i = garage.SHOP_TABS.findIndex((t) => t.id === this.shopTab);
-    this.setShopTab(garage.SHOP_TABS[(i + dir + garage.SHOP_TABS.length) % garage.SHOP_TABS.length].id);
+    const tabs = garage.SHOP_TABS.filter((t) => !this.tabBtns.get(t.id)?.btn.classList.contains('hidden'));
+    const i = Math.max(0, tabs.findIndex((t) => t.id === this.shopTab));
+    this.setShopTab(tabs[(i + dir + tabs.length) % tabs.length].id);
     this.sfx('click');
     // Like the hub: if a tab had focus, focus follows the newly selected tab.
     const a = document.activeElement;
@@ -708,8 +710,33 @@ export class UI implements UIAPI {
       c.buy.title = bonus ? 'Paid with catch-up coins: yours to keep once the duel starts.' : '';
       c.buy.setAttribute('aria-disabled', afford ? 'false' : 'true');
       if (c.def.exclusiveWith) garage.refreshFocusCard(c, lvl, p.focusLock(c.def.id), this.ctx.progression.respecRefund(c.def.id), this.canRespec);
+      c.root.classList.remove('ss-nudge');
     }
+    this.applyUnlocks();
     garage.refreshTabs(this.garageDeps());
+  }
+
+  /** Gradual unlocks (ui/unlocks.ts): hide the Gear tab / Focus cards until the player gets there, announce each reveal
+   *  once, and nudge a brand-new player's first purchase (the cheapest affordable core upgrade pulses). */
+  private applyUnlocks(): void {
+    const prog = this.ctx.progression;
+    const u = this.duelWallet ? { gear: true, focus: true } : garageUnlocks(prog);
+    const gearTab = this.tabBtns.get('gear');
+    if (gearTab) gearTab.btn.classList.toggle('hidden', !u.gear);
+    this.screens.garage.querySelector('.ss-cat-focus')?.classList.toggle('hidden', !u.focus);
+    if (!u.gear && this.shopTab === 'gear') this.setShopTab('core');
+    if (!this.duelWallet) {
+      if (u.gear && announceOnce('gear')) this.toast('NEW in the Garage: GEAR. Items you buy, level up and equip on every plow.', 'good');
+      if (u.focus && announceOnce('focus')) this.toast('NEW in the Garage: FOCUS. Specialise in your abilities or your main attack.', 'good');
+    }
+    if (!this.duelWallet && freshGarage(prog)) {
+      let best: (typeof this.cards)[number] | null = null;
+      for (const c of this.cards) {
+        if (c.tab !== 'core' || c.def.exclusiveWith || !prog.canBuy(c.def.id)) continue;
+        if (!best || prog.cost(c.def.id) < prog.cost(best.def.id)) best = c;
+      }
+      best?.root.classList.add('ss-nudge');
+    }
   }
 
   private refreshRepair(): void {

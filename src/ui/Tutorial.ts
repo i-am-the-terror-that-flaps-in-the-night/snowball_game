@@ -5,6 +5,7 @@ import type { Progression } from '../core/Progression';
 import { CAMPAIGN_ARENA_HALF } from '../core/types';
 import { keyLabel, type Action } from '../core/input';
 import { PLOWS, type PlowDef } from '../config/plows';
+import { FieldTips } from './fieldTips';
 import type { TerrainDef, TerrainShape } from '../world/Terrain';
 import {
   ARROW_ABOVE, ARROW_HALF_W, arrowRect, edgePoint, fmtDist, onScreen, viewDir, type EdgeHit, type EdgeRect, type ScreenDir,
@@ -12,6 +13,9 @@ import {
 
 /** localStorage flag: set once the tutorial is finished or skipped (kept out of the save so RESET SAVE doesn't replay it). */
 const DONE_KEY = 'snowplow-showdown-tutorial-done';
+/** The quick first tutorial: this many lessons (drive, plow a ball, slam a bot), then arena 1 after QUICK_GO_DELAY s. */
+const QUICK_STEPS = 3;
+const QUICK_GO_DELAY = 2.2;
 /** Pause on the green "done" card before the next step. */
 const STEP_PAUSE = 1.1;
 /** Metres driven + seconds spent steering to clear the drive step. */
@@ -61,7 +65,7 @@ const PAD_LABEL: Partial<Record<Action, string>> = {
 };
 
 /** F-ability lesson text per plow (PlowDef.fAbility). */
-const F_INFO: Partial<Record<PlowDef['fAbility'], { title: string; text: string }>> = {
+export const F_INFO: Partial<Record<PlowDef['fAbility'], { title: string; text: string }>> = {
   fire: { title: 'Inferno', text: 'Breathe a cone of fire from the blade: it ignites bots, melts snow and ends in a fireball. Point it at the bot! Fire damage fills the 🔥 bar: when it is full, F unleashes a FIRESTORM.' },
   zap: {
     title: 'Thunderclap',
@@ -214,13 +218,20 @@ export class Tutorial {
     return this.running;
   }
 
+  /** QUICK mode (a brand-new player's automatic first tutorial): only the three core lessons (drive, plow a ball, slam
+   *  a bot), then straight into arena 1; everything else is taught in play by FieldTips. The menu's Tutorial tile runs
+   *  the full course. */
+  private quick = false;
+  private autoT = 0;
+
   /** Begin from step 1. The caller has already reset arena 1 and put the plow at its spawn. */
-  start(): void {
+  start(quick = false): void {
     const { ctx } = this;
     this.stop();
     this.running = true;
     this.finished = false;
-    this.steps = this.buildSteps();
+    this.quick = quick;
+    this.steps = quick ? this.buildSteps().slice(0, QUICK_STEPS) : this.buildSteps();
     this.unsub.push(
       ctx.events.on('slam', ({ hits }) => {
         if (hits > 0) this.slammed = true;
@@ -281,6 +292,10 @@ export class Tutorial {
       plow.hp = plow.maxHp * HP_FLOOR;
     }
     if (this.finished) {
+      if (this.quick) {
+        this.autoT -= dt;
+        if (this.autoT <= 0) this.exit('arena');
+      }
       if (ctx.input.wasPressed('Enter') || ctx.input.wasPressed('NumpadEnter')) this.exit('arena');
       return;
     }
@@ -344,7 +359,14 @@ export class Tutorial {
     this.finished = true;
     this.card.classList.add('done');
     this.stepEl.textContent = 'Training complete';
-    this.render("You're ready!", [], 'Snow is ammo, the ball is your shield, and bots are scrap. Arena 1 is waiting — upgrades live in the Garage.');
+    if (this.quick) {
+      // straight into the action: the rest is taught in play (FieldTips)
+      this.autoT = QUICK_GO_DELAY;
+      this.render('GO!', [], "That's all you need. Snow is ammo, bots are scrap. Arena 1 starts now: you'll pick up the rest on the job.");
+    } else {
+      FieldTips.markAllSeen();
+      this.render("You're ready!", [], 'Snow is ammo, the ball is your shield, and bots are scrap. Arena 1 is waiting — upgrades live in the Garage.');
+    }
     this.hintEl.textContent = '';
     this.barEl.classList.add('hidden');
     this.btnsEl.classList.remove('hidden');
