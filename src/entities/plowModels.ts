@@ -818,10 +818,10 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
   ],
   brute: [
     { face: 'top', at: [0, 2.585, 0.66], size: [0.6, 0.8], tags: ['stripe', 'emblem'], emblem: 0.5 }, // head roof
-    { face: 'top', at: [0, 2.66, -0.25], size: [1.0, 0.7], tags: ['stripe', 'band', 'emblem'], emblem: 0.62 }, // torso roof
+    { face: 'top', at: [0, 2.66, -0.2], size: [1.1, 0.7], tags: ['stripe', 'band', 'emblem'], emblem: 0.62 }, // torso roof
     { face: 'top', at: [0, 1.28, 1.08], size: [0.7, 1.2], tags: ['stripe', 'flame'] }, // front deck
     { face: 'top', at: [1.18, 1.06, -0.35], size: [1.5, 0.56], tags: ['flame', 'stripe', 'band'], pair: true }, // track guards
-    { face: 'side', at: [0.8, 2.15, -1.24], size: [0.56, 0.22], tags: ['band', 'stripe', 'flame'] }, // engine flank
+    { face: 'side', at: [0.8, 2.25, -1.24], size: [0.62, 0.22], tags: ['band', 'stripe', 'flame'] }, // engine flank
     { face: 'rear', at: [0, 1.45, -1.95], size: [1.6, 0.8], tags: ['emblem'], emblem: 0.66 }, // counterweight
     { face: 'rear', at: [0, 1.84, -1.95], size: [1.5, 0.13], tags: ['band'] },
   ],

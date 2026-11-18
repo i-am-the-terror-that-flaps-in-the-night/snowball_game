@@ -3,7 +3,6 @@ import { CLEATS_PER_RUN, SAW_R, buildBuzzsaw, cleatZ, hazardTexture, type Buzzsa
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { addMesh, boltRow, kitBox, type VehicleBuild, type VehicleBuildIn } from './types';
-import { arcPts, beltLoop, rblock, roundEnd, roundLoft, roundProfile, sweep, turned, turnedX } from './vehicleShapes';
 
 /** One BRUTUS arm: shoulder pivot (swings), forearm (slides out on a punch) and the fist at its end. */
 interface MechArm {
@@ -74,11 +73,7 @@ function sector(ri: number, ro: number, a0: number, a1: number, depth: number, s
  *  guarded, motor-driven buzzsaw bolted to each front corner. Palette: Paint Shop body / trim on the big plates, a
  *  light gunmetal frame, bare steel on the counterweight / cowcatcher, one accent colour (Paint Shop accent) on the
  *  brow, pauldron edge bands, saw guards and hubs, plain steel saw blades, hazard stripes only on the bumper and
- *  the fist cuffs. No blade.
- *
- *  Reshape (art pass): the primary forms are curved solids (vehicleShapes.ts): open belt loops, fenders curling over
- *  the sprockets, a barrel-chested core with a curved breastplate, a moulded head under a peaked helm, domed shoulder
- *  blocks, round elbow sleeves and fists, a moulded engine pack; they merge into the same per-material draws. */
+ *  the fist cuffs. No blade. */
 export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuild<BruteVehicleParts> {
   const bp = new THREE.Group();
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = bp, shadow = true) =>
@@ -89,11 +84,11 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
   const hazardTex = hazardTexture();
   hazardTex.repeat.set(3, 1);
   const hazardMat = new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.6, metalness: 0.25 });
-  const trackMat = new THREE.MeshStandardMaterial({ color: 0x34363c, roughness: 0.95 });
+  const trackMat = new THREE.MeshStandardMaterial({ color: 0x34363c, roughness: 0.95, flatShading: true });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x7b838d, roughness: 0.7, metalness: 0.2 });
   const ironMat = new THREE.MeshStandardMaterial({ color: 0x8a919a, roughness: 0.6, metalness: 0.25 });
-  const steelMat = new THREE.MeshStandardMaterial({ color: 0xb9bec4, roughness: 0.5, metalness: 0.25 });
-  const fistMat = new THREE.MeshStandardMaterial({ color: 0xc8cdd2, roughness: 0.35, metalness: 0.55 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0xb9bec4, roughness: 0.5, metalness: 0.25, flatShading: true });
+  const fistMat = new THREE.MeshStandardMaterial({ color: 0xc8cdd2, roughness: 0.35, metalness: 0.55, flatShading: true });
   const visorMat = new THREE.MeshStandardMaterial({ color: 0xffc46a, emissive: 0xff8a1e, emissiveIntensity: 1.5, roughness: 0.3 });
   const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3a24, emissive: 0xff1a0a, emissiveIntensity: 1.8, roughness: 0.3 });
   const { paint, trim, dark, chrome, hub, head } = mats;
@@ -138,17 +133,23 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
 
   /* ================================================================ TRACK UNITS ================================= */
   add(chassis, dark, 0, 0.62, 0.05);
-  // (Reshape: one open belt loop with round side edges; round-edged fenders that curl down over the sprocket.)
-  const beltGeo = beltLoop('bruteBelt', SPROCKET_Z, IDLER_Z, LOOP_Y, LOOP_R, LOOP_R - LOOP_IN, BELT_W, 0.035, 10);
+  const loopGeo = sector(LOOP_IN, LOOP_R, -Math.PI / 2, Math.PI / 2, BELT_W, 12);
+  // sector() bulges along +x in XZ, extruded on y; remap (x, y, z) -> (y - w/2, z, x): a half ring in the YZ plane
+  // bulging along +Z, extruded across the belt on X (a cyclic permutation, so the winding is kept).
+  loopGeo.applyMatrix4(new THREE.Matrix4().set(0, 1, 0, -BELT_W / 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1));
+  const runGeo = new THREE.BoxGeometry(BELT_W, LOOP_R - LOOP_IN, IDLER_Z - SPROCKET_Z);
   for (const sx of [-1, 1]) {
     const x = sx * TRACK_X;
     const ox = x + sx * 0.33; // outer face
-    // Belt: one loop round the drive sprocket and the idler.
-    add(beltGeo, trackMat, x, 0, 0);
+    // Belt: top and bottom runs plus the two rounded end wraps.
+    add(runGeo, trackMat, x, TRACK_H - (LOOP_R - LOOP_IN) / 2, 0.1);
+    add(runGeo, trackMat, x, 0.04 + (LOOP_R - LOOP_IN) / 2, 0.1);
+    add(loopGeo, trackMat, x, LOOP_Y, IDLER_Z);
+    add(loopGeo, trackMat, x, LOOP_Y, SPROCKET_Z).rotation.y = Math.PI;
     // Drive sprocket (rear) with an accent hub; plain front idler.
-    add(turnedX('bruteSprocket', [[0, -0.28], [0.22, -0.28], [0.3, -0.27], [0.33, -0.24], [0.33, 0.24], [0.3, 0.27], [0.22, 0.28], [0, 0.28]], 16), ironMat, x, LOOP_Y, SPROCKET_Z);
+    cyl(0.33, 0.33, BELT_W - 0.06, 14, ironMat, x, LOOP_Y, SPROCKET_Z, 'x');
     cyl(0.15, 0.15, 0.06, 10, hub, ox - sx * 0.02, LOOP_Y, SPROCKET_Z, 'x', bp, false);
-    add(turnedX('bruteIdler', [[0, -0.27], [0.22, -0.27], [0.29, -0.26], [0.31, -0.23], [0.31, 0.23], [0.29, 0.26], [0.22, 0.27], [0, 0.27]], 16), ironMat, x, LOOP_Y, IDLER_Z);
+    cyl(0.31, 0.31, BELT_W - 0.08, 14, ironMat, x, LOOP_Y, IDLER_Z, 'x');
     cyl(0.14, 0.14, BELT_W + 0.02, 10, steelMat, x, LOOP_Y, IDLER_Z, 'x', bp, false);
     // Road wheels: five twin-disc bogie wheels on a frame beam (mostly hidden by the skirt).
     box(0.12, 0.2, IDLER_Z - SPROCKET_Z - 0.4, frameMat, x, 0.42, 0.1, 0, 0, 0, bp, false);
@@ -158,17 +159,12 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
     }
     // Track guard (fender): one long body-paint plate over the rear / middle of the track (top 1.06), bent iron
     // lip at the front. The front third of the track runs open under the buzzsaw.
-    add(roundProfile('bruteFender', [
-      [0.42, 0.98], [0.42, 1.06], [-1.38, 1.06], ...arcPts(SPROCKET_Z, LOOP_Y, 0.6, 92, 150, 6), ...arcPts(SPROCKET_Z, LOOP_Y, 0.52, 150, 92, 6), [-1.38, 0.98],
-    ], 0.74, 0.03, 3, 6), paint, x, 0, 0);
+    box(0.74, 0.08, 2.36, paint, x, 1.02, -0.73);
     box(0.74, 0.06, 0.2, ironMat, x, 0.98, 0.52, 0.5, 0, 0);
-    // Side skirt: one plain body-paint plate hanging over the top run (its rear corner rounded off over the
-    // sprocket), a trim wear plate lapped over its rear end, and bolt rows along the fender's outer edge and the wear
-    // plate.
-    add(roundProfile('bruteSkirt', [
-      [0.4, 0.65], [0.4, 0.99], [-1.6, 0.99], { p: [-1.8, 0.82], q: [-1.8, 0.99] }, [-1.8, 0.78], { p: [-1.62, 0.65], q: [-1.8, 0.65] },
-    ], 0.05, 0.02, 2, 6), paint, x + sx * 0.38, 0, 0);
-    add(rblock(0.05, 0.28, 0.85, 0.02), trim, x + sx * 0.415, 0.8, -1.38);
+    // Side skirt: one plain body-paint plate hanging over the top run, a trim wear plate lapped over its rear end, and
+    // bolt rows along the fender's outer edge and the wear plate.
+    box(0.05, 0.34, 2.2, paint, x + sx * 0.38, 0.82, -0.7);
+    box(0.05, 0.28, 0.85, trim, x + sx * 0.415, 0.8, -1.38);
     boltRow(bp, ironMat, [x + sx * 0.335, 1.065, -1.75], [x + sx * 0.335, 1.065, 0.3], 8, [0, 0, 0], 0.03);
     boltRow(bp, ironMat, [x + sx * 0.442, 0.89, -1.7], [x + sx * 0.442, 0.89, -1.06], 4, [0, 0, -sx * Math.PI / 2], 0.026);
   }
@@ -190,8 +186,8 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
   box(1.7, 0.2, 3.05, trim, 0, 0.88, -0.03);
   box(1.6, 0.16, 1.0, dark, 0, 1.05, 1.0);
   box(1.7, 0.3, 2.05, trim, 0, 1.13, -0.53);
-  add(roundProfile('bruteDeck', [[0.5, 1.12], [1.42, 1.12], { p: [1.52, 1.21], q: [1.52, 1.12] }, { p: [1.42, 1.28], q: [1.52, 1.28] }, [0.5, 1.28]], 1.72, 0.06, 3, 5), paint, 0, 0, 0); // front deck (top at 1.28)
-  add(rblock(1.65, 0.22, 0.12, 0.05), ironMat, 0, 0.86, 1.56); // lower nose plate
+  plate(1.72, 0.16, 1.0, 0.025, paint, 0, 1.2, 1.0); // front deck (top at 1.28)
+  plate(1.65, 0.22, 0.12, 0.03, ironMat, 0, 0.86, 1.56); // lower nose plate
   // Cowcatcher: a V of three bare-steel slats between iron rails.
   for (const sx of [-1, 1]) {
     const arm = new THREE.Group();
@@ -206,64 +202,38 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
   box(0.14, 0.86, 0.14, ironMat, 0, 0.52, 2.32, -0.22, Math.PI / 4, 0);
 
   /* ================================================================ TORSO ======================================= */
-  add(turned('bruteWaist', [[0, 1.255], [0.95, 1.255], [0.95, 1.29], [0.92, 1.36], [0.88, 1.47], [0.84, 1.505], [0, 1.505]], 24), frameMat, 0, 0, -0.15); // waist turret ring
-  // Core block (top at 2.62): a barrel-chested shell (round front and back shoulders, flat flanks for the side
-  // armour), and the roof cap the decals sit on (top 2.66), rolled at its edges.
-  add(roundProfile('bruteCore', [
-    [-0.85, 1.5], [0.3, 1.5], { p: [0.45, 1.68], q: [0.45, 1.5] }, [0.45, 2.3], { p: [0.13, 2.62], q: [0.45, 2.62] }, [-0.6, 2.62],
-    { p: [-0.85, 2.38], q: [-0.85, 2.62] },
-  ], 1.8, 0.1, 2, 8), frameMat, 0, 0, 0);
-  add(roundProfile('bruteRoof', [
-    [-0.82, 2.6], [0.2, 2.6], { p: [0.38, 2.62], q: [0.32, 2.6] }, { p: [0.2, 2.66], q: [0.36, 2.66] }, [-0.72, 2.66], { p: [-0.86, 2.62], q: [-0.86, 2.66] },
-  ], 1.86, 0.03, 2, 6), paint, 0, 0, 0);
+  cyl(0.85, 0.95, 0.25, 18, frameMat, 0, 1.38, -0.15); // waist turret ring
+  // Core block (top at 2.62) and the roof plate the decals sit on (top 2.66).
+  box(1.8, 1.12, 1.3, frameMat, 0, 2.06, -0.2);
+  plate(1.86, 0.06, 1.36, 0.02, paint, 0, 2.63, -0.2);
   // Side armour: upper plate in body paint over a trim lower plate, one clean seam between them.
   for (const sx of [-1, 1]) {
     const x = sx * 0.93;
-    add(roundProfile('bruteSideHi', [
-      [-0.87, 1.97], [0.36, 1.97], [0.36, 2.34], { p: [0.12, 2.59], q: [0.36, 2.59] }, [-0.66, 2.59], { p: [-0.87, 2.4], q: [-0.87, 2.59] },
-    ], 0.06, 0.025, 2, 6), paint, x, 0, 0).rotation.z = sx * 0.04;
-    add(rblock(0.05, 0.5, 1.2, 0.05), trim, x - sx * 0.005, 1.78, -0.18);
+    plate(0.06, 0.62, 1.3, 0.02, paint, x, 2.28, -0.22, 0, 0, sx * 0.04);
+    plate(0.05, 0.5, 1.2, 0.015, trim, x - sx * 0.005, 1.78, -0.18);
   }
-  // Chest: a curved breastplate in body paint, bulging forward between the waist and the head, bolted.
+  // Chest: a sloped glacis plate in body paint.
+  plate(1.6, 0.6, 0.12, 0.03, paint, 0, 1.8, 0.5, -0.32);
   {
-    const A = [0.4, 1.48] as const;
-    const Q = [0.74, 1.74] as const;
-    const B = [0.42, 2.12] as const;
-    add(roundProfile('bruteChest', [A, { p: B, q: Q }, [B[0] - 0.1, B[1] - 0.02], { p: [A[0] - 0.08, A[1] + 0.06], q: [Q[0] - 0.12, Q[1]] }], 1.6, 0.04, 3, 10), paint, 0, 0, 0);
-    for (const t of [0.28, 0.72]) {
-      const z = (1 - t) * (1 - t) * A[0] + 2 * t * (1 - t) * Q[0] + t * t * B[0];
-      const y = (1 - t) * (1 - t) * A[1] + 2 * t * (1 - t) * Q[1] + t * t * B[1];
-      const dz = 2 * (1 - t) * (Q[0] - A[0]) + 2 * t * (B[0] - Q[0]);
-      const dy = 2 * (1 - t) * (Q[1] - A[1]) + 2 * t * (B[1] - Q[1]);
-      // bolt heads along the outward normal (dy, -dz) in (z, y): a turn about x from +y
-      const a = Math.atan2(dy, -dz);
-      boltRow(bp, ironMat, [-0.66, y, z], [0.66, y, z], 6, [a, 0, 0], 0.03);
-    }
+    const f = frameAt(0, 1.8, 0.5, -0.32);
+    for (const y of [-0.22, 0.22]) boltRow(f, ironMat, [-0.68, y, 0.065], [0.68, y, 0.065], 6, [Math.PI / 2, 0, 0], 0.03);
   }
 
   /* ---- Head: low and forward between the shoulders, brow plate over the viewport slit, work light on the roof. ---- */
-  add(roundProfile('bruteHead', [
-    [0.34, 2.02], [0.92, 2.02], { p: [1.02, 2.12], q: [1.02, 2.02] }, [1.02, 2.4], { p: [0.88, 2.52], q: [1.02, 2.52] }, [0.34, 2.52],
-  ], 0.9, 0.1, 2, 6), frameMat, 0, 0, 0);
-  add(roundProfile('bruteHelm', [
-    [0.32, 2.52], [0.92, 2.52], { p: [1.08, 2.5], q: [1.02, 2.52] }, { p: [0.94, 2.585], q: [1.08, 2.585] }, [0.42, 2.585], { p: [0.32, 2.55], q: [0.32, 2.585] },
-  ], 0.98, 0.03, 2, 6), paint, 0, 0, 0); // head roof (top 2.585), peaked over the brow
-  add(roundProfile('bruteBrow', [[0.98, 2.33], [1.1, 2.38], { p: [1.07, 2.53], q: [1.12, 2.5] }, [0.98, 2.52]], 1.0, 0.04, 3, 6), accent, 0, 0, 0); // brow
-  add(roundProfile('bruteJaw', [[0.97, 2.0], [1.06, 2.0], { p: [1.1, 2.2], q: [1.12, 2.06] }, [1.0, 2.24]], 0.96, 0.04, 3, 6), trim, 0, 0, 0); // jaw
+  box(0.9, 0.5, 0.68, frameMat, 0, 2.27, 0.68);
+  plate(0.98, 0.065, 0.74, 0.015, paint, 0, 2.5525, 0.69); // head roof (top 2.585)
+  plate(1.0, 0.22, 0.1, 0.025, accent, 0, 2.44, 1.04, 0.22); // brow
+  plate(0.96, 0.24, 0.1, 0.025, trim, 0, 2.12, 1.03, -0.28); // jaw
   box(0.74, 0.12, 0.04, visorMat, 0, 2.29, 1.012, 0, 0, 0, bp, false); // viewport glow
-  for (const sx of [-1, 1]) add(rblock(0.06, 0.42, 0.5, 0.03), paint, sx * 0.47, 2.29, 0.82); // cheek plates
+  for (const sx of [-1, 1]) plate(0.06, 0.42, 0.5, 0.015, paint, sx * 0.47, 2.29, 0.82); // cheek plates
   // Work light on the head roof (left), its glow from Plow's beacon light.
   box(0.16, 0.08, 0.14, ironMat, -0.34, 2.62, 0.82, 0, 0, 0, bp, false);
   cyl(0.11, 0.12, 0.16, 12, ironMat, -0.34, 2.74, 0.88, 'z');
   cyl(0.095, 0.095, 0.02, 12, head, -0.34, 2.74, 0.965, 'z', bp, false);
 
   /* ---- Engine pack behind the torso: plain lid, radiator plate, one stack. ---- */
-  // (Reshape: a moulded pack with round top shoulders and rear corners under a domed lid.)
-  add(roundLoft('bruteEngine', sweep(-1.61, -0.87, 6, (z) => ({ hw: 0.8 * roundEnd(z + 1.61, 0.16, 0.82), yb: 1.55, yt: 2.46, rb: 0.04, rt: 0.14 }))), paint, 0, 0, 0);
-  add(roundLoft('bruteLid', sweep(-1.65, -0.85, 6, (z) => {
-    const e = roundEnd(z + 1.65, 0.16, 0.82);
-    return { hw: 0.82 * e, yb: 2.42, yt: 2.53, rb: 0.02, rt: 0.07 };
-  })), trim, 0, 0, 0); // engine lid
+  box(1.6, 0.9, 0.74, paint, 0, 2.0, -1.24);
+  box(1.64, 0.08, 0.78, trim, 0, 2.49, -1.24); // engine lid
   // Radiator face on the back (above the counterweight).
   box(1.3, 0.42, 0.04, ironMat, 0, 2.2, -1.62);
   for (let i = 0; i < 5; i++) box(1.2, 0.035, 0.03, frameMat, 0, 2.04 + i * 0.08, -1.645, 0, 0, 0, bp, false);
@@ -275,9 +245,9 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
 
   /* ---- Counterweight (decal face at z = -1.95), tail lights, bumper. ---- */
   // Stacked slabs: iron base, a bare-steel middle (decal face), an iron top slab.
-  add(rblock(1.84, 0.18, 0.33, 0.08), ironMat, 0, 1.04, -1.785);
-  add(rblock(1.84, 0.66, 0.33, 0.12), steelMat, 0, 1.46, -1.785);
-  add(rblock(1.84, 0.16, 0.33, 0.07), ironMat, 0, 1.87, -1.785);
+  box(1.84, 0.18, 0.33, ironMat, 0, 1.04, -1.785);
+  box(1.84, 0.66, 0.33, steelMat, 0, 1.46, -1.785);
+  box(1.84, 0.16, 0.33, ironMat, 0, 1.87, -1.785);
   for (const y of [1.04, 1.87]) boltRow(bp, ironMat, [-0.8, y, -1.955], [0.8, y, -1.955], 7, [-Math.PI / 2, 0, 0], 0.032);
   for (const sx of [-1, 1]) box(0.18, 0.1, 0.05, tailMat, sx * 0.72, 1.2, -1.97, 0, 0, 0, bp, false);
   const bumperTex = hazardTexture();
@@ -293,32 +263,22 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
     shoulder.position.set(sx * SHOULDER[0], SHOULDER[1], SHOULDER[2]);
     bp.add(shoulder);
     // Shoulder hub: a fat iron drum with an accent cap.
-    add(turnedX('bruteShoulderHub', [[0, -0.21], [0.24, -0.21], [0.29, -0.19], [0.3, -0.15], [0.3, 0.15], [0.29, 0.19], [0.24, 0.21], [0, 0.21]], 16), ironMat, 0, 0, 0, shoulder);
+    cyl(0.3, 0.3, 0.42, 14, ironMat, 0, 0, 0, 'x', shoulder);
     cyl(0.13, 0.13, 0.46, 10, hub, 0, 0, 0, 'x', shoulder, false);
     // Pauldron: one heavy bent plate in body paint with an accent edge band.
-    // (Reshape: one heavy moulded shoulder block domed over the hub (round in plan at its ends, a big roll on its
-    // outer top edge), an accent band along its lower outer edge, a bolt row along its crown; built for the right
-    // arm and mirrored.)
-    const pad = frameAt(0, 0, 0, 0, 0, 0, shoulder);
-    pad.scale.x = sx;
-    add(roundLoft('brutePauldron', sweep(-0.52, 0.52, 8, (z) => {
-      const e = roundEnd(0.52 - Math.abs(z), 0.18, 0.78);
-      return { hw: 0.47 * e, yb: -0.08, yt: 0.46 - (1 - e) * 0.12, rb: 0.04, rt: 0.3 * e };
-    })), paint, 0.14, 0, 0, pad);
-    add(rblock(0.05, 0.12, 0.9, 0.02), accent, 0.6, -0.06, 0, pad, false);
-    boltRow(pad, ironMat, [0.02, 0.465, -0.34], [0.02, 0.465, 0.34], 4, [0, 0, 0], 0.03);
+    plate(0.86, 0.16, 1.04, 0.035, paint, sx * 0.1, 0.36, 0, 0, 0, sx * -0.22, shoulder);
+    boltRow(frameAt(sx * 0.1, 0.36, 0, 0, 0, sx * -0.22, shoulder), ironMat, [sx * 0.3, 0.082, -0.4], [sx * 0.3, 0.082, 0.4], 4, [0, 0, 0], 0.03);
+    plate(0.14, 0.52, 1.0, 0.03, paint, sx * 0.5, 0.12, 0, 0, 0, sx * -0.08, shoulder);
+    box(0.05, 0.12, 1.02, accent, sx * 0.575, -0.08, 0, 0, 0, sx * -0.08, shoulder, false);
     // Upper arm: twin iron straps around a core.
     box(0.3, 0.6, 0.26, frameMat, sx * 0.04, -0.45, 0, 0, 0, 0, shoulder);
     for (const dx of [-0.17, 0.17]) plate(0.07, 0.8, 0.34, 0.015, ironMat, sx * 0.04 + dx, -0.45, 0, 0, 0, 0, shoulder);
     // Elbow sleeve: the long housing the forearm piston slides out of (z -1.0 .. 0.35), collar, rear cap.
     const ey = ELBOW_Y;
     const ex = sx * 0.05;
-    add(roundLoft('bruteSleeve', sweep(-1.0, 0.35, 6, (z) => {
-      const e = roundEnd(z + 1.0, 0.18, 0.86);
-      return { hw: 0.29 * e, yb: -0.28 * e, yt: 0.28 * e, rb: 0.16, rt: 0.16 };
-    })), trim, ex, ey, 0, shoulder);
-    add(roundLoft('bruteCollar', sweep(0.23, 0.37, 2, () => ({ hw: 0.33, yb: -0.32, yt: 0.32, rb: 0.17, rt: 0.17 }))), ironMat, ex, ey, 0, shoulder);
-    add(rblock(0.5, 0.48, 0.08, 0.12), ironMat, ex, ey, -1.02, shoulder);
+    plate(0.58, 0.56, 1.35, 0.05, trim, ex, ey, -0.325, 0, 0, 0, shoulder);
+    plate(0.66, 0.64, 0.14, 0.03, ironMat, ex, ey, 0.3, 0, 0, 0, shoulder);
+    plate(0.5, 0.48, 0.08, 0.02, ironMat, ex, ey, -1.02, 0, 0, 0, shoulder);
     // Punch-ram barrel on top (fixed here; its rod rides on the forearm).
     const topRam: V3 = [ex - sx * 0.08, ey + 0.38, 0];
     for (const [rx, ry] of [topRam]) {
@@ -333,7 +293,7 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
     shoulder.add(forearm);
     cyl(0.19, 0.19, 1.75, 8, chrome, 0, 0, -0.325, 'z', forearm);
     cyl(0.205, 0.205, 0.05, 8, frameMat, 0, 0, 0.2, 'z', forearm, false);
-    add(rblock(0.6, 0.58, 0.18, 0.08), ironMat, 0, 0, 0.62, forearm);
+    plate(0.6, 0.58, 0.18, 0.04, ironMat, 0, 0, 0.62, 0, 0, 0, forearm);
     // Rod (fixed to the wrist; long enough to stay in its barrel at full reach).
     for (const [rx, ry] of [topRam]) {
       const lx = rx - ex;
@@ -344,17 +304,13 @@ export function buildBruteVehicle({ mats, chassis }: VehicleBuildIn): VehicleBui
     }
     // Fist: hazard cuff band, a heavy steel block, trim knuckle plate, four knuckles, thumb.
     box(0.68, 0.62, 0.08, hazardMat, 0, 0, 0.75, 0, 0, 0, forearm, false);
-    // (Reshape: a domed fist block rounding off toward the knuckles; rounded knuckles, guard plate and thumb.)
-    add(roundLoft('bruteFist', sweep(0.78, 1.34, 6, (z) => {
-      const e = roundEnd(1.34 - z, 0.16, 0.8);
-      return { hw: 0.39 * e, yb: -0.32 * e, yt: 0.32 * e, rb: 0.13, rt: 0.16 };
-    })), fistMat, 0, 0, 0, forearm);
-    add(roundProfile('bruteKnuckleGuard', [[0.82, 0.3], [1.28, 0.3], { p: [1.36, 0.24], q: [1.36, 0.3] }, { p: [1.26, 0.42], q: [1.36, 0.42] }, [0.84, 0.42]], 0.84, 0.04, 2, 5), trim, 0, 0, 0, forearm);
+    plate(0.78, 0.64, 0.56, 0.06, fistMat, 0, 0, 1.06, 0, 0, 0, forearm);
+    plate(0.84, 0.13, 0.52, 0.03, trim, 0, 0.32, 1.08, -0.06, 0, 0, forearm);
     for (let k = 0; k < 4; k++) {
       const kx = -0.28 + k * 0.187;
-      add(rblock(0.17, 0.22, 0.16, 0.06), ironMat, kx, 0.13, 1.37, forearm);
+      plate(0.17, 0.22, 0.16, 0.03, ironMat, kx, 0.13, 1.37, 0, 0, 0, forearm);
     }
-    add(rblock(0.13, 0.2, 0.34, 0.055), ironMat, -sx * 0.42, -0.06, 1.12, forearm); // thumb
+    plate(0.13, 0.2, 0.34, 0.03, ironMat, -sx * 0.42, -0.06, 1.12, 0, 0, 0, forearm); // thumb
     mergeStatic(forearm);
     mergeStatic(shoulder, { keep: [forearm] });
     arms.push({ shoulder, forearm, restZ });
