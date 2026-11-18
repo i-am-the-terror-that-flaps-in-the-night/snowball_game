@@ -27,6 +27,7 @@ import { Impact } from '../fx/impact';
 import { AudioSystem } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { Tutorial } from '../ui/Tutorial';
+import { FieldTips } from '../ui/fieldTips';
 import { ChallengeTracker, hardCleared, hardPower, hardUnlocked, hardZone, recordHardClear } from '../meta/challenges';
 import { Achievements } from '../meta/achievements';
 import { installShadowProxies } from '../render/shadowProxy';
@@ -162,6 +163,8 @@ export class Game {
   /** PROTOCOL C finale: THE WHITEOUT (core/whiteoutDirector.ts), started by THE CHAIRMAN's wreck. */
   private whiteout: WhiteoutDirector;
   private tutorial: Tutorial;
+  /** Just-in-time onboarding tips in real runs (ui/fieldTips.ts). */
+  private tips: FieldTips;
   private ui: UI;
   /** Online 1v1 duel (idle outside it). */
   readonly duel: DuelManager;
@@ -304,6 +307,7 @@ export class Game {
       openGarage: (wallet, info) => this.ui.showDuelGarage(wallet, info),
       closeGarage: () => this.ui.hideDuelGarage(),
     });
+    this.tips = new FieldTips(ctx);
     this.tutorial = new Tutorial(ctx, uiRoot, (next) => (next === 'arena' ? this.startRun(0) : this.toMenu()));
     // Meta progression: both only listen to ctx.events (runFinished etc.).
     new ChallengeTracker(ctx);
@@ -365,7 +369,8 @@ export class Game {
     // Quality / Bloom changes rebuild shader programs: warm them again (and the new bloom chain).
     renderHooks.afterQuality = () => this.warmNow();
     this.toMenu();
-    if (Tutorial.shouldAutoStart(progression)) this.startTutorial();
+    // a brand-new player: the QUICK tutorial (drive, plow, slam) straight into arena 1; FieldTips teaches the rest
+    if (Tutorial.shouldAutoStart(progression)) this.startTutorial(true);
     this.timer.connect(document);
     renderer.setAnimationLoop((t) => this.frame(t));
   }
@@ -523,6 +528,7 @@ export class Game {
   private omegaNav: NavGraph | null = null;
 
   startRun(zoneIndex: number, hard = false): void {
+    this.tips.resetRun();
     const { ctx } = this;
     if (!ctx.progression.isZoneUnlocked(zoneIndex)) return;
     if (hard && !hardUnlocked(ctx.progression, zoneIndex)) return;
@@ -687,7 +693,7 @@ export class Game {
   }
 
   /** Guided onboarding in arena 1 with training bots (see Tutorial). Replayable from the main menu. */
-  startTutorial(): void {
+  startTutorial(quick = false): void {
     const { ctx } = this;
     this.arenaStart();
     this.setMode('campaign');
@@ -715,7 +721,7 @@ export class Game {
     ctx.cameraRig.snap();
     ctx.input.clear();
     this.state = 'tutorial';
-    this.tutorial.start();
+    this.tutorial.start(quick);
     this.warmNow();
   }
 
@@ -961,6 +967,7 @@ export class Game {
   }
 
   private roundCleared(): void {
+    if (this.mode === 'campaign') this.tips.want('garage');
     const { ctx } = this;
     if (this.mode === 'survival') return this.survivalWaveCleared();
     ctx.pickups.collectAll();
@@ -1284,7 +1291,10 @@ export class Game {
     ctx.terrain.update(simDt);
       ctx.plow.update(simDt);
       ctx.snow.update(simDt);
-      if (state === 'playing') ctx.waves.update(simDt);
+      if (state === 'playing') {
+        ctx.waves.update(simDt);
+        if (this.mode === 'campaign' || this.mode === 'survival') this.tips.update(simDt);
+      }
       ctx.enemies.update(simDt);
       ctx.combat.update(simDt);
       ctx.pickups.update(simDt);

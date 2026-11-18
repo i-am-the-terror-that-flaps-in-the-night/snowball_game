@@ -1791,3 +1791,8 @@
 .ss-respec.armed { background: var(--hazard); color: var(--ink-inv); }
 .ss-cat-focus .ss-card[data-id='focusAbility'] { --acc: #a46bff; }
 .ss-cat-focus .ss-card[data-id='focusWeapon'] { --acc: #ff5a4a; }
+
+/* Onboarding: a brand-new player's first upgrade pulses (ui/unlocks.ts freshGarage) */
+.ss-card.ss-nudge { animation: ss-nudge 1.1s ease-in-out infinite; box-shadow: 0 0 0 2px #ffd400, 0 0 18px rgba(255, 212, 0, 0.55); }
+.ss-card.ss-nudge::after { content: 'START HERE'; position: absolute; top: 6px; right: 10px; background: #ffd400; color: #111; font-weight: 800; font-size: 11px; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 3px; pointer-events: none; }
+@keyframes ss-nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
