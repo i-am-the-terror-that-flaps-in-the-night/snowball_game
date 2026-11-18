@@ -5,6 +5,7 @@ import { makeShadowProxy } from '../../render/shadowProxy';
 import { boltHead, chamferBox, chamferWedge } from '../../render/kit/shapes';
 import { lathe, moldboard, profileSolid, roundBlock, stadiumBelt } from '../../render/kit/curves';
 import { applyWear, copyWear, type WearProfile } from '../../render/kit/wear';
+import { arch, bladeAt, bladeBand, halfDisc, helixFlight, rblock, ring, rotYAt, rp, slab, trackFender, wrapPanel } from './bossShapes';
 
 /* Procedural toy-robot bot models. Every model faces local +Z, ground at y = 0.
  * Each type is built ONCE as a template (static parts merged per material, animated parts in their own
@@ -609,57 +610,76 @@ function bulldoza(): Tpl {
   const base = new Part(root);
   const stacks: number[] = [];
   const wheels = new Wheels();
-  treads(base, wheels, 1.6, 3.7, 1.05, 0.85, 5, M.hazLight());
+  bossTreads(base, wheels, 1.6, 3.7, 1.05, 0.85, 5, M.hazLight());
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
   const P = paint(t);
-  kb(b, P, [0, 1.55, -0.35], [2.4, 1.2, 3.1]);
-  kb(b, M.black(), [0, 1.02, -0.35], [2.3, 0.16, 3.2]);
-  kw(b, P, [0, 2.38, 0.45], [2.2, 0.52, 1.55], 0.32);
-  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 1.21, 1.6, -0.35], [0.03, 0.55, 2.8], ZERO, [6, 1]);
+  // RESHAPE: a rounded tub hull (round tail, round nose corners), the engine hood rolling into the nose, a cab with a
+  // raked screen and a rounded roof
+  b.add(rp('bdzHull', [
+    [-1.7, 0.95], [1.0, 0.95], { p: [1.24, 1.18], q: [1.24, 0.95] }, [1.24, 1.98], { p: [1.08, 2.16], q: [1.24, 2.16] },
+    [-1.45, 2.16], { p: [-1.95, 1.7], q: [-1.95, 2.16] }, [-1.95, 1.22], { p: [-1.7, 0.95], q: [-1.95, 0.95] },
+  ], 2.4, 0.17, 3), P, ZERO);
+  kb(b, M.black(), [0, 1.0, -0.36], [2.3, 0.16, 3.0]);
+  b.add(rp('bdzHood', [
+    [-0.45, 2.0], [1.28, 2.0], [1.28, 2.44], { p: [0.98, 2.7], q: [1.28, 2.7] }, [-0.45, 2.76],
+  ], 2.2, 0.2, 3), P, ZERO);
+  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 1.205, 1.58, -0.38], [0.03, 0.55, 2.7], ZERO, [6, 1]);
   // cab
-  kb(b, P, [0, 3.0, -1.05], [1.9, 1.3, 1.5]);
-  kb(b, M.black(), [0, 3.72, -1.05], [2.1, 0.14, 1.7]);
-  kb(b, M.glass(), [0, 3.1, -0.29], [1.6, 0.6, 0.04]);
-  for (const sx of [-1, 1]) kb(b, M.glass(), [sx * 0.96, 3.1, -1.05], [0.04, 0.6, 1.1]);
-  b.add(G.cyl(10), M.hazLight(), [0, 3.88, -1.05], [0.18, 0.18, 0.18]);
-  // angry headlights + brows
+  b.add(rp('bdzCab', [
+    [-1.8, 2.1], [-0.28, 2.1], [-0.28, 2.78], [-0.44, 3.46], { p: [-0.68, 3.66], q: [-0.48, 3.66] }, [-1.5, 3.66],
+    { p: [-1.8, 3.36], q: [-1.8, 3.66] },
+  ], 1.9, 0.15, 3), P, ZERO);
+  b.add(rblock(2.02, 0.12, 1.66, 0.05), M.black(), [0, 3.68, -1.1]);
+  b.add(slab('bdzScreen', [-0.29, 2.84], [-0.43, 3.42], 0.004, 0.03, 1.56, 0.015), M.glass(), ZERO);
+  for (const sx of [-1, 1]) kb(b, M.glass(), [sx * 0.955, 3.1, -1.05], [0.04, 0.6, 1.1]);
+  b.add(G.cyl(12), M.hazLight(), [0, 3.84, -1.05], [0.18, 0.18, 0.18]);
+  // angry headlights + brows on the hood nose
   for (const sx of [-1, 1]) {
-    b.add(G.cyl(12), M.black(), [sx * 0.72, 2.12, 1.24], [0.27, 0.12, 0.27], [PI / 2, 0, 0]);
-    b.add(G.cyl(12), eyeMat(t, 0xff2a1a), [sx * 0.72, 2.12, 1.3], [0.2, 0.06, 0.2], [PI / 2, 0, 0]);
-    kb(b, M.black(), [sx * 0.72, 2.42, 1.26], [0.62, 0.13, 0.16], [0, 0, sx * 0.35]);
+    b.add(G.cyl(16), M.black(), [sx * 0.72, 2.22, 1.29], [0.25, 0.1, 0.25], [PI / 2, 0, 0]);
+    b.add(G.cyl(16), eyeMat(t, 0xff2a1a), [sx * 0.72, 2.22, 1.34], [0.19, 0.04, 0.19], [PI / 2, 0, 0]);
+    kb(b, M.black(), [sx * 0.72, 2.52, 1.24], [0.62, 0.12, 0.16], [0.5, 0, sx * 0.35]);
   }
   // grille
-  kb(b, M.black(), [0, 1.55, 1.22], [1.3, 0.8, 0.06]);
-  for (let i = 0; i < 5; i++) kb(b, M.chrome(), [-0.5 + i * 0.25, 1.55, 1.26], [0.06, 0.7, 0.04]);
-  // BLADE: curved hazard dozer blade with horns
-  kb(b, M.steel(), [0, 1.2, 2.35], [2.9, 1.95, 0.26], [-0.12, 0, 0]);
-  for (const sx of [-1, 1]) kb(b, M.steel(), [sx * 1.95, 1.2, 2.08], [1.15, 1.95, 0.26], [-0.12, sx * -0.45, 0]);
-  b.add(G.box(), M.hazard(), [0, 2.0, 2.45], [2.9, 0.42, 0.03], [-0.12, 0, 0], [6, 0.8]);
-  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), [sx * 1.95, 2.0, 2.2], [1.1, 0.42, 0.03], [-0.12, sx * -0.45, 0], [2.3, 0.8]);
-  kb(b, M.black(), [0, 2.24, 2.28], [4.6, 0.14, 0.4]);
-  kb(b, glowMat(t, 0xff3b1a, 0.12), [0, 0.3, 2.47], [2.9, 0.12, 0.22]);
-  for (const sx of [-1, 1]) kb(b, glowMat(t, 0xff3b1a, 0.12), [sx * 1.95, 0.3, 2.2], [1.1, 0.12, 0.22], [0, sx * -0.45, 0]);
+  b.add(rblock(1.36, 0.82, 0.08, 0.035), M.black(), [0, 1.55, 1.24]);
+  for (let i = 0; i < 5; i++) kb(b, M.chrome(), [-0.5 + i * 0.25, 1.55, 1.29], [0.07, 0.7, 0.05]);
+  // BLADE: a curved moldboard with forward-swept wings, hazard bands that follow the curve, a rolled top pipe, glowing
+  // cutting edges, bone horns
+  const BH = 1.95;
+  const BC = 0.36;
+  const BT = 0.24;
+  const BY = 0.22;
+  const BZ = 2.14;
+  b.add(moldboard(2.9, BH, BC, BT), M.steel(), [0, BY, BZ]);
+  b.add(bladeBand(2.9, BH, BC, 0.6, 0.8), M.hazard(), [0, BY, BZ], ONE, ZERO, [6, 0.8]);
+  b.add(G.cyl(14), M.black(), [0, BY + BH + 0.04, BZ + BC - BT * 0.5], [0.11, 2.9, 0.11], [0, 0, PI / 2]);
+  kb(b, glowMat(t, 0xff3b1a, 0.12), [0, BY + 0.06, BZ - 0.07], [2.9, 0.12, 0.22]);
+  const bolt = bladeAt(BH, BC, 0.12);
+  bolts(b, M.chrome(), [-1.3, BY + bolt.y, BZ + bolt.z + 0.01], [1.3, BY + bolt.y, BZ + bolt.z + 0.01], 10, [bolt.a, 0, 0], 0.05);
   for (const sx of [-1, 1]) {
-    b.add(G.cone(8), M.bone(), [sx * 2.35, 2.75, 2.0], [0.3, 1.2, 0.3], [0.35, 0, sx * -0.5]);
-    b.add(G.cyl(8), M.black(), [sx * 2.15, 2.3, 2.05], [0.34, 0.2, 0.34]);
+    const th = sx * -0.45;
+    const c: V3 = [sx * 1.94, BY, 2.29];
+    b.add(moldboard(1.15, BH, BC, BT), M.steel(), c, ONE, [0, th, 0]);
+    b.add(bladeBand(1.15, BH, BC, 0.6, 0.8), M.hazard(), c, ONE, [0, th, 0], [2.3, 0.8]);
+    b.add(G.cyl(14), M.black(), rotYAt(c, th, [0, BH + 0.04, BC - BT * 0.5]), [0.11, 1.15, 0.11], [0, th, PI / 2]);
+    kb(b, glowMat(t, 0xff3b1a, 0.12), rotYAt(c, th, [0, 0.06, -0.07]), [1.1, 0.12, 0.22], [0, th, 0]);
+    b.add(G.cone(12), M.bone(), [sx * 2.35, 2.75, 2.0], [0.3, 1.2, 0.3], [0.35, 0, sx * -0.5]);
+    b.add(lathe('bdzHornBase', [[0.36, 0], [0.36, 0.12], [0.3, 0.2], [0.2, 0.22]], 14), M.black(), [sx * 2.15, 2.18, 2.05], ONE, [0, 0, sx * -0.5]);
   }
+  // push arms + rams
   for (const sx of [-1, 1]) {
-    kb(b, M.black(), [sx * 1.0, 1.15, 1.45], [0.26, 0.26, 1.6]);
-    b.add(G.cyl(8), M.chrome(), [sx * 0.7, 1.75, 1.45], [0.08, 1.3, 0.08], [PI / 2 - 0.55, 0, 0]);
+    kb(b, M.black(), [sx * 1.0, 1.15, 1.28], [0.26, 0.26, 1.24]);
+    b.add(G.cyl(10), M.chrome(), [sx * 0.7, 1.75, 1.45], [0.08, 1.3, 0.08], [PI / 2 - 0.55, 0, 0]);
   }
-  // smokestacks
-  // BOLD PASS: layered armour over the body sides, blade ribs + a bolt row, a cab roof rack, body vents
+  // cab vents, a roof rack
+  for (const sx of [-1, 1]) vent(b, M.black(), [sx * 0.96, 3.0, -1.55], 0.6, 0.5, 5, [0, sx * PI / 2, 0]);
+  for (const x of [-0.8, 0.8]) kb(b, M.black(), [x, 3.8, -1.05], [0.1, 0.1, 1.5]);
+  kb(b, M.black(), [0, 3.8, -0.4], [1.7, 0.1, 0.1]);
+  // smokestacks on the cab's back
   for (const sx of [-1, 1]) {
-    kb(b, P, [sx * 1.24, 2.1, 0.2], [0.09, 0.4, 1.3], [0, 0, sx * 0.06]);
-    kb(b, P, [sx * 1.24, 2.1, -1.2], [0.09, 0.4, 1.3], [0, 0, sx * 0.06]);
-    vent(b, M.black(), [sx * 0.97, 3.0, -1.6], 0.6, 0.5, 5, [0, sx * PI / 2, 0]);
+    stack(b, stacks, sx * 0.62, 3.2, -1.95, 0.17, 1.35, M.chrome(), M.black());
+    kb(b, M.black(), [sx * 0.62, 3.4, -1.84], [0.3, 0.16, 0.2]);
   }
-  for (const x of [-1.0, 0, 1.0]) kb(b, M.black(), [x, 1.05, 2.52], [0.16, 1.4, 0.1], [-0.12, 0, 0]);
-  bolts(b, M.chrome(), [-1.3, 0.62, 2.53], [1.3, 0.62, 2.53], 10, [PI / 2 - 0.12, 0, 0], 0.05);
-  for (const x of [-0.8, 0.8]) kb(b, M.black(), [x, 3.92, -1.05], [0.1, 0.1, 1.5]);
-  kb(b, M.black(), [0, 3.92, -0.4], [1.7, 0.1, 0.1]);
-  for (const sx of [-1, 1]) stack(b, stacks, sx * 0.62, 3.2, -1.95, 0.17, 1.35, M.chrome(), M.black());
   b.flush();
   base.flush();
   return { root, height: 4.9, stacks, front: 2.5 };
@@ -743,55 +763,93 @@ function frostbyte(): Tpl {
   return { root, height: 3.2, stacks, front: 1.75 };
 }
 
+/** RESHAPE (bosses): two big track units with ROUND ends (stadium belts), cleats over the top run and around the
+ *  ends, a recessed roller frame on the outer face (cleat material) carrying the rolling road wheels, sprocket and
+ *  idler discs at the ends. Only rubber + `cleat` in `base` (no extra draws). */
+function bossTreads(base: Part, wheels: Wheels, x: number, len: number, h: number, w: number, nWheels: number, hub: THREE.Material, cleat: THREE.Material = M.cleat()): void {
+  const run = len - h;
+  const r = h / 2;
+  for (const sx of [-1, 1]) {
+    base.add(stadiumBelt(len, h, w), M.rubber(), [sx * x, 0, 0]);
+    const n = Math.max(4, Math.round(run / 0.3));
+    const cl = (run / n) * 0.48;
+    for (let i = 0; i < n; i++) base.add(G.box(), cleat, [sx * x, h + 0.02, -run / 2 + ((i + 0.5) * run) / n], [w * 1.03, 0.07, cl]);
+    // around the round ends (the tops of the arcs: the bottom never shows)
+    for (const e of [-1, 1]) for (const deg of [30, 60, 90, 120]) {
+      const a = (deg * PI) / 180;
+      base.add(G.box(), cleat, [sx * x, r + Math.cos(a) * (r + 0.02), e * (run / 2 + Math.sin(a) * (r + 0.02))], [w * 1.03, 0.07, cl], [e * a, 0, 0]);
+    }
+    // roller frame (a low stadium plate on the outer face), sprocket + idler discs with a hub boss
+    base.add(stadiumBelt(run + h * 0.55, h * 0.5, 0.08), cleat, [sx * (x + w / 2 + 0.02), h * 0.22, 0]);
+    for (const z of [-run / 2, run / 2]) {
+      base.add(G.cyl(12), cleat, [sx * (x + w / 2 + 0.03), r, z], [r * 0.72, 0.1, r * 0.72], [0, 0, PI / 2]);
+      base.add(G.cyl(10), M.rubber(), [sx * (x + w / 2 + 0.09), r, z], [r * 0.3, 0.08, r * 0.3], [0, 0, PI / 2]);
+    }
+    for (let j = 0; j < nWheels; j++) {
+      const z = -run / 2 + r * 0.9 + ((run - r * 1.8) * j) / Math.max(1, nWheels - 1);
+      wheels.add(sx * (x + w / 2 + 0.1), h * 0.3, z, h * 0.26, 0.12, hub, M.steel());
+    }
+  }
+}
+
+
 function grinder(): Tpl {
   const t: EnemyType = 'grinder';
   const root = new THREE.Group();
   const base = new Part(root);
   const stacks: number[] = [];
   const wheels = new Wheels();
-  treads(base, wheels, 1.85, 4.2, 1.35, 1.0, 5, accent(t));
+  bossTreads(base, wheels, 1.85, 4.2, 1.35, 1.0, 5, accent(t));
   wheels.flush(root);
   const { g: body, b } = sub(root, 'body', [0, 0, 0]);
   const P = paint(t);
-  kb(b, P, [0, 2.0, -0.55], [2.7, 1.6, 3.4]);
+  // RESHAPE: a rounded furnace hull rising into a hooded head over the drill, a round-roofed boiler house behind it
+  b.add(rp('grHull', [
+    [-2.0, 1.2], [0.95, 1.2], { p: [1.2, 1.45], q: [1.2, 1.2] }, [1.2, 3.02], { p: [0.88, 3.34], q: [1.2, 3.34] }, [0.32, 3.34],
+    { p: [-0.02, 2.86], q: [0.08, 3.34] }, [-1.9, 2.86], { p: [-2.3, 2.42], q: [-2.3, 2.86] }, [-2.3, 1.5], { p: [-2.0, 1.2], q: [-2.3, 1.2] },
+  ], 2.7, 0.22, 3), P, ZERO);
   kb(b, M.rustDark(), [0, 1.3, -0.55], [2.5, 0.2, 3.5]);
-  kb(b, P, [0, 3.1, -1.0], [2.1, 0.75, 2.1]);
-  kb(b, M.rustDark(), [0, 3.52, -1.0], [2.25, 0.1, 2.25]);
+  b.add(rp('grHouse', [
+    [-2.05, 2.7], [0.02, 2.7], [0.02, 3.18], { p: [-0.32, 3.5], q: [0.02, 3.5] }, [-1.85, 3.5], { p: [-2.05, 3.3], q: [-2.05, 3.5] },
+  ], 2.1, 0.2, 3), P, ZERO);
+  kb(b, M.rustDark(), [0, 2.88, -1.0], [2.24, 0.12, 2.2]);
   // furnace vents
   for (const sx of [-1, 1]) {
     kb(b, glowMat(t, 0xff6a00, 0.8), [sx * 1.36, 2.0, -0.55], [0.03, 0.9, 2.4]);
     for (let i = 0; i < 6; i++) kb(b, M.dark(), [sx * 1.39, 2.0, -1.55 + i * 0.4], [0.05, 0.95, 0.12]);
   }
   // rivets
-  for (let i = 0; i < 7; i++) for (const sx of [-1, 1]) b.add(G.sph(0), M.steel(), [sx * 1.36, 2.7, -2.0 + i * 0.5], [0.07, 0.07, 0.07]);
+  for (let i = 0; i < 7; i++) for (const sx of [-1, 1]) b.add(G.sph(0), M.steel(), [sx * 1.36, 2.6, -2.0 + i * 0.45], [0.07, 0.07, 0.07]);
   // face
-  kb(b, M.black(), [0, 2.65, 1.2], [2.0, 0.85, 0.1]);
-  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0xff7a00, 2.6), [sx * 0.5, 2.72, 1.26], [0.6, 0.15, 0.05], [0, 0, sx * 0.28]);
-  for (let i = 0; i < 5; i++) kb(b, M.steel(), [-0.6 + i * 0.3, 2.38, 1.26], [0.12, 0.14, 0.04]);
-  b.add(G.box(), M.hazard(), [0, 3.15, 0.07], [2.0, 0.3, 0.03], ZERO, [4, 0.6]);
-  // auger housing
-  b.add(G.cyl(12), M.dark(), [0, 1.5, 1.35], [1.25, 0.5, 1.25], [PI / 2, 0, 0]);
-  b.add(G.torus(), M.steel(), [0, 1.5, 1.6], [1.25, 1.25, 1.3]);
-  // BOLD PASS: riveted rust patch plates on the body, cab side vents, a bolt ring on the drill housing
+  b.add(rblock(2.0, 0.76, 0.1, 0.04), M.black(), [0, 2.68, 1.22]);
+  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0xff7a00, 2.6), [sx * 0.5, 2.8, 1.28], [0.6, 0.15, 0.05], [0, 0, sx * 0.28]);
+  for (let i = 0; i < 5; i++) kb(b, M.steel(), [-0.6 + i * 0.3, 2.47, 1.28], [0.12, 0.14, 0.04]);
+  b.add(G.box(), M.hazard(), [0, 3.355, 0.6], [1.9, 0.02, 0.5], ZERO, [4, 1]);
+  // auger housing: a flared bell mouth (dark) with a steel lip and a bolt ring, a dark barrel behind it
+  b.add(G.cyl(16), M.dark(), [0, 1.5, 1.25], [1.08, 0.4, 1.08], [PI / 2, 0, 0]);
+  b.add(ring('grCowl', [[1.02, 0], [1.24, 0], [1.3, 0.22], [1.44, 0.48], [1.44, 0.6], [1.3, 0.6], [1.15, 0.38], [1.02, 0.3]], 28), M.dark(), [0, 1.5, 1.1], ONE, [PI / 2, 0, 0]);
+  b.add(ring('grLip', [[1.3, 0], [1.5, 0], [1.5, 0.1], [1.3, 0.1]], 28), M.steel(), [0, 1.5, 1.7], ONE, [PI / 2, 0, 0]);
+  // BOLD PASS: riveted rust patch plates on the body, boiler-house side vents, a bolt ring on the drill housing
   for (const sx of [-1, 1]) {
     kb(b, M.rustDark(), [sx * 1.37, 1.55, 0.6], [0.06, 0.4, 0.8]);
-    vent(b, M.black(), [sx * 1.07, 3.15, -1.0], 1.2, 0.4, 4, [0, sx * PI / 2, 0]);
+    vent(b, M.black(), [sx * 1.06, 3.12, -1.0], 1.2, 0.36, 4, [0, sx * PI / 2, 0]);
   }
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * PI * 2;
-    b.add(G.sph(0), M.steel(), [Math.cos(a) * 1.25, 1.5 + Math.sin(a) * 1.25, 1.75], [0.08, 0.08, 0.06]);
+    b.add(G.sph(0), M.steel(), [Math.cos(a) * 1.4, 1.5 + Math.sin(a) * 1.4, 1.82], [0.07, 0.07, 0.05]);
   }
   for (let i = 0; i < 3; i++) stack(b, stacks, -0.75 + i * 0.75, 3.5, -1.75 - (i === 1 ? 0.15 : 0), i === 1 ? 0.22 : 0.18, i === 1 ? 1.2 : 0.9, M.rustDark(), M.black());
   b.flush();
-  // THE AUGER (spins around local Z)
+  // THE AUGER (spins around local Z): a steel cone wound with one continuous orange flight, teeth on its edge
   const { b: a } = sub(body, 'spinZ', [0, 1.5, 1.6]);
-  a.add(G.cone(10), M.steel(), [0, 0, 1.45], [1.1, 2.9, 1.1], [PI / 2, 0, 0]);
-  const n = 14;
-  for (let i = 0; i < n; i++) {
-    const k = i / (n - 1);
-    const rad = 1.3 * (1 - k) + 0.18;
-    const ang = k * PI * 5;
-    kb(a, accent(t), [Math.cos(ang) * rad * 0.62, Math.sin(ang) * rad * 0.62, 0.1 + k * 2.6], [rad * 0.85, 0.12, 0.34], [0, 0, ang]);
+  a.add(lathe('grAuger', [[0.86, 0], [1.08, 0.08], [1.1, 0.16], [0.08, 2.8], [0, 2.95]], 16), M.steel(), [0, 0, 0], ONE, [PI / 2, 0, 0]);
+  const FL = { z0: 0.12, z1: 2.72, i0: 1.0, i1: 0.04, o0: 1.62, o1: 0.4, turns: 2.5 };
+  a.add(helixFlight(FL.z0, FL.z1, FL.i0, FL.i1, FL.o0, FL.o1, FL.turns, 0.17), accent(t), [0, 0, 0]);
+  for (let i = 0; i < 9; i++) {
+    const k = (i + 0.5) / 9;
+    const ang = k * FL.turns * PI * 2;
+    const r = FL.o0 + (FL.o1 - FL.o0) * k;
+    a.add(G.cone(6), accent(t), [Math.cos(ang) * (r + 0.1), Math.sin(ang) * (r + 0.1), FL.z0 + (FL.z1 - FL.z0) * k], [0.1, 0.3, 0.1], [0, 0, ang - PI / 2]);
   }
   a.add(G.cone(8), glowMat(t, 0xff6a00, 0.8), [0, 0, 3.05], [0.18, 0.4, 0.18], [PI / 2, 0, 0]);
   a.flush();
@@ -809,46 +867,61 @@ function twin(t: 'slush' | 'sleet'): Tpl {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheels.add(sx * 1.3, 0.64, sz * 0.95, 0.64, 0.5, A);
   wheels.flush(root);
   const { b } = sub(root, 'body', [0, 0, 0]);
-  kw(b, P, [0, 1.05, 0.05], [2.0, 0.85, 3.1], 0.36);
+  // RESHAPE: a low racing tub (rounded nose, a long hood sweeping up to the cockpit, a round tail), a bubble cockpit,
+  // arched fenders over the four wheels, an airfoil spoiler
+  b.add(rp('twHull', [
+    [-1.42, 0.6], [1.4, 0.6], { p: [1.64, 0.82], q: [1.64, 0.6] }, [1.64, 0.94], { p: [1.36, 1.13], q: [1.62, 1.1] }, [0.3, 1.4],
+    { p: [-0.12, 1.47], q: [0.04, 1.47] }, [-1.26, 1.47], { p: [-1.6, 1.18], q: [-1.6, 1.47] }, [-1.6, 0.86], { p: [-1.42, 0.6], q: [-1.6, 0.6] },
+  ], 2.0, 0.2, 3, 5), P, ZERO);
   kb(b, M.dark(), [0, 0.62, 0], [1.9, 0.16, 3.0]);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) kb(b, P, [sx * 1.3, 1.36, sz * 0.95], [0.62, 0.13, 1.4]);
-  kb(b, P, [0, 1.75, -0.75], [1.35, 0.7, 1.2]);
-  kb(b, M.black(), [0, 1.8, -0.13], [1.2, 0.36, 0.05]);
-  for (const sx of [-1, 1]) kb(b, eyeMat(t, eyeC, 2.6), [sx * 0.3, 1.82, -0.1], [0.36, 0.13, 0.04], [0, 0, sx * (t === 'slush' ? 0.3 : -0.12)]);
-  // racing stripes
-  for (const sx of [-1, 1]) kb(b, A, [sx * 0.3, 2.11, -0.75], [0.18, 0.02, 1.2]);
-  for (const sx of [-1, 1]) kb(b, A, [sx * 1.01, 1.0, -0.2], [0.02, 0.22, 2.2]);
-  // spoiler
-  kb(b, A, [0, 2.3, -1.45], [2.1, 0.08, 0.5]);
-  for (const sx of [-1, 1]) kb(b, M.black(), [sx * 0.7, 2.05, -1.4], [0.08, 0.45, 0.2]);
-  kb(b, glowMat(t, glowC, 0.3), [0, 1.0, -1.57], [1.6, 0.16, 0.04]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    b.add(arch('twFender', 0, 0.64, 0.7, 0.8, 8, 172, 0.62, 0.045, 6), P, [sx * 1.3, 0, sz * 0.95]);
+  }
+  b.add(rp('twCockpit', [
+    [-1.36, 1.4], [-0.14, 1.4], [-0.12, 1.86], { p: [-0.36, 2.12], q: [-0.12, 2.12] }, [-1.04, 2.12], { p: [-1.36, 1.82], q: [-1.36, 2.12] },
+  ], 1.36, 0.22, 3, 5), P, ZERO);
+  b.add(rblock(1.18, 0.38, 0.06, 0.03), M.black(), [0, 1.78, -0.11]);
+  for (const sx of [-1, 1]) kb(b, eyeMat(t, eyeC, 2.6), [sx * 0.3, 1.8, -0.07], [0.36, 0.13, 0.04], [0, 0, sx * (t === 'slush' ? 0.3 : -0.12)]);
+  // racing stripes over the cockpit roof and down the hood, a stripe along each flank
+  for (const sx of [-1, 1]) {
+    kb(b, A, [sx * 0.3, 2.125, -0.7], [0.18, 0.02, 0.8]);
+    b.add(slab('twStripe', [1.36, 1.13], [0.3, 1.4], 0.003, 0.016, 0.18, 0.004), A, [sx * 0.3, 0, 0]);
+    kb(b, A, [sx * 1.005, 1.0, -0.2], [0.02, 0.2, 2.0]);
+  }
+  // airfoil spoiler on two struts, end plates
+  b.add(rp('twWing', [[-1.74, 2.25], { p: [-1.18, 2.35], q: [-1.42, 2.4] }, [-1.18, 2.31], { p: [-1.74, 2.2], q: [-1.44, 2.3] }], 2.1, 0.03, 2, 5), A, ZERO);
+  for (const sx of [-1, 1]) {
+    kb(b, M.black(), [sx * 0.7, 2.0, -1.42], [0.08, 0.5, 0.2]);
+    kb(b, A, [sx * 1.07, 2.28, -1.47], [0.04, 0.32, 0.62], [-0.08, 0, 0]);
+  }
+  kb(b, glowMat(t, glowC, 0.3), [0, 1.0, -1.6], [1.5, 0.16, 0.04]);
   if (t === 'slush') {
-    // charger: twin chrome ram horns + glowing ram bar
+    // charger: twin chrome ram horns in black collars + glowing ram bar
     for (const sx of [-1, 1]) {
-      b.add(G.cone(8), M.chrome(), [sx * 0.55, 0.85, 2.0], [0.26, 1.1, 0.26], [PI / 2, 0, 0]);
-      b.add(G.cyl(8), M.black(), [sx * 0.55, 0.85, 1.42], [0.3, 0.12, 0.3], [PI / 2, 0, 0]);
+      b.add(lathe('twHorn', [[0.26, 0], [0.25, 0.3], [0.19, 0.65], [0.1, 0.95], [0.0, 1.12]], 12), M.chrome(), [sx * 0.55, 0.85, 1.45], ONE, [PI / 2, 0, 0]);
+      b.add(ring('twCollar', [[0.2, -0.09], [0.31, -0.09], [0.33, 0], [0.31, 0.09], [0.2, 0.09]], 14), M.black(), [sx * 0.55, 0.85, 1.48], ONE, [PI / 2, 0, 0]);
     }
     kb(b, glowMat(t, glowC, 0.3), [0, 0.55, 1.58], [2.1, 0.18, 0.2]);
-    b.add(G.box(), M.hazard(), [0, 0.82, 1.6], [1.0, 0.2, 0.03], ZERO, [2, 0.4]);
+    b.add(G.box(), M.hazard(), [0, 0.87, 1.645], [1.0, 0.14, 0.02], ZERO, [2, 0.3]);
   } else {
-    // pinner: big side swipe paddles + front shield
+    // pinner: big rounded side swipe paddles + a curved front shield
     for (const sx of [-1, 1]) {
-      kb(b, M.steel(), [sx * 1.85, 1.0, 0.1], [0.16, 1.05, 2.4]);
-      kb(b, glowMat(t, glowC, 0.3), [sx * 1.95, 0.5, 0.1], [0.06, 0.12, 2.3]);
+      b.add(rp('twPaddle', [
+        [-0.75, 0.48], [0.9, 0.48], { p: [1.3, 0.88], q: [1.3, 0.48] }, [1.3, 1.12], { p: [0.9, 1.52], q: [1.3, 1.52] }, [-0.75, 1.52],
+        { p: [-1.1, 1.17], q: [-1.1, 1.52] }, [-1.1, 0.83], { p: [-0.75, 0.48], q: [-1.1, 0.48] },
+      ], 0.16, 0.05, 2, 3), M.steel(), [sx * 1.85, 0, 0]);
+      kb(b, glowMat(t, glowC, 0.3), [sx * 1.93, 0.52, 0.1], [0.06, 0.1, 1.6]);
       kb(b, M.black(), [sx * 1.6, 1.15, 0.1], [0.4, 0.14, 0.2]);
-      b.add(G.box(), M.hazard(), [sx * 1.94, 1.25, 0.1], [0.03, 0.3, 2.0], ZERO, [4, 0.6]);
+      b.add(G.box(), M.hazard(), [sx * 1.935, 1.25, 0.1], [0.03, 0.28, 1.7], ZERO, [3.4, 0.6]);
     }
-    kb(b, M.steel(), [0, 0.8, 1.62], [2.0, 0.7, 0.16], [-0.3, 0, 0]);
-    kb(b, glowMat(t, glowC, 0.3), [0, 0.45, 1.72], [2.0, 0.1, 0.16]);
+    b.add(moldboard(2.0, 0.72, 0.16, 0.14), M.steel(), [0, 0.42, 1.5]);
+    kb(b, glowMat(t, glowC, 0.3), [0, 0.47, 1.47], [2.0, 0.1, 0.16]);
   }
-  // BOLD PASS: body side vents, a roof light rack, fender rails
-  for (const sx of [-1, 1]) {
-    vent(b, M.black(), [sx * 0.69, 1.75, -0.75], 0.8, 0.4, 4, [0, sx * PI / 2, 0]);
-    for (const sz of [-1, 1]) kb(b, M.dark(), [sx * 1.3, 1.46, sz * 0.95], [0.66, 0.06, 1.0]);
-  }
-  kb(b, M.black(), [0, 2.17, -0.45], [1.1, 0.08, 0.14]);
-  for (const x of [-0.35, 0, 0.35]) b.add(G.cyl(10), M.chrome(), [x, 2.17, -0.37], [0.07, 0.02, 0.07], [PI / 2, 0, 0]);
-  for (const sx of [-1, 1]) stack(b, stacks, sx * 0.45, 1.3, -1.62, 0.1, 0.35, M.chrome(), M.black());
+  // cockpit side vents, a roof light rack
+  for (const sx of [-1, 1]) vent(b, M.black(), [sx * 0.685, 1.76, -0.75], 0.8, 0.28, 3, [0, sx * PI / 2, 0]);
+  kb(b, M.black(), [0, 2.16, -0.5], [1.1, 0.08, 0.14]);
+  for (const x of [-0.35, 0, 0.35]) b.add(G.cyl(10), M.chrome(), [x, 2.16, -0.42], [0.07, 0.02, 0.07], [PI / 2, 0, 0]);
+  for (const sx of [-1, 1]) stack(b, stacks, sx * 0.45, 1.3, -1.64, 0.1, 0.35, M.chrome(), M.black());
   b.flush();
   return { root, height: 2.8, stacks, front: 1.7 };
 }
@@ -859,69 +932,86 @@ function omega(): Tpl {
   const base = new Part(root);
   const stacks: number[] = [];
   const wheels = new Wheels();
-  treads(base, wheels, 2.35, 5.4, 1.6, 1.2, 6, M.hazLight());
+  bossTreads(base, wheels, 2.35, 5.4, 1.6, 1.2, 6, M.hazLight());
   wheels.flush(root);
-  for (const sx of [-1, 1]) kb(base, M.chrome(), [sx * 2.35, 1.7, 0], [1.3, 0.12, 5.2]);
+  // curved chrome track fenders (the old chrome rails)
+  for (const sx of [-1, 1]) base.add(trackFender('omFender', 5.3, 1.66, 0.55, 0.12, 1.34), M.chrome(), [sx * 2.35, 0, 0]);
   const { g: body } = sub(root, 'body', [0, 0, 0]);
   // lift pivot at the rear so the whole hull can rear up for the ground pound
   const LZ = -2.3;
   const LY = 1.6;
   const { b } = sub(body, 'lift', [0, LY, LZ]);
   const o = (x: number, y: number, z: number): V3 => [x, y - LY, z - LZ];
+  const O = o(0, 0, 0);
   const P = paint(t);
-  kb(b, P, o(0, 2.4, -0.4), [3.5, 1.7, 4.4]);
+  // RESHAPE: an armoured hull with a rolled brow and tail, a cab whose front sweeps back in one curve
+  b.add(rp('omHull', [
+    [-2.3, 1.55], [1.55, 1.55], { p: [1.86, 1.86], q: [1.86, 1.55] }, [1.86, 2.92], { p: [1.48, 3.3], q: [1.86, 3.3] }, [-2.18, 3.3],
+    { p: [-2.62, 2.86], q: [-2.62, 3.3] }, [-2.62, 1.86], { p: [-2.3, 1.55], q: [-2.62, 1.55] },
+  ], 3.5, 0.28, 3, 6), P, O);
   kb(b, M.black(), o(0, 1.6, -0.4), [3.4, 0.2, 4.5]);
   for (const sx of [-1, 1]) {
-    kb(b, M.chrome(), o(sx * 1.77, 2.5, -0.4), [0.05, 0.22, 4.4]);
-    b.add(G.box(), M.hazard(), o(sx * 1.77, 2.0, -0.4), [0.03, 0.4, 3.8], ZERO, [8, 0.8]);
+    kb(b, M.chrome(), o(sx * 1.765, 2.55, -0.4), [0.05, 0.2, 4.2]);
+    b.add(G.box(), M.hazard(), o(sx * 1.765, 2.06, -0.4), [0.03, 0.4, 3.8], ZERO, [8, 0.8]);
   }
-  kb(b, P, o(0, 3.55, -1.0), [2.8, 0.75, 2.9]);
-  kb(b, M.chrome(), o(0, 3.95, -1.0), [2.9, 0.08, 3.0]);
-  // core cage
-  b.add(G.cyl(12), M.dark(), o(0, 4.05, -0.6), [0.95, 0.2, 0.95]);
+  b.add(rp('omCab', [
+    [-2.45, 3.2], [0.5, 3.2], { p: [0.12, 3.95], q: [0.46, 3.92] }, [-2.12, 3.95], { p: [-2.45, 3.62], q: [-2.45, 3.95] },
+  ], 2.8, 0.26, 3, 6), P, O);
+  b.add(rblock(2.4, 0.08, 2.2, 0.03), M.chrome(), o(0, 3.98, -1.05));
+  // core cage: a stepped dark pedestal, chrome bars, a domed chrome cap, the glowing core
+  b.add(lathe('omCoreBase', [[1.0, 0], [1.0, 0.12], [0.92, 0.2], [0.78, 0.24], [0.7, 0.24]], 20), M.dark(), o(0, 3.96, -0.6));
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * PI * 2;
-    b.add(G.cyl(6), M.chrome(), o(Math.sin(a) * 0.85, 4.75, -0.6 + Math.cos(a) * 0.85), [0.06, 1.3, 0.06]);
+    b.add(G.cyl(8), M.chrome(), o(Math.sin(a) * 0.85, 4.8, -0.6 + Math.cos(a) * 0.85), [0.06, 1.2, 0.06]);
   }
-  b.add(G.cyl(12), M.chrome(), o(0, 5.42, -0.6), [0.95, 0.1, 0.95]);
-  b.add(G.sph(1), glowMat(t, 0xff1744, 1.2), o(0, 4.72, -0.6), [0.68, 0.68, 0.68]);
+  b.add(lathe('omCoreCap', [[0.98, 0], [0.98, 0.07], [0.82, 0.16], [0.45, 0.24], [0.16, 0.27], [0, 0.27]], 20), M.chrome(), o(0, 5.38, -0.6));
+  b.add(G.sph(2), glowMat(t, 0xff1744, 1.2), o(0, 4.72, -0.6), [0.68, 0.68, 0.68]);
   // visor
-  kb(b, M.black(), o(0, 3.0, 1.82), [2.7, 0.75, 0.12]);
-  kb(b, eyeMat(t, 0xff1744, 3), o(0, 3.05, 1.89), [2.2, 0.17, 0.05]);
-  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0xff1744, 3), o(sx * 0.95, 3.25, 1.89), [0.55, 0.12, 0.05], [0, 0, sx * 0.35]);
+  b.add(rblock(2.7, 0.72, 0.12, 0.05), M.black(), o(0, 2.84, 1.88));
+  kb(b, eyeMat(t, 0xff1744, 3), o(0, 2.86, 1.95), [2.2, 0.17, 0.05]);
+  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0xff1744, 3), o(sx * 0.95, 3.06, 1.95), [0.55, 0.12, 0.05], [0, 0, sx * 0.35]);
   // hazard beacons
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.cyl(8), M.hazLight(), o(sx * 1.55, 3.4, -0.4 + sz * 1.9), [0.16, 0.24, 0.16]);
-  // TRIPLE BLADE: center + two swept wings, chrome with red edges, spikes between
-  kb(b, M.chrome(), o(0, 1.7, 2.75), [2.6, 2.6, 0.3], [-0.15, 0, 0]);
-  for (const sx of [-1, 1]) kb(b, M.chrome(), o(sx * 2.25, 1.7, 2.15), [2.1, 2.6, 0.3], [-0.15, sx * -0.62, 0]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.cyl(12), M.hazLight(), o(sx * 1.45, 3.4, -0.4 + sz * 1.7), [0.16, 0.24, 0.16]);
+  // TRIPLE BLADE: a curved centre moldboard + two forward-swept wings, chrome with red cutting edges, hazard bands that
+  // follow the curve, rolled black top pipes, chrome spikes
+  const BH = 2.6;
+  const BC = 0.5;
+  const BT = 0.3;
+  const BY = 0.4;
+  const BZ = 2.48;
   const edge = mat('omegaEdge', 0xff1744, { emissive: 0xff1744, emissiveIntensity: 1.1 });
-  kb(b, edge, o(0, 0.45, 2.92), [2.6, 0.14, 0.26]);
-  for (const sx of [-1, 1]) kb(b, edge, o(sx * 2.25, 0.45, 2.32), [2.1, 0.14, 0.26], [0, sx * -0.62, 0]);
-  b.add(G.box(), M.hazard(), o(0, 2.75, 2.88), [2.5, 0.38, 0.03], [-0.15, 0, 0], [6, 0.8]);
-  for (const sx of [-1, 1]) b.add(G.box(), M.hazard(), o(sx * 2.25, 2.75, 2.28), [2.0, 0.38, 0.03], [-0.15, sx * -0.62, 0], [4.5, 0.8]);
+  b.add(moldboard(2.6, BH, BC, BT), M.chrome(), o(0, BY, BZ));
+  b.add(bladeBand(2.6, BH, BC, 0.62, 0.8), M.hazard(), o(0, BY, BZ), ONE, ZERO, [6, 0.8]);
+  b.add(G.cyl(14), M.black(), o(0, BY + BH + 0.05, BZ + BC - BT * 0.5), [0.13, 2.6, 0.13], [0, 0, PI / 2]);
+  kb(b, edge, o(0, BY + 0.07, BZ - 0.09), [2.6, 0.14, 0.26]);
+  const bolt = bladeAt(BH, BC, 0.12);
+  bolts(b, M.chrome(), o(-1.1, BY + bolt.y, BZ + bolt.z + 0.01), o(1.1, BY + bolt.y, BZ + bolt.z + 0.01), 9, [bolt.a, 0, 0], 0.06);
+  const spike = bladeAt(BH, BC, 0.3);
   for (const sx of [-1, 1]) {
-    b.add(G.cone(8), M.chrome(), o(sx * 1.3, 1.5, 3.25), [0.3, 1.3, 0.3], [PI / 2, 0, 0]);
-    b.add(G.cone(8), M.black(), o(sx * 3.2, 3.1, 1.6), [0.28, 1.1, 0.28], [0, 0, sx * -0.6]);
+    const th = sx * -0.62;
+    const c = o(sx * 2.2, BY, 2.62);
+    b.add(moldboard(2.1, BH, BC, BT), M.chrome(), c, ONE, [0, th, 0]);
+    b.add(bladeBand(2.1, BH, BC, 0.62, 0.8), M.hazard(), c, ONE, [0, th, 0], [4.5, 0.8]);
+    b.add(G.cyl(14), M.black(), rotYAt(c, th, [0, BH + 0.05, BC - BT * 0.5]), [0.13, 2.1, 0.13], [0, th, PI / 2]);
+    kb(b, edge, rotYAt(c, th, [0, 0.07, -0.09]), [2.0, 0.14, 0.26], [0, th, 0]);
+    b.add(G.cone(12), M.chrome(), o(sx * 1.3, BY + spike.y, BZ + spike.z + 0.62), [0.3, 1.3, 0.3], [PI / 2, 0, 0]);
+    b.add(G.cone(10), M.black(), rotYAt(c, th, [sx * 1.15, BH + 0.25, 0.3]), [0.28, 1.1, 0.28], [0, 0, sx * -0.6]);
+    // hinge drum where the wing meets the centre blade
+    b.add(lathe('omHinge', [[0, 0], [0.2, 0], [0.24, 0.06], [0.24, 1.7], [0.2, 1.76], [0, 1.76]], 14), M.black(), o(sx * 1.36, BY + 0.05, BZ - 0.22));
   }
-  kb(b, M.black(), o(0, 3.05, 2.55), [5.6, 0.16, 0.45]);
   for (const sx of [-1, 1]) {
-    kb(b, M.black(), o(sx * 1.2, 1.7, 1.9), [0.32, 0.32, 1.6]);
-    b.add(G.cyl(8), M.chrome(), o(sx * 0.6, 2.6, 1.9), [0.1, 1.6, 0.1], [PI / 2 - 0.6, 0, 0]);
+    kb(b, M.black(), o(sx * 1.2, 1.7, 1.75), [0.32, 0.32, 1.3]);
+    b.add(G.cyl(10), M.chrome(), o(sx * 0.6, 2.6, 1.9), [0.1, 1.6, 0.1], [PI / 2 - 0.6, 0, 0]);
   }
-  // BOLD PASS: layered armour plates on the hull sides, cab vents, chrome bolt rows on the blade
-  for (const sx of [-1, 1]) {
-    kb(b, P, o(sx * 1.8, 3.0, 0.5), [0.1, 0.55, 1.6], [0, 0, sx * 0.05]);
-    kb(b, P, o(sx * 1.8, 3.0, -1.3), [0.1, 0.55, 1.6], [0, 0, sx * 0.05]);
-    vent(b, M.black(), o(sx * 1.42, 3.55, -1.0), 1.6, 0.45, 5, [0, sx * PI / 2, 0]);
-  }
-  bolts(b, M.chrome(), o(-1.1, 0.75, 2.93), o(1.1, 0.75, 2.93), 9, [PI / 2 - 0.15, 0, 0], 0.06);
+  // cab side vents
+  for (const sx of [-1, 1]) vent(b, M.black(), o(sx * 1.405, 3.56, -1.0), 1.6, 0.3, 4, [0, sx * PI / 2, 0]);
   // 4 smokestacks with red tips
   const tip = mat('omegaTip', 0xff1744, { emissive: 0xff1744, emissiveIntensity: 0.6 });
   for (const sx of [-1, 1]) {
-    b.add(G.cyl(10), M.chrome(), o(sx * 0.95, 4.8, -2.15), [0.22, 2.2, 0.22]);
-    b.add(G.cyl(10), tip, o(sx * 0.95, 5.95, -2.15), [0.28, 0.14, 0.28]);
-    b.add(G.cyl(10), M.chrome(), o(sx * 1.55, 4.45, -2.35), [0.17, 1.5, 0.17]);
-    b.add(G.cyl(10), tip, o(sx * 1.55, 5.25, -2.35), [0.22, 0.12, 0.22]);
+    b.add(G.cyl(12), M.chrome(), o(sx * 0.95, 4.8, -2.15), [0.22, 2.2, 0.22]);
+    b.add(lathe('omTipA', [[0.22, 0], [0.3, 0.06], [0.3, 0.14], [0.24, 0.16]], 12), tip, o(sx * 0.95, 5.88, -2.15));
+    b.add(G.cyl(12), M.chrome(), o(sx * 1.55, 4.45, -2.35), [0.17, 1.5, 0.17]);
+    b.add(lathe('omTipB', [[0.17, 0], [0.23, 0.05], [0.23, 0.12], [0.18, 0.14]], 12), tip, o(sx * 1.55, 5.18, -2.35));
     stacks.push(sx * 0.95, 6.1, -2.15, sx * 1.55, 5.4, -2.35);
   }
   b.flush();
@@ -939,47 +1029,50 @@ function donald(): Tpl {
   const stacks: number[] = [];
   const wheels = new Wheels();
   const GOLD = M.gold();
-  treads(base, wheels, 2.1, 5.0, 1.35, 1.05, 6, GOLD);
+  bossTreads(base, wheels, 2.1, 5.0, 1.35, 1.05, 6, GOLD);
   wheels.flush(root);
-  for (const sx of [-1, 1]) kb(base, GOLD, [sx * 2.1, 1.46, 0], [1.2, 0.12, 4.8]);
+  for (const sx of [-1, 1]) base.add(trackFender('dnFender', 4.9, 1.4, 0.5, 0.12, 1.24), GOLD, [sx * 2.1, 0, 0]);
   const { b } = sub(root, 'body', [0, 0, 0]);
   const P = paint(t);
   const A = accent(t);
-  // hull: white with gold trim
-  kb(b, P, [0, 2.2, -0.2], [3.4, 1.5, 5.0]);
+  // RESHAPE: a white limousine tub (rolled nose and tail, round side edges), gold trim lines and stars on the flanks
+  b.add(rp('dnHull', [
+    [-2.45, 1.45], [2.05, 1.45], { p: [2.32, 1.72], q: [2.32, 1.45] }, [2.32, 2.6], { p: [1.98, 2.95], q: [2.32, 2.95] }, [-2.36, 2.95],
+    { p: [-2.72, 2.6], q: [-2.72, 2.95] }, [-2.72, 1.72], { p: [-2.45, 1.45], q: [-2.72, 1.45] },
+  ], 3.4, 0.26, 3, 6), P, ZERO);
   kb(b, M.dark(), [0, 1.44, -0.2], [3.3, 0.16, 5.1]);
   for (const sx of [-1, 1]) {
-    kb(b, A, [sx * 1.71, 2.62, -0.2], [0.05, 0.16, 4.9]);
-    kb(b, A, [sx * 1.71, 1.82, -0.2], [0.05, 0.1, 4.9]);
+    kb(b, A, [sx * 1.71, 2.56, -0.2], [0.05, 0.14, 4.8]);
+    kb(b, A, [sx * 1.71, 1.82, -0.2], [0.05, 0.1, 4.8]);
     // gold stars on the flanks
-    for (const z of [-1.4, 0, 1.4]) b.add(G.oct(), A, [sx * 1.73, 2.22, z], [0.04, 0.22, 0.22], [PI / 4, 0, 0]);
+    for (const z of [-1.4, 0, 1.4]) b.add(G.oct(), A, [sx * 1.73, 2.19, z], [0.04, 0.22, 0.22], [PI / 4, 0, 0]);
   }
-  // gold rim around the white hood
-  for (const sx of [-1, 1]) kb(b, A, [sx * 1.66, 2.97, -0.2], [0.18, 0.08, 5.1]);
-  kb(b, A, [0, 2.97, 2.24], [3.5, 0.08, 0.16]);
   // gold grille + headlights (they flash during wind-ups)
-  kb(b, GOLD, [0, 2.2, 2.32], [2.0, 0.9, 0.06]);
-  for (let i = 0; i < 7; i++) kb(b, M.dark(), [-0.75 + i * 0.25, 2.2, 2.36], [0.07, 0.8, 0.03]);
+  b.add(rblock(2.0, 0.9, 0.06, 0.03), GOLD, [0, 2.2, 2.34]);
+  for (let i = 0; i < 7; i++) kb(b, M.dark(), [-0.75 + i * 0.25, 2.2, 2.38], [0.07, 0.8, 0.03]);
   for (const sx of [-1, 1]) {
-    b.add(G.cyl(12), GOLD, [sx * 1.35, 2.5, 2.3], [0.3, 0.12, 0.3], [PI / 2, 0, 0]);
-    b.add(G.cyl(12), eyeMat(t, 0xfff2c0, 2.0), [sx * 1.35, 2.5, 2.37], [0.22, 0.04, 0.22], [PI / 2, 0, 0]);
+    b.add(lathe('dnLampRing', [[0.18, 0], [0.28, 0], [0.3, 0.06], [0.24, 0.12], [0.18, 0.1]], 16), GOLD, [sx * 1.3, 2.38, 2.3], ONE, [PI / 2, 0, 0]);
+    b.add(G.cyl(16), eyeMat(t, 0xfff2c0, 2.0), [sx * 1.3, 2.38, 2.37], [0.2, 0.04, 0.2], [PI / 2, 0, 0]);
   }
 
-  // ---- THE HEAD (the cab is the face)
+  // ---- THE HEAD (the cab is the face): a rounded head with jowls, the cap a domed crown with a curved brim
   const SKIN = mat('donaldSkin', 0xf08a2a, { roughness: 0.6 });
   const PALE = mat('donaldPale', 0xf9d3a2, { roughness: 0.6 });
   const HAIR = mat('donaldHair', 0xf6d55c, { roughness: 0.45, metalness: 0.15 });
   const LIPS = mat('donaldLips', 0xd8605a, { roughness: 0.5 });
   const HZ = -0.35; // head centre z
   const FZ = HZ + 1.0; // face plane
-  kb(b, SKIN, [0, 3.95, HZ], [2.5, 2.0, 2.0]);
+  b.add(rp('dnHead', [
+    [-1.0, 2.95], [0.3, 2.95], { p: [0.66, 3.2], q: [0.62, 2.95] }, { p: [0.68, 3.72], q: [0.75, 3.45] }, [0.66, 4.55],
+    { p: [0.28, 4.98], q: [0.64, 4.98] }, [-0.92, 4.98], { p: [-1.38, 4.5], q: [-1.38, 4.98] }, [-1.38, 3.4], { p: [-1.0, 2.95], q: [-1.38, 2.95] },
+  ], 2.5, 0.34, 3, 6), SKIN, ZERO);
   // rounded chin
   b.add(G.sph(1), SKIN, [0, 3.2, FZ - 0.3], [1.0, 0.36, 0.38]);
   // ears
-  for (const sx of [-1, 1]) b.add(G.sph(0), SKIN, [sx * 1.3, 4.0, HZ + 0.1], [0.16, 0.36, 0.26]);
+  for (const sx of [-1, 1]) b.add(G.sph(1), SKIN, [sx * 1.27, 4.0, HZ + 0.1], [0.16, 0.36, 0.26]);
   // pale goggle patches + small squinting eyes
   for (const sx of [-1, 1]) {
-    kb(b, PALE, [sx * 0.5, 4.28, FZ + 0.01], [0.78, 0.44, 0.04]);
+    b.add(rblock(0.78, 0.44, 0.04, 0.018), PALE, [sx * 0.5, 4.28, FZ + 0.015]);
     kb(b, M.white(), [sx * 0.5, 4.26, FZ + 0.04], [0.46, 0.17, 0.04]);
     kb(b, M.black(), [sx * 0.45, 4.25, FZ + 0.07], [0.16, 0.15, 0.03]);
     // heavy squint lid
@@ -987,45 +1080,58 @@ function donald(): Tpl {
     // brows
     kb(b, HAIR, [sx * 0.5, 4.58, FZ + 0.06], [0.6, 0.11, 0.1], [0, 0, sx * 0.14]);
   }
-  // nose
-  kw(b, SKIN, [0, 3.95, FZ + 0.12], [0.34, 0.42, 0.26], 0.3);
+  // nose (a rounded bulb in profile)
+  b.add(rp('dnNose', [[0, 0.24], [0.1, 0.1], { p: [0.27, -0.12], q: [0.31, 0.02] }, { p: [0.1, -0.22], q: [0.22, -0.22] }, [0, -0.2]], 0.36, 0.1, 2, 5), SKIN, [0, 3.95, FZ - 0.02]);
   // pursed mouth
-  b.add(G.sph(1), LIPS, [0, 3.48, FZ + 0.12], [0.3, 0.17, 0.12]);
-  b.add(G.sph(1), mat('donaldMouth', 0x5a1a1a, { roughness: 0.6 }), [0, 3.48, FZ + 0.22], [0.1, 0.06, 0.04]);
+  b.add(G.sph(1), LIPS, [0, 3.48, FZ + 0.1], [0.3, 0.17, 0.12]);
+  b.add(G.sph(1), mat('donaldMouth', 0x5a1a1a, { roughness: 0.6 }), [0, 3.48, FZ + 0.2], [0.1, 0.06, 0.04]);
   // HAIR: swept-back sides + the big blond swoop across the forehead
-  for (const sx of [-1, 1]) b.add(G.sph(1), HAIR, [sx * 1.2, 4.7, HZ - 0.15], [0.3, 0.42, 1.0], [0.2, 0, 0]);
+  for (const sx of [-1, 1]) b.add(G.sph(1), HAIR, [sx * 1.18, 4.7, HZ - 0.15], [0.3, 0.42, 1.0], [0.2, 0, 0]);
   b.add(G.sph(1), HAIR, [0, 4.72, HZ - 1.0], [1.25, 0.45, 0.3]);
-  b.add(G.sph(1), HAIR, [0.15, 4.86, FZ + 0.05], [1.5, 0.28, 0.48], [0, 0.12, -0.12]);
-  b.add(G.sph(1), HAIR, [-0.95, 4.76, FZ + 0.12], [0.5, 0.22, 0.3], [0.2, 0.4, -0.35]);
-  b.add(G.cone(8), HAIR, [-1.35, 4.62, FZ + 0.1], [0.16, 0.42, 0.16], [0, 0, 1.9]);
-  // RED CAP (MAGA front panel)
+  b.add(G.sph(2), HAIR, [0.15, 4.86, FZ + 0.0], [1.5, 0.28, 0.48], [0, 0.12, -0.12]);
+  b.add(G.sph(1), HAIR, [-0.95, 4.76, FZ + 0.08], [0.5, 0.22, 0.3], [0.2, 0.4, -0.35]);
+  b.add(G.cone(8), HAIR, [-1.35, 4.62, FZ + 0.06], [0.16, 0.42, 0.16], [0, 0, 1.9]);
+  // RED CAP: a domed crown, the MAGA panel wrapped on its front (real uvs), a curved brim, the top button
   const RED = M.capRed();
-  b.add(G.taper(0.78, 14), RED, [0, 5.32, HZ + 0.05], [1.3, 0.78, 1.18]);
-  b.add(G.cyl(14), RED, [0, 5.73, HZ + 0.05], [1.02, 0.06, 0.92]);
-  b.add(G.box(), M.maga(), [0, 5.36, HZ + 1.07], [1.8, 0.66, 0.06], [-0.27, 0, 0]);
-  kb(b, RED, [0, 4.98, FZ + 0.42], [2.1, 0.08, 1.0], [0.06, 0, 0]);
-  b.add(G.sph(0), RED, [0, 5.78, HZ + 0.05], [0.12, 0.08, 0.12]);
-  // shirt collar + the LONG RED TIE running down the hood
+  const CAP: V3 = [1.3, 0.78, 1.18];
+  const CY = 4.93;
+  b.add(lathe('dnCrown', [[1, 0], [0.86, 0.72], [0.66, 0.9], [0.36, 0.99], [0, 1.0]], 20), RED, [0, CY, HZ + 0.05], CAP);
+  b.add(wrapPanel(1.005, 0.885, 0.66, 1.5, 12), M.maga(), [0, CY + 0.03 * CAP[1], HZ + 0.05], CAP);
+  b.add(halfDisc(18), RED, [0, 4.97, HZ + 0.05], [1.08, 0.07, 1.86], [0.06, 0, 0]);
+  b.add(G.sph(1), RED, [0, CY + 0.79, HZ + 0.05], [0.12, 0.08, 0.12]);
+  // shirt collar + the LONG RED TIE running down the hood and over the rolled nose
   for (const sx of [-1, 1]) kb(b, M.white(), [sx * 0.34, 3.0, FZ + 0.1], [0.42, 0.12, 0.3], [0, sx * 0.5, sx * -0.25]);
   const TIE = mat('donaldTie', 0xd0102a, { roughness: 0.5 });
   kb(b, TIE, [0, 3.02, FZ + 0.16], [0.36, 0.3, 0.2]);
-  kb(b, TIE, [0, 2.99, FZ + 1.0], [0.48, 0.06, 1.7]);
-  kb(b, TIE, [0, 2.99, FZ + 1.95], [0.62, 0.06, 0.5]);
-  kb(b, TIE, [0, 2.75, 2.33], [0.62, 0.5, 0.06]);
-  kb(b, TIE, [0, 2.45, 2.33], [0.32, 0.32, 0.06], [0, 0, PI / 4]);
+  kb(b, TIE, [0, 2.98, 1.34], [0.48, 0.06, 1.3]);
+  b.add(arch('dnTieRoll', 1.98, 2.61, 0.34, 0.39, 92, -4, 0.56, 0.01, 6), TIE, ZERO);
+  kb(b, TIE, [0, 2.42, 2.36], [0.6, 0.38, 0.05]);
+  kb(b, TIE, [0, 2.2, 2.36], [0.32, 0.32, 0.05], [0, 0, PI / 4]);
   // suit shoulders in gold behind the head
-  kb(b, A, [0, 3.1, HZ - 0.4], [2.7, 0.32, 1.4]);
+  b.add(rblock(2.7, 0.34, 1.4, 0.14), A, [0, 3.1, HZ - 0.4]);
 
-  // GOLD BLADE with a dark top edge + glow strip, swept wings, chrome bolts
-  kb(b, GOLD, [0, 1.25, 2.95], [3.4, 2.3, 0.3], [-0.12, 0, 0]);
-  for (const sx of [-1, 1]) kb(b, GOLD, [sx * 2.4, 1.25, 2.6], [1.7, 2.3, 0.3], [-0.12, sx * -0.45, 0]);
-  kb(b, M.dark(), [0, 2.42, 2.85], [5.8, 0.14, 0.4]);
-  kb(b, glowMat(t, 0xffc24a, 0.25), [0, 0.28, 3.06], [3.4, 0.12, 0.2]);
-  for (const sx of [-1, 1]) kb(b, glowMat(t, 0xffc24a, 0.25), [sx * 2.4, 0.28, 2.72], [1.6, 0.12, 0.2], [0, sx * -0.45, 0]);
-  for (const x of [-1.2, -0.4, 0.4, 1.2]) b.add(G.sph(0), M.chrome(), [x, 1.8, 3.13], [0.09, 0.09, 0.06]);
+  // GOLD BLADE: a curved moldboard with swept wings, rolled dark top pipes, glowing cutting edges, chrome bolts
+  const BH = 2.3;
+  const BC = 0.4;
+  const BT = 0.28;
+  const BY = 0.1;
+  const BZ = 2.7;
+  const GL = glowMat(t, 0xffc24a, 0.25);
+  b.add(moldboard(3.4, BH, BC, BT), GOLD, [0, BY, BZ]);
+  b.add(G.cyl(14), M.dark(), [0, BY + BH + 0.05, BZ + BC - BT * 0.5], [0.12, 3.4, 0.12], [0, 0, PI / 2]);
+  kb(b, GL, [0, BY + 0.18, BZ - 0.08], [3.4, 0.12, 0.2]);
+  const bt = bladeAt(BH, BC, 0.58);
+  for (const x of [-1.2, -0.4, 0.4, 1.2]) b.add(G.sph(0), M.chrome(), [x, BY + bt.y, BZ + bt.z + 0.01], [0.09, 0.09, 0.06]);
   for (const sx of [-1, 1]) {
-    kb(b, M.dark(), [sx * 1.1, 1.5, 2.45], [0.3, 0.3, 1.2]);
-    b.add(G.cyl(8), M.chrome(), [sx * 0.6, 2.1, 2.45], [0.09, 1.2, 0.09], [PI / 2 - 0.6, 0, 0]);
+    const th = sx * -0.45;
+    const c: V3 = [sx * 2.44, BY, 2.72];
+    b.add(moldboard(1.7, BH, BC, BT), GOLD, c, ONE, [0, th, 0]);
+    b.add(G.cyl(14), M.dark(), rotYAt(c, th, [0, BH + 0.05, BC - BT * 0.5]), [0.12, 1.7, 0.12], [0, th, PI / 2]);
+    kb(b, GL, rotYAt(c, th, [0, 0.18, -0.08]), [1.6, 0.12, 0.2], [0, th, 0]);
+  }
+  for (const sx of [-1, 1]) {
+    kb(b, M.dark(), [sx * 1.1, 1.5, 2.1], [0.3, 0.3, 0.9]);
+    b.add(G.cyl(10), M.chrome(), [sx * 0.6, 2.1, 2.3], [0.09, 1.1, 0.09], [PI / 2 - 0.6, 0, 0]);
   }
   // gold smokestacks + a flag on the back
   for (const sx of [-1, 1]) stack(b, stacks, sx * 1.15, 2.95, -2.35, 0.2, 1.4, GOLD, M.black());
@@ -1153,52 +1259,51 @@ function chairman(): Tpl {
   const A = accent(t);
   const goldCleat = mat('cmCleat', 0x8a6a1c, { roughness: 0.6, metalness: 0.3 });
   const skirt = mat('cmSkirt', 0xffffff, { map: towerTexture(), roughness: 0.45, flatShading: false });
-  // ---- tread pods: rubber belts with gold-tinted cleats, gold road-wheel hubs, TOWER skirts
+  // ---- tread pods (RESHAPE: round-ended belts) with gold-tinted cleats, gold road-wheel hubs, TOWER skirts
   const PX = 1.95;
   const PL = 5.6;
   const PH = 1.5;
   const PW = 1.25;
+  bossTreads(base, wheels, PX, PL, PH, PW, 6, GOLD, goldCleat);
   for (const sx of [-1, 1]) {
-    kb(base, M.rubber(), [sx * PX, PH / 2, 0], [PW, PH, PL]);
-    for (const sz of [-1, 1]) base.add(G.cyl(12), M.rubber(), [sx * PX, PH / 2, (sz * PL) / 2], [PH / 2, PW, PH / 2], [0, 0, PI / 2]);
-    const n = 16;
-    for (let i = 0; i < n; i++) kb(base, goldCleat, [sx * PX, PH + 0.04, -PL / 2 + ((i + 0.5) * PL) / n], [PW * 1.04, 0.08, (PL / n) * 0.45]);
-    for (let j = 0; j < 6; j++) wheels.add(sx * (PX + PW / 2 + 0.05), PH * 0.42, -PL / 2 + 0.5 + ((PL - 1) * (j + 0.5)) / 6, PH * 0.3, 0.12, GOLD, M.steel());
-    // skirt over the upper belt: TOWER on black, a gold edge
-    base.add(G.box(), skirt, [sx * (PX + PW / 2 + 0.2), PH * 0.95, 0], [0.06, 0.6, PL * 0.84]);
-    kb(base, A, [sx * PX, PH + 0.2, 0], [PW + 0.42, 0.16, PL * 0.9]);
-    kb(base, GOLD, [sx * (PX + PW / 2 + 0.22), PH + 0.2, 0], [0.04, 0.12, PL * 0.9]);
+    // skirt over the upper belt: TOWER on black, a gold edge, a rolled black-gold guard on top
+    base.add(G.box(), skirt, [sx * (PX + PW / 2 + 0.2), PH * 0.95, 0], [0.06, 0.6, PL * 0.8]);
+    base.add(trackFender('cmGuard', PL * 0.92, PH + 0.12, 0.42, 0.14, PW + 0.42), A, [sx * PX, 0, 0]);
+    kb(base, GOLD, [sx * (PX + PW / 2 + 0.22), PH + 0.2, 0], [0.04, 0.12, PL * 0.84]);
   }
   wheels.flush(root);
   // chassis deck between the pods + two gold exhaust vents at the back
-  kb(base, A, [0, 1.7, 0], [2.7, 0.5, 5.0]);
+  base.add(rblock(2.7, 0.5, 5.0, 0.18), A, [0, 1.7, 0]);
   for (const sx of [-1, 1]) stack(base, stacks, sx * 0.9, 1.95, -2.2, 0.22, 0.7, GOLD, M.black());
 
   const { g: body, b } = sub(root, 'body', [0, 0, 0]);
-  // ---- storeys 1-2: mirrored gold glass, gold pilasters, black floor bands
+  // ---- storeys 1-2: mirrored gold glass, round gold columns at the corners, rounded floor bands
   const WIN = mat('cmWindow', 0xffffff, { map: windowTexture(), emissiveMap: windowTexture(), emissive: 0xffd98a, emissiveIntensity: 0.85, roughness: 0.18, metalness: 0.35, flatShading: false });
   const storey = (w: number, d: number, y0: number, h: number) => {
     b.add(G.box(), WIN, [0, y0 + h / 2, 0], [w, h, d], ZERO, [2, 2]);
     kb(b, A, [0, y0 + 0.06, 0], [w + 0.12, 0.12, d + 0.12]);
-    kb(b, P, [0, y0 + h - 0.06, 0], [w + 0.18, 0.14, d + 0.18]);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) kb(b, P, [(sx * w) / 2, y0 + h / 2, (sz * d) / 2], [0.22, h, 0.22]);
+    b.add(rblock(w + 0.2, 0.16, d + 0.2, 0.06), P, [0, y0 + h - 0.07, 0]);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.cyl(12), P, [(sx * w) / 2, y0 + h / 2, (sz * d) / 2], [0.13, h, 0.13]);
   };
   storey(3.5, 4.4, 1.95, 2.6);
   storey(3.0, 3.7, 4.55, 2.45);
-  // folded red-carpet ramps on the storey-1 flanks, gold rails and stanchions
+  // folded red-carpet ramps on the storey-1 flanks, gold rails and stanchions with ball tops
   const CARPET = mat('cmCarpet', 0xb3122a, { roughness: 0.8 });
   for (const sx of [-1, 1]) {
     kb(b, CARPET, [sx * 1.83, 3.15, 0.2], [0.12, 2.0, 3.2], [0, 0, sx * 0.06]);
-    kb(b, GOLD, [sx * 1.92, 4.18, 0.2], [0.1, 0.1, 3.3]);
-    for (const z of [-1.3, 1.7]) b.add(G.cyl(8), GOLD, [sx * 1.95, 3.2, z], [0.06, 1.9, 0.06]);
+    b.add(G.cyl(10), GOLD, [sx * 1.92, 4.18, 0.2], [0.05, 3.3, 0.05], [PI / 2, 0, 0]);
+    for (const z of [-1.3, 1.7]) {
+      b.add(G.cyl(8), GOLD, [sx * 1.95, 3.2, z], [0.06, 1.9, 0.06]);
+      b.add(G.sph(1), GOLD, [sx * 1.95, 4.2, z], [0.1, 0.1, 0.1]);
+    }
   }
-  // the gold C monogram on a black plaque, storey 2 front
-  kb(b, GOLD, [0, 5.75, 1.89], [1.7, 1.7, 0.05]);
-  kb(b, A, [0, 5.75, 1.92], [1.5, 1.5, 0.04]);
+  // the gold C monogram on a rounded black plaque in a gold frame, storey 2 front
+  b.add(rblock(1.7, 1.7, 0.05, 0.22), GOLD, [0, 5.75, 1.88]);
+  b.add(rblock(1.5, 1.5, 0.04, 0.16), A, [0, 5.75, 1.92]);
   const glow = glowMat(t, 0xffd257, 0.6);
   b.add(G.arc(), glow, [0, 5.75, 1.96], [0.55, 0.55, 0.55], [0, 0, PI * 0.25]);
   // headlights at the deck front (they strobe during wind-ups)
-  for (const sx of [-1, 1]) kb(b, eyeMat(t, 0xfff2c0, 2.0), [sx * 1.0, 1.75, 2.53], [0.6, 0.22, 0.06]);
+  for (const sx of [-1, 1]) b.add(rblock(0.6, 0.22, 0.06, 0.03), eyeMat(t, 0xfff2c0, 2.0), [sx * 1.0, 1.75, 2.53]);
   kb(b, GOLD, [0, 1.75, 2.52], [0.9, 0.3, 0.05]);
 
   // ---- the top floor: THE BOARDROOM (y 7.0 .. 9.3), glass, wider than the floor below
@@ -1206,31 +1311,37 @@ function chairman(): Tpl {
   const RH = 2.3;
   const RW = 3.8;
   const RD = 3.4;
-  kb(b, A, [0, RY0 + 0.1, 0], [RW + 0.3, 0.2, RD + 0.3]);
-  kb(b, P, [0, RY0 + RH + 0.14, 0], [RW + 0.4, 0.28, RD + 0.4]);
-  kb(b, A, [0, RY0 + RH + 0.34, 0], [RW - 0.4, 0.14, RD - 0.4]);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) kb(b, P, [(sx * RW) / 2, RY0 + RH / 2, (sz * RD) / 2], [0.18, RH, 0.18]);
-  for (const px of [-RW / 4, RW / 4]) kb(b, P, [px, RY0 + RH / 2, RD / 2], [0.08, RH, 0.08]);
+  b.add(rblock(RW + 0.3, 0.2, RD + 0.3, 0.07), A, [0, RY0 + 0.1, 0]);
+  // a rounded cornice roof with a stepped gold-black crown
+  b.add(rp('cmRoof', [
+    [-(RD + 0.4) / 2, RY0 + RH], [(RD + 0.4) / 2, RY0 + RH], { p: [(RD + 0.4) / 2 + 0.06, RY0 + RH + 0.16], q: [(RD + 0.4) / 2 + 0.08, RY0 + RH] },
+    { p: [(RD + 0.4) / 2 - 0.08, RY0 + RH + 0.3], q: [(RD + 0.4) / 2 + 0.04, RY0 + RH + 0.3] }, [-(RD + 0.4) / 2 + 0.08, RY0 + RH + 0.3],
+    { p: [-(RD + 0.4) / 2 - 0.06, RY0 + RH + 0.16], q: [-(RD + 0.4) / 2 - 0.04, RY0 + RH + 0.3] }, { p: [-(RD + 0.4) / 2, RY0 + RH], q: [-(RD + 0.4) / 2 - 0.08, RY0 + RH] },
+  ], RW + 0.4, 0.12, 2, 4), P, ZERO);
+  b.add(rblock(RW - 0.4, 0.14, RD - 0.4, 0.06), A, [0, RY0 + RH + 0.36, 0]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.cyl(12), P, [(sx * RW) / 2, RY0 + RH / 2, (sz * RD) / 2], [0.1, RH, 0.1]);
+  for (const px of [-RW / 4, RW / 4]) b.add(G.cyl(8), P, [px, RY0 + RH / 2, RD / 2], [0.045, RH, 0.045]);
   // warm back wall (lit from inside), the long table, the big gold chair
   kb(b, mat('cmWarm', 0xffd890, { emissive: 0xffc870, emissiveIntensity: 0.7 }), [0, RY0 + RH / 2, -RD / 2 + 0.1], [RW - 0.2, RH - 0.2, 0.1]);
   const WOOD = mat('cmWood', 0x3a2416, { roughness: 0.5 });
-  kb(b, WOOD, [0, RY0 + 0.95, 0.75], [RW - 0.5, 0.12, 1.1]);
+  b.add(rblock(RW - 0.5, 0.12, 1.1, 0.05), WOOD, [0, RY0 + 0.95, 0.75]);
   for (const sx of [-1, 1]) kb(b, WOOD, [sx * 1.3, RY0 + 0.55, 0.75], [0.25, 0.8, 0.9]);
   kb(b, GOLD, [0, RY0 + 1.0, 1.3], [RW - 0.5, 0.05, 0.03]);
-  kb(b, GOLD, [0, RY0 + 1.25, -0.95], [1.3, 2.1, 0.3]);
-  kb(b, GOLD, [0, RY0 + 0.55, -0.55], [1.2, 0.18, 0.9]);
-  for (const sx of [-1, 1]) kb(b, GOLD, [sx * 0.62, RY0 + 0.8, -0.5], [0.14, 0.5, 0.9]);
+  // the throne: an arched gold back, a cushioned seat, rolled arms
+  b.add(rp('cmChairBack', [[-0.65, 0], [0.65, 0], [0.65, 1.5], { p: [0, 2.1], q: [0.65, 2.1] }, { p: [-0.65, 1.5], q: [-0.65, 2.1] }], 0.3, 0.08, 2, 6), GOLD, [0, RY0 + 0.2, -0.95], ONE, [0, PI / 2, 0]);
+  b.add(rblock(1.2, 0.18, 0.9, 0.07), GOLD, [0, RY0 + 0.55, -0.55]);
+  for (const sx of [-1, 1]) b.add(rblock(0.14, 0.5, 0.9, 0.06), GOLD, [sx * 0.62, RY0 + 0.8, -0.5]);
   // ---- THE DONALD at the table (the DONALD model's head / hair language, small; lit from the room so he reads at night)
   const SKIN = mat('cmSkin', 0xf08a2a, { roughness: 0.6, emissive: 0x6a2a00, emissiveIntensity: 0.7 });
   const HAIR = mat('cmHair', 0xf6d55c, { roughness: 0.45, metalness: 0.15, emissive: 0x7a6010, emissiveIntensity: 0.7 });
   const TIE = mat('donaldTie', 0xd0102a, { roughness: 0.5 });
   const SUIT = mat('cmSuit', 0x1b2236, { roughness: 0.6 });
   const DY = RY0 + 0.6; // seat height
-  kb(b, SUIT, [0, DY + 0.55, -0.35], [0.95, 0.85, 0.55]);
+  b.add(rblock(0.95, 0.85, 0.55, 0.16), SUIT, [0, DY + 0.55, -0.35]);
   kb(b, M.white(), [0, DY + 0.78, -0.07], [0.32, 0.4, 0.04]);
   kb(b, TIE, [0, DY + 0.62, -0.04], [0.13, 0.62, 0.04]);
   kb(b, TIE, [0, DY + 0.28, -0.04], [0.2, 0.14, 0.04], [0, 0, PI / 4]);
-  kb(b, SKIN, [0, DY + 1.25, -0.3], [0.62, 0.6, 0.56]);
+  b.add(rblock(0.62, 0.6, 0.56, 0.16), SKIN, [0, DY + 1.25, -0.3]);
   b.add(G.sph(1), SKIN, [0, DY + 1.0, -0.05], [0.26, 0.11, 0.12]);
   for (const sx of [-1, 1]) {
     kb(b, M.white(), [sx * 0.14, DY + 1.32, -0.01], [0.15, 0.07, 0.02]);
@@ -1243,17 +1354,17 @@ function chairman(): Tpl {
   b.add(G.sph(1), HAIR, [-0.3, DY + 1.55, -0.02], [0.18, 0.09, 0.13], [0.2, 0.4, -0.35]);
   b.add(G.cone(8), HAIR, [-0.45, DY + 1.5, 0.0], [0.06, 0.18, 0.06], [0, 0, 1.9]);
   // left arm on the table, legs under it, the ankle monitor (a black band and a red light that blinks)
-  kb(b, SUIT, [-0.42, DY + 0.45, 0.15], [0.22, 0.2, 0.75]);
-  b.add(G.sph(0), SKIN, [-0.42, DY + 0.45, 0.55], [0.11, 0.1, 0.11]);
+  b.add(G.cyl(10), SUIT, [-0.42, DY + 0.45, 0.15], [0.11, 0.75, 0.11], [PI / 2, 0, 0]);
+  b.add(G.sph(1), SKIN, [-0.42, DY + 0.45, 0.55], [0.11, 0.1, 0.11]);
   for (const sx of [-1, 1]) {
     kb(b, SUIT, [sx * 0.22, DY + 0.05, 0.05], [0.26, 0.22, 0.7]);
-    kb(b, SUIT, [sx * 0.22, DY - 0.28, 0.38], [0.22, 0.6, 0.22]);
+    b.add(G.cyl(10), SUIT, [sx * 0.22, DY - 0.28, 0.38], [0.11, 0.6, 0.11]);
     kb(b, M.black(), [sx * 0.22, DY - 0.56, 0.48], [0.24, 0.1, 0.4]);
   }
-  kb(b, M.black(), [0.22, DY - 0.42, 0.38], [0.27, 0.1, 0.27]);
+  b.add(G.cyl(12), M.black(), [0.22, DY - 0.42, 0.38], [0.135, 0.1, 0.135]);
   kb(b, chairmanMonitor(), [0.22, DY - 0.42, 0.53], [0.09, 0.07, 0.03]);
   // the PROTOCOL C button on the table: gold base, a plaque, the red dome (its own group below)
-  b.add(G.cyl(12), GOLD, [0.65, RY0 + 1.05, 0.75], [0.2, 0.08, 0.2]);
+  b.add(lathe('cmButtonBase', [[0.2, 0], [0.2, 0.05], [0.16, 0.08], [0.15, 0.08]], 14), GOLD, [0.65, RY0 + 1.01, 0.75]);
   b.add(G.box(), mat('cmPlaque', 0xffffff, { map: buttonTexture(), roughness: 0.5, flatShading: false }), [0.65, RY0 + 1.03, 1.08], [0.5, 0.05, 0.13]);
   // glass shell (mirrored gold tint, translucent)
   kb(b, mat('cmGlass', 0xffe2a0, { transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.4, depthWrite: false }), [0, RY0 + RH / 2 + 0.05, 0], [RW, RH - 0.1, RD]);
@@ -1262,46 +1373,47 @@ function chairman(): Tpl {
   kb(b, M.capRed(), [1.85, RY0 + RH + 1.9, -1.2], [0.9, 0.5, 0.02]);
   kb(b, M.white(), [1.85, RY0 + RH + 1.9, -1.2], [0.9, 0.18, 0.03]);
   kb(b, M.flagBlue(), [1.62, RY0 + RH + 2.0, -1.2], [0.44, 0.3, 0.04]);
-  kb(b, GOLD, [-0.4, RY0 + RH + 0.65, -0.5], [1.6, 0.5, 1.2]);
-  kb(b, A, [-0.4, RY0 + RH + 0.92, -0.5], [1.4, 0.08, 1.0]);
-  // crane-arm shoulders on storey 2
+  b.add(rblock(1.6, 0.5, 1.2, 0.16), GOLD, [-0.4, RY0 + RH + 0.65, -0.5]);
+  kb(b, A, [-0.4, RY0 + RH + 0.92, -0.5], [1.4, 0.06, 1.0]);
+  for (const sx of [-1, 1]) kb(b, A, [-0.4 + sx * 0.45, RY0 + RH + 0.65, -0.5], [0.12, 0.52, 1.22]);
+  // crane-arm shoulders on storey 2: a gold-ringed drum
   for (const sx of [-1, 1]) {
-    b.add(G.cyl(12), A, [sx * 1.62, 6.1, 0.2], [0.42, 0.5, 0.42], [0, 0, PI / 2]);
-    b.add(G.cyl(12), GOLD, [sx * 1.9, 6.1, 0.2], [0.3, 0.1, 0.3], [0, 0, PI / 2]);
+    b.add(lathe('cmShoulder', [[0.42, -0.25], [0.46, -0.18], [0.46, 0.18], [0.42, 0.25], [0.2, 0.27]], 18), A, [sx * 1.62, 6.1, 0.2], ONE, [0, 0, sx * -PI / 2]);
+    b.add(ring('cmShoulderRing', [[0.18, -0.06], [0.32, -0.06], [0.34, 0], [0.32, 0.06], [0.18, 0.06]], 16), GOLD, [sx * 1.9, 6.1, 0.2], ONE, [0, 0, PI / 2]);
   }
   b.flush();
 
   // right: the BRIEFCASE CANNON (pivots at the shoulder; the lid hinges along the case's top edge)
   const { g: cg, b: cb } = sub(body, '', [2.0, 6.1, 0.2]);
   cg.name = CHAIRMAN_PART.cannon;
-  kb(cb, P, [0.45, 0.45, 0.4], [0.32, 0.32, 1.6], [-0.5, 0, 0]);
-  kb(cb, A, [0.45, 0.85, 0.95], [0.5, 0.5, 0.5]);
+  cb.add(G.cyl(12), P, [0.45, 0.45, 0.4], [0.17, 1.6, 0.17], [PI / 2 - 0.5, 0, 0]);
+  cb.add(G.sph(1), A, [0.45, 0.85, 0.95], [0.3, 0.3, 0.3]);
   const LEATHER = mat('cmLeather', 0x2a1a12, { roughness: 0.55 });
-  kb(cb, LEATHER, [0.95, 1.1, 1.3], [0.62, 1.05, 1.5]);
-  for (const sz of [-1, 1]) kb(cb, GOLD, [0.95, 1.12, 1.3 + sz * 0.76], [0.66, 1.09, 0.05]);
-  kb(cb, GOLD, [0.95, 1.7, 1.3], [0.14, 0.12, 0.5]);
+  cb.add(rblock(0.62, 1.05, 1.5, 0.09), LEATHER, [0.95, 1.1, 1.3]);
+  for (const sz of [-1, 1]) cb.add(rblock(0.66, 1.09, 0.05, 0.02), GOLD, [0.95, 1.12, 1.3 + sz * 0.76]);
+  cb.add(arch('cmHandle', 0, 0, 0.11, 0.17, 0, 180, 0.12, 0.02, 6), GOLD, [0.95, 1.62, 1.3]);
   kb(cb, glow, [1.27, 1.1, 1.3], [0.02, 0.7, 1.1]);
   cb.flush();
   const { g: lg, b: lb } = sub(cg, '', [1.28, 1.62, 1.3]);
   lg.name = CHAIRMAN_PART.lid;
-  kb(lb, LEATHER, [0.02, -0.52, 0], [0.08, 1.06, 1.52]);
-  for (const sz of [-1, 1]) kb(lb, GOLD, [0.08, -0.12, sz * 0.5], [0.08, 0.18, 0.18]);
+  lb.add(rblock(0.08, 1.06, 1.52, 0.03), LEATHER, [0.02, -0.52, 0]);
+  for (const sz of [-1, 1]) lb.add(rblock(0.08, 0.18, 0.18, 0.03), GOLD, [0.08, -0.12, sz * 0.5]);
   lb.flush();
-  // left: the golden POINTING FINGER
+  // left: the golden POINTING FINGER (a rounded fist, a capsule finger, a thumb, curled knuckles)
   const { g: fg, b: fb } = sub(body, '', [-2.0, 6.1, 0.2]);
   fg.name = CHAIRMAN_PART.finger;
-  kb(fb, P, [-0.4, 0.3, 0.55], [0.3, 0.3, 1.4], [-0.3, 0, 0]);
-  kb(fb, GOLD, [-0.55, 0.55, 1.35], [0.62, 0.62, 0.72]);
-  kb(fb, GOLD, [-0.55, 0.62, 2.05], [0.2, 0.2, 0.9]);
-  kb(fb, GOLD, [-0.82, 0.45, 1.55], [0.18, 0.18, 0.4], [0, -0.5, 0]);
-  for (const sy of [0.4, 0.62]) kb(fb, GOLD, [-0.48, sy - 0.08, 1.75], [0.5, 0.17, 0.2]);
+  fb.add(G.cyl(12), P, [-0.4, 0.3, 0.55], [0.16, 1.4, 0.16], [PI / 2 - 0.3, 0, 0]);
+  fb.add(rblock(0.62, 0.62, 0.72, 0.2), GOLD, [-0.55, 0.55, 1.35]);
+  fb.add(lathe('cmFingerTip', [[0, 0], [0.08, 0.01], [0.105, 0.06], [0.105, 0.8], [0.08, 0.89], [0, 0.92]], 12), GOLD, [-0.55, 0.62, 1.6], ONE, [PI / 2, 0, 0]);
+  fb.add(lathe('cmThumb', [[0, 0], [0.08, 0.01], [0.095, 0.06], [0.095, 0.32], [0.06, 0.4], [0, 0.42]], 10), GOLD, [-0.72, 0.45, 1.37], ONE, [PI / 2, 0, 0.5]);
+  for (const sy of [0.4, 0.62]) fb.add(G.cyl(12), GOLD, [-0.48, sy - 0.08, 1.72], [0.09, 0.5, 0.09], [0, 0, PI / 2]);
   fb.add(G.sph(1), glow, [-0.55, 0.62, 2.52], [0.12, 0.12, 0.12]);
   fb.flush();
   // THE DONALD's right forearm (raised; it slams the button on the defeat)
   const { g: ag, b: ab } = sub(body, '', [0.42, RY0 + 1.12, -0.25]);
   ag.name = CHAIRMAN_PART.arm;
-  kb(ab, SUIT, [0, 0.25, 0.3], [0.2, 0.2, 0.7], [-0.6, 0, 0]);
-  ab.add(G.sph(0), SKIN, [0, 0.47, 0.62], [0.12, 0.12, 0.12]);
+  ab.add(G.cyl(10), SUIT, [0, 0.25, 0.3], [0.1, 0.7, 0.1], [PI / 2 - 0.6, 0, 0]);
+  ab.add(G.sph(1), SKIN, [0, 0.47, 0.62], [0.12, 0.12, 0.12]);
   ab.flush();
   // the red dome of the button (its own group: it presses down)
   const { g: bg, b: bb } = sub(body, '', [0.65, RY0 + 1.09, 0.75]);
