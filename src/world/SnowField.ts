@@ -204,11 +204,13 @@ export class SnowField implements SnowFieldAPI {
         .replace(
           '#include <dithering_fragment>',
           `#include <dithering_fragment>
-          {
+          // (skipped outright where it would add nothing: far away or on bare ground; same picture, less work)
+          float spDist = length(cameraPosition - vSnowWorld);
+          if (spDist < 70.0 && vColor.r > 0.75) {
             vec3 cellP = floor(vSnowWorld * 11.0);
             float rnd = fract(sin(dot(cellP, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
             vec3 vdir = normalize(cameraPosition - vSnowWorld);
-            float dist = length(cameraPosition - vSnowWorld);
+            float dist = spDist;
             float snowy = smoothstep(0.75, 0.95, vColor.r);
             // each facet's own tilt; it flashes when it reflects the sun (first directional light) toward the eye
             vec3 fn = normalize(vec3(rnd - 0.5, 1.6, fract(rnd * 31.7) - 0.5));
