@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
-import { addMesh, boltRow, kitBox, PLOW_KIT_K, type VehicleBuild, type VehicleBuildIn } from './types';
+import { addMesh, boltRow, type VehicleBuild, type VehicleBuildIn } from './types';
+import { archFender, rblock, roundEnd, roundLoft, roundProfile, sweep, turned } from './vehicleShapes';
 
 /** What the Plow feeds the TESLA ROVER rig every frame (VoltVehicleParts.update). */
 export interface VoltRigState {
@@ -134,7 +135,9 @@ const _v = new THREE.Vector3();
  * lit rail, a rear HV core module feeding the tower through clean lit conduits, and metallic emitter prongs on the
  * deck corners. The tower: a composite pedestal (four telescoping Static Field emitter rods in its rim), maglev rings
  * hovering round a graphite spine, a glass containment tube holding a plasma column with magnetic field rings
- * travelling up it, and a segmented energy halo ring hovering on top round a plasma orb. Static parts merge per
+ * travelling up it, and a segmented energy halo ring hovering on top round a plasma orb. Reshape (art pass): the deck
+ * and tub are moulded lofts with round plan corners, the wheel spats round arches, the sensor head, nose and HV core
+ * curved pods, the tower turned round-edged forms (vehicleShapes.ts). Static parts merge per
  * material; the arcs are one pooled additive ribbon mesh rewritten in place. */
 export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuild<VoltVehicleParts> {
   const group = new THREE.Group();
@@ -148,35 +151,45 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
   const labelMat = new THREE.MeshStandardMaterial({ map: labelAtlas(), roughness: 0.4, metalness: 0.1 });
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, shadow = true) => addMesh(geo, mat, x, y, z, group, shadow);
 
-  /* ---- Platform: graphite tub over the chassis, the pale composite deck on top (overhanging the wheels). */
+  /* ---- Platform (reshape): a graphite tub with round ends and a tucked-under belly, and over it the pale
+   * composite deck as one sleek moulded shell: flat top and flanks (decals, labels), a big round top edge, round
+   * plan corners, the nose rolling down toward the sensor nose and the tail tucking in. */
   add(chassis, mats.dark, 0, 0.62, 0.05);
-  // (Art pass: the big slabs take the vehicles' strong edge bevel.)
-  add(slab(1.5, 0.34, 3.85, 0.26, 0.03 * PLOW_KIT_K), mats.trim, 0, 0.84, -0.05);
-  add(slab(1.9, 0.22, 3.6, 0.36, 0.03 * PLOW_KIT_K), mats.paint, 0, 1.11, -0.07);
-  // Graphite wheel spats over the outer half of each wheel (a light line on the lip), and a battery pod on each
-  // tub flank between the wheels, under the deck lip, with a lit seam and bolted end caps.
+  add(roundLoft('voltTub', sweep(-1.975, 1.875, 14, (z) => {
+    const e = roundEnd(Math.min(z + 1.975, 1.875 - z), 0.3, 0.55);
+    return { hw: 0.75 * e, yb: 0.67 + (1 - e) * 0.08, yt: 1.01, rb: 0.12, rt: 0.04 };
+  })), mats.trim, 0, 0, 0);
+  add(roundLoft('voltDeck', sweep(-1.87, 1.78, 18, (z) => {
+    const front = roundEnd(1.78 - z, 0.62, 0.62);
+    const back = roundEnd(z + 1.87, 0.34, 0.7);
+    const e = Math.min(front, back);
+    const drop = z > 1.6 ? ((z - 1.6) / 0.18) ** 2 * 0.06 : 0;
+    return { hw: 0.95 * e, yb: 1.0 + (1 - back) * 0.04, yt: 1.222 - drop, rb: 0.05, rt: 0.09 };
+  })), mats.paint, 0, 0, 0);
+  // Graphite wheel spats: round arches over the outer half of each wheel (a light line on the lip), and a battery pod
+  // on each tub flank between the wheels, under the deck lip, with a lit seam and bolted end caps.
   for (const sx of [-1, 1]) {
     for (const z of [1.45, -1.25]) {
-      const spat = new THREE.Group();
-      spat.position.set(sx * 1.05, 1.02, z);
-      spat.rotation.z = -sx * 0.32; // falls away over the tyre's shoulder
-      group.add(spat);
-      addMesh(kitBox(0.3, 0.06, 1.02, 0.02), graphite, 0, 0, 0, spat);
-      addMesh(new THREE.BoxGeometry(0.012, 0.02, 0.9), mats.coil, sx * 0.153, 0, 0, spat, false);
+      add(archFender('voltSpat', 0.48, 0.55, 0.61, 12, 168, 0.34, 0.04), graphite, sx * 1.02, 0, z);
+      add(archFender('voltSpatLine', 0.48, 0.6, 0.618, 14, 166, 0.014, 0, 10), mats.coil, sx * 1.193, 0, z, false);
     }
-    add(kitBox(0.14, 0.22, 1.2, 0.03), graphite, sx * 0.8, 0.8, 0.1);
+    add(rblock(0.14, 0.22, 1.2, 0.06), graphite, sx * 0.8, 0.8, 0.1);
     add(new THREE.BoxGeometry(0.012, 0.025, 1.04), mats.coil, sx * 0.872, 0.82, 0.1, false);
     for (const z of [-0.47, 0.67]) boltRow(group, satin, [sx * 0.874, 0.74, z], [sx * 0.874, 0.86, z], 2, [0, 0, -sx * Math.PI / 2], 0.022, true);
   }
   // Graphite inlay down the deck spine (front half) with a light line in it.
-  add(slab(0.5, 0.02, 0.5, 0.12, 0.006), graphite, 0, 1.226, 1.55);
-  add(new THREE.BoxGeometry(0.03, 0.012, 0.42), mats.coil, 0, 1.24, 1.55, false);
+  add(slab(0.5, 0.02, 0.32, 0.1, 0.006), graphite, 0, 1.226, 1.45);
+  add(new THREE.BoxGeometry(0.03, 0.012, 0.26), mats.coil, 0, 1.24, 1.45, false);
   // Sloped sensor nose (graphite) under the deck lip: LED headlight strips + a centre light bar.
   const nose = new THREE.Group();
   nose.position.set(0, 0.9, 1.9);
   nose.rotation.x = 0.5;
   group.add(nose);
-  addMesh(slab(1.56, 0.26, 0.42, 0.1, 0.03), graphite, 0, 0, 0, nose);
+  // (Reshape: a pillowed moulding, tapering in plan to a flat light face.)
+  addMesh(roundLoft('voltNose', sweep(-0.21, 0.215, 8, (z) => {
+    const e = roundEnd(0.215 - z, 0.16, 0.9);
+    return { hw: (0.78 - (z + 0.21) * 0.1) * e, yb: -0.13, yt: 0.13, rb: 0.1, rt: 0.09 };
+  })), graphite, 0, 0, 0, nose);
   for (const x of [-0.48, 0.48]) {
     addMesh(new THREE.BoxGeometry(0.34, 0.035, 0.02), mats.head, x, 0.02, 0.215, nose, false);
     addMesh(new THREE.BoxGeometry(0.22, 0.02, 0.02), mats.head, x * 1.08, -0.045, 0.215, nose, false);
@@ -189,7 +202,7 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
   }
   for (const x of [-0.6, 0.6]) add(new THREE.BoxGeometry(0.42, 0.035, 0.02), mats.coil, x, 1.1, -1.88, false);
   // Rear ion thruster (Plow dash flame mount): satin ring, dark throat, blue core.
-  add(facet(new THREE.TorusGeometry(0.15, 0.035, 5, 12)), satin, 0, 1.05, -1.99);
+  add(new THREE.TorusGeometry(0.15, 0.035, 6, 16), satin, 0, 1.05, -1.99);
   add(new THREE.CircleGeometry(0.13, 12), mats.dark, 0, 1.05, -1.985, false).rotation.y = Math.PI;
   add(new THREE.CircleGeometry(0.07, 10), mats.coil, 0, 1.05, -1.995, false).rotation.y = Math.PI;
   // Clean panel seams on the deck top + side faces.
@@ -198,9 +211,15 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
     for (const z of [1.02, -1.05]) add(new THREE.BoxGeometry(0.01, 0.13, 0.018), graphite, x * 0.951, 1.12, z, false);
   }
 
-  /* ---- Sensor head (the rover's face): a chamfered pod with a dark visor band and a scanner light. */
-  add(slab(0.84, 0.3, 0.55, 0.14, 0.03 * PLOW_KIT_K), mats.paint, 0, 1.35, 1.0);
-  add(slab(0.74, 0.11, 0.06, 0.03, 0.012), visorMat, 0, 1.37, 1.262);
+  /* ---- Sensor head (the rover's face): a moulded pod (flat flanks for the name plates, a round brow rolling back
+   * over the roof, a tucked chin) with a curved dark visor band wrapping its face and a scanner light. */
+  add(roundProfile('voltHead', [
+    [0.74, 1.2], [1.2, 1.2], { p: [1.275, 1.27], q: [1.275, 1.2] }, [1.275, 1.4], { p: [1.13, 1.505], q: [1.275, 1.505] },
+    [0.86, 1.505], { p: [0.725, 1.4], q: [0.725, 1.505] }, { p: [0.74, 1.2], q: [0.725, 1.24] },
+  ], 0.84, 0.12, 4, 8), mats.paint, 0, 0, 0);
+  add(roundProfile('voltVisor', [
+    [1.24, 1.315], [1.288, 1.315], [1.288, 1.425], { p: [1.27, 1.445], q: [1.288, 1.445] }, [1.24, 1.445],
+  ], 0.8, 0.04, 3, 4), visorMat, 0, 0, 0);
   add(new THREE.BoxGeometry(0.5, 0.018, 0.02), mats.coil, 0, 1.37, 1.296, false);
   for (const x of [-0.27, 0.27]) add(new THREE.BoxGeometry(0.08, 0.04, 0.02), mats.head, x, 1.37, 1.296, false);
   for (const x of [-1, 1]) {
@@ -240,11 +259,13 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
   }
 
   /* ---- Rear: the HV core module (light-slatted top, side pods), feeding the tower through two lit conduits. */
-  add(slab(1.2, 0.3, 0.38, 0.1, 0.03 * PLOW_KIT_K), mats.trim, 0, 1.37, -1.64);
-  for (let i = 0; i < 5; i++) add(new THREE.BoxGeometry(0.035, 0.012, 0.26), mats.coil, -0.32 + i * 0.16, 1.526, -1.64, false);
+  add(roundProfile('voltCore', [
+    [-1.83, 1.22], [-1.45, 1.22], [-1.45, 1.42], { p: [-1.55, 1.52], q: [-1.45, 1.52] }, [-1.79, 1.52], { p: [-1.83, 1.48], q: [-1.83, 1.52] },
+  ], 1.2, 0.09, 4, 8), mats.trim, 0, 0, 0);
+  for (let i = 0; i < 5; i++) add(new THREE.BoxGeometry(0.035, 0.012, 0.22), mats.coil, -0.32 + i * 0.16, 1.526, -1.68, false);
   add(atlasUV(new THREE.PlaneGeometry(0.44, 0.11), LBL.core), labelMat, 0, 1.37, -1.833, false).rotation.y = Math.PI;
   for (const sx of [-1, 1]) {
-    add(slab(0.12, 0.24, 0.32, 0.04, 0.02), graphite, sx * 0.64, 1.37, -1.64);
+    add(rblock(0.12, 0.24, 0.32, 0.05), graphite, sx * 0.64, 1.37, -1.64);
     add(new THREE.BoxGeometry(0.01, 0.16, 0.025), mats.coil, sx * 0.703, 1.37, -1.64, false);
   }
   for (const sx of [-1, 1]) {
@@ -275,14 +296,15 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
 
   /* ---- The tower. */
   // Pedestal with a lit rim, a graphite spine for the maglev rings.
-  add(facet(new THREE.CylinderGeometry(0.48, 0.56, 0.25, 12)), mats.paint, 0, 1.345, TZ);
+  // (Reshape: the pedestal, collars, spine and neck are turned, round-edged forms.)
+  add(turned('voltPedestal', [[0, 1.22], [0.565, 1.22], [0.565, 1.26], [0.54, 1.36], [0.515, 1.43], [0.49, 1.462], [0.455, 1.472], [0, 1.472]], 24), mats.paint, 0, 0, TZ);
   add(facet(new THREE.TorusGeometry(0.47, 0.022, 4, 24)).rotateX(Math.PI / 2), mats.coil, 0, DRUM_TOP, TZ, false);
-  add(facet(new THREE.CylinderGeometry(0.34, 0.4, 0.06, 12)), graphite, 0, 1.5, TZ);
-  add(facet(new THREE.CylinderGeometry(0.08, 0.1, 0.46, 8)), graphite, 0, 1.73, TZ);
+  add(turned('voltCap', [[0, 1.47], [0.4, 1.47], [0.39, 1.505], [0.36, 1.526], [0.32, 1.532], [0.1, 1.535], [0.085, 1.6], [0.08, 1.96], [0, 1.96]], 20), graphite, 0, 0, TZ);
   // Containment section: lower + upper collars, three slim struts, the glass tube (the plasma column animates inside).
-  add(facet(new THREE.CylinderGeometry(0.3, 0.28, 0.07, 12)), mats.paint, 0, 1.93, TZ);
+  add(turned('voltCollarLo', [[0, 1.895], [0.27, 1.895], [0.295, 1.91], [0.305, 1.93], [0.295, 1.955], [0.27, 1.965], [0, 1.965]], 20), mats.paint, 0, 0, TZ);
   add(facet(new THREE.TorusGeometry(0.3, 0.012, 3, 24)).rotateX(Math.PI / 2), mats.coil, 0, 1.965, TZ, false);
-  add(facet(new THREE.CylinderGeometry(0.27, 0.29, 0.06, 12)), mats.paint, 0, 2.77, TZ);
+  add(turned('voltCollarHi', [[0, 2.74], [0.28, 2.74], [0.295, 2.755], [0.29, 2.78], [0.26, 2.8], [0.12, 2.81], [0, 2.81]], 20), mats.paint, 0, 0, TZ);
+  add(turned('voltNeck', [[0, 2.8], [0.115, 2.8], [0.1, 2.85], [0.075, 2.9], [0.06, 2.925], [0, 2.925]], 12), graphite, 0, 0, TZ);
   add(facet(new THREE.TorusGeometry(0.28, 0.012, 3, 24)).rotateX(Math.PI / 2), mats.coil, 0, 2.738, TZ, false);
   for (let i = 0; i < 3; i++) {
     const a = (i * Math.PI * 2) / 3 + Math.PI / 6;
@@ -290,10 +312,9 @@ export function buildVoltVehicle({ mats, chassis }: VehicleBuildIn): VehicleBuil
   }
   add(new THREE.CylinderGeometry(0.2, 0.2, TUBE_Y1 - TUBE_Y0, 14, 1, true), tubeGlass, 0, (TUBE_Y0 + TUBE_Y1) / 2, TZ, false);
   // Neck: a satin emitter cone under the hovering halo.
-  add(facet(new THREE.CylinderGeometry(0.06, 0.11, 0.12, 8)), graphite, 0, 2.86, TZ);
   add(facet(new THREE.ConeGeometry(0.07, 0.14, 8)), satin, 0, 2.98, TZ);
   // Halo ring: segmented (graphite bands) with a lit inner edge.
-  add(facet(new THREE.TorusGeometry(TOR_R, TOR_r, 8, 24)).rotateX(Math.PI / 2), toroidMat, 0, TOR_Y, TZ, false);
+  add(new THREE.TorusGeometry(TOR_R, TOR_r, 10, 32).rotateX(Math.PI / 2), toroidMat, 0, TOR_Y, TZ, false);
   add(facet(new THREE.TorusGeometry(TOR_R - TOR_r - 0.005, 0.018, 3, 24)).rotateX(Math.PI / 2), mats.coil, 0, TOR_Y, TZ, false);
   for (let i = 0; i < 8; i++) {
     const a = (i * Math.PI) / 4;

@@ -810,32 +810,32 @@ const DECAL_SPOTS: Record<PlowKind, readonly DecalSpot[]> = {
     { face: 'rear', at: [0, 1.93, -2.045], size: [1.7, 0.1], tags: ['band'] },
   ],
   volt: [
-    { face: 'top', at: [0, 1.222, 1.5], size: [0.4, 1.3], tags: ['stripe', 'flame', 'band'] }, // front deck, ahead of the head
-    { face: 'top', at: [0, 1.5, 1.08], size: [0.3, 0.6], tags: ['emblem', 'stripe'], emblem: 0.28 }, // instrument head roof
+    { face: 'top', at: [0, 1.222, 1.45], size: [0.3, 1.3], tags: ['stripe', 'flame', 'band'] }, // front deck, ahead of the head
+    { face: 'top', at: [0, 1.505, 1.0], size: [0.26, 0.6], tags: ['emblem', 'stripe'], emblem: 0.26 }, // instrument head roof
     { face: 'top', at: [0, 1.222, -1.15], size: [0.5, 0.6], tags: ['stripe', 'emblem', 'band'], emblem: 0.42 }, // rear deck, between the hatches
-    { face: 'side', at: [0.95, 1.11, -0.15], size: [2.6, 0.15], tags: ['flame', 'band', 'stripe'] }, // deck flank
+    { face: 'side', at: [0.95, 1.095, -0.15], size: [2.6, 0.12], tags: ['flame', 'band', 'stripe'] }, // deck flank
     { face: 'rear', at: [0, 1.37, -1.83], size: [0.95, 0.22], tags: ['band', 'emblem'], emblem: 0.2 }, // transformer box
   ],
   brute: [
     { face: 'top', at: [0, 2.585, 0.66], size: [0.6, 0.8], tags: ['stripe', 'emblem'], emblem: 0.5 }, // head roof
-    { face: 'top', at: [0, 2.66, -0.2], size: [1.1, 0.7], tags: ['stripe', 'band', 'emblem'], emblem: 0.62 }, // torso roof
+    { face: 'top', at: [0, 2.66, -0.25], size: [1.0, 0.7], tags: ['stripe', 'band', 'emblem'], emblem: 0.62 }, // torso roof
     { face: 'top', at: [0, 1.28, 1.08], size: [0.7, 1.2], tags: ['stripe', 'flame'] }, // front deck
     { face: 'top', at: [1.18, 1.06, -0.35], size: [1.5, 0.56], tags: ['flame', 'stripe', 'band'], pair: true }, // track guards
-    { face: 'side', at: [0.8, 2.25, -1.24], size: [0.62, 0.22], tags: ['band', 'stripe', 'flame'] }, // engine flank
+    { face: 'side', at: [0.8, 2.15, -1.24], size: [0.56, 0.22], tags: ['band', 'stripe', 'flame'] }, // engine flank
     { face: 'rear', at: [0, 1.45, -1.95], size: [1.6, 0.8], tags: ['emblem'], emblem: 0.66 }, // counterweight
     { face: 'rear', at: [0, 1.84, -1.95], size: [1.5, 0.13], tags: ['band'] },
   ],
   isotope: [
-    { face: 'top', at: [0, 2.38, 0.82], size: [1.12, 1.7], tags: ['stripe', 'emblem', 'band'], emblem: 1.0 }, // cab roof
+    { face: 'top', at: [0, 2.275, 1.08], size: [0.7, 1.5], tags: ['stripe', 'emblem', 'band'], emblem: 0.62 }, // cab roof cap
     { face: 'top', at: [0, 1.32, 1.55], size: [0.95, 1.84], tags: ['stripe', 'flame', 'emblem'], emblem: 0.8 }, // nose
     { face: 'side', at: [1.0, 1.45, -0.45], size: [2.7, 0.14], tags: ['band', 'stripe', 'flame'] }, // hull flank
-    { face: 'side', at: [0.81, 1.62, 0.82], size: [1.0, 0.3], tags: ['flame', 'band', 'stripe'] }, // cab flank
+    { face: 'side', at: [0.83, 1.69, 1.05], size: [0.8, 0.12], tags: ['flame', 'band', 'stripe'] }, // cab flank, under the side window
   ],
   revenant: [
-    { face: 'top', at: [0, 2.13, -0.55], size: [2.2, 0.9], tags: ['stripe', 'band'] }, // long roof (behind the beacon)
-    { face: 'top', at: [0, 1.33, 1.85], size: [1.0, 1.1], tags: ['stripe', 'flame', 'emblem'], emblem: 0.75, tilt: 0.31 }, // hood
-    { face: 'side', at: [1.01, 1.08, -1.0], size: [2.2, 0.36], tags: ['flame', 'band', 'stripe', 'emblem'], emblem: 0.34 }, // lower flank
-    { face: 'rear', at: [0, 1.0, -2.6], size: [1.4, 0.3], tags: ['band', 'emblem'], emblem: 0.28 }, // tail
+    { face: 'top', at: [0, 1.985, -0.8], size: [0.9, 0.7], tags: ['stripe', 'band'] }, // canopy crown (behind the beacon), split by the ridge
+    { face: 'top', at: [0, 1.265, 1.85], size: [1.0, 1.1], tags: ['stripe', 'flame', 'emblem'], emblem: 0.75, tilt: 0.21 }, // hood plates
+    { face: 'side', at: [0.96, 1.08, -1.0], size: [2.2, 0.32], tags: ['flame', 'band', 'stripe', 'emblem'], emblem: 0.34 }, // lower flank
+    { face: 'rear', at: [0, 1.0, -2.64], size: [1.4, 0.3], tags: ['band', 'emblem'], emblem: 0.28 }, // tail
   ],
 };
 

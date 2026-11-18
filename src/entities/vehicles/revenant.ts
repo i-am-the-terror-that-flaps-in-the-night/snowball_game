@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mergeStatic } from '../../render/mergeStatic';
 import { makeShadowProxy } from '../../render/shadowProxy';
-import { addMesh, kitBox, type VehicleBuild, type VehicleBuildIn } from './types';
+import { addMesh, type VehicleBuild, type VehicleBuildIn } from './types';
+import { rblock, roundProfile, sideUV, type ProfilePt } from './vehicleShapes';
 import { buildWraithClaws, type ClawRigIn } from './revenantClaws';
 
 /* REVENANT: a spectral reaper-car. A low, sleek void-black core (fixed colour, glowing seams) wears FLOATING armour
@@ -10,7 +11,8 @@ import { buildWraithClaws, type ClawRigIn } from './revenantClaws';
  * faces drifting inside. Two wraith fins rise off the tail trailing tattered spectral ribbons; a halo hovers over the
  * roof (the toll beacon) and THE RELIQUARY, a soul cell between glowing emitter rings, floats behind it. It rolls on
  * HUBLESS spectral ring wheels. Two WRAITH CLAWS (vehicles/revenantClaws.ts) wait in glowing rifts on the hood: on
- * every Reap a long skeletal arm pours out and rakes the arc ahead with a taloned hand. PHASED: the opaque body fades
+ * every Reap a long skeletal arm pours out and rakes the arc ahead with a taloned hand. Reshape (art pass): the core,
+ * canopy, plates, ridge and fins are curved round-edged profiles (vehicleShapes.ts). PHASED: the opaque body fades
  * out for a scanline ghost shell with the bone-white skeletal frame inside. */
 
 /** Spectral palette (solid colours with a dark edge read on bright snow AND at night; additive is only a top layer). */
@@ -76,34 +78,51 @@ const WHEEL_R = 0.48;
 /** Hubless wheels sit a touch outboard of the plates. */
 const WHEEL_X = 1.06;
 
-/** Side profile (z, y) of the void core (extruded across the width): a long low wedge, nose down. */
-const LOWER: readonly (readonly [number, number])[] = [[-2.5, 0.6], [2.45, 0.6], [2.78, 0.76], [2.6, 0.98], [1.2, 1.3], [-2.3, 1.36], [-2.62, 1.04]];
-/** Bubble canopy profile (z, y): fast rake, a low crown, tapering off the tail. */
-const UPPER: readonly (readonly [number, number])[] = [[-2.15, 1.3], [1.15, 1.3], [0.5, 1.86], [-0.95, 1.98], [-2.05, 1.6]];
+/** Side profile (z, y) of the void core (extruded across the width): a long low wedge, nose down (reshape: a rolled
+ *  bullet nose, a hood sweeping up in one convex curve, a rounded tail). */
+const LOWER: readonly ProfilePt[] = [
+  [-2.42, 0.6], [2.36, 0.6], { p: [2.78, 0.8], q: [2.76, 0.6] }, { p: [2.56, 1.0], q: [2.8, 0.99] }, { p: [1.15, 1.3], q: [1.75, 1.2] },
+  { p: [-2.25, 1.36], q: [-0.6, 1.4] }, { p: [-2.62, 1.06], q: [-2.6, 1.36] }, { p: [-2.42, 0.6], q: [-2.66, 0.68] },
+];
+/** Bubble canopy profile (z, y): fast curved rake, a long low crown, the tail sweeping down to the deck. */
+const UPPER: readonly ProfilePt[] = [
+  [-2.15, 1.3], [1.15, 1.3], { p: [0.3, 1.93], q: [0.66, 1.86] }, { p: [-0.95, 1.99], q: [-0.3, 2.0] }, { p: [-2.15, 1.3], q: [-1.95, 1.9] },
+];
 
-function profileGeo(pts: readonly (readonly [number, number])[], width: number, bevel = 0.04): THREE.BufferGeometry {
-  const sh = new THREE.Shape();
-  sh.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
-  sh.closePath();
-  const g = new THREE.ExtrudeGeometry(sh, { depth: width - 2 * bevel, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1, curveSegments: 1 });
-  // Shape x -> model z, shape y -> model y, extrusion -> model x (centred).
-  g.rotateY(-Math.PI / 2);
-  g.translate((width - 2 * bevel) / 2, 0, 0);
-  g.computeVertexNormals();
-  return g;
+/** The hull profiles as smooth, round-edged solids, uvs planar from the side (u = z, v = y: the PHASED shell's
+ *  scanlines run level). */
+function profileGeo(key: string, pts: readonly ProfilePt[], width: number, bevel: number): THREE.BufferGeometry {
+  return sideUV(roundProfile(key, pts, width, bevel, 3, 10).clone());
 }
 
 const CORE_W = 1.6;
 const CANOPY_W = 1.22;
+
+/** Floating plates in side view (z, y): the front fender (top seam at 1.22 over the claw rifts, sweeping down to a
+ *  point at the nose), the rear quarter (top rising toward the tail), each with its glowing top seam. */
+const FENDER: readonly ProfilePt[] = [
+  [0.95, 0.8], [1.75, 0.8], { p: [2.3, 0.92], q: [2.1, 0.8] }, { p: [1.6, 1.2], q: [2.0, 1.2] }, [1.02, 1.2], { p: [0.88, 1.05], q: [0.88, 1.2] },
+];
+const FENDER_SEAM: readonly ProfilePt[] = [[0.98, 1.2], [1.6, 1.2], { p: [2.3, 0.94], q: [2.02, 1.2] }, { p: [1.6, 1.235], q: [2.04, 1.235] }, [0.98, 1.235]];
+const QUARTER: readonly ProfilePt[] = [
+  [-2.25, 0.84], [-0.2, 0.84], { p: [-0.12, 0.98], q: [-0.12, 0.84] }, [-0.12, 1.14], { p: [-0.3, 1.25], q: [-0.12, 1.25] },
+  { p: [-2.32, 1.3], q: [-1.6, 1.24] }, { p: [-2.25, 0.84], q: [-2.42, 0.9] },
+];
+const QUARTER_SEAM: readonly ProfilePt[] = [[-0.3, 1.25], { p: [-2.3, 1.3], q: [-1.6, 1.24] }, [-2.3, 1.335], { p: [-0.3, 1.285], q: [-1.6, 1.275] }];
+/** Hood plate: a thin shell along the hood's convex line, from the canopy foot down to the visor. */
+const HOOD_PLATE: readonly ProfilePt[] = [[1.32, 1.3], { p: [2.56, 1.03], q: [1.94, 1.175] }, [2.56, 1.055], { p: [1.32, 1.36], q: [1.94, 1.23] }];
+const HOOD_SPINE: readonly ProfilePt[] = [[1.32, 1.33], { p: [2.56, 1.06], q: [1.94, 1.205] }, [2.56, 1.1], { p: [1.32, 1.37], q: [1.94, 1.245] }];
+/** Dorsal ridge along the canopy crown and its seam. */
+const RIDGE: readonly ProfilePt[] = [[0.5, 1.88], { p: [-0.95, 2.0], q: [-0.3, 2.01] }, { p: [-1.65, 1.82], q: [-1.45, 1.98] }, [-1.62, 1.92], { p: [-0.95, 2.08], q: [-1.4, 2.08] }, { p: [0.45, 1.95], q: [-0.3, 2.09] }];
+const RIDGE_SEAM: readonly ProfilePt[] = [[0.42, 1.955], { p: [-0.95, 2.085], q: [-0.3, 2.095] }, { p: [-1.6, 1.93], q: [-1.4, 2.08] }, [-1.6, 1.955], { p: [-0.95, 2.105], q: [-1.4, 2.105] }, { p: [0.42, 1.98], q: [-0.3, 2.115] }];
 
 let hullGeo: THREE.BufferGeometry | null = null;
 /** The hearse's hull silhouette (lower wedge + greenhouse) as one geometry, cached: THE WILD HUNT's phantom riders
  *  (combat/revenantFx.ts) ride in it. */
 export function revenantHullGeometry(): THREE.BufferGeometry {
   if (hullGeo) return hullGeo;
-  const a = profileGeo(LOWER, CORE_W).toNonIndexed();
-  const b = profileGeo(UPPER, CANOPY_W, 0.05).toNonIndexed();
+  const a = profileGeo('revLower', LOWER, CORE_W, 0.12);
+  const b = profileGeo('revUpper', UPPER, CANOPY_W, 0.16);
   for (const g of [a, b]) g.deleteAttribute('uv');
   hullGeo = mergeGeometries([a, b]) ?? a;
   return hullGeo;
@@ -180,38 +199,47 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
   const edgeGlow = new THREE.MeshBasicMaterial({ color: REV_BRIGHT, toneMapped: false });
 
   // ---- Void core + bubble canopy.
-  const lowerGeo = profileGeo(LOWER, CORE_W);
-  const upperGeo = profileGeo(UPPER, CANOPY_W, 0.05);
+  const lowerGeo = profileGeo('revLower', LOWER, CORE_W, 0.12);
+  const upperGeo = profileGeo('revUpper', UPPER, CANOPY_W, 0.16);
   addMesh(lowerGeo, voidMat, 0, 0, 0, hull);
   addMesh(upperGeo, glass, 0, 0, 0, hull);
+  /** A pivot group under the hull at (x, y), rolled rz about z (a plate's own frame). */
+  const cant = (x: number, y: number, rz: number) => {
+    const g = new THREE.Group();
+    g.position.set(x, y, 0);
+    g.rotation.z = rz;
+    hull.add(g);
+    return g;
+  };
   // ---- Floating armour plates (Paint Shop body colour), each standing a hand off the core with a glowing seam
   // showing in the gap.
   for (const sx of [-1, 1]) {
-    // Front fender plate and the long rear quarter plate, canted out a little, with a gap between them.
-    // (Art pass: the plates take the vehicles' strong kit bevel; the spectral parts stay as they are.)
-    const fr = addMesh(kitBox(0.07, 0.4, 1.35), mats.paint, sx * 0.9, 1.0, 1.55, hull);
-    fr.rotation.z = sx * 0.14;
-    const rq = addMesh(kitBox(0.07, 0.46, 2.2), mats.paint, sx * 0.9, 1.04, -1.2, hull);
-    rq.rotation.z = sx * 0.14;
+    // Front fender plate and the long rear quarter plate, canted out a little, with a gap between them. (Reshape:
+    // curved blades in side view, the fender sweeping down to a point at the nose, the quarter rising to a kick over
+    // the tail; their glowing top seams follow the same curves.)
+    // (Each canted about its own middle height, like the old flat plates.)
+    const fr = cant(sx * 0.9, 1.0, sx * 0.14);
+    addMesh(roundProfile('revFender', FENDER, 0.07, 0.03, 3, 8), mats.paint, 0, -1.0, 0, fr);
+    const rq = cant(sx * 0.9, 1.04, sx * 0.14);
+    addMesh(roundProfile('revQuarter', QUARTER, 0.07, 0.03, 3, 8), mats.paint, 0, -1.04, 0, rq);
     // Shoulder plates over the quarters (trim colour), angled up toward the canopy.
-    const sh = addMesh(kitBox(0.34, 0.06, 2.0), mats.trim, sx * 0.72, 1.4, -1.15, hull);
+    const sh = addMesh(rblock(0.34, 0.06, 2.0, 0.03), mats.trim, sx * 0.72, 1.4, -1.15, hull);
     sh.rotation.z = sx * -0.32;
     // Glowing seams: along the plates' top edges and down the gap between them.
-    addMesh(new THREE.BoxGeometry(0.035, 0.035, 1.3), stripMat, sx * 0.94, 1.22, 1.55, hull, false);
-    addMesh(new THREE.BoxGeometry(0.035, 0.035, 2.15), stripMat, sx * 0.94, 1.29, -1.2, hull, false);
+    addMesh(roundProfile('revFenderSeam', FENDER_SEAM, 0.035, 0, 1, 8), stripMat, 0, -1.0, 0, fr, false);
+    addMesh(roundProfile('revQuarterSeam', QUARTER_SEAM, 0.035, 0, 1, 8), stripMat, 0, -1.04, 0, rq, false);
     addMesh(new THREE.BoxGeometry(0.035, 0.5, 0.035), stripMat, sx * 0.84, 1.02, 0.6, hull, false);
     // Underbody seam (the core's beltline).
     addMesh(new THREE.BoxGeometry(0.03, 0.03, 4.6), stripMat, sx * 0.81, 0.7, 0.05, hull, false);
     // Canopy base seam.
     addMesh(new THREE.BoxGeometry(0.03, 0.03, 3.1), stripMat, sx * (CANOPY_W / 2 + 0.01), 1.33, -0.5, hull, false);
   }
-  // Nose plate (paint) sloping down to the visor, split down the middle by a glowing spine.
+  // Nose plate (paint) sweeping down over the hood to the visor (curved to the hood's line), split down the middle
+  // by a glowing spine.
   for (const sx of [-1, 1]) {
-    const np = addMesh(kitBox(0.66, 0.06, 1.15), mats.paint, sx * 0.38, 1.17, 1.98, hull);
-    np.rotation.set(0.24, 0, sx * -0.08);
+    addMesh(roundProfile('revHoodPlate', HOOD_PLATE, 0.66, 0.03, 3, 8), mats.paint, 0, -1.17, 0, cant(sx * 0.38, 1.17, sx * -0.08));
   }
-  const spine = addMesh(new THREE.BoxGeometry(0.04, 0.04, 1.15), stripMat, 0, 1.2, 1.98, hull, false);
-  spine.rotation.x = 0.24;
+  addMesh(roundProfile('revSpine', HOOD_SPINE, 0.04, 0, 1, 8), stripMat, 0, 0, 0, hull, false);
   // Visor: a black slot across the nose with the two slit headlights and a fanged lower grille.
   addMesh(new THREE.BoxGeometry(1.5, 0.14, 0.06), voidMat, 0, 0.92, 2.68, hull, false);
   for (const sx of [-1, 1]) {
@@ -223,18 +251,13 @@ export function buildRevenantVehicle({ mats }: VehicleBuildIn): VehicleBuild<Rev
     fang.rotation.x = Math.PI;
   }
   // Dorsal ridge along the canopy crown (trim) with a seam.
-  addMesh(kitBox(0.06, 0.12, 2.2), mats.trim, 0, 2.0, -0.55, hull);
-  addMesh(new THREE.BoxGeometry(0.025, 0.025, 2.2), stripMat, 0, 2.07, -0.55, hull, false);
+  addMesh(roundProfile('revRidge', RIDGE, 0.06, 0.02, 2, 8), mats.trim, 0, 0, 0, hull);
+  addMesh(roundProfile('revRidgeSeam', RIDGE_SEAM, 0.025, 0, 1, 8), stripMat, 0, 0, 0, hull, false);
   // Wraith fins rising off the tail (trim), canted out, edged in glow.
-  const finShape = new THREE.Shape();
-  finShape.moveTo(-1.55, 1.3);
-  finShape.lineTo(-2.45, 1.3);
-  finShape.quadraticCurveTo(-2.8, 1.8, -3.05, 2.5);
-  finShape.quadraticCurveTo(-2.45, 2.05, -1.55, 1.3);
-  const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.05, bevelEnabled: false, curveSegments: 8 });
-  finGeo.rotateY(-Math.PI / 2);
-  finGeo.translate(0.025, 0, 0);
-  finGeo.computeVertexNormals();
+  // (Reshape: round-edged, so the blade catches a highlight along its rim.)
+  const finGeo = roundProfile('revFin', [
+    [-1.55, 1.3], [-2.45, 1.3], { p: [-3.05, 2.5], q: [-2.8, 1.8] }, { p: [-1.55, 1.3], q: [-2.45, 2.05] },
+  ], 0.06, 0.022, 3, 8);
   const finEdge = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 1.3, -1.55), new THREE.Vector3(0, 2.05, -2.45), new THREE.Vector3(0, 2.5, -3.05));
   const finEdgeGeo = new THREE.TubeGeometry(finEdge, 12, 0.03, 4, false);
   const finTips: THREE.Vector3[] = [];
