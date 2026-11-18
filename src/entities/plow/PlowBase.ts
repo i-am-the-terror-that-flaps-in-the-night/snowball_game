@@ -18,6 +18,7 @@ import type { EquippedLook } from '../../meta/cosmetics';
 import { GearVisuals } from '../gearVisuals';
 import { installPlowWear, type PlowWear } from './plowWear';
 import { chamferBox } from '../../render/kit/shapes';
+import { lathe } from '../../render/kit/curves';
 import { PLOW_KIT_K } from '../vehicles/types';
 import { makeSurface } from '../../world/Terrain';
 import type { VehicleBuildIn } from '../vehicles/types';
@@ -324,7 +325,7 @@ export abstract class PlowBase {
     const steelMat = new THREE.MeshStandardMaterial({ color: 0xd4dce4, roughness: 0.18, metalness: 0.85, side: THREE.DoubleSide, emissive: 0x000000 });
     this.steelMat = steelMat;
     const chromeMat = new THREE.MeshStandardMaterial({ color: 0xc9d2dc, roughness: 0.25, metalness: 0.85 });
-    const rubberMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.9, flatShading: true });
+    const rubberMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.9 });
     const hubMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.4, metalness: 0.4 });
     this.hubMat = hubMat;
     this.headMat = new THREE.MeshStandardMaterial({ color: 0xfff6d0, emissive: 0xfff1b8, emissiveIntensity: 1.6 });
@@ -409,34 +410,39 @@ export abstract class PlowBase {
     this.body.add(this.beaconLight);
 
     // Wheels (Classic + VOLT-9; BRUTUS rides on tracks).
-    // Tyre: a lathed section with chamfered shoulders (art pass; same size as the old cylinder).
-    const tireGeo = new THREE.LatheGeometry(
-      ([[0.2, -0.205], [WHEEL_R - 0.045, -0.21], [WHEEL_R, -0.15], [WHEEL_R, 0.15], [WHEEL_R - 0.045, 0.21], [0.2, 0.205]] as const).map(
-        ([r, y]) => new THREE.Vector2(r, y),
-      ),
-      14,
-    );
+    // Tyre (reshape): a lathed section with round, bulged shoulders, normals creased (smooth across the shoulder,
+    // hard at the rim); same size as before. Chunky staggered snow lugs on the crown; a dished alloy rim.
+    const tireGeo = lathe('plowTyre', [
+      [0.2, -0.2], [0.4, -0.216], [0.45, -0.195], [WHEEL_R - 0.006, -0.155], [WHEEL_R, -0.1],
+      [WHEEL_R, 0.1], [WHEEL_R - 0.006, 0.155], [0.45, 0.195], [0.4, 0.216], [0.2, 0.2],
+    ], 18).clone();
     tireGeo.rotateZ(Math.PI / 2);
-    // Hub with five lug nuts on each face, one geometry (the wheels stay three instanced draws).
-    const hubCyl = new THREE.CylinderGeometry(0.22, 0.22, 0.44, 8);
+    // Hub: a dished rim with a domed centre cap and five lug nuts on each face, one geometry (the wheels stay three
+    // instanced draws).
+    const hubCyl = lathe('plowHub', [
+      [0, -0.235], [0.075, -0.228], [0.1, -0.205], [0.215, -0.2],
+      [0.215, 0.2], [0.1, 0.205], [0.075, 0.228], [0, 0.235],
+    ], 16).clone();
     hubCyl.rotateZ(Math.PI / 2);
     const hubParts = [bakeGeometry(hubCyl, new THREE.Matrix4(), ['position', 'normal', 'uv'])];
     const lug = new THREE.ConeGeometry(0.034, 0.035, 6, 1, true); // a domed nut: 6 triangles
     for (const sx of [-1, 1]) {
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2;
-        const lm = new THREE.Matrix4().makeRotationZ(-sx * Math.PI / 2).setPosition(sx * 0.23, Math.sin(a) * 0.13, Math.cos(a) * 0.13);
+        const lm = new THREE.Matrix4().makeRotationZ(-sx * Math.PI / 2).setPosition(sx * 0.222, Math.sin(a) * 0.13, Math.cos(a) * 0.13);
         hubParts.push(bakeGeometry(lug, lm, ['position', 'normal', 'uv']));
       }
     }
     const hubGeo = mergeBaked(hubParts, hubMat)[0];
-    const treadGeo = new THREE.BoxGeometry(0.44, 0.1, 0.16);
+    const treadGeo = new THREE.BoxGeometry(0.2, 0.075, 0.12);
     const treads: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 12; i++) {
       const tr = new THREE.Object3D();
-      const a = (i / 6) * Math.PI * 2;
-      tr.position.set(0, Math.sin(a) * WHEEL_R, Math.cos(a) * WHEEL_R);
-      tr.rotation.x = -a;
+      const a = (i / 12) * Math.PI * 2;
+      const side = i % 2 ? 1 : -1;
+      tr.position.set(side * 0.1, Math.sin(a) * (WHEEL_R - 0.01), Math.cos(a) * (WHEEL_R - 0.01));
+      tr.rotation.set(-a, 0, 0);
+      tr.rotateY(side * 0.3);
       tr.updateMatrix();
       treads.push(bakeGeometry(treadGeo, tr.matrix));
     }

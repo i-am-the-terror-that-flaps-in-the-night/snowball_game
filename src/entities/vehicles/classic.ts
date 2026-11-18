@@ -3,12 +3,17 @@ import { bakeGeometry, mergeBaked, mergeStatic } from '../../render/mergeStatic'
 import { makeShadowProxy } from '../../render/shadowProxy';
 import { addMesh, boltRow, kitBox, type VehicleBuild, type VehicleBuildIn } from './types';
 import { boltHead } from '../../render/kit/shapes';
+import { WHEEL_R } from '../plow/constants';
+import { BED, CAB, FLARE, HOOD, SCOOP, SCREEN, SIDE_GLASS, TANK, VISOR, bladeLip, rblock, shadeNormals, tailZ } from './classicShapes';
 
 /* CLASSIC — the heavy-duty pro plow: a modern airport-runway / mountain-pass rig in glossy yellow with black and
  * chrome. Angular cab with tinted wraparound glass and a roof LED bar, plow lights over the hood, a big intake scoop,
  * twin chrome stacks, a high-tech spreader hopper at the back (glowing fill gauge, spinning spreader disc), and the
  * power blade: polished steel face in segments, hinged wings, carbide edge, LED markers, chrome hydraulic rams and,
  * with Inferno, twin burners + a glowing fuel cell built into the blade frame.
+ *
+ * Reshape (art pass): the cab, hood, scoop, spreader body and wheel-arch flares are curved side-profile solids with
+ * round edges (classicShapes.ts); they merge into the same per-material draws as the boxes around them.
  *
  * The Plow still owns the blade sheet (unit width, scaled on X, Paint Shop blade skins) and the blade group; this
  * builder hands it the blade dressing: `sheetTrim` (rides on the sheet, stretches with it), `frame` (wings, seams,
@@ -115,15 +120,26 @@ function arcSheet(r: number, len: number, seg = 14, t0 = T0, tl = TL): THREE.Buf
 }
 
 /** A flat plate following the blade profile between radii ri..ro (a rib / end plate), `thick` on X (centred). */
-function arcPlate(ri: number, ro: number, thick: number, t0 = T0, tl = TL, seg = 8): THREE.BufferGeometry {
+function arcPlate(ri: number, ro: number, thick: number, round = false, t0 = T0, tl = TL, seg = 8): THREE.BufferGeometry {
   const P = (r: number, t: number) => new THREE.Vector2(-(CZ + r * Math.cos(t)), CY + r * Math.sin(t));
   const pts: THREE.Vector2[] = [];
   for (let i = 0; i <= seg; i++) pts.push(P(ro, t0 + (tl * i) / seg));
   for (let i = seg; i >= 0; i--) pts.push(P(ri, t0 + (tl * i) / seg));
-  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: thick, bevelEnabled: false });
+  if (!round) {
+    const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: thick, bevelEnabled: false });
+    g.rotateY(Math.PI / 2);
+    g.translate(-thick / 2, 0, 0);
+    return g;
+  }
+  // Rounded rim (3 bevel facets, shaded smooth; the flat faces stay flat): the wing end plates.
+  const bv = Math.min(0.018, thick * 0.3);
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: thick - 2 * bv, bevelEnabled: true, bevelThickness: bv, bevelSize: bv, bevelOffset: -bv, bevelSegments: 3 });
   g.rotateY(Math.PI / 2);
-  g.translate(-thick / 2, 0, 0);
-  return g;
+  g.translate(-thick / 2 + bv, 0, 0);
+  const ng = g.index ? g.toNonIndexed() : g;
+  ng.deleteAttribute('normal');
+  ng.deleteAttribute('uv');
+  return shadeNormals(ng);
 }
 
 /** Cylinder of radius r and length len lying along X / Z (centred). */
@@ -159,94 +175,93 @@ export function buildClassicVehicle(
     fn(1);
   };
 
-  /* ---- chassis, fenders, steps, tanks */
+  /* ---- chassis, wheel-arch flares, steps, tanks */
   A(chassis, D, 0, 0.62, 0.05);
   A(kitBox(1.95, 0.42, 0.1, 0.03), D, 0, 0.62, 2.0); // blade mount plate
   boltRow(group, chrome, [-0.8, 0.74, 2.055], [0.8, 0.74, 2.055], 6, [Math.PI / 2, 0, 0], 0.03);
   boltRow(group, chrome, [-0.8, 0.5, 2.055], [0.8, 0.5, 2.055], 6, [Math.PI / 2, 0, 0], 0.03);
+  // Round wheel-arch flares (trim) hugging the tyres, a bolt at the crown and both shoulders of each.
   for (const z of [1.45, -1.25]) {
     both((sx) => {
-      A(kitBox(0.46, 0.06, 0.6, 0.02), T, sx * 0.97, 1.1, z);
-      A(kitBox(0.46, 0.06, 0.4, 0.02), T, sx * 0.97, 0.95, z + 0.44).rotation.x = 0.85;
-      A(kitBox(0.46, 0.06, 0.4, 0.02), T, sx * 0.97, 0.95, z - 0.44).rotation.x = -0.85;
-      // Fender lip bolts along the outer edge.
-      boltRow(group, chrome, [sx * 1.2, 1.1, z - 0.22], [sx * 1.2, 1.1, z + 0.22], 3, [0, 0, -sx * Math.PI / 2], 0.022);
+      A(FLARE(), T, sx * 0.97, 0, z);
+      for (const a of [40, 90, 140]) {
+        const r = (a * Math.PI) / 180;
+        const p = [sx * 1.2, WHEEL_R + Math.sin(r) * 0.6, z + Math.cos(r) * 0.6] as const;
+        boltRow(group, chrome, p, p, 1, [0, 0, -sx * Math.PI / 2], 0.02);
+      }
     });
   }
   both((sx) => {
     A(kitBox(0.22, 0.05, 0.5, 0.015), black, sx * 0.99, 0.74, 0.45);
     A(new THREE.BoxGeometry(0.2, 0.05, 0.46), black, sx * 0.96, 0.52, 0.45, group, false);
-    A(cylZ(0.18, 0.72, 12), chrome, sx * 0.9, 0.62, -0.32);
-    for (const z of [-0.55, -0.1]) A(cylZ(0.19, 0.045, 12), black, sx * 0.9, 0.62, z, group, false);
+    A(TANK(), chrome, sx * 0.9, 0.62, -0.32);
+    for (const z of [-0.55, -0.1]) A(cylZ(0.19, 0.045, 16), black, sx * 0.9, 0.62, z, group, false);
     A(new THREE.CylinderGeometry(0.018, 0.018, 0.62, 6), chrome, sx * 1.0, 1.2, -0.13, group, false);
   });
 
-  /* ---- hood: chamfered, flat-topped, with an intake scoop, a grille and plow lights on stalks */
-  A(loft([
-    { z: 1.24, y: [0.8, 0.86, 1.4, 1.5], w: [0.7, 0.78, 0.66] },
-    { z: 1.98, y: [0.8, 0.86, 1.4, 1.5], w: [0.7, 0.78, 0.66] },
-    { z: 2.12, y: [0.82, 0.88, 1.32, 1.42], w: [0.66, 0.74, 0.6] },
-  ]), P, 0, 0, 0);
-  A(new THREE.BoxGeometry(1.0, 0.36, 0.03), black, 0, 1.08, 2.125, group, false);
-  for (let i = 0; i < 4; i++) A(new THREE.BoxGeometry(0.92, 0.03, 0.03), chrome, 0, 0.96 + i * 0.08, 2.145, group, false);
-  A(kitBox(0.66, 0.13, 0.3, 0.025), black, 0, 1.56, 1.97);
-  for (let i = 0; i < 3; i++) A(new THREE.BoxGeometry(0.56, 0.02, 0.02), chrome, 0, 1.53 + i * 0.035, 2.125, group, false);
-  A(new THREE.BoxGeometry(0.06, 0.02, 0.62), T, 0, 1.505, 1.6, group, false); // hood centre crease
+  /* ---- hood: one long rounded shell (crowned top, rolled nose, big round side edges), a raised intake scoop, a
+   * grille in the flat nose, plow lights on stalks */
+  A(HOOD(), P, 0, 0, 0);
+  A(SCOOP(), black, 0, 0, 0);
+  for (let i = 0; i < 3; i++) A(new THREE.BoxGeometry(0.54, 0.018, 0.02), chrome, 0, 1.525 + i * 0.03, 2.03, group, false);
+  A(rblock(1.04, 0.4, 0.04, 0.03), chrome, 0, 1.08, 2.14, group, false); // grille surround
+  A(new THREE.BoxGeometry(0.96, 0.33, 0.03), black, 0, 1.08, 2.155, group, false);
+  for (let i = 0; i < 4; i++) A(new THREE.BoxGeometry(0.9, 0.03, 0.03), chrome, 0, 0.96 + i * 0.08, 2.17, group, false);
   both((sx) => {
-    A(new THREE.BoxGeometry(0.26, 0.08, 0.03), head, sx * 0.48, 1.22, 2.125, group, false); // DRL strip
-    A(new THREE.BoxGeometry(0.04, 0.24, 0.04), black, sx * 0.62, 1.62, 1.95, group, false); // plow-light stalk
-    A(kitBox(0.26, 0.15, 0.12, 0.02), black, sx * 0.62, 1.78, 1.95);
-    A(new THREE.BoxGeometry(0.2, 0.09, 0.02), head, sx * 0.62, 1.78, 2.015, group, false);
+    A(new THREE.BoxGeometry(0.07, 0.3, 0.03), head, sx * 0.58, 1.08, 2.15, group, false); // headlamp column
+    A(new THREE.BoxGeometry(0.04, 0.24, 0.04), black, sx * 0.6, 1.62, 1.95, group, false); // plow-light stalk
+    A(kitBox(0.26, 0.15, 0.12, 0.025), black, sx * 0.6, 1.78, 1.95);
+    A(new THREE.BoxGeometry(0.2, 0.09, 0.02), head, sx * 0.6, 1.78, 2.015, group, false);
     // Ram barrels on the hood flanks (the chrome rods ride on the blade and slide out of them).
-    A(cylZ(0.072, 0.5, 10), black, sx * RAM_X, RAM_Y, 1.36);
-    A(cylZ(0.085, 0.05, 10), chrome, sx * RAM_X, RAM_Y, 1.6, group, false);
+    A(cylZ(0.072, 0.5, 12), black, sx * RAM_X, RAM_Y, 1.36);
+    A(cylZ(0.085, 0.05, 12), chrome, sx * RAM_X, RAM_Y, 1.6, group, false);
     // Hydraulic hose from the barrel's rear down to the frame rail, and a louvred vent on the hood flank.
     A(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(sx * RAM_X, RAM_Y - 0.02, 1.12), new THREE.Vector3(sx * 0.9, 1.08, 0.98), new THREE.Vector3(sx * 0.84, 0.82, 1.02)]), 8, 0.022, 5), black, 0, 0, 0, group, false);
-    for (let i = 0; i < 3; i++) A(new THREE.BoxGeometry(0.02, 0.025, 0.24), black, sx * 0.785, 0.98 + i * 0.06, 1.86, group, false);
+    for (let i = 0; i < 3; i++) A(new THREE.BoxGeometry(0.02, 0.025, 0.24), black, sx * 0.785, 1.2 + i * 0.05, 1.9, group, false);
   });
 
-  /* ---- cab: chamfered lower body, tinted wraparound greenhouse with a raked screen, visor roof, LED bar, beacons */
-  A(kitBox(1.96, 0.82, 1.45, 0.05), P, 0, 1.21, 0.52);
-  A(kitBox(1.99, 0.06, 1.47, 0.012), T, 0, 1.6, 0.52); // black belt line under the glass
-  A(loft([
-    { z: -0.18, y: [1.6, 1.61, 1.63, 2.17], w: [0.95, 0.955, 0.86] },
-    { z: 0.88, y: [1.6, 1.61, 1.63, 2.17], w: [0.95, 0.955, 0.86] },
-    { z: 1.24, y: [1.6, 1.61, 1.62, 1.64], w: [0.95, 0.955, 0.93] },
-  ]), glass, 0, 0, 0, group, false);
-  A(kitBox(1.98, 0.13, 1.32, 0.03), P, 0, 2.235, 0.4);
+  /* ---- cab: one rounded shell (raked screen, curved roof, round pillars, arch cut over the front wheels), glass set
+   * into it (screen, door + quarter windows, back light), door seams, belt line, roof LED bar, beacons */
+  A(CAB(), P, 0, 0, 0);
+  A(SCREEN(), glass, 0, 0, 0, group, false);
+  for (const g of SIDE_GLASS()) A(g, glass, 0, 0, 0, group, false);
+  A(new THREE.BoxGeometry(1.3, 0.3, 0.03), glass, 0, 1.94, -0.2, group, false); // back light
   both((sx) => {
-    const a = A(new THREE.BoxGeometry(0.07, 0.66, 0.07), black, sx * 0.905, 1.895, 1.07, group, false); // A pillar
-    a.rotation.x = -0.555;
-    a.rotation.z = sx * 0.08;
-    A(new THREE.BoxGeometry(0.07, 0.56, 0.09), black, sx * 0.91, 1.89, -0.15, group, false); // B pillar
-    A(new THREE.BoxGeometry(0.012, 0.66, 0.02), black, sx * 0.985, 1.2, 1.12, group, false); // door seams
-    A(new THREE.BoxGeometry(0.012, 0.66, 0.02), black, sx * 0.985, 1.2, -0.1, group, false);
-    A(new THREE.BoxGeometry(0.03, 0.04, 0.16), chrome, sx * 0.99, 1.45, 0.92, group, false); // handle
-    A(new THREE.BoxGeometry(0.36, 0.03, 0.22), black, sx * 0.66, 2.315, -0.1, group, false); // beacon plinths
+    A(new THREE.BoxGeometry(0.012, 0.62, 0.02), black, sx * 0.985, 1.32, 0.98, group, false); // door seams
+    A(new THREE.BoxGeometry(0.012, 0.8, 0.02), black, sx * 0.985, 1.24, -0.06, group, false);
+    A(new THREE.BoxGeometry(0.012, 0.035, 1.0), T, sx * 0.985, 1.64, 0.44, group, false); // belt line
+    A(new THREE.BoxGeometry(0.03, 0.04, 0.16), chrome, sx * 0.995, 1.53, 0.24, group, false); // handle
+    A(new THREE.BoxGeometry(0.36, 0.05, 0.22), black, sx * 0.66, 2.305, -0.1, group, false); // beacon plinths
   });
-  A(kitBox(1.62, 0.09, 0.14, 0.02), black, 0, 2.345, 0.92);
-  A(new THREE.BoxGeometry(1.5, 0.05, 0.02), head, 0, 2.345, 0.995, group, false);
-  A(new THREE.SphereGeometry(0.08, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), chrome, 0, 2.3, -0.05, group, false); // GPS dome
+  A(rblock(1.5, 0.09, 0.14, 0.035), black, 0, 2.33, 0.46);
+  A(new THREE.BoxGeometry(1.4, 0.05, 0.02), head, 0, 2.33, 0.535, group, false);
+  // Amber clearance lamps on the roof's front edge.
+  A(VISOR(), black, 0, 0, 0);
+  for (const x of [-0.7, -0.12, 0, 0.12, 0.7]) A(new THREE.BoxGeometry(0.08, 0.03, 0.05), led, x, 2.21, 0.86, group, false).rotation.x = 0.45;
+  A(new THREE.SphereGeometry(0.08, 10, 4, 0, Math.PI * 2, 0, Math.PI / 2), chrome, 0, 2.29, -0.02, group, false); // GPS dome
 
-  /* ---- rear: equipment deck + spreader hopper (gauge, ladder, LEDs) + spreader chute and disc */
+  /* ---- rear: equipment deck + spreader body (a rounded box with a bulged tailgate over the V hopper; gauge,
+   * ladder, LEDs) + spreader chute and disc */
   A(kitBox(1.85, 0.22, 1.6, 0.03), D, 0, 0.9, -1.25);
+  A(BED(), P, 0, 0, 0);
   A(loft([
-    { z: -2.05, y: [1.0, 1.3, 1.98, 2.02], w: [0.58, 0.97, 0.95] },
-    { z: -0.5, y: [1.0, 1.3, 1.98, 2.02], w: [0.58, 0.97, 0.95] },
+    { z: -2.0, y: [1.0, 1.02, 1.3, 1.34], w: [0.58, 0.62, 0.95] },
+    { z: -0.52, y: [1.0, 1.02, 1.3, 1.34], w: [0.58, 0.62, 0.95] },
   ]), P, 0, 0, 0);
-  A(new THREE.BoxGeometry(1.78, 0.03, 1.44), black, 0, 2.03, -1.275, group, false);
+  A(new THREE.BoxGeometry(1.76, 0.03, 1.4), black, 0, 2.05, -1.255, group, false);
   both((sx) => {
-    A(kitBox(0.06, 0.07, 1.56, 0.012), T, sx * 0.93, 2.05, -1.275);
-    for (const z of [-1.97, -0.58]) A(new THREE.BoxGeometry(0.04, 0.7, 0.07), T, sx * 0.975, 1.64, z, group, false);
-    A(new THREE.BoxGeometry(0.07, 0.38, 0.025), ledRed, sx * 0.86, 1.6, -2.065, group, false);
-    A(new THREE.BoxGeometry(0.1, 0.05, 0.025), led, sx * 0.76, 1.34, -2.065, group, false);
-    A(new THREE.BoxGeometry(0.14, 0.1, 0.08), black, sx * 0.75, 2.1, -1.98, group, false); // work lights
-    A(new THREE.BoxGeometry(0.11, 0.06, 0.02), head, sx * 0.75, 2.1, -2.025, group, false);
+    A(cylZ(0.045, 1.5, 8), T, sx * 0.94, 2.07, -1.255); // rolled top lips
+    A(cylZ(0.03, 1.38, 8), T, sx * 0.975, 1.33, -1.24); // rub rail
+    for (const z of [-1.93, -0.58]) A(kitBox(0.05, 0.62, 0.08, 0.015), T, sx * 0.975, 1.62, z); // side stakes
+    A(new THREE.BoxGeometry(0.07, 0.36, 0.03), ledRed, sx * 0.84, 1.62, tailZ(1.62) - 0.012, group, false);
+    A(new THREE.BoxGeometry(0.1, 0.05, 0.03), led, sx * 0.78, 1.36, tailZ(1.36) - 0.012, group, false);
+    A(kitBox(0.14, 0.1, 0.08, 0.02), black, sx * 0.75, 2.11, -1.98, group, false); // work lights
+    A(new THREE.BoxGeometry(0.11, 0.06, 0.02), head, sx * 0.75, 2.11, -2.025, group, false);
     A(new THREE.BoxGeometry(0.3, 0.06, 0.02), ledRed, sx * 0.7, 0.64, -2.185, group, false);
   });
-  for (const z of [-0.53, -2.02]) A(kitBox(1.92, 0.07, 0.06, 0.012), T, 0, 2.05, z);
-  for (const z of [-0.85, -1.15, -1.45, -1.75]) A(new THREE.BoxGeometry(1.8, 0.035, 0.05), T, 0, 2.06, z, group, false);
-  A(kitBox(2.0, 0.18, 0.16, 0.03), D, 0, 0.64, -2.1); // rear bumper
+  for (const z of [-0.55, -1.96]) A(cylX(0.035, 1.84, 8), T, 0, 2.08, z);
+  for (const z of [-0.85, -1.15, -1.45, -1.75]) A(new THREE.BoxGeometry(1.76, 0.03, 0.05), T, 0, 2.07, z, group, false);
+  A(rblock(2.0, 0.18, 0.16, 0.06), D, 0, 0.64, -2.1); // rear bumper
   A(kitBox(0.36, 0.34, 0.22, 0.03), D, 0, 0.82, -2.2); // spreader chute
   // Mud flaps behind the rear wheels, bolted to a hanger.
   both((sx) => {
@@ -255,17 +270,17 @@ export function buildClassicVehicle(
   });
   A(new THREE.BoxGeometry(0.06, 0.24, 0.06), D, 0, 0.6, -2.36, group, false);
   // Hopper gauge (rear face): housing, ticks; the glowing bar is animated (fill).
-  A(kitBox(0.22, 0.62, 0.035, 0.012), black, 0.5, 1.6, -2.065, group, false);
-  for (let i = 0; i < 4; i++) A(new THREE.BoxGeometry(0.035, 0.012, 0.012), chrome, 0.585, 1.4 + i * 0.13, -2.088, group, false);
-  A(new THREE.BoxGeometry(0.1, 0.035, 0.02), led, 0.5, 1.93, -2.075, group, false);
+  const gz = tailZ(1.62);
+  A(kitBox(0.22, 0.6, 0.04, 0.012), black, 0.5, 1.62, gz - 0.01, group, false);
+  for (let i = 0; i < 4; i++) A(new THREE.BoxGeometry(0.035, 0.012, 0.012), chrome, 0.585, 1.42 + i * 0.13, gz - 0.035, group, false);
+  A(new THREE.BoxGeometry(0.1, 0.035, 0.02), led, 0.5, 1.95, gz - 0.035, group, false);
   // Ladder.
-  for (const x of [-0.62, -0.38]) A(new THREE.CylinderGeometry(0.018, 0.018, 0.78, 6), chrome, x, 1.58, -2.09, group, false);
-  for (let i = 0; i < 5; i++) A(new THREE.BoxGeometry(0.24, 0.022, 0.022), chrome, -0.5, 1.28 + i * 0.14, -2.09, group, false);
-
+  for (const x of [-0.62, -0.38]) A(new THREE.CylinderGeometry(0.018, 0.018, 0.78, 6), chrome, x, 1.6, -2.11, group, false);
+  for (let i = 0; i < 5; i++) A(new THREE.BoxGeometry(0.24, 0.022, 0.022), chrome, -0.5, 1.3 + i * 0.14, -2.11, group, false);
   // Animated parts.
   const gaugeGeo = new THREE.BoxGeometry(0.13, 1, 0.02);
   gaugeGeo.translate(0, 0.5, 0);
-  const gauge = A(gaugeGeo, gaugeMat, 0.5, 1.33, -2.088, group, false);
+  const gauge = A(gaugeGeo, gaugeMat, 0.5, 1.35, gz - 0.04, group, false);
   const spinner = new THREE.Group();
   spinner.position.set(0, 0.5, -2.36);
   A(new THREE.CylinderGeometry(0.27, 0.27, 0.035, 12), D, 0, 0, 0, spinner);
@@ -296,10 +311,10 @@ export function buildClassicVehicle(
   /* ---- aero mirrors */
   const mirrors = [-1, 1].map((sx) => {
     const m = new THREE.Group();
-    A(new THREE.BoxGeometry(0.32, 0.035, 0.04), black, sx * 1.08, 1.7, 1.12, m, false).rotation.z = sx * 0.4;
-    const h = A(kitBox(0.09, 0.3, 0.17, 0.02), P, sx * 1.25, 1.84, 1.12, m);
+    A(new THREE.BoxGeometry(0.32, 0.035, 0.04), black, sx * 1.08, 1.7, 0.98, m, false).rotation.z = sx * 0.4;
+    const h = A(rblock(0.09, 0.3, 0.17, 0.035), P, sx * 1.25, 1.84, 0.98, m);
     h.rotation.y = sx * 0.12;
-    A(new THREE.BoxGeometry(0.07, 0.26, 0.01), glass, sx * 1.25, 1.84, 1.03, m, false);
+    A(new THREE.BoxGeometry(0.07, 0.26, 0.01), glass, sx * 1.25, 1.84, 0.89, m, false);
     mergeStatic(m);
     group.add(m);
     return m;
@@ -329,7 +344,7 @@ export function buildClassicVehicle(
   const sheetTrim = new THREE.Group();
   A(arcSheet(R + 0.03, 1), P, 0, 0, 0, sheetTrim, false); // painted back skin
   // (Kit chamfers run along the width, so they keep their size as the sheet stretches on X.)
-  A(kitBox(1, 0.09, 0.16, 0.02), P, 0, 1.4, 0.24, sheetTrim, false); // top rail
+  A(bladeLip(1), P, 0, 0, 0, sheetTrim, false); // rolled top lip
   A(kitBox(1, 0.1, 0.08, 0.015), carbide, 0, 0.07, 0.27, sheetTrim, false); // carbide cutting edge
   A(kitBox(1, 0.24, 0.1, 0.025), T, 0, CY, backZ(CY, R + 0.03) - 0.05, sheetTrim, false); // strongback
   A(kitBox(1, 0.1, 0.1, 0.02), D, 0, 1.2, backZ(1.2, R + 0.03) - 0.05, sheetTrim, false);
@@ -352,10 +367,10 @@ export function buildClassicVehicle(
     seam: arcSheet(R - 0.012, 0.035),
     rib: arcPlate(R + 0.03, R + 0.15, 0.05),
     divider: arcPlate(R - 0.04, R + 0.17, 0.06),
-    endPlate: arcPlate(0.5, R + 0.15, 0.06),
+    endPlate: arcPlate(0.58, R + 0.15, 0.06, true),
     wingFace: arcSheet(R, WING_L, 14).translate(WING_L / 2, 0, 0),
     wingBack: arcSheet(R + 0.03, WING_L, 14).translate(WING_L / 2, 0, 0),
-    wingRail: kitBox(WING_L, 0.09, 0.16, 0.02).clone().translate(WING_L / 2, 1.4, 0.24),
+    wingRail: bladeLip(WING_L).clone().translate(WING_L / 2, 0, 0),
     wingEdge: kitBox(WING_L, 0.1, 0.08, 0.015).clone().translate(WING_L / 2, 0.07, 0.27),
     // Bolt heads facing the blade's front (+z): a row along the top rail, a row along the carbide edge.
     bolt: boltHead(0.026, 0.018).clone().rotateX(Math.PI / 2),
@@ -387,12 +402,12 @@ export function buildClassicVehicle(
     }
     // LED markers along the top rail.
     const leds = Math.max(3, Math.round(sheetW / 0.42));
-    for (let j = 0; j < leds; j++) put(G.led, led, at(-h + ((j + 0.5) * sheetW) / leds, 1.46, 0.29));
+    for (let j = 0; j < leds; j++) put(G.led, led, at(-h + ((j + 0.5) * sheetW) / leds, 1.475, 0.26));
     // Bolt rows: top rail (chrome) and carbide edge (dark), about every 0.2 m.
     const nb = Math.max(4, Math.round(sheetW / 0.2));
     for (let j = 0; j < nb; j++) {
       const x = -h + ((j + 0.5) * sheetW) / nb;
-      put(G.bolt, chrome, at(x, 1.38, 0.325));
+      put(G.bolt, chrome, at(x, 1.385, 0.338));
       put(G.bolt, D, at(x, 0.07, 0.315));
     }
     // Hinges + wings (built for the right side, mirrored for the left).
@@ -408,12 +423,12 @@ export function buildClassicVehicle(
       w2(G.wingRail, P);
       w2(G.wingEdge, carbide);
       for (const t of [0.25, 0.75]) {
-        w2(G.bolt, chrome, WING_L * t, 1.38, 0.325);
+        w2(G.bolt, chrome, WING_L * t, 1.385, 0.338);
         w2(G.bolt, D, WING_L * t, 0.07, 0.315);
       }
       w2(G.rib, T, WING_L * 0.5);
       w2(G.endPlate, P, WING_L);
-      w2(G.led, led, WING_L * 0.5, 1.46, 0.29);
+      w2(G.led, led, WING_L * 0.5, 1.475, 0.26);
       // Marker wand at the wing tip: black pole, amber reflector band, LED tip.
       w2(G.wand, D, WING_L - 0.06, 1.78, 0.12);
       w2(G.wandBand, led, WING_L - 0.06, 1.9, 0.12);
